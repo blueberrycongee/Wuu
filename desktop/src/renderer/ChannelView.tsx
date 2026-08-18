@@ -12,7 +12,7 @@ import { ChannelGroupAvatar } from "./ChannelGroupAvatar";
 import { ChannelMemberPicker } from "./ChannelMemberPicker";
 import { buildComposerAttachments } from "./ComposerDraftState";
 import { ComposerAttachmentStrip } from "./ComposerInputSections";
-import { DefaultAvatarMark } from "./DefaultAvatar";
+import { HumanAvatarMark } from "./DefaultAvatar";
 import { FieldError } from "./FieldError";
 import {
   awaitComposerImages,
@@ -91,7 +91,8 @@ async function squareAvatarImageFromFile(file: File): Promise<string> {
   }
 }
 
-function AgentAvatar({ name, avatarKey, avatarImage, status, statusText, model, modelLabel, compact = false }: {
+function AgentAvatar({ id, name, avatarKey, avatarImage, status, statusText, model, modelLabel, compact = false, expressive = false }: {
+  id: string;
   name: string;
   avatarKey: string;
   avatarImage?: string;
@@ -100,11 +101,12 @@ function AgentAvatar({ name, avatarKey, avatarImage, status, statusText, model, 
   model?: string;
   modelLabel: string;
   compact?: boolean;
+  expressive?: boolean;
 }): JSX.Element {
   const accessibleDescription = model ? `${name}: ${statusText}, ${modelLabel}: ${model}` : `${name}: ${statusText}`;
   return (
     <span className={`channel-agent-avatar${compact ? " compact" : ""}`} tabIndex={0} aria-label={accessibleDescription}>
-      <AgentAvatarMark avatarKey={avatarKey} avatarImage={avatarImage} />
+      <AgentAvatarMark seed={id} avatarKey={avatarKey} avatarImage={avatarImage} status={expressive ? status : "idle"} />
       <span className={`channel-agent-status-dot ${status}`} aria-hidden="true" />
       <span className="channel-agent-status-card" role="tooltip">
         <span><i className={`channel-agent-status-swatch ${status}`} />{statusText}</span>
@@ -214,9 +216,10 @@ function ChannelThreadDigest({
             <span className="channel-thread-digest-row" key={reply.id}>
               <span className="channel-thread-digest-avatar" aria-hidden="true">
                 {own ? (
-                  <DefaultAvatarMark seed="local-user" />
+                  <HumanAvatarMark />
                 ) : (
                   <AgentAvatarMark
+                    seed={reply.author_id}
                     avatarKey={agent?.avatar_key ?? "abstract-1"}
                     avatarImage={agent?.avatar_image}
                   />
@@ -1376,7 +1379,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                   <span className="channel-response-status-avatars" aria-hidden="true">
                     {respondingAgents.slice(0, 3).map(({ agent, status }) => (
                       <span className="channel-response-status-avatar" key={agent.id}>
-                        <AgentAvatarMark avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
+                        <AgentAvatarMark seed={agent.id} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} status={status} />
                         <i className={`channel-response-status-dot ${status}`} />
                       </span>
                     ))}
@@ -1439,12 +1442,12 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
               <article className={`channel-message ${own ? "own" : "agent"}${grouped ? " grouped" : ""}`} key={message.id}>
                 {!grouped && own ? (
                   <span className="channel-human-avatar" aria-hidden="true">
-                    <DefaultAvatarMark seed="local-user" />
+                    <HumanAvatarMark />
                   </span>
                 ) : !grouped ? (() => {
                   const agent = agents.find((candidate) => candidate.id === message.author_id);
                   const status = activityFor(agent);
-                  return <AgentAvatar name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
+                  return <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
                 })() : null}
                 <div className={`channel-message-content${threadReplies.length ? " has-thread-digest" : ""}`}>
                   <div className="channel-message-meta">
@@ -1549,12 +1552,12 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                   <article className={`channel-message channel-thread-message ${own ? "own" : "agent"}${grouped ? " grouped" : ""}`} key={message.id}>
                     {!grouped && own ? (
                       <span className="channel-human-avatar" aria-hidden="true">
-                        <DefaultAvatarMark seed="local-user" />
+                        <HumanAvatarMark />
                       </span>
                     ) : !grouped ? (() => {
                       const agent = agents.find((candidate) => candidate.id === message.author_id);
                       const status = activityFor(agent);
-                      return <AgentAvatar name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
+                      return <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
                     })() : null}
                     <div className="channel-message-content">
                       <div className="channel-message-meta">
@@ -1685,7 +1688,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
               return (
                 <div className={`channel-directory-row channel-agent-directory-row${selectedAgentID === agent.id ? " selected" : ""}`} key={agent.id}>
                   <button className="channel-directory-avatar" type="button" aria-label={t("channels.viewAgent", { name: agent.name })} onClick={() => selectAgentDetails(agent)}>
-                    <AgentAvatar name={agent.name} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} status={status} statusText={activityText(status)} model={agent.model_override || initialized?.model} modelLabel={t("channels.model")} />
+                    <AgentAvatar id={agent.id} name={agent.name} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} status={status} statusText={activityText(status)} model={agent.model_override || initialized?.model} modelLabel={t("channels.model")} expressive />
                   </button>
                   <button className="channel-directory-identity channel-agent-directory-identity" type="button" aria-current={selectedAgentID === agent.id ? "page" : undefined} onClick={() => selectAgentDetails(agent)}>
                     <span><strong>{agent.name}</strong><small>{model} · {t("channels.agentRoomCount", { count: roomCount })}</small></span>
@@ -1713,7 +1716,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
               <article className="channel-agent-detail">
                 <header className="channel-agent-detail-header">
                   <button className="channel-agent-detail-avatar" type="button" aria-label={t("channels.customAvatar")} onClick={() => agentDetailAvatarInputRef.current?.click()}>
-                    <AgentAvatarMark avatarKey={agentAvatarKey} avatarImage={agentAvatarImage} />
+                    <AgentAvatarMark seed={selectedAgent.id} avatarKey={agentAvatarKey} avatarImage={agentAvatarImage} status={activityFor(selectedAgent)} />
                     <span aria-hidden="true"><ImagePlus className="icon" /></span>
                   </button>
                   <input
@@ -1912,7 +1915,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
               aria-describedby={agentAvatarError ? "channel-agent-avatar-error" : undefined}
               onClick={() => agentAvatarInputRef.current?.click()}
             >
-              <AgentAvatarMark avatarKey={agentAvatarKey} avatarImage={agentAvatarImage} />
+              <AgentAvatarMark seed={editingAgentID || "new-agent"} avatarKey={agentAvatarKey} avatarImage={agentAvatarImage} />
               <span className="channel-identity-avatar-badge" aria-hidden="true"><ImagePlus className="icon" /></span>
             </button>
             <label className="channel-form-field">
@@ -1949,7 +1952,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                   aria-pressed={agentAvatarKey === avatarKey && !agentAvatarImage}
                   onClick={() => { setAgentAvatarKey(avatarKey); setAgentAvatarImage(""); setAgentAvatarError(""); }}
                 >
-                  <AgentAvatarMark avatarKey={avatarKey} />
+                  <AgentAvatarMark seed={editingAgentID || "new-agent"} avatarKey={avatarKey} />
                 </button>
               ))}
             </div>
@@ -2035,7 +2038,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 {roomIncludesCurrentUser ? (
                   <div className="channel-room-member-row current" aria-label={t("channels.you")}>
                     <span className="channel-room-member-avatar">
-                      <DefaultAvatarMark seed="local-user" />
+                      <HumanAvatarMark />
                     </span>
                     <span className="channel-room-member-identity">
                       <strong>{t("channels.you")}</strong>
@@ -2045,7 +2048,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 {agents.filter((agent) => roomAgentIDs.includes(agent.id)).map((agent) => (
                   <div className="channel-room-member-row" key={agent.id}>
                     <span className="channel-room-member-avatar">
-                      <AgentAvatarMark avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
+                      <AgentAvatarMark seed={agent.id} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} status={activityFor(agent)} />
                     </span>
                     <span className="channel-room-member-identity">
                       <strong>{agent.name}</strong>

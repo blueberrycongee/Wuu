@@ -98,7 +98,7 @@ export function ChannelMemberPicker({
                 onKeyDown={(event) => handleOptionKeyDown(event, index)}
               >
                 <span className="channel-member-picker-avatar" aria-hidden="true">
-                  <AgentAvatarMark avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
+                  <AgentAvatarMark seed={agent.id} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
                 </span>
                 <span className="channel-member-picker-identity">
                   <strong>{agent.name}</strong>

@@ -259,7 +259,7 @@
   display: block;
   overflow: visible;
   border: 2px solid var(--bg-primary);
-  border-radius: 7px;
+  border-radius: 50%;
   background: var(--bg-primary);
 }
 
@@ -271,7 +271,7 @@
   width: 100%;
   height: 100%;
   display: block;
-  border-radius: 5px;
+  border-radius: 50%;
 }
 
 .channel-response-status-dot {
@@ -375,7 +375,7 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: 50%;
   background: var(--surface-raised);
   color: var(--text-secondary);
   outline: none;
@@ -385,13 +385,13 @@
   width: 100%;
   height: 100%;
   display: block;
-  border-radius: inherit;
+  border-radius: 50%;
 }
 
 .channel-agent-avatar.compact {
   width: 24px;
   height: 24px;
-  border-radius: 7px;
+  border-radius: 50%;
 }
 
 .channel-agent-status-dot {
@@ -1574,7 +1574,7 @@
   width: 36px;
   height: 36px;
   overflow: hidden;
-  border-radius: 9px;
+  border-radius: 50%;
 }
 
 .channel-agent-graph-avatar .agent-avatar-mark {
@@ -1584,7 +1584,7 @@
   -webkit-user-drag: none;
 }
 
-.agent-avatar-image {
+.agent-avatar-mark > .agent-avatar-image {
   object-fit: cover;
 }
 
@@ -2091,7 +2091,7 @@
   width: 100%;
   height: 100%;
   display: block;
-  border-radius: var(--radius-xs);
+  border-radius: 50%;
 }
 
 /* Effort chips: the option count and label length are runtime-dependent
@@ -2737,7 +2737,7 @@
 
 .channel-group-avatar-cell .agent-avatar-mark,
 .channel-group-avatar-cell .default-avatar,
-.channel-group-avatar-cell .default-avatar img {
+.channel-group-avatar-cell .default-avatar svg {
   width: 100%;
   height: 100%;
   display: block;

@@ -1,7 +1,7 @@
 import type { CSSProperties, JSX } from "react";
 import type { ChannelRoom, ChannelRoomMember, NamedAgent } from "../shared/protocol";
 import { AgentAvatarMark } from "./AgentAvatarMark";
-import { DefaultAvatarMark } from "./DefaultAvatar";
+import { HumanAvatarMark } from "./DefaultAvatar";
 
 const MAX_GROUP_AVATAR_MEMBERS = 9;
 
@@ -24,9 +24,9 @@ export function groupAvatarRowSizes(memberCount: number): readonly number[] {
 
 function MemberAvatar({ member, agent }: { member: ChannelRoomMember; agent?: NamedAgent }): JSX.Element {
   if (member.member_type === "agent" && agent) {
-    return <AgentAvatarMark avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />;
+    return <AgentAvatarMark seed={agent.id} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />;
   }
-  return <DefaultAvatarMark seed={member.member_id || agent?.id || "local-user"} />;
+  return <HumanAvatarMark />;
 }
 
 export function ChannelGroupAvatar({ room, agents }: { room: ChannelRoom; agents: NamedAgent[] }): JSX.Element {

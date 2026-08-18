@@ -186,7 +186,7 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
                   insertMention(agent.name, mentionRange);
                 }}
               >
-                <AgentAvatarMark avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
+                <AgentAvatarMark seed={agent.id} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
                 <span className="channel-mention-name">{agent.name}</span>
                 <span className="channel-mention-meta" aria-hidden="true">
                   {agent.model_override ? <span className="channel-mention-model">{agent.model_override}</span> : null}

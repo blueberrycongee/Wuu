@@ -138,7 +138,7 @@ function AgentPreviewCard({ agent, insight, inheritedProvider, inheritedModel, o
   return (
     <aside className="channel-agent-preview-card" data-testid="channel-agent-preview-card" aria-live="polite" onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave}>
       <header className="channel-agent-preview-header">
-        <div className="channel-agent-preview-avatar"><AgentAvatarMark avatarKey={agent.avatar_key || "abstract-1"} avatarImage={agent.avatar_image} /></div>
+        <div className="channel-agent-preview-avatar"><AgentAvatarMark seed={agent.id} avatarKey={agent.avatar_key || "abstract-1"} avatarImage={agent.avatar_image} status={status} /></div>
         <div className="channel-agent-preview-identity">
           <strong className="channel-agent-preview-name">{agent.name}</strong>
           <span className="channel-agent-preview-activity">{status === "thinking" ? t("channels.agentStatus.thinking") : relativeActivity(insight?.last_active_at, locale, t)}</span>
@@ -616,7 +616,7 @@ export function AgentRelationshipGraph({ agents, rooms, insights, inheritedProvi
               <>
                 <circle className="channel-agent-graph-hit-target" r="26" />
                 <foreignObject x="-18" y="-18" width="36" height="36" pointerEvents="none">
-                  <div className="channel-agent-graph-avatar"><AgentAvatarMark avatarKey={node.avatarKey ?? "abstract-1"} avatarImage={node.avatarImage} /></div>
+                  <div className="channel-agent-graph-avatar"><AgentAvatarMark seed={node.id.slice("agent:".length)} avatarKey={node.avatarKey ?? "abstract-1"} avatarImage={node.avatarImage} status={node.status} /></div>
                 </foreignObject>
                 <circle className={`channel-agent-graph-status ${node.status}`} cx="15" cy="-15" r="3.5" />
               </>

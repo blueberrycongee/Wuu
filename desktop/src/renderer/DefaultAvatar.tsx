@@ -1,25 +1,12 @@
-import { Blobatar } from "blobatar/react";
 import type { JSX } from "react";
 
 /*
- * Default participant avatars.
- *
- * When a participant has no uploaded avatar_image (or the image was too
- * large to embed in a summary), surfaces fall back to a blobatar generated
- * from a stable seed (the participant id): an organic blob with eyes on a
- * matching tinted plate. Identity comes from shape + hue together, and the
- * shape is unique per seed with no fixed cast, so rosters of any size stay
- * collision-free.
- *
- * The hue is pinned to the same 12 muted hues the old mascot tints used, so
- * a participant keeps their color family across redesigns and the palette
- * stays inside the paper-ink system. Assignment is deterministic from the
- * seed (FNV-1a, the same hash the old cast used): the same participant
- * always gets the same hue, no new backend field required.
+ * Shared deterministic palette used by blobatars elsewhere in the desktop.
+ * Human participants deliberately do not use it: the neutral person mark
+ * below keeps people visually distinct from agent characters.
  */
 
-// The 12 muted hues, preserved from the previous default-avatar tint
-// palette (--avatar-N in styles/default-avatar.css).
+// Muted agent hues carried forward from the previous avatar palette.
 export const AVATAR_HUES = [14, 33, 52, 96, 150, 182, 202, 222, 250, 288, 322, 350] as const;
 
 export const DEFAULT_AVATAR_COUNT = AVATAR_HUES.length;
@@ -40,23 +27,15 @@ export function avatarHueIndex(seed: string): number {
   return fnv1a(seed) % DEFAULT_AVATAR_COUNT;
 }
 
-/**
- * Renders the default blobatar avatar for a participant, sized to fill
- * its container (the caller's circular avatar cell clips it). `seed`
- * should be a stable identity string — the participant id where
- * available, otherwise the display name. The blob shape, eyes, and
- * palette all derive deterministically from the seed.
- */
-export function DefaultAvatarMark({ seed }: { seed: string }): JSX.Element {
+/** Neutral fallback for a human participant without an uploaded avatar. */
+export function HumanAvatarMark(): JSX.Element {
   return (
-    <span className="default-avatar" aria-hidden="true">
-      <Blobatar
-        name={seed}
-        hue={AVATAR_HUES[avatarHueIndex(seed)]}
-        background="circle"
-        alt=""
-        draggable={false}
-      />
+    <span className="default-avatar human-avatar-mark" aria-hidden="true">
+      <svg viewBox="0 0 48 48" focusable="false">
+        <rect width="48" height="48" rx="10" className="human-avatar-background" />
+        <circle cx="24" cy="19" r="7" className="human-avatar-figure" />
+        <path d="M11.5 40c.8-8 5.1-12 12.5-12s11.7 4 12.5 12z" className="human-avatar-figure" />
+      </svg>
     </span>
   );
 }
