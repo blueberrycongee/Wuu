@@ -29,7 +29,14 @@ export type WuuMascotAccessory =
   | "sprout"
   | "crown"
   | "headphones"
-  | "scarf";
+  | "scarf"
+  | "beret"
+  | "party-hat"
+  | "wizard-hat"
+  | "chef-hat"
+  | "flower"
+  | "halo"
+  | "bow-tie";
 
 type WuuMascotRuntime = {
   provider?: string;
@@ -56,13 +63,13 @@ const MODEL_ACCESSORY_BUCKETS: readonly WuuMascotAccessory[] = [
   "none",
   "headphones",
   "scarf",
-  "beanie",
-  "none",
-  "sprout",
-  "cap",
-  "top-hat",
-  "crown",
-  "none",
+  "beret",
+  "party-hat",
+  "flower",
+  "halo",
+  "bow-tie",
+  "wizard-hat",
+  "chef-hat",
   "headphones",
 ];
 
@@ -219,6 +226,43 @@ function MascotAccessory({
         <>
           <path className="wuu-mascot-fill" d={`M ${body.cx - body.rx * 0.76} ${bottom - 15} Q ${centerX} ${bottom - 7} ${body.cx + body.rx * 0.76} ${bottom - 15} L ${body.cx + body.rx * 0.7} ${bottom - 5} Q ${centerX} ${bottom + 1} ${body.cx - body.rx * 0.7} ${bottom - 5} Z`} />
           <path className="wuu-mascot-fill" d={`M ${centerX + 8} ${bottom - 7} Q ${centerX + 19} ${bottom + 2} ${centerX + 14} ${bottom + 16} L ${centerX + 3} ${bottom + 8} L ${centerX + 2} ${bottom - 5} Z`} />
+        </>
+      ) : null}
+      {accessory === "beret" ? (
+        <path className="wuu-mascot-fill" d={`M ${centerX - 25} ${top + 8} Q ${centerX - 22} ${top - 5} ${centerX - 7} ${top - 10} Q ${centerX + 13} ${top - 14} ${centerX + 24} ${top + 1} Q ${centerX + 12} ${top + 12} ${centerX - 25} ${top + 8} Z`} />
+      ) : null}
+      {accessory === "party-hat" ? (
+        <>
+          <path className="wuu-mascot-fill" d={`M ${centerX - 20} ${top + 11} L ${centerX + 3} ${top - 13} L ${centerX + 20} ${top + 11} Q ${centerX} ${top + 16} ${centerX - 20} ${top + 11} Z`} />
+          <circle className="wuu-mascot-fill" cx={centerX + 3} cy={top - 13} r="4" />
+        </>
+      ) : null}
+      {accessory === "wizard-hat" ? (
+        <>
+          <path className="wuu-mascot-fill" d={`M ${centerX - 18} ${top + 11} Q ${centerX - 3} ${top - 3} ${centerX + 4} ${top - 16} Q ${centerX + 10} ${top - 4} ${centerX + 23} ${top + 10} Q ${centerX + 4} ${top + 15} ${centerX - 18} ${top + 11} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX - 25} ${top + 10} Q ${centerX} ${top + 5} ${centerX + 27} ${top + 11} Q ${centerX + 8} ${top + 19} ${centerX - 25} ${top + 14} Z`} />
+        </>
+      ) : null}
+      {accessory === "chef-hat" ? (
+        <path className="wuu-mascot-fill" d={`M ${centerX - 23} ${top + 13} L ${centerX - 23} ${top + 4} Q ${centerX - 26} ${top - 5} ${centerX - 15} ${top - 7} Q ${centerX - 10} ${top - 16} ${centerX} ${top - 12} Q ${centerX + 10} ${top - 17} ${centerX + 16} ${top - 7} Q ${centerX + 27} ${top - 5} ${centerX + 23} ${top + 4} L ${centerX + 23} ${top + 13} Q ${centerX} ${top + 17} ${centerX - 23} ${top + 13} Z`} />
+      ) : null}
+      {accessory === "flower" ? (
+        <g className="wuu-mascot-flower" transform={`translate(${body.cx - body.rx * 0.7} ${top + 3})`}>
+          <circle className="wuu-mascot-petal" cx="0" cy="-6" r="5" />
+          <circle className="wuu-mascot-petal" cx="6" cy="0" r="5" />
+          <circle className="wuu-mascot-petal" cx="0" cy="6" r="5" />
+          <circle className="wuu-mascot-petal" cx="-6" cy="0" r="5" />
+          <circle className="wuu-mascot-flower-center" r="4" />
+        </g>
+      ) : null}
+      {accessory === "halo" ? (
+        <ellipse className="wuu-mascot-halo" cx={centerX} cy={top - 8} rx="22" ry="5.5" />
+      ) : null}
+      {accessory === "bow-tie" ? (
+        <>
+          <path className="wuu-mascot-fill" d={`M ${centerX - 3} ${bottom - 9} Q ${centerX - 17} ${bottom - 20} ${centerX - 23} ${bottom - 8} Q ${centerX - 18} ${bottom + 3} ${centerX - 3} ${bottom - 5} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX + 3} ${bottom - 9} Q ${centerX + 17} ${bottom - 20} ${centerX + 23} ${bottom - 8} Q ${centerX + 18} ${bottom + 3} ${centerX + 3} ${bottom - 5} Z`} />
+          <circle className="wuu-mascot-band" cx={centerX} cy={bottom - 7} r="5" />
         </>
       ) : null}
     </g>

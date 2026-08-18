@@ -29,6 +29,21 @@
   stroke-width: 3.6;
 }
 
+.wuu-mascot-petal {
+  fill: color-mix(in oklab, var(--mo-head) 42%, white);
+}
+
+.wuu-mascot-flower-center {
+  fill: color-mix(in oklab, var(--mo-head) 58%, var(--mo-eye));
+}
+
+.wuu-mascot-halo {
+  fill: none;
+  stroke: color-mix(in oklab, var(--mo-head) 42%, white);
+  stroke-linecap: round;
+  stroke-width: 3.4;
+}
+
 .wuu-mascot-accessory,
 .wuu-mascot-accessory * {
   transition:
