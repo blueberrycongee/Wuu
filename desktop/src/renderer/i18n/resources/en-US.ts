@@ -667,7 +667,7 @@ export const enUS = {
   "composer.readOnly": "Subtask conversation is read-only",
   "composer.followupChanges": "Request follow-up changes",
   "composer.addDescription": "Add a description",
-  "composer.placeholder": "Ask Wuu, or type / to choose a command",
+  "composer.placeholder": "Get started",
   "composer.voice.start": "Start voice input",
   "composer.voice.startHint": "Dictate with free macOS on-device speech recognition",
   "composer.voice.stop": "Stop voice input",

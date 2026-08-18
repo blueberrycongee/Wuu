@@ -665,7 +665,7 @@ export const zhCN = {
   "composer.readOnly": "子任务会话只读",
   "composer.followupChanges": "要求后续变更",
   "composer.addDescription": "添加描述",
-  "composer.placeholder": "向 wuu 提问，或输入 / 选择命令",
+  "composer.placeholder": "即刻开始",
   "composer.voice.start": "开始语音输入",
   "composer.voice.startHint": "使用免费的 macOS 设备端语音识别进行输入",
   "composer.voice.stop": "停止语音输入",
