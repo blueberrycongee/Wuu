@@ -505,7 +505,7 @@
     {
       "name": "unanchored:turns.css",
       "synthetic": true,
-      "rows": 389
+      "rows": 388
     },
     {
       "name": "unanchored:workbench.css",
@@ -2184,7 +2184,6 @@
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".wuu-launch-glass","prop":"background","variable":"--surface-2","status":"bridged","tokens":["--wuu-color-surface-muted"]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".wuu-launch-glass","prop":"border","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".wuu-launch-glass","prop":"box-shadow","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
-    {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".wuu-launch-glass::after","prop":"background","variable":"--wuu-launch-sweep-highlight","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".wuu-launch-glass::before","prop":"background","variable":"--paper","status":"bridged","tokens":["--wuu-color-canvas"]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".wuu-launch-mark","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".wuu-launch-mark::after","prop":"background","variable":"--success","status":"bridged","tokens":["--wuu-color-success"]},

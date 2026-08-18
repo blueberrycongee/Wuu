@@ -331,7 +331,6 @@ turns.css .user-message-block.user-message-jump-flash > .user-message, .user-mes
 turns.css .user-message-block.user-message-jump-flash > .user-message, .user-message-block.user-message-jump-flash > .user-message-edit box-shadow --user-message-jump-shadow-18
 turns.css .user-message-edit-button:focus-visible box-shadow --ink-overlay-8
 turns.css .user-message-edit.user-message-edit-drop-active box-shadow --ink-overlay-18
-turns.css .wuu-launch-glass::after background --wuu-launch-sweep-highlight
 turns.css 0% box-shadow --user-message-jump-shadow-0
 turns.css 100% box-shadow --user-message-jump-shadow-0
 turns.css 12% background --user-message-jump-flash-bg

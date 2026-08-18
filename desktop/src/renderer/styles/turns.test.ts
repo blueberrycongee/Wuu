@@ -258,10 +258,12 @@ describe("turns.css message-flow typography", () => {
 });
 
 describe("turns.css launch glass", () => {
-  it("blends the mascot into the glass instead of painting an opaque lightness layer", () => {
-    const carving = cssRuleBody(".wuu-launch-carving");
-    expect(carving).toMatch(/mix-blend-mode:\s*soft-light;/);
-    expect(carving).not.toMatch(/mix-blend-mode:\s*luminosity;/);
+  it("sizes the blobatar mascot to the old carving footprint without the monochrome mask", () => {
+    const mascot = cssRuleBody(".wuu-launch-mascot");
+    expect(mascot).toMatch(/width:\s*76%;/);
+    expect(mascot).toMatch(/height:\s*76%;/);
+    expect(mascot).not.toMatch(/mix-blend-mode/);
+    expect(mascot).not.toMatch(/grayscale/);
   });
 
   it("keeps the launch signature on one clipped glass surface", () => {
@@ -274,20 +276,11 @@ describe("turns.css launch glass", () => {
     const highlight = cssRuleBody(".wuu-launch-glass::before");
     expect(highlight).toMatch(/linear-gradient\(/);
     expect(highlight).not.toMatch(/\bborder\s*:/);
-
-    const sweep = cssRuleBody(".wuu-launch-glass::after");
-    expect(sweep).toMatch(/animation:\s*wuu-launch-glass-sweep/);
-    expect(sweep).toMatch(/var\(--wuu-launch-sweep-highlight\)/);
-    expect(turnsCss).toMatch(
-      /--wuu-launch-sweep-highlight:\s*rgba\(244,\s*247,\s*248,\s*0\.86\);/,
-    );
-    expect(sweep).toMatch(/transform:/);
-    expect(turnsCss).toMatch(/@keyframes\s+wuu-launch-glass-sweep/);
   });
 
-  it("turns the sweep off for reduced motion", () => {
-    expect(turnsCss).toMatch(
-      /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.wuu-launch-glass::after[\s\S]*?animation:\s*none;/,
-    );
+  it("removes the startup sweep from the glass", () => {
+    expect(turnsCss).not.toMatch(/\.wuu-launch-glass::after\s*\{/);
+    expect(turnsCss).not.toMatch(/@keyframes\s+wuu-launch-glass-sweep/);
+    expect(turnsCss).not.toMatch(/--wuu-launch-sweep-highlight/);
   });
 });

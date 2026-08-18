@@ -1,6 +1,5 @@
 import { Blobatar } from "blobatar/react";
 import "blobatar/motion.css";
-import mascotFace from "./assets/mascot-face.png";
 import { useI18n } from "./i18n";
 import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
 
@@ -20,11 +19,13 @@ export function RuntimeLoading({
       {isStarting ? (
         <div className="wuu-launch" role="status" aria-label={pinned ? t("loading.launchPreview") : t("loading.starting")}>
           <div className="wuu-launch-glass" aria-hidden="true">
-            <img
-              className="wuu-launch-carving"
-              src={mascotFace}
-              alt=""
-              draggable={false}
+            <Blobatar
+              className="wuu-launch-mascot"
+              name="wuu"
+              hue={AVATAR_HUES[avatarHueIndex("wuu")]}
+              background={false}
+              traits={{ shape: 0.2, "body.ratio": 0.5 }}
+              animate="always"
             />
           </div>
           {pinned && onExitPreview ? (

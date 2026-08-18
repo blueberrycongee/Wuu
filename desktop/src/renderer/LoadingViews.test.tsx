@@ -22,16 +22,15 @@ afterEach(() => {
 });
 
 describe("RuntimeLoading", () => {
-  it("uses the mascot as a transparent carving inside one glass app-icon surface", () => {
+  it("centers the wuu blobatar mascot inside one glass app-icon surface", () => {
     const view = render(<RuntimeLoading status="connecting" />);
 
     const glass = view.querySelector(".wuu-launch-glass");
-    const carving = glass?.querySelector<HTMLImageElement>(
-      "img.wuu-launch-carving",
-    );
+    const mascot = glass?.querySelector<SVGSVGElement>("svg.wuu-launch-mascot");
 
     expect(glass).not.toBeNull();
-    expect(carving?.getAttribute("src")).toContain("mascot-face");
+    expect(mascot).not.toBeNull();
+    expect(mascot?.querySelector("g.mo-root.mo-always")).not.toBeNull();
     expect(view.querySelector(".wuu-launch-mark")).toBeNull();
     expect(view.querySelector(".wuu-launch-rail")).toBeNull();
   });

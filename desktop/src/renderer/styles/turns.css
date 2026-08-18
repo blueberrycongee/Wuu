@@ -48,7 +48,6 @@
     "Songti SC", "Noto Serif SC", "Noto Serif CJK SC", serif;
   --project-empty-content-color: var(--wuu-color-text-muted, var(--gray-600));
   --wuu-launch-exit-border: var(--wuu-border-subtle, var(--gray-300));
-  --wuu-launch-sweep-highlight: rgba(244, 247, 248, 0.86);
   --project-empty-actions-border: var(--wuu-border-subtle, var(--gray-300));
   --project-empty-actions-hover-bg: var(--gray-50);
   --diff-insert-bg: rgba(18, 161, 80, 0.08);
@@ -3679,10 +3678,10 @@ pre {
 }
 
 /*
- * The launch signature uses the real mascot artwork as an etched layer
- * inside one transparent app-icon surface. The glass owns the depth and
- * sweep; the illustration stays monochrome so startup does not replay the
- * full-color application icon or compete with the workspace that follows.
+ * The launch signature shows the same round wuu blobatar as the empty home
+ * greeting, centered inside one transparent app-icon surface. The glass owns
+ * the depth; the mascot is the color mark itself, and the old monochrome
+ * carving plus startup sweep are gone.
  */
 .wuu-launch {
   display: grid;
@@ -3731,40 +3730,12 @@ pre {
   pointer-events: none;
 }
 
-.wuu-launch-glass::after {
-  position: absolute;
-  inset: -24% auto -24% -68%;
-  z-index: 2;
-  width: 54%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--wuu-launch-sweep-highlight) 48%,
-    transparent
-  );
-  content: "";
-  opacity: 0;
-  pointer-events: none;
-  transform: translate3d(-120%, 0, 0) rotate(9deg);
-  will-change: transform, opacity;
-  animation: wuu-launch-glass-sweep 3600ms var(--ease-out) 480ms infinite;
-}
-
-.wuu-launch-carving {
+.wuu-launch-mascot {
   position: relative;
   z-index: 1;
   display: block;
   width: 76%;
   height: 76%;
-  object-fit: contain;
-  opacity: 0.5;
-  filter:
-    grayscale(1)
-    contrast(0.78)
-    brightness(1.28)
-    drop-shadow(-1px -1px 0 color-mix(in srgb, var(--paper) 78%, transparent))
-    drop-shadow(1px 1px 0 color-mix(in srgb, var(--ink) 18%, transparent));
-  mix-blend-mode: soft-light;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -3925,26 +3896,6 @@ pre {
   }
 }
 
-@keyframes wuu-launch-glass-sweep {
-  0%,
-  16% {
-    opacity: 0;
-    transform: translate3d(-120%, 0, 0) rotate(9deg);
-  }
-  22% {
-    opacity: 0.72;
-  }
-  48% {
-    opacity: 0.58;
-    transform: translate3d(410%, 0, 0) rotate(9deg);
-  }
-  54%,
-  100% {
-    opacity: 0;
-    transform: translate3d(410%, 0, 0) rotate(9deg);
-  }
-}
-
 @keyframes thinking-icon-breathe {
   0%,
   100% {
@@ -3959,7 +3910,6 @@ pre {
 
 @media (prefers-reduced-motion: reduce) {
   .wuu-launch-glass,
-  .wuu-launch-glass::after,
   .wuu-launch-mark::after,
   .wuu-launch-mark span,
   .wuu-launch-rail::after,
