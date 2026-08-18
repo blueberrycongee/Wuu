@@ -34,10 +34,11 @@ import (
 )
 
 type queuedTurn struct {
-	id       string
-	msg      providers.ChatMessage
-	snapshot turnRuntimeSnapshot
-	origin   string
+	id        string
+	msg       providers.ChatMessage
+	followups []providers.ChatMessage
+	snapshot  turnRuntimeSnapshot
+	origin    string
 }
 
 type agentCompletionTurnKind string
@@ -2227,7 +2228,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			unconsumedSteers = filterConsumedAgentCompletionSteers(unconsumedSteers, threadRuntime.AgentControl)
 		}
 		if len(unconsumedSteers) > 0 {
-			s.prependQueuedUserTurns(th.ID, queuedTurnsFromSteers(unconsumedSteers))
+			s.prependQueuedUserTurns(th.ID, coalescedQueuedTurnsFromSteers(unconsumedSteers))
 		}
 	}
 	completionClaimFailed := len(turnRuntime.AgentCompletionResultIDs) > 0
@@ -2589,7 +2590,12 @@ func (s *Server) enqueueQueuedUserTurn(threadID string, entry queuedTurn) {
 	if strings.TrimSpace(entry.msg.Role) == "" {
 		entry.msg.Role = "user"
 	}
-	entry.msg.ClientID = entry.id
+	// Keep an upstream request identity distinct from the local queue identity.
+	// Plugin session sends use ClientID for idempotency across lifecycle replay;
+	// replacing it with the queue ID makes the same request look new on retry.
+	if strings.TrimSpace(entry.msg.ClientID) == "" {
+		entry.msg.ClientID = entry.id
+	}
 	entry.msg.Steered = false
 
 	s.queuedTurnMu.Lock()
@@ -3022,7 +3028,9 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 	if entry.id == "" {
 		entry.id = session.NewID()
 	}
-	entry.msg.ClientID = entry.id
+	if strings.TrimSpace(entry.msg.ClientID) == "" {
+		entry.msg.ClientID = entry.id
+	}
 	entry.msg.Steered = false
 
 	th := s.thread(threadID)
@@ -3079,6 +3087,17 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 		QueueID:  entry.id,
 	}); err != nil {
 		return false, errors.Join(err, s.abortStartedThreadTurnDurably(th, started, err))
+	}
+	if len(entry.followups) > 0 {
+		th.mu.Lock()
+		if th.currentTurn == started.turnID {
+			for _, followup := range entry.followups {
+				followup.Steered = true
+				th.pendingSteers = append(th.pendingSteers, followup)
+			}
+			th.signalSteerWakeLocked()
+		}
+		th.mu.Unlock()
 	}
 	launch.Commit()
 	if reference := started.runtime.PluginTurn; reference != nil {
@@ -3753,10 +3772,42 @@ func queuedTurnsFromSteers(msgs []providers.ChatMessage) []queuedTurn {
 		msg.ClientID = id
 		msg.Steered = false
 		snapshot := turnRuntimeSnapshot{}
+		if pluginID, requestID, ok := pluginSessionRequestFromClientID(id); ok {
+			snapshot.PluginTurn = &pluginTurnReference{PluginID: pluginID, RequestID: requestID}
+		}
 		if ids := agentCompletionResultIDs(id); len(ids) > 0 {
 			snapshot.AgentCompletionResultIDs = ids
 		}
 		out = append(out, queuedTurn{id: id, msg: msg, snapshot: snapshot})
+	}
+	return out
+}
+
+func coalescedQueuedTurnsFromSteers(msgs []providers.ChatMessage) []queuedTurn {
+	queued := queuedTurnsFromSteers(msgs)
+	if len(queued) < 2 {
+		return queued
+	}
+	out := make([]queuedTurn, 0, len(queued))
+	for index := 0; index < len(queued); {
+		entry := queued[index]
+		reference := entry.snapshot.PluginTurn
+		if reference == nil {
+			out = append(out, entry)
+			index++
+			continue
+		}
+		next := index + 1
+		for next < len(queued) {
+			candidate := queued[next].snapshot.PluginTurn
+			if candidate == nil || candidate.PluginID != reference.PluginID {
+				break
+			}
+			entry.followups = append(entry.followups, queued[next].msg)
+			next++
+		}
+		out = append(out, entry)
+		index = next
 	}
 	return out
 }

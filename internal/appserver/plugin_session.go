@@ -321,6 +321,18 @@ func pluginSessionRequestClientID(pluginID, requestID string) string {
 	return "plugin:" + strings.TrimSpace(pluginID) + ":" + strings.TrimSpace(requestID)
 }
 
+func pluginSessionRequestFromClientID(clientID string) (string, string, bool) {
+	trimmed := strings.TrimSpace(clientID)
+	rest := strings.TrimPrefix(trimmed, "plugin:")
+	if rest == trimmed {
+		return "", "", false
+	}
+	pluginID, requestID, ok := strings.Cut(rest, ":")
+	pluginID = strings.TrimSpace(pluginID)
+	requestID = strings.TrimSpace(requestID)
+	return pluginID, requestID, ok && pluginID != "" && requestID != ""
+}
+
 func (s *Server) steerPluginSession(th *threadState, msg providers.ChatMessage) (string, bool) {
 	if th == nil {
 		return "", false

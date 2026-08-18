@@ -24,14 +24,15 @@ const (
 var taskNameCleaner = regexp.MustCompile(`[^a-z0-9_]+`)
 
 type taskRecord struct {
-	SessionID       string `json:"session_id"`
-	ParentSessionID string `json:"parent_session_id"`
-	ParentTurnID    string `json:"parent_turn_id,omitempty"`
-	Name            string `json:"name"`
-	RequestID       string `json:"request_id"`
-	TurnID          string `json:"turn_id,omitempty"`
-	QueueID         string `json:"queue_id,omitempty"`
-	State           string `json:"state"`
+	SessionID          string `json:"session_id"`
+	ParentSessionID    string `json:"parent_session_id"`
+	ParentTurnID       string `json:"parent_turn_id,omitempty"`
+	Name               string `json:"name"`
+	RequestID          string `json:"request_id"`
+	TurnID             string `json:"turn_id,omitempty"`
+	QueueID            string `json:"queue_id,omitempty"`
+	State              string `json:"state"`
+	SuppressCompletion bool   `json:"suppress_completion,omitempty"`
 }
 
 func Handler() pluginapi.Handler {
@@ -163,6 +164,7 @@ func sendMessage(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCa
 	record.RequestID = nextRequestID
 	record.ParentSessionID = call.SessionID
 	record.ParentTurnID = call.TurnID
+	record.SuppressCompletion = false
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
@@ -191,6 +193,13 @@ func closeAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	}
 	record, err := resolveTask(ctx, host, call.SessionID, args.Target)
 	if err != nil {
+		return pluginapi.ToolResult{}, err
+	}
+	// Closing a child is an explicit decision by the parent. Persist that intent
+	// before cancellation so the resulting interrupted lifecycle event cannot
+	// wake the parent with a completion it deliberately dismissed.
+	record.SuppressCompletion = true
+	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
 	var result pluginapi.SessionCancelResult
@@ -244,6 +253,9 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 		if err := saveRecord(ctx, host, record); err != nil {
 			return nil, err
 		}
+		if record.SuppressCompletion {
+			return json.RawMessage(`{}`), nil
+		}
 		output := strings.TrimSpace(input.FinalOutput)
 		if output == "" {
 			output = strings.TrimSpace(input.Error)
@@ -252,7 +264,7 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 			output = "子任务已结束，但没有返回文本结果。"
 		}
 		deliveryRequestID := completionDeliveryRequestID(input.RequestID)
-		continuation, tracksContinuation, err := parentContinuationRecord(ctx, host, record, deliveryRequestID)
+		continuation, continuationParent, tracksContinuation, err := parentContinuationRecord(ctx, host, record, deliveryRequestID)
 		if err != nil {
 			return nil, err
 		}
@@ -263,12 +275,24 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 		}
 		prompt := fmt.Sprintf("子任务 %s（session %s）已%s。请检查并整合以下交接结果：\n\n%s", record.Name, record.SessionID, lifecycleLabel(input.State), output)
 		var sent pluginapi.SessionSendResult
-		if err := host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: deliveryRequestID, SessionID: record.ParentSessionID, Input: pluginapi.SessionInput{Prompt: prompt}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + record.Name + " 已更新", Name: record.Name}, Cause: "subagent.completion"}, &sent); err != nil {
+		if err := host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: deliveryRequestID, SessionID: record.ParentSessionID, Input: pluginapi.SessionInput{Prompt: prompt}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + record.Name + " 已更新", Name: record.Name}, Cause: "subagent.completion", IfRunning: pluginapi.SessionIfRunningSteer}, &sent); err != nil {
+			if tracksContinuation {
+				return nil, errors.Join(err, saveRecord(ctx, host, continuationParent))
+			}
 			return nil, err
 		}
 		if tracksContinuation {
-			continuation.State = sent.State
-			if err := saveRecord(ctx, host, continuation); err != nil {
+			tracked := continuation
+			if sent.Steered {
+				// A steered completion joins the parent's existing turn, whose own
+				// request record remains responsible for routing one combined result
+				// upward. Restore that record instead of making this child completion
+				// look like a separate continuation turn.
+				tracked = continuationParent
+			} else {
+				tracked.State = sent.State
+			}
+			if err := saveRecord(ctx, host, tracked); err != nil {
 				return nil, err
 			}
 		}
@@ -292,6 +316,10 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 			}
 			if !ok || strings.TrimSpace(record.ParentTurnID) != strings.TrimSpace(input.TurnID) {
 				continue
+			}
+			record.SuppressCompletion = true
+			if err := saveRecord(ctx, host, record); err != nil {
+				return nil, err
 			}
 			var result pluginapi.SessionCancelResult
 			if err := host.CallHost(ctx, pluginapi.HostServiceSessionCancel, pluginapi.SessionCancelParams{SessionID: record.SessionID, TurnID: record.TurnID, QueueID: record.QueueID}, &result); err != nil {
@@ -376,17 +404,17 @@ func loadStoredRecord(ctx context.Context, host pluginapi.Host, key string) (tas
 	return record, true, nil
 }
 
-func parentContinuationRecord(ctx context.Context, host pluginapi.Host, child taskRecord, requestID string) (taskRecord, bool, error) {
+func parentContinuationRecord(ctx context.Context, host pluginapi.Host, child taskRecord, requestID string) (taskRecord, taskRecord, bool, error) {
 	parentID := strings.TrimSpace(child.ParentSessionID)
 	if parentID == "" {
-		return taskRecord{}, false, nil
+		return taskRecord{}, taskRecord{}, false, nil
 	}
 	parent, ok, err := loadRecordBySession(ctx, host, parentID)
 	if err != nil {
-		return taskRecord{}, false, err
+		return taskRecord{}, taskRecord{}, false, err
 	}
 	if !ok || strings.TrimSpace(parent.SessionID) != parentID || strings.TrimSpace(parent.ParentSessionID) == "" {
-		return taskRecord{}, false, nil
+		return taskRecord{}, taskRecord{}, false, nil
 	}
 	return taskRecord{
 		SessionID:       parentID,
@@ -394,7 +422,7 @@ func parentContinuationRecord(ctx context.Context, host pluginapi.Host, child ta
 		Name:            parent.Name,
 		RequestID:       requestID,
 		State:           "created",
-	}, true, nil
+	}, parent, true, nil
 }
 
 func completionDeliveryRequestID(requestID string) string {
