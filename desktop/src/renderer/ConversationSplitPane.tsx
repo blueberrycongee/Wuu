@@ -126,15 +126,11 @@ export function ConversationSplitPane({
   );
   const paneRunning = isThreadRunning(thread);
   const paneReadOnly = Boolean(thread.read_only);
-  const paneStatus = paneReadOnly
-    ? paneRunning
-      ? t("app.childTaskRunning")
-      : t("app.childTaskReadOnly")
-    : paneRunning
-      ? streamStatus?.text ?? t("runDebug.inProgress")
-      : active && appStatus !== "ready"
-        ? appStatus
-        : "";
+  const paneStatus = paneRunning
+    ? streamStatus?.text ?? t("runDebug.inProgress")
+    : active && appStatus !== "ready"
+      ? appStatus
+      : "";
 
   return (
     <section
@@ -212,11 +208,7 @@ export function ConversationSplitPane({
           />
         </div>
       </div>
-      {paneReadOnly ? (
-        <footer className="split-read-only-footer" aria-live="polite">
-          <span className="split-read-only-status">{paneStatus}</span>
-        </footer>
-      ) : (
+      {!paneReadOnly && (
         <SplitPaneComposer
           prompt={draft.prompt}
           setPrompt={onSetPrompt}
