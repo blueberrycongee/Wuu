@@ -172,11 +172,11 @@ export function ProcessSurface({
     toolItems.length >= CONDENSED_SUMMARY_MIN_TOOL_COUNT &&
     toolSegments.length > 1;
   const activeGrayText = active ?? streaming;
-  let blobatarSeed = "tool";
+  let blobatarSeed = "wuu";
   for (let index = toolItems.length - 1; index >= 0; index--) {
     const item = toolItems[index];
     if (item.type === "tool_call") {
-      blobatarSeed = item.name?.trim() || "tool";
+      blobatarSeed = item.name?.trim() || "wuu";
       break;
     }
   }
@@ -254,7 +254,7 @@ export function ProcessSurface({
       aria-label={summaryText}
       data-text={summaryWaveText}
     >
-      {activeGrayText && toolItems.length > 0 ? (
+      {activeGrayText ? (
         <Blobatar
           className="process-surface-blobatar"
           name={blobatarSeed}

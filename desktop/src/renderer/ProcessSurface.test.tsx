@@ -596,6 +596,19 @@ describe("ProcessSurface", () => {
     ).toBeNull();
   });
 
+  it("shows the fixed round blobatar while reasoning without tool calls", () => {
+    const { container } = render({
+      processItems: [makeReasoning("reason-1", "thinking", "in_progress")],
+      streaming: true,
+    });
+
+    const summary = container.querySelector(".process-surface-summary-line");
+    expect(
+      summary?.querySelector("img.process-surface-blobatar"),
+    ).not.toBeNull();
+    expect(summary?.textContent).toBe("正在思考");
+  });
+
   it("marks the count is-changing for ~180ms when the value changes", async () => {
     const { container } = render({
       processItems: [
