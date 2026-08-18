@@ -184,6 +184,7 @@ import {
   EmptyConversationHome,
   RuntimeLoading,
 } from "./LoadingViews";
+import { WuuMascotRuntimeProvider } from "./WuuMascot";
 import { deriveActiveSessionHints } from "./activeSessionHint";
 import { pullRequestUnavailableReason } from "./RuntimeHelpers";
 import type { SettingsPage } from "./SettingsView";
@@ -1224,6 +1225,11 @@ export function App(): JSX.Element {
     () => runtimeViewForSession(state.initialized, activeThread),
     [state.initialized, activeThread],
   );
+  const [mascotRuntimePreview, setMascotRuntimePreview] = useState<{
+    provider: string;
+    model: string;
+  } | null>(null);
+  const mascotRuntimePreviewRequestRef = useRef(0);
   const visibleConversationRuntime = useMemo(
     () => runtimeViewForConversation(state.initialized, activeThread, activeTurn),
     [state.initialized, activeThread, activeTurn],
@@ -2678,9 +2684,16 @@ export function App(): JSX.Element {
           setBranchMenuOpen((open) => !open);
         }}
         onToggleCodexRuntimeMenu={toggleCodexRuntimeMenu}
-        onSelectRuntimeModel={(provider, model, variant) =>
-          selectRuntimeModel(provider, model, variant)
-        }
+        onSelectRuntimeModel={async (provider, model, variant) => {
+          const request = mascotRuntimePreviewRequestRef.current + 1;
+          mascotRuntimePreviewRequestRef.current = request;
+          setMascotRuntimePreview({ provider, model });
+          const committed = await selectRuntimeModel(provider, model, variant);
+          if (mascotRuntimePreviewRequestRef.current === request) {
+            setMascotRuntimePreview(null);
+          }
+          return committed;
+        }}
         onSelectRuntimeEffort={(nextVariant) =>
           selectRuntimeEffort(nextVariant)
         }
@@ -4371,7 +4384,10 @@ export function App(): JSX.Element {
   }
 
   return (
-    <>
+    <WuuMascotRuntimeProvider
+      provider={mascotRuntimePreview?.provider ?? sessionRuntime?.provider}
+      model={mascotRuntimePreview?.model ?? sessionRuntime?.model}
+    >
       {archiveTipNode}
       {checkoutErrorTipNode}
       {modelCatalogTipNode}
@@ -5174,6 +5190,6 @@ export function App(): JSX.Element {
       />
       </div>
     </ImagePreviewProvider>
-    </>
+    </WuuMascotRuntimeProvider>
   );
 }

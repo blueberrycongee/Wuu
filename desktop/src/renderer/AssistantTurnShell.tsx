@@ -524,6 +524,8 @@ function EntryRenderer({
         streaming={streaming}
         active={activeGray}
         turnID={turn.id}
+        provider={turn.model_provider}
+        model={turn.model}
         renderReasoningItem={(processItem, isStreaming) => (
           <ThreadItemView
             turnID={turn.id}

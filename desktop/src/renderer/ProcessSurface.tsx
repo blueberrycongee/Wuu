@@ -1,4 +1,3 @@
-import { Blobatar } from "blobatar/react";
 import {
   useEffect,
   useRef,
@@ -29,7 +28,7 @@ import {
   turnTokenCountText,
 } from "./ThinkingTokenCount";
 import { translateCurrent as translate, useI18n } from "./i18n";
-import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
+import { WuuMascot } from "./WuuMascot";
 
 /**
  * How long to wait after the fold opens before snapping the reasoning
@@ -40,10 +39,17 @@ import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
  * mid-transition value.
  */
 const REASONING_FOLD_OPEN_SNAP_DELAY_MS = 280;
-const PROCESS_BLOBATAR_NAME = "wuu";
 const PROCESS_BLOBATAR_EXIT_FALLBACK_MS = 180;
 
-export function ProcessSurfaceMascot({ active }: { active: boolean }): JSX.Element | null {
+export function ProcessSurfaceMascot({
+  active,
+  provider,
+  model,
+}: {
+  active: boolean;
+  provider?: string;
+  model?: string;
+}): JSX.Element | null {
   const [keepMounted, setKeepMounted] = useState(active);
 
   useEffect(() => {
@@ -63,14 +69,11 @@ export function ProcessSurfaceMascot({ active }: { active: boolean }): JSX.Eleme
   if (!active && !keepMounted) return null;
 
   return (
-    <Blobatar
+    <WuuMascot
       className={`process-surface-blobatar ${active ? "is-entering" : "is-exiting"}`}
-      name={PROCESS_BLOBATAR_NAME}
-      hue={AVATAR_HUES[avatarHueIndex(PROCESS_BLOBATAR_NAME)]}
-      background={false}
-      traits={{ shape: 0.2, "body.ratio": 0.5 }}
       size={28}
-      alt=""
+      provider={provider}
+      model={model}
       onAnimationEnd={() => {
         if (!active) setKeepMounted(false);
       }}
@@ -110,6 +113,10 @@ type ProcessSurfaceProps = {
    * process item has already settled.
    */
   active?: boolean;
+  /** Runtime admitted for the owning turn. Historical process mascots keep
+   * their original look after the session switches its next model. */
+  provider?: string;
+  model?: string;
   /**
    * Optional render hook for reasoning items in the expanded body.
    * The surface is decoupled from the reasoning fold's scroll and
@@ -184,6 +191,8 @@ export function ProcessSurface({
   processItems,
   streaming,
   active,
+  provider,
+  model,
   turnID,
   renderReasoningItem,
 }: ProcessSurfaceProps): JSX.Element {
@@ -282,7 +291,11 @@ export function ProcessSurface({
 
   const summaryLine = (
     <span className="process-surface-summary-line" aria-label={summaryText}>
-      <ProcessSurfaceMascot active={processEntryActive} />
+      <ProcessSurfaceMascot
+        active={processEntryActive}
+        provider={provider}
+        model={model}
+      />
       <span
         ref={summaryWaveRef}
         className={`process-surface-summary-text${

@@ -1,7 +1,5 @@
-import { Blobatar } from "blobatar/react";
-import "blobatar/motion.css";
 import { useI18n } from "./i18n";
-import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
+import { WuuMascot } from "./WuuMascot";
 
 export function RuntimeLoading({
   status,
@@ -19,13 +17,9 @@ export function RuntimeLoading({
       {isStarting ? (
         <div className="wuu-launch" role="status" aria-label={pinned ? t("loading.launchPreview") : t("loading.starting")}>
           <div className="wuu-launch-glass" aria-hidden="true">
-            <Blobatar
+            <WuuMascot
               className="wuu-launch-mascot"
-              name="wuu"
-              hue={AVATAR_HUES[avatarHueIndex("wuu")]}
-              background={false}
-              traits={{ shape: 0.2, "body.ratio": 0.5 }}
-              animate="always"
+              accessory="none"
             />
           </div>
           {pinned && onExitPreview ? (
@@ -79,13 +73,8 @@ export function EmptyConversationHome({
               is pinned to "round" (the first silhouette, shape < 0.28) with
               the aspect ratio locked to 1, and the plate is off (none), so
               the mascot is a pure round ball floating on the paper. */}
-          <Blobatar
+          <WuuMascot
             className="empty-home-mascot"
-            name="wuu"
-            hue={AVATAR_HUES[avatarHueIndex("wuu")]}
-            background={false}
-            traits={{ shape: 0.2, "body.ratio": 0.5 }}
-            animate="always"
             aria-hidden="true"
           />
           <h2>{title}</h2>
