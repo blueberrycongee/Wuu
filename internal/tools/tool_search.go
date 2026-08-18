@@ -686,6 +686,9 @@ func grepWithRipgrep(ctx context.Context, env *Env, rootDir, pattern, searchRoot
 		}
 	}
 	scanErr := scanner.Err()
+	if scanErr != nil {
+		_ = cmd.Process.Kill()
+	}
 	waitErr := cmd.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -844,6 +847,9 @@ func globWithRipgrep(ctx context.Context, rootDir, searchRoot, pattern string, l
 		}
 	}
 	scanErr := scanner.Err()
+	if scanErr != nil {
+		_ = cmd.Process.Kill()
+	}
 	waitErr := cmd.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -986,6 +992,9 @@ func grepFilesWithMatchesRG(ctx context.Context, rootDir, pattern, searchRoot, i
 		}
 	}
 	scanErr := scanner.Err()
+	if scanErr != nil {
+		_ = cmd.Process.Kill()
+	}
 	waitErr := cmd.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, err

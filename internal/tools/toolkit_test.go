@@ -2201,6 +2201,26 @@ func TestToolkit_GrepLargeContentReturnsValidBudgetedJSON(t *testing.T) {
 	}
 }
 
+func TestGrepRipgrepOversizedRecordDoesNotDeadlock(t *testing.T) {
+	if lookupRG() == "" {
+		t.Skip("ripgrep is not available")
+	}
+
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "large.txt"), "needle"+strings.Repeat("x", 2*maxRGRecordBytes))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started := time.Now()
+	_, err := grepWithRipgrep(ctx, nil, root, "needle", root, "", grepOptions{}, 0)
+	if err == nil || !strings.Contains(err.Error(), "token too long") {
+		t.Fatalf("grep oversized record error = %v, want token-too-long error", err)
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("grep oversized record took %s; child process likely blocked on a full output pipe", elapsed)
+	}
+}
+
 func TestToolkit_GlobRipgrepFirst(t *testing.T) {
 	root := t.TempDir()
 	kit, err := New(root)
