@@ -321,14 +321,12 @@ h1,h2{font-weight:var(--fw-semibold);letter-spacing:.01em;line-height:1.16}
 #hero .headblock{display:flex;flex-direction:column;padding-block:48px;gap:30px}
 @media (min-width:1471px){#hero .headblock{padding-block:84px}}
 #hero .titles{display:flex;flex-direction:column;gap:18px}
-#hero h1,#hero .sub{
-  font-size:var(--text-2xl);line-height:1.16;letter-spacing:.01em;
+#hero h1{
+  font-size:var(--text-xl);line-height:1.2;letter-spacing:.01em;
   font-weight:var(--fw-semibold);
 }
-#hero .sub{color:var(--gray)}
-@media (min-width:1080px){#hero h1,#hero .sub{font-size:var(--text-3xl)}}
-@media (min-width:1471px){#hero h1,#hero .sub{font-size:56px;line-height:1.14}}
-#hero .lede{max-width:560px;padding-right:12px;color:var(--dark-gray);text-wrap:pretty}
+@media (min-width:1080px){#hero h1{font-size:var(--text-2xl)}}
+@media (min-width:1471px){#hero h1{font-size:44px;line-height:1.16}}
 #hero .ctas{display:flex;flex-direction:column;align-items:flex-start;gap:16px}
 @media (min-width:1800px){#hero .ctas{flex-direction:row;align-items:center}}
 #hero .link-arrow{
@@ -575,9 +573,8 @@ h1,h2{font-weight:var(--fw-semibold);letter-spacing:.01em;line-height:1.16}
 #desktop .titles{display:flex;flex-direction:column;align-items:center;gap:26px}
 #desktop h2{font-size:var(--text-xl)}
 #desktop h2 .gray{color:var(--gray)}
-@media (min-width:640px){#desktop h2{font-size:var(--text-3xl)}}
-@media (min-width:1471px){#desktop h2{font-size:56px}}
-#desktop .lede{max-width:560px;color:color-mix(in srgb,var(--foreground) 75%,transparent)}
+@media (min-width:640px){#desktop h2{font-size:var(--text-2xl)}}
+@media (min-width:1471px){#desktop h2{font-size:44px}}
 #desktop .chip{
   display:flex;align-items:center;gap:16px;overflow:hidden;
   border-radius:24px;background:var(--paper-100);padding:8px 8px 8px 16px;
@@ -618,15 +615,14 @@ h1,h2{font-weight:var(--fw-semibold);letter-spacing:.01em;line-height:1.16}
 }
 @media (min-width:1080px){.headline-cell .inner{align-items:flex-start;text-align:left;justify-content:flex-end;height:100%}}
 .headline-cell h2{font-size:var(--text-xl);white-space:pre-line}
-@media (min-width:640px){.headline-cell h2{font-size:var(--text-3xl)}}
-@media (min-width:1471px){.headline-cell h2{font-size:56px}}
+@media (min-width:640px){.headline-cell h2{font-size:var(--text-2xl)}}
+@media (min-width:1471px){.headline-cell h2{font-size:44px}}
 .headline-cell .desc{max-width:620px}
 
-.h3-cell{min-height:200px;align-items:stretch}
-@media (min-width:1080px){.h3-cell{height:240px}}
+.h3-cell{min-height:150px;align-items:stretch}
+@media (min-width:1080px){.h3-cell{height:170px}}
 .h3-cell .inner{display:flex;flex-direction:column;justify-content:flex-end;gap:8px;padding:32px;width:100%}
 .h3-cell h3{font-size:var(--text-base);font-weight:var(--fw-semibold)}
-.h3-cell p{font-size:var(--text-base);text-wrap:balance;color:var(--dark-gray)}
 
 .demo-cell{padding:30px}
 .demo-cell .window{width:100%;aspect-ratio:var(--window-aspect);box-shadow:rgba(0,0,0,.12) 0 4px 10px,rgba(0,0,0,.12) 0 2px 4px -1px,rgba(0,0,0,.12) 0 0 4px -1px}
@@ -746,13 +742,12 @@ html:has(body.entry-locked){overflow:hidden}
 .rl-i{display:block;transform:translateY(112%);transition:transform 1.05s cubic-bezier(.16,1,.3,1)}
 .in .rl-i,body.ready #hero .rl-i{transform:none}
 .reveal-lines{opacity:1;transform:none}
-.reveal-lines .eyebrow,.reveal-lines .desc,.reveal-lines h3,.h3-cell.reveal-lines p,.reveal-lines .install{
+.reveal-lines .eyebrow,.reveal-lines .desc,.reveal-lines h3,.reveal-lines .install{
   opacity:0;transform:translateY(18px);
   transition:opacity .9s cubic-bezier(.16,1,.3,1),transform .9s cubic-bezier(.16,1,.3,1);
 }
 .reveal-lines.in .eyebrow{opacity:1;transform:none}
 .reveal-lines.in h3{opacity:1;transform:none;transition-delay:.05s}
-.h3-cell.reveal-lines.in p{opacity:1;transform:none;transition-delay:.14s}
 .reveal-lines.in .desc{opacity:1;transform:none;transition-delay:.34s}
 .reveal-lines.in .install{opacity:1;transform:none;transition-delay:.48s}
 
@@ -809,8 +804,7 @@ html.fx-on .statement .w{opacity:.13}
   pointer-events:none;user-select:none;white-space:nowrap;
 }
 @media (prefers-color-scheme:dark){#vision .bgword{-webkit-text-stroke-color:rgba(255,255,255,.07)}}
-#vision .eyebrow,#vision .cap{position:relative;z-index:2}
-#vision .cap{color:var(--dark-gray);font-size:var(--text-base)}
+#vision .eyebrow{position:relative;z-index:2}
 .vision-swap{position:relative;z-index:2;display:flex;align-items:baseline;gap:20px}
 .vision-mask{display:block;overflow:hidden}
 .vision-mask > span{display:block;transition:transform .5s cubic-bezier(.16,1,.3,1),opacity .38s ease}
@@ -1031,8 +1025,7 @@ body.has-cursor,body.has-cursor a,body.has-cursor button,body.has-cursor .lifefi
   width:30px;height:30px;margin-left:-7px;border-radius:50%;background:var(--paper);
   box-shadow:0 0 0 2px var(--paper),0 5px 10px rgba(0,0,0,.08);
 }
-#hero h1{max-width:940px;font-size:clamp(50px,7.4vw,108px);line-height:.96;letter-spacing:-.04em;text-wrap:balance}
-#hero .sub{max-width:720px;font-size:clamp(20px,2.25vw,34px);line-height:1.25;color:var(--gray-600);text-wrap:balance}
+#hero h1{max-width:940px;font-size:clamp(32px,3.6vw,48px);line-height:1.16;letter-spacing:-.01em;text-wrap:balance}
 #hero .headblock{gap:34px}
 .hero-window-wrap{padding-top:56px}
 .hero-crew-dock{
@@ -1044,7 +1037,6 @@ body.has-cursor,body.has-cursor a,body.has-cursor button,body.has-cursor .lifefi
 .hero-crew-dock .blob-mark{width:34px;height:34px}
 .hero-crew-dock .crew-copy{display:flex;flex-direction:column;margin:0 7px 0 3px;line-height:1.2}
 .hero-crew-dock strong{font-size:12px;font-weight:var(--fw-semibold)}
-.hero-crew-dock small{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--gray-500)}
 /* 产品画面里的 agent 身份。 */
 .wu-empty-header .blob-mark{width:110px;height:110px}
 .wu-agent-byline{display:flex;align-items:center;gap:9px;margin-bottom:10px;color:#696e72;font-size:12px;font-weight:600}
@@ -1061,8 +1053,7 @@ body.has-cursor,body.has-cursor a,body.has-cursor button,body.has-cursor .lifefi
 }
 .blob-crew-copy{display:flex;flex-direction:column;align-items:flex-start;gap:20px}
 .blob-crew-copy .blob-mark{width:clamp(126px,14vw,190px);height:clamp(126px,14vw,190px);filter:drop-shadow(0 18px 22px rgba(45,35,22,.12))}
-.blob-crew-copy h3{font-family:var(--serif);font-size:clamp(30px,3.4vw,48px);line-height:1.08;letter-spacing:.01em}
-.blob-crew-copy p{max-width:380px;color:var(--gray-600);font-size:var(--text-base);text-wrap:balance}
+.blob-crew-copy h3{font-family:var(--serif);font-size:clamp(28px,3vw,40px);line-height:1.12;letter-spacing:.01em}
 .blob-roster{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .blob-agent{
   position:relative;display:grid;grid-template-columns:76px minmax(0,1fr);align-items:center;gap:16px;
@@ -1107,8 +1098,7 @@ footer .appicon{cursor:default}
   #nav .links{display:flex;margin-left:auto;gap:16px}
   #nav .links a{display:none}
   #nav .links a:first-child,#nav .links a:nth-child(3){display:block}
-  #hero h1{font-size:clamp(48px,14vw,76px)}
-  #hero .sub{font-size:clamp(19px,5vw,26px)}
+  #hero h1{font-size:clamp(30px,8.5vw,40px)}
   .hero-window-wrap{padding-top:48px}
   .hero-crew-dock{left:24px;right:auto;max-width:calc(100% - 48px)}
   .hero-crew-dock .blob-mark:nth-of-type(n+4){display:none}
@@ -1120,7 +1110,7 @@ footer .appicon{cursor:default}
   .blob-agent .blob-mark{width:66px;height:66px}
   #vision{height:auto!important}
   #vision .pin{position:relative;top:auto;height:auto;min-height:0;padding:76px 24px}
-  #vision .bgword,#vision .vision-fx,#vision .vision-swap,#vision .cap,#vision .meta{display:none}
+  #vision .bgword,#vision .vision-fx,#vision .vision-swap,#vision .meta{display:none}
   #vision .eyebrow{margin-bottom:34px}
   .vision-mobile-steps{display:grid;gap:0;list-style:none;counter-reset:vision-step}
   .vision-mobile-steps li{counter-increment:vision-step;display:grid;grid-template-columns:42px 1fr auto;align-items:baseline;gap:12px;padding:20px 0;border-top:1px solid var(--border);font-family:var(--serif);font-size:clamp(28px,10vw,44px);font-weight:600}
@@ -1227,10 +1217,7 @@ footer .appicon{cursor:default}
               </span>
               wuu agent crew
             </p>
-            <div>
-              <h1>一群 agent，把活干完。</h1>
-              <p class="sub">每个都有名字、分工和上下文。你给方向，它们读代码、动手、交接、互审。</p>
-            </div>
+            <h1>一群 agent，把活干完。</h1>
           </div>
           <div class="ctas">
             <a class="btn btn-primary btn-lg" href="#install">安装 wuu</a>
@@ -1245,7 +1232,7 @@ footer .appicon{cursor:default}
           <svg class="blob-mark" aria-hidden="true"><use href="#blob-flint"></use></svg>
           <svg class="blob-mark" aria-hidden="true"><use href="#blob-vera"></use></svg>
           <svg class="blob-mark" aria-hidden="true"><use href="#blob-memo"></use></svg>
-          <span class="crew-copy"><strong>4 个 agent 在推进</strong><small>读代码 · 实现 · 复核</small></span>
+          <span class="crew-copy"><strong>4 个 agent 在推进</strong></span>
         </div>
         <div class="window hero-window">
           <div class="chrome"><div class="dots"><i></i><i></i><i></i></div></div>
@@ -1320,7 +1307,6 @@ footer .appicon{cursor:default}
       <h2>
         <span>wuu <i>Desktop</i></span>
       </h2>
-      <p class="lede">编辑器、内置浏览器、会话管理，收进一个窗口。它在这头干活，你在那头看进度。</p>
     </div>
     <div class="chip">
       <img src="assets/app-icon.png" alt="wuu app icon">
@@ -1332,7 +1318,7 @@ footer .appicon{cursor:default}
   <!-- ================= about：滚动逐词点亮 ================= -->
   <section id="about" class="content-container">
     <p class="eyebrow">关于 wuu</p>
-    <p class="statement" id="statement">wuu 是开源的 AI 编程智能体。说清楚要做什么——它<em>读代码、改代码、跑命令、验证</em>，把完整的工程循环在你的机器上跑完。模型是你的，API key 也是你的。</p>
+    <p class="statement" id="statement">wuu 是开源的 AI 搭档。你交代一件事，它在你的机器上从头做到尾——<em>改代码、跑命令、做验证</em>。模型和 API key 都是你的。</p>
   </section>
 
   <!-- ================= vision：钉住 + 滚动驱动的 3D 字筒 ================= -->
@@ -1345,7 +1331,6 @@ footer .appicon{cursor:default}
         <span class="vision-mask"><span class="vision-zh" id="vision-zh">读代码</span></span>
         <span class="vision-mask"><span class="vision-en" id="vision-en">read.</span></span>
       </div>
-      <p class="cap">完整的工程循环，在你的机器上跑完</p>
       <ol class="vision-mobile-steps" aria-label="完整工程循环">
         <li><span>读代码</span><em>read.</em></li>
         <li><span>改代码</span><em>write.</em></li>
@@ -1389,13 +1374,11 @@ footer .appicon{cursor:default}
       <div class="cell h3-cell reveal">
         <div class="inner">
           <h3>卡住会绕路</h3>
-          <p>测试红了读日志、换条路，而不是停下来把问题抛回给你。</p>
         </div>
       </div>
       <div class="cell h3-cell reveal">
         <div class="inner">
           <h3>每一轮都可回放</h3>
-          <p>它做了什么、为什么这么做，会话里留着完整的脚印。</p>
         </div>
       </div>
 
@@ -1416,7 +1399,6 @@ footer .appicon{cursor:default}
             <div class="blob-crew-copy">
               <svg class="blob-mark blob-primary" aria-hidden="true"><use href="#blob-wuu"></use></svg>
               <h3>看得出是谁，<br>也看得懂谁在做什么。</h3>
-              <p>同一个名字始终对应同一个形状和颜色。会话再多，你也能一眼认出正在探索、实现和复核的 agent。</p>
             </div>
             <div class="blob-roster" aria-label="agent 分工示例">
               <article class="blob-agent">
@@ -1443,13 +1425,11 @@ footer .appicon{cursor:default}
       <div class="cell h3-cell reveal">
         <div class="inner">
           <h3>分头探索</h3>
-          <p>不同方向同时展开。有人读代码，有人寻找方案，有人动手验证。</p>
         </div>
       </div>
       <div class="cell h3-cell reveal">
         <div class="inner">
           <h3>交接发生在明处</h3>
-          <p>谁发现了什么、把任务交给了谁，都留在你能读的群聊里。</p>
         </div>
       </div>
 
@@ -1467,13 +1447,11 @@ footer .appicon{cursor:default}
       <div class="cell h3-cell reveal">
         <div class="inner">
           <h3>进度摆在明处</h3>
-          <p>每条会话做到哪一步、动了哪些文件，都摆在那儿，不用追着问。</p>
         </div>
       </div>
       <div class="cell h3-cell reveal">
         <div class="inner">
           <h3>该你出现才叫你</h3>
-          <p>跑完的、要拍板的，会亮起来等你过目；其余的它自己往前走。</p>
         </div>
       </div>
 
@@ -1510,11 +1488,11 @@ footer .appicon{cursor:default}
         </div>
         <div class="fact">
           <div class="num"><span data-count="6">6</span></div>
-          <p>种在场形态：CLI、桌面、浮窗、cron、子代理、记忆</p>
+          <p>种在场形态：CLI、桌面、浮窗、定时、子代理、记忆</p>
         </div>
         <div class="fact">
           <div class="num">24<i>/</i>7</div>
-          <p>挂着 cron 它自己醒来干活，不用你盯着</p>
+          <p>定好时间，它自己醒来干活，不用你盯着</p>
         </div>
       </div>
     </div>
@@ -1548,7 +1526,7 @@ footer .appicon{cursor:default}
         <div class="news-split">
           <div class="top" style="display:flex;flex-direction:column;gap:16px">
             <h3>wuu 是开源软件</h3>
-            <p>MIT 协议，引擎是 Go，桌面是 Electron。来仓库看看它是怎么长的——它自己的代码，大部分也是它写的。</p>
+            <p>MIT 协议，代码全部摊开。来仓库看看——它自己的代码，大部分也是它写的。</p>
             <a class="arrow-link" href="#">去 GitHub 看看 <span class="arr">→</span></a>
           </div>
           <div class="imgwrap open-source-blobs" role="img" aria-label="一组不同形状和颜色的 wuu agent 角色">
@@ -2777,7 +2755,6 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{
   document.querySelectorAll('#features .h3-cell').forEach(c=> c.classList.add('reveal-lines'));
   const heroH1 = document.querySelector('#hero h1');
   if(heroH1) mask(heroH1, [heroH1.textContent], .05, 0);
-  document.querySelectorAll('#hero .sub').forEach((el,i)=> mask(el, [el.textContent], .18+i*.1, 0));
 
   /* 导航悬停：文字克隆滑动 */
   document.querySelectorAll('#nav .links a').forEach(a=>{
