@@ -23,7 +23,7 @@
 
 .plugin-workbench-view-auxiliary {
   left: auto;
-  width: min(420px, 45%);
+  width: min(420px, 100%);
   border-left: 1px solid var(--border-subtle);
 }
 

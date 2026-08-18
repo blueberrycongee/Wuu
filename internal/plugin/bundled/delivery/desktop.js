@@ -1,7 +1,7 @@
 export async function activate(api) {
   const React = api.react;
   const h = React.createElement;
-  const { Page, Section, Stack, Row, Button } = api.ui;
+  const { Page, Stack } = api.ui;
 
   api.registerLocale({ id: "delivery-en", locale: "en-US", entries: {
     "delivery.details": "Details",
@@ -23,19 +23,30 @@ export async function activate(api) {
   } });
 
   api.registerStyle({ id: "delivery", css: `
-    .plugin-delivery-actions { display:flex; align-items:center; gap:6px; margin:6px 0 2px; }
     .plugin-delivery-detail { min-width:0; }
+    .plugin-delivery-content { gap:18px; }
+    .plugin-delivery-meta { display:grid; min-width:0; gap:4px; }
+    .plugin-delivery-meta-label,
+    .plugin-delivery-label {
+      color:var(--wuu-color-text-muted, var(--ink-muted, #666));
+      font-size:11px; font-weight:600;
+    }
+    .plugin-delivery-meta-value {
+      min-width:0; overflow-wrap:anywhere;
+      color:var(--wuu-color-text, var(--ink, #222));
+      font:11px/1.45 var(--wuu-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    }
+    .plugin-delivery-field { display:grid; min-width:0; gap:6px; }
     .plugin-delivery-prompt {
       white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;
-      font:12px/1.6 var(--wuu-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+      margin:0;
+      font:12px/1.55 var(--wuu-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
       font-variant-numeric:tabular-nums;
       background:var(--wuu-color-surface-muted, var(--paper-muted, #f6f6f4));
       border:1px solid var(--wuu-color-border-subtle, var(--line, #e3e2de));
       border-radius:var(--wuu-radius-control, 8px);
       padding:10px 12px;
     }
-    .plugin-delivery-meta { margin:0; color:var(--wuu-color-text-muted, var(--ink-muted, #666)); font-size:11px; }
-    .plugin-delivery-label { margin:10px 0 4px; color:var(--wuu-color-text-strong, var(--ink-strong, #181818)); font-size:12px; font-weight:600; }
   ` });
 
   const tr = (translate, key) => (typeof translate === "function" ? translate(key) : key);
@@ -46,17 +57,17 @@ export async function activate(api) {
     const displayText = typeof context.displayText === "string" ? context.displayText : "";
     const messageId = typeof context.messageId === "string" ? context.messageId : "-";
 
-    return h(Page, { className: "plugin-delivery-detail" },
-      h(Section, { title: tr(props.translate, "delivery.title") },
-        h(Stack, null,
-          h("p", { className: "plugin-delivery-meta" }, `${tr(props.translate, "delivery.messageId")}: ${messageId}`),
+    return h(Page, { className: "plugin-delivery-detail", density: "compact" },
+      h(Stack, { className: "plugin-delivery-content" },
+        h("div", { className: "plugin-delivery-meta" },
+          h("span", { className: "plugin-delivery-meta-label" }, tr(props.translate, "delivery.messageId")),
+          h("span", { className: "plugin-delivery-meta-value" }, messageId)),
+        h("section", { className: "plugin-delivery-field" },
           h("div", { className: "plugin-delivery-label" }, tr(props.translate, "delivery.bubble")),
-          h("div", { className: "plugin-delivery-prompt" }, displayText || tr(props.translate, "delivery.empty")),
+          h("p", { className: "plugin-delivery-prompt" }, displayText || tr(props.translate, "delivery.empty"))),
+        h("section", { className: "plugin-delivery-field" },
           h("div", { className: "plugin-delivery-label" }, tr(props.translate, "delivery.prompt")),
-          h("div", { className: "plugin-delivery-prompt" }, inputText || tr(props.translate, "delivery.empty")),
-        )),
-      h(Row, { className: "plugin-delivery-actions" },
-        h(Button, { variant: "ghost", onClick: () => void props.host.closeView() }, tr(props.translate, "delivery.close"))));
+          h("p", { className: "plugin-delivery-prompt" }, inputText || tr(props.translate, "delivery.empty")))));
   }
 
   api.registerViewType({
