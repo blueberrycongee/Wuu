@@ -36,7 +36,15 @@ export type WuuMascotAccessory =
   | "chef-hat"
   | "flower"
   | "halo"
-  | "bow-tie";
+  | "bow-tie"
+  | "graduation-cap"
+  | "cowboy-hat"
+  | "propeller-cap"
+  | "mushroom-cap"
+  | "bunny-ears"
+  | "cat-ears"
+  | "ribbon"
+  | "necktie";
 
 type WuuMascotRuntime = {
   provider?: string;
@@ -45,10 +53,10 @@ type WuuMascotRuntime = {
 
 const WuuMascotRuntimeContext = createContext<WuuMascotRuntime>({});
 
-// These are fixed buckets rather than `hash % presets.length`. New presets can
-// replace repeated buckets later without reshuffling every existing provider or
-// model. Collisions are intentional: the wardrobe is a growing set of looks,
-// not a unique logo registry.
+// These are fixed buckets rather than a list that grows with every preset. New
+// ranges first mirror the previous range, then selected mirrors are replaced.
+// This lets the wardrobe grow without reshuffling existing base buckets.
+// Collisions remain intentional: this is not a unique logo registry.
 const PROVIDER_HUE_BUCKETS = [
   14, 202, 150, 288, 52, 182, 96, 322,
   14, 202, 150, 288, 52, 182, 96, 322,
@@ -63,6 +71,22 @@ const MODEL_ACCESSORY_BUCKETS: readonly WuuMascotAccessory[] = [
   "none",
   "headphones",
   "scarf",
+  "beret",
+  "party-hat",
+  "flower",
+  "halo",
+  "bow-tie",
+  "wizard-hat",
+  "chef-hat",
+  "headphones",
+  "graduation-cap",
+  "cowboy-hat",
+  "bunny-ears",
+  "cat-ears",
+  "propeller-cap",
+  "mushroom-cap",
+  "ribbon",
+  "necktie",
   "beret",
   "party-hat",
   "flower",
@@ -265,6 +289,55 @@ function MascotAccessory({
           <path className="wuu-mascot-fill" d={`M ${centerX - 3} ${bottom - 9} Q ${centerX - 17} ${bottom - 20} ${centerX - 23} ${bottom - 8} Q ${centerX - 18} ${bottom + 3} ${centerX - 3} ${bottom - 5} Z`} />
           <path className="wuu-mascot-fill" d={`M ${centerX + 3} ${bottom - 9} Q ${centerX + 17} ${bottom - 20} ${centerX + 23} ${bottom - 8} Q ${centerX + 18} ${bottom + 3} ${centerX + 3} ${bottom - 5} Z`} />
           <circle className="wuu-mascot-band" cx={centerX} cy={bottom - 7} r="5" />
+        </>
+      ) : null}
+      {accessory === "graduation-cap" ? (
+        <>
+          <path className="wuu-mascot-fill" d={`M ${centerX - 28} ${top - 1} L ${centerX} ${top - 13} L ${centerX + 28} ${top - 1} L ${centerX} ${top + 10} Z`} />
+          <path className="wuu-mascot-line" d={`M ${centerX + 20} ${top + 2} L ${centerX + 22} ${top + 14}`} />
+          <circle className="wuu-mascot-band" cx={centerX + 22} cy={top + 16} r="3" />
+        </>
+      ) : null}
+      {accessory === "cowboy-hat" ? (
+        <>
+          <path className="wuu-mascot-fill" d={`M ${centerX - 17} ${top + 9} Q ${centerX - 14} ${top - 9} ${centerX} ${top - 8} Q ${centerX + 15} ${top - 9} ${centerX + 18} ${top + 9} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX - 30} ${top + 8} Q ${centerX - 17} ${top + 16} ${centerX} ${top + 10} Q ${centerX + 18} ${top + 16} ${centerX + 30} ${top + 8} Q ${centerX + 16} ${top + 22} ${centerX} ${top + 15} Q ${centerX - 17} ${top + 22} ${centerX - 30} ${top + 8} Z`} />
+        </>
+      ) : null}
+      {accessory === "propeller-cap" ? (
+        <>
+          <path className="wuu-mascot-fill" d={`M ${centerX - 23} ${top + 10} Q ${centerX - 18} ${top - 8} ${centerX} ${top - 9} Q ${centerX + 19} ${top - 8} ${centerX + 23} ${top + 10} Z`} />
+          <path className="wuu-mascot-line" d={`M ${centerX} ${top - 9} L ${centerX} ${top - 16}`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX} ${top - 16} Q ${centerX - 11} ${top - 18} ${centerX - 15} ${top - 12} Q ${centerX - 8} ${top - 8} ${centerX} ${top - 16} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX} ${top - 16} Q ${centerX + 11} ${top - 18} ${centerX + 15} ${top - 12} Q ${centerX + 8} ${top - 8} ${centerX} ${top - 16} Z`} />
+        </>
+      ) : null}
+      {accessory === "mushroom-cap" ? (
+        <path className="wuu-mascot-fill" d={`M ${centerX - 29} ${top + 12} Q ${centerX - 23} ${top - 12} ${centerX} ${top - 14} Q ${centerX + 23} ${top - 12} ${centerX + 29} ${top + 12} Q ${centerX + 11} ${top + 5} ${centerX} ${top + 12} Q ${centerX - 11} ${top + 5} ${centerX - 29} ${top + 12} Z`} />
+      ) : null}
+      {accessory === "bunny-ears" ? (
+        <>
+          <path className="wuu-mascot-fill" d={`M ${centerX - 18} ${top + 7} Q ${centerX - 29} ${top - 13} ${centerX - 17} ${top - 17} Q ${centerX - 6} ${top - 12} ${centerX - 10} ${top + 8} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX + 10} ${top + 8} Q ${centerX + 6} ${top - 12} ${centerX + 17} ${top - 17} Q ${centerX + 29} ${top - 13} ${centerX + 18} ${top + 7} Z`} />
+        </>
+      ) : null}
+      {accessory === "cat-ears" ? (
+        <>
+          <path className="wuu-mascot-fill" d={`M ${centerX - 25} ${top + 10} L ${centerX - 20} ${top - 11} Q ${centerX - 8} ${top - 4} ${centerX - 4} ${top + 9} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX + 4} ${top + 9} Q ${centerX + 8} ${top - 4} ${centerX + 20} ${top - 11} L ${centerX + 25} ${top + 10} Z`} />
+        </>
+      ) : null}
+      {accessory === "ribbon" ? (
+        <g transform={`translate(${body.cx + body.rx * 0.72} ${top + 5})`}>
+          <path className="wuu-mascot-fill" d="M -2 0 Q -15 -11 -17 1 Q -14 12 -2 4 Z" />
+          <path className="wuu-mascot-fill" d="M 2 0 Q 15 -11 17 1 Q 14 12 2 4 Z" />
+          <circle className="wuu-mascot-band" cy="2" r="4.5" />
+        </g>
+      ) : null}
+      {accessory === "necktie" ? (
+        <>
+          <path className="wuu-mascot-fill" d={`M ${centerX} ${bottom - 19} L ${centerX + 7} ${bottom - 14} L ${centerX} ${bottom - 9} L ${centerX - 7} ${bottom - 14} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX} ${bottom - 9} L ${centerX - 8} ${bottom + 4} L ${centerX} ${bottom + 10} L ${centerX + 8} ${bottom + 4} Z`} />
         </>
       ) : null}
     </g>

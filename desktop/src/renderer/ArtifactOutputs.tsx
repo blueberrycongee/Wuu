@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Download, ExternalLink, File, FileCode2, FileText, X } from "lucide-react";
+import { Download, ExternalLink, X } from "lucide-react";
 
 import type { ThreadItem, ToolResultContentPart, Turn } from "../shared/protocol";
 import { useImagePreview } from "./ImagePreview";
@@ -102,12 +102,12 @@ export function TurnEndArtifactOutputs({
   if (turnEnd.length === 0) return null;
   return (
     <>
-      <section className="turn-artifact-summary-card" data-wuu-component="turn-artifacts">
-        <header className="turn-artifact-summary-header">
-          <strong>{t("artifacts.title")}</strong>
+      <section className="turn-output-summary-card turn-artifact-summary-card" data-wuu-component="turn-artifacts">
+        <header className="turn-output-summary-header turn-artifact-summary-header">
+          <strong className="turn-output-summary-title">{t("artifacts.title")}</strong>
           <span>{t("artifacts.count", { count: artifactCount })}</span>
         </header>
-        <div className="turn-artifact-summary-list">
+        <div className="turn-output-summary-list turn-artifact-summary-list">
           {turnEnd.map((artifact) => (
             <ArtifactRenderer
               artifact={artifact}
@@ -219,7 +219,6 @@ function ArtifactCard({
   onPreview?: (artifact: TurnArtifact) => void;
 }): JSX.Element {
   const { t } = useI18n();
-  const icon = artifactIcon(artifact.mimeType);
   const open = (): void => {
     if (canPreviewArtifact(artifact)) {
       onPreview?.(artifact);
@@ -239,16 +238,17 @@ function ArtifactCard({
   return (
     <button
       type="button"
-      className="turn-artifact-summary-row"
+      className="turn-output-summary-row turn-artifact-summary-row"
       onClick={open}
       aria-label={t("artifacts.openNamed", { name: artifact.name })}
     >
-      <span className="turn-artifact-summary-icon">{icon}</span>
-      <span className="turn-artifact-summary-copy">
-        <strong>{artifact.name}</strong>
-        <span>{artifact.mimeType}</span>
+      <span className="turn-output-summary-file">
+        <strong className="turn-output-summary-name">{artifact.name}</strong>
       </span>
-      <ExternalLink aria-hidden="true" className="icon" />
+      <span className="turn-artifact-summary-meta">
+        <span>{artifact.mimeType}</span>
+        <ExternalLink aria-hidden="true" className="icon" />
+      </span>
     </button>
   );
 }
@@ -598,14 +598,6 @@ function artifactNameFromURI(uri: string | undefined): string | undefined {
   } catch {
     return uri.split("/").filter(Boolean).at(-1);
   }
-}
-
-function artifactIcon(mimeType: string): JSX.Element {
-  if (isHtmlMimeType(mimeType)) return <FileCode2 className="icon" aria-hidden="true" />;
-  if (mimeType === "application/pdf" || mimeType.startsWith("text/")) {
-    return <FileText className="icon" aria-hidden="true" />;
-  }
-  return <File className="icon" aria-hidden="true" />;
 }
 
 function isHtmlMimeType(mimeType: string): boolean {

@@ -342,23 +342,23 @@ export function TurnEditSummaryCard({
   const nextCount = Math.min(FILE_BATCH_SIZE, hiddenCount);
 
   return (
-    <div className="turn-edit-summary-card">
-      <div className="turn-edit-summary-header">
-        <span className="turn-edit-summary-title">
+    <div className="turn-output-summary-card turn-edit-summary-card">
+      <div className="turn-output-summary-header turn-edit-summary-header">
+        <span className="turn-output-summary-title turn-edit-summary-title">
           {t(
             edits.length === 1 ? "turnEdits.countOne" : "turnEdits.count",
             { count: formatNumber(edits.length) },
           )}
         </span>
       </div>
-      <div className="turn-edit-summary-list">
+      <div className="turn-output-summary-list turn-edit-summary-list">
         {visibleEdits.map((edit) => {
           const canOpenFile = Boolean(onOpenFile || onOpenFileDiff);
           const rowContent = (
             <>
-              <span className="turn-edit-summary-file">
+              <span className="turn-output-summary-file turn-edit-summary-file">
                 <Tooltip content={edit.path}>
-                  <span className="turn-edit-summary-name">
+                  <span className="turn-output-summary-name turn-edit-summary-name">
                     {fileDisplayName(edit.path)}
                   </span>
                 </Tooltip>
@@ -381,7 +381,7 @@ export function TurnEditSummaryCard({
             >
               {canOpenFile ? (
                 <button
-                  className="turn-edit-summary-row is-clickable"
+                  className="turn-output-summary-row turn-edit-summary-row is-clickable"
                   type="button"
                   aria-label={t("turnEdits.openFile", { path: edit.path })}
                   onClick={() => {
@@ -406,7 +406,7 @@ export function TurnEditSummaryCard({
                   {rowContent}
                 </button>
               ) : (
-                <div className="turn-edit-summary-row">{rowContent}</div>
+                <div className="turn-output-summary-row turn-edit-summary-row">{rowContent}</div>
               )}
             </ToolDiffPreview>
           );

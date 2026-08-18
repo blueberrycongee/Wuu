@@ -315,11 +315,9 @@ turns.css .stream-cursor::after background --stream-cursor-color
 turns.css .tool-diff-line-delete background --diff-delete-bg
 turns.css .tool-diff-line-insert background --diff-insert-bg
 turns.css .tool-diff-preview-card box-shadow --ink-overlay-12
-turns.css .turn-artifact-summary-card box-shadow --ink-overlay-8
-turns.css .turn-artifact-summary-row:focus-visible box-shadow --ink-overlay-18
 turns.css .turn-collapsed-marker background --ink-overlay-18
-turns.css .turn-edit-summary-card box-shadow --ink-overlay-8
-turns.css .turn-edit-summary-row:focus-visible box-shadow --ink-overlay-18
+turns.css .turn-output-summary-card box-shadow --ink-overlay-8
+turns.css .turn-output-summary-row:focus-visible box-shadow --ink-overlay-18
 turns.css .turn-progress.failed .turn-progress-rule background --turn-progress-failed-rule-bg
 turns.css .turn-progress.in_progress .turn-progress-title color --turn-progress-sweep-base
 turns.css .turn-reasoning-summary:hover, .turn-reasoning-summary:focus-visible text-decoration-color --ink-overlay-18
