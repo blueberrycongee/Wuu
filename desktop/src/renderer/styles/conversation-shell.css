@@ -15,6 +15,12 @@
   --shell-run-debug-panel-shadow-2: rgba(20, 24, 28, 0.08);
   --shell-run-debug-phase-running-color: #486f61;
   --shell-run-debug-empty-border: var(--wuu-border-subtle, #e0e1dc);
+  --shell-todo-card-bg: #fff;
+  --shell-todo-card-border: rgba(17, 19, 21, 0.12);
+  --shell-todo-card-shadow: rgba(17, 19, 21, 0.14);
+  --shell-todo-card-ink: #111315;
+  --shell-todo-card-soft: #3e4449;
+  --shell-todo-card-muted: #74797e;
   /* Shared floating-surface recipe for conversation controls. The composer
      queue drawer and the jump/plan pills keep their own geometry, but resolve
      their material from these public-token-backed values. Backdrop blur does
@@ -1233,9 +1239,6 @@ button.conversation-status-capsule,
 }
 
 .conversation-status-todo-card {
-  --conversation-todo-card-ink: #111315;
-  --conversation-todo-card-soft: #3e4449;
-  --conversation-todo-card-muted: #74797e;
   position: absolute;
   bottom: calc(100% + 8px);
   left: 50%;
@@ -1246,10 +1249,10 @@ button.conversation-status-capsule,
   gap: 10px;
   padding: 12px;
   overflow: auto;
-  border: 1px solid rgba(17, 19, 21, 0.12);
+  border: 1px solid var(--shell-todo-card-border);
   border-radius: var(--radius-md);
-  background: #fff;
-  box-shadow: 0 16px 40px rgba(17, 19, 21, 0.14);
+  background: var(--shell-todo-card-bg);
+  box-shadow: 0 16px 40px var(--shell-todo-card-shadow);
   opacity: 0;
   visibility: hidden;
   transform: translate(-50%, 4px);
@@ -1275,7 +1278,7 @@ button.conversation-status-capsule,
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: var(--conversation-todo-card-ink);
+  color: var(--shell-todo-card-ink);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -1286,7 +1289,7 @@ button.conversation-status-capsule,
 
 .conversation-status-todo-card-header span,
 .conversation-status-todo-explanation {
-  color: var(--conversation-todo-card-muted);
+  color: var(--shell-todo-card-muted);
 }
 
 .conversation-status-todo-explanation {
@@ -1307,24 +1310,24 @@ button.conversation-status-capsule,
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
   gap: 7px;
-  color: var(--conversation-todo-card-soft);
+  color: var(--shell-todo-card-soft);
   font-size: 12px;
   line-height: 1.45;
 }
 
 .conversation-status-todo-list li > span:first-child {
-  color: var(--conversation-todo-card-muted);
+  color: var(--shell-todo-card-muted);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
 
 .conversation-status-todo-list li.is-in_progress {
-  color: var(--conversation-todo-card-ink);
+  color: var(--shell-todo-card-ink);
   font-weight: var(--weight-medium);
 }
 
 .conversation-status-todo-list li.is-completed {
-  color: var(--conversation-todo-card-muted);
+  color: var(--shell-todo-card-muted);
 }
 
 .conversation-status-overflow {

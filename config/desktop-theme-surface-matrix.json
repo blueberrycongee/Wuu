@@ -440,7 +440,12 @@
     {
       "name": "unanchored:conversation-shell.css",
       "synthetic": true,
-      "rows": 112
+      "rows": 117
+    },
+    {
+      "name": "unanchored:default-avatar.css",
+      "synthetic": true,
+      "rows": 2
     },
     {
       "name": "unanchored:environment.css",
@@ -1122,14 +1127,19 @@
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".user-question-option:hover","prop":"background","variable":"--ink-overlay-6","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:composer.css","state":"selected","file":"composer.css","selector":".composer-expand-button:active:not(:disabled)","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-pane","prop":"background","variable":"--paper","status":"bridged","tokens":["--wuu-color-canvas"]},
-    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-dot","prop":"background","variable":"--ink-muted","status":"bridged","tokens":["--wuu-color-text-muted"]},
-    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-dot.is-error","prop":"background","variable":"--danger","status":"bridged","tokens":["--wuu-color-danger"]},
-    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-dot.is-queued, .conversation-status-dot.is-waiting","prop":"background","variable":"--warning","status":"bridged","tokens":["--wuu-color-warning"]},
-    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-dot.is-running","prop":"background","variable":"--wuu-accent","status":"bridged","tokens":["--wuu-accent","--wuu-color-accent"]},
     {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-overflow-menu","prop":"background","variable":"--surface-1","status":"bridged","tokens":["--wuu-color-surface"]},
     {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-overflow-menu","prop":"border","variable":"--shell-jump-pill-border","status":"bridged","tokens":["--wuu-color-border-subtle","--wuu-color-text"]},
     {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-overflow-menu","prop":"box-shadow","variable":"--shell-jump-pill-shadow","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-secondary","prop":"color","variable":"--ink-muted","status":"bridged","tokens":["--wuu-color-text-muted"]},
+    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-todo-card","prop":"background","variable":"--shell-todo-card-bg","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-todo-card","prop":"border","variable":"--shell-todo-card-border","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-todo-card","prop":"box-shadow","variable":"--shell-todo-card-shadow","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-todo-card-header","prop":"color","variable":"--shell-todo-card-ink","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-todo-card-header span, .conversation-status-todo-explanation","prop":"color","variable":"--shell-todo-card-muted","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-todo-list li","prop":"color","variable":"--shell-todo-card-soft","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-todo-list li > span:first-child","prop":"color","variable":"--shell-todo-card-muted","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-todo-list li.is-completed","prop":"color","variable":"--shell-todo-card-muted","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-status-todo-list li.is-in_progress","prop":"color","variable":"--shell-todo-card-ink","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-turn-rail-bar","prop":"background","variable":"--shell-turn-rail-bar-bg","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-turn-rail-bar.active","prop":"background","variable":"--sidebar-accent","status":"bridged","tokens":["--wuu-accent","--wuu-color-accent"]},
     {"anchor":"unanchored:conversation-shell.css","state":"default","file":"conversation-shell.css","selector":".conversation-turn-rail-preview","prop":"background","variable":"--menu-bg","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
@@ -1233,6 +1243,8 @@
     {"anchor":"unanchored:conversation-shell.css","state":"hover","file":"conversation-shell.css","selector":".session-tab:hover, .session-tab:focus-within","prop":"background","variable":"--ink-overlay-4","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:conversation-shell.css","state":"hover","file":"conversation-shell.css","selector":".session-tab:hover, .session-tab:focus-within","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:conversation-shell.css","state":"hover","file":"conversation-shell.css","selector":".side-panel-toggle-button[aria-pressed=\"true\"]:hover","prop":"background","variable":"--surface-3","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
+    {"anchor":"unanchored:default-avatar.css","state":"default","file":"default-avatar.css","selector":".human-avatar-background","prop":"fill","variable":"--surface-3","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
+    {"anchor":"unanchored:default-avatar.css","state":"default","file":"default-avatar.css","selector":".human-avatar-figure","prop":"fill","variable":"--ink-tertiary","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:environment.css","state":"default","file":"environment.css","selector":".additions","prop":"color","variable":"--success","status":"bridged","tokens":["--wuu-color-success"]},
     {"anchor":"unanchored:environment.css","state":"default","file":"environment.css","selector":".conversation-search-clear","prop":"color","variable":"--env-search-clear-btn-text","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:environment.css","state":"default","file":"environment.css","selector":".conversation-search-dialog","prop":"background","variable":"--menu-bg","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
