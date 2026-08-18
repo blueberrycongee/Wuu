@@ -26,7 +26,7 @@ The one retained user-facing communication contract is brevity and connected pro
 - Local commit and remote-write policy that is not fully enforceable by the runtime.
 - Plain user-facing communication: lead with the conclusion, avoid jargon, write normal answers as connected prose, and reserve lists for explicit requests or independently actionable items, while a user-specified register may only adjust style, detail, format, or etiquette.
 
-`prompts/system_main.md` is reserved for universally available main-session guidance. Optional product behavior and completion boundaries are contributed by the plugin that owns them.
+`prompts/system_main.md` is reserved for universally available main-session guidance. It asks the main agent to make a serious, evidence-backed effort to infer user intent, resolve discoverable uncertainty independently, and test its first interpretation through relevant workspace and web research. This is deliberately a compact outcome standard rather than a prescribed search or reasoning workflow, so stronger models retain control over how they investigate. Optional product behavior and completion boundaries are contributed by the plugin that owns them.
 
 ## Runtime-generated context
 
