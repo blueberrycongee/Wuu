@@ -230,8 +230,7 @@ body.entered .entry{display:none}
   display:flex;flex-direction:column;align-items:center;gap:8px;
   font-family:var(--mono);font-size:14px;font-weight:500;letter-spacing:.24em;color:rgba(214,54,0,.82);
 }
-.entry-caption::before{content:"";width:1px;height:34px;background:currentColor;animation:entry-pulse 1.8s ease-in-out infinite}
-@keyframes entry-pulse{0%,100%{transform:scaleY(.35);opacity:.35}50%{transform:scaleY(1);opacity:1}}
+.entry-caption::before{content:"";width:1px;height:34px;background:currentColor}
 @media (max-width:599px){
   .entry-lockup{height:min(64vh,540px)}
   .entry-title{left:0;font-size:clamp(82px,26vw,105px)}
@@ -543,8 +542,6 @@ h1,h2{font-weight:var(--fw-semibold);letter-spacing:.01em;line-height:1.16}
 .wu-dock-composer-wrap{flex-shrink:0;display:flex;justify-content:center;padding:16px 24px 20px}
 .wu-dock-composer-wrap > *{width:min(680px,100%)}
 
-@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
-
 /* 浮动 agent 卡片 */
 .agent-card{
   position:absolute;z-index:5;
@@ -556,7 +553,6 @@ h1,h2{font-weight:var(--fw-semibold);letter-spacing:.01em;line-height:1.16}
   color:#1b1b1d;
 }
 @media (prefers-color-scheme:dark){.agent-card{color:var(--paper-100);border-color:rgba(255,255,255,.1)}}
-.agent-card .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.6s ease-in-out infinite}
 .agent-card .mono{font-size:12px;color:var(--dark-gray)}
 
 /* ============================================================
@@ -1049,8 +1045,6 @@ body.has-cursor,body.has-cursor a,body.has-cursor button,body.has-cursor .lifefi
 .hero-crew-dock .crew-copy{display:flex;flex-direction:column;margin:0 7px 0 3px;line-height:1.2}
 .hero-crew-dock strong{font-size:12px;font-weight:var(--fw-semibold)}
 .hero-crew-dock small{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--gray-500)}
-.crew-live{width:7px;height:7px;border-radius:50%;background:#20a05a;box-shadow:0 0 0 4px rgba(32,160,90,.12);animation:pulse 1.8s ease-in-out infinite}
-
 /* 产品画面里的 agent 身份。 */
 .wu-empty-header .blob-mark{width:110px;height:110px}
 .wu-agent-byline{display:flex;align-items:center;gap:9px;margin-bottom:10px;color:#696e72;font-size:12px;font-weight:600}
@@ -1086,7 +1080,7 @@ body.has-cursor,body.has-cursor a,body.has-cursor button,body.has-cursor .lifefi
 .blob-agent strong{font-size:16px;line-height:1.2}
 .blob-agent .job{font-size:12px;color:var(--gray-600)}
 .blob-agent .state{display:flex;align-items:center;gap:6px;margin-top:8px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-500)}
-.blob-agent .state::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--agent-color,#20a05a)}
+.blob-agent .state::before{content:"";width:12px;height:1px;background:var(--agent-color,#20a05a)}
 
 /* 开源卡片与页脚继续沿用同一组确定性角色。 */
 .open-source-blobs{
@@ -1252,7 +1246,6 @@ footer .appicon{cursor:default}
           <svg class="blob-mark" aria-hidden="true"><use href="#blob-vera"></use></svg>
           <svg class="blob-mark" aria-hidden="true"><use href="#blob-memo"></use></svg>
           <span class="crew-copy"><strong>4 个 agent 在推进</strong><small>读代码 · 实现 · 复核</small></span>
-          <i class="crew-live" aria-hidden="true"></i>
         </div>
         <div class="window hero-window">
           <div class="chrome"><div class="dots"><i></i><i></i><i></i></div></div>
@@ -1819,9 +1812,9 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
       for(let y=step/2,row=0;y<height;y+=step,row++){
         for(let x=step/2,col=0;x<width;x+=step,col++){
           const depth=.22+.78*y/height;
-          const waveA=Math.sin(x*.018+y*.006+now*.00062);
-          const waveB=Math.sin(x*.008-y*.021-now*.00041);
-          const waveC=Math.cos(x*.003+y*.014+now*.00024);
+          const waveA=Math.sin(x*.018+y*.006);
+          const waveB=Math.sin(x*.008-y*.021);
+          const waveC=Math.cos(x*.003+y*.014);
           const shimmer=Math.pow(Math.max(0,(waveA+waveB*.72+waveC*.42)/2.14),4.2);
           const ambient=.012+shimmer*.105*depth;
           const pd=pointer.active?Math.hypot(x-pointer.x,y-pointer.y):9999;
@@ -1835,7 +1828,7 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
           }
           let alpha=ambient+signal;
           if(alpha<.014) continue;
-          const jitter=Math.sin((col*13+row*7+now*.012))*.06;
+          const jitter=Math.sin(col*13+row*7)*.025;
           alpha=Math.min(.94,alpha+jitter*Math.max(0,alpha));
           const interactive=signal>.055;
           ctx.fillStyle=dark
@@ -2931,7 +2924,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{
     if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ measDirty = true; });
     addEventListener('resize', ()=>{ measDirty = true; });
 
-    /* 线框 torus knot：手写 3D 投影，随滚动转动，accent 光点沿环行进 */
+    /* 线框 torus knot：手写 3D 投影，随滚动转动，accent 线段标记当前进度。 */
     const vKnot = (()=>{
       if(!vCv) return null;
       const ctx = vCv.getContext('2d');
@@ -2963,13 +2956,6 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{
         hoops.push(hv);
       }
       const proj = new Float32Array(N*2), hproj = new Float32Array(HK*2), zbuf = new Float32Array(N);
-      /* 稀疏深点：与线框环同一套旋转投影的远景层 */
-      const NP = 42, ptcl = new Float32Array(NP*3), pproj = new Float32Array(NP*2), pz = new Float32Array(NP);
-      const hs = i=>{ const x = Math.sin(i*12.9898)*43758.5453; return x - Math.floor(x); };
-      for(let i=0;i<NP;i++){
-        const u = hs(i*5+1)*TAU, v = hs(i*7+2)*2-1, rr = 1.02 + hs(i*11+3)*.55, sq = Math.sqrt(1-v*v);
-        ptcl[i*3] = rr*sq*Math.cos(u); ptcl[i*3+1] = rr*v; ptcl[i*3+2] = rr*sq*Math.sin(u);
-      }
       let ink = 'rgb(1,1,1)', acc = '#ff3d00', cw = 0, ch = 0, dpr = 1;
       const readTheme = ()=>{
         const m = getComputedStyle(vSec).color.match(/[\d.]+/g);
@@ -3005,15 +2991,6 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{
         ctx.lineWidth = 1;
         ctx.strokeStyle = ink;
         project(L, proj, N, zbuf);
-        project(ptcl, pproj, NP, pz);
-        ctx.fillStyle = ink;
-        for(let i=0;i<NP;i++){
-          const dn = clampN(pz[i]/1.4*.5+.5, 0, 1);
-          ctx.globalAlpha = .07 + .2*dn;
-          ctx.beginPath();
-          ctx.arc(pproj[i*2], pproj[i*2+1], .8 + dn*1.4, 0, 7);
-          ctx.fill();
-        }
         /* 主线按深度分段调透明度：近实远虚，线框才有体积 */
         for(let s=0;s<N;s+=12){
           let z = 0;
@@ -3045,9 +3022,6 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{
           ctx.stroke();
         }
         ctx.globalAlpha = 1;
-        ctx.beginPath();
-        ctx.arc(proj[di*2], proj[di*2+1], 2.6 + Math.sin(t*.004)*.8, 0, 7);
-        ctx.fillStyle = acc; ctx.fill();
       };
     })();
 
