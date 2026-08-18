@@ -525,7 +525,7 @@
     {
       "name": "unanchored:workspace.css",
       "synthetic": true,
-      "rows": 445
+      "rows": 446
     }
   ],
   "tokenSet": [
@@ -1042,8 +1042,8 @@
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".project-search input::placeholder","prop":"color","variable":"--composer-project-search-placeholder","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".slash-command-empty","prop":"color","variable":"--ink-muted","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".slash-command-meta","prop":"color","variable":"--ink-tertiary","status":"bridged","tokens":["--wuu-color-text-muted"]},
-    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".status-label, .split-composer-status","prop":"background","variable":"--surface-3","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
-    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".status-label, .split-composer-status","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
+    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".status-label","prop":"background","variable":"--surface-3","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
+    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".status-label","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".user-question-actions .user-question-cancel","prop":"color","variable":"--ink-muted","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".user-question-actions .user-question-submit","prop":"background","variable":"--wuu-accent","status":"bridged","tokens":["--wuu-accent","--wuu-color-accent"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".user-question-actions .user-question-submit","prop":"color","variable":"--wuu-color-on-accent","status":"bridged","tokens":["--wuu-color-on-accent"]},
@@ -2514,6 +2514,7 @@
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".split-composer-shell.split-composer-shell-drop-active::after","prop":"border-color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".split-composer-shell.split-composer-shell-drop-active::after","prop":"box-shadow","variable":"--ink-overlay-18","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".split-composer-status","prop":"color","variable":"--ink-tertiary","status":"bridged","tokens":["--wuu-color-text-muted"]},
+    {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".split-read-only-status","prop":"color","variable":"--ink-tertiary","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".turn-artifact-empty","prop":"color","variable":"--ink-muted","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".turn-artifact-source","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".turn-artifact-statuses","prop":"color","variable":"--ink-muted","status":"bridged","tokens":["--wuu-color-text-muted"]},
