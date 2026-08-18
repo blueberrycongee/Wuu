@@ -1,5 +1,7 @@
 import { memo, useEffect, useState } from "react";
+import { Blobatar } from "blobatar/react";
 import type { ThreadItem } from "../shared/protocol";
+import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
 import { LightweightStreamingText } from "./LightweightStreamingText";
 import {
   buildToolActivitySections,
@@ -120,6 +122,12 @@ export function ToolActivityRow({
   const summary = summarizeToolActivity(items);
   const sections = buildToolActivitySections(items);
 
+  // A row can merge several tool calls; while it is running, the front of
+  // the row shows a small round blobatar seeded by the active tool's name,
+  // so the eye can tell which tool is alive without reading the summary.
+  const activeSeed =
+    items.find((item) => item.status === "in_progress")?.name?.trim() || "tool";
+
   // Each section carries both an action verb (title) and a target (detail).
   // Concatenate them so the rendered row reads as "动词 目标" — without
   // this, taking detail alone would drop the verb and surface a bare file
@@ -149,6 +157,17 @@ export function ToolActivityRow({
   return (
     <article className={className}>
       <span className="activity-row activity-summary">
+        {summary.running ? (
+          <Blobatar
+            className="activity-blobatar"
+            name={activeSeed}
+            hue={AVATAR_HUES[avatarHueIndex(activeSeed)]}
+            background={false}
+            traits={{ shape: 0.2, "body.ratio": 0.5 }}
+            size={16}
+            alt=""
+          />
+        ) : null}
         <ToolActivityMarker
           running={summary.running}
           failed={summary.failed}
