@@ -150,11 +150,16 @@ export function AssistantTurnShell({
   // exactly the dead-air moment the optimistic turn exists to fill. The
   // pre-item label is the neutral "正在处理" (never "正在思考": whether
   // the model thinks is unknown until a reasoning item actually arrives).
+  const hasAnswer = answerEntries.length > 0;
+  // The process row also owns the turn-level elapsed summary. Keep its compact
+  // header for direct answers that have no commentary/tool records; otherwise
+  // those turns lose the duration entirely when the empty process body is
+  // omitted.
   const hasProcess =
     processEntries.length > 0 ||
     Boolean(display.latestProcessPreview) ||
-    turn.status === "in_progress";
-  const hasAnswer = answerEntries.length > 0;
+    turn.status === "in_progress" ||
+    hasAnswer;
   const answerHandoffRequested = answerEntries.some(
     (entry) =>
       entry.item.type === "agent_message" &&

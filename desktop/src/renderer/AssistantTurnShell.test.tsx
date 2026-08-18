@@ -1330,11 +1330,15 @@ describe("AssistantTurnShell — answer region (rule 1 + rule 8)", () => {
     expect(processFold(container)).not.toBeNull();
   });
 
-  it("does not render a process fold when there are no process records", () => {
-    const turn = makeTurn("completed", [makeFinalAnswer("just the answer")]);
+  it("keeps the elapsed summary when there are no process records", () => {
+    const turn = makeTurn("completed", [makeFinalAnswer("just the answer")], 2300);
     const { container } = renderShell(turn);
 
-    expect(processFold(container)).toBeNull();
+    expect(processFold(container)).not.toBeNull();
+    expect(container.querySelector(".turn-process-title")?.textContent).toBe(
+      "用时 2 秒",
+    );
+    expect(container.querySelector(".turn-process-fold-body-inner")).toBeNull();
     expect(container.querySelector(".turn-answer-body")).not.toBeNull();
   });
 });
