@@ -1,3 +1,4 @@
+import { Blobatar } from "blobatar/react";
 import {
   useEffect,
   useRef,
@@ -28,6 +29,7 @@ import {
   turnTokenCountText,
 } from "./ThinkingTokenCount";
 import { translateCurrent as translate, useI18n } from "./i18n";
+import { AVATAR_HUES, avatarHueIndex } from "./DefaultAvatar";
 
 /**
  * How long to wait after the fold opens before snapping the reasoning
@@ -170,6 +172,14 @@ export function ProcessSurface({
     toolItems.length >= CONDENSED_SUMMARY_MIN_TOOL_COUNT &&
     toolSegments.length > 1;
   const activeGrayText = active ?? streaming;
+  let blobatarSeed = "tool";
+  for (let index = toolItems.length - 1; index >= 0; index--) {
+    const item = toolItems[index];
+    if (item.type === "tool_call") {
+      blobatarSeed = item.name?.trim() || "tool";
+      break;
+    }
+  }
   // The token counter belongs to the reasoning trail and stays visible after
   // thinking settles: the total freezes at the last sample and resumes
   // climbing on the next thinking phase. It persists for the live session
@@ -244,6 +254,17 @@ export function ProcessSurface({
       aria-label={summaryText}
       data-text={summaryWaveText}
     >
+      {activeGrayText && toolItems.length > 0 ? (
+        <Blobatar
+          className="process-surface-blobatar"
+          name={blobatarSeed}
+          hue={AVATAR_HUES[avatarHueIndex(blobatarSeed)]}
+          background={false}
+          traits={{ shape: 0.2, "body.ratio": 0.5 }}
+          size={28}
+          alt=""
+        />
+      ) : null}
       {useCondensedSummary ? (
         <AnimatedProcessText
           className="process-surface-condensed-summary"

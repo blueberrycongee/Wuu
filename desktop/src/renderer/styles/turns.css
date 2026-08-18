@@ -2291,6 +2291,15 @@
   white-space: nowrap;
 }
 
+.process-surface-summary-line .process-surface-blobatar {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  align-self: center;
+  border-radius: 50%;
+  transform: translateY(-2px);
+}
+
 .process-surface-segment {
   display: inline-flex;
   min-width: 0;

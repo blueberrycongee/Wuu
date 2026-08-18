@@ -576,6 +576,24 @@ describe("ProcessSurface", () => {
     expect(
       container.querySelector(".process-surface-summary-line")?.textContent,
     ).toBe("完成 4 项操作后，正在思考");
+    const summary = container.querySelector(".process-surface-summary-line");
+    const blobatar = summary?.querySelector<HTMLImageElement>(
+      "img.process-surface-blobatar",
+    );
+    expect(blobatar).not.toBeNull();
+    expect(summary?.firstElementChild).toBe(blobatar);
+    expect(blobatar?.getAttribute("src")).toContain("data:image/svg+xml");
+  });
+
+  it("keeps the blobatar off a settled synthesized toolcall row", () => {
+    const { container } = render({
+      processItems: [makeReadFile("tool-1", "a.ts", "completed")],
+      streaming: false,
+    });
+
+    expect(
+      container.querySelector(".process-surface-summary-line .process-surface-blobatar"),
+    ).toBeNull();
   });
 
   it("marks the count is-changing for ~180ms when the value changes", async () => {
