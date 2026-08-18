@@ -625,4 +625,3 @@ func TestPluginTurnLifecycleOutboxDropsInactivePluginEvents(t *testing.T) {
 		t.Fatalf("inactive plugin lifecycle events were not dropped: %+v", entries)
 	}
 }
-

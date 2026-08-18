@@ -3,17 +3,18 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const workspaceCss = readFileSync(resolve(__dirname, "workspace.css"), "utf-8");
+const composerCss = readFileSync(resolve(__dirname, "composer.css"), "utf-8");
 const workspacePdfCss = readFileSync(
   resolve(__dirname, "workspace-pdf-preview.css"),
   "utf-8",
 );
 
-function cssRuleBody(selector: string): string {
+function cssRuleBody(selector: string, source = workspaceCss): string {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // The selector may be preceded by CSS comments between the previous rule's
   // closing brace and the new selector — \s* alone cannot cross `/* ... */`,
   // so we match any chars (lazy) up to the literal selector instead.
-  const match = workspaceCss.match(
+  const match = source.match(
     new RegExp(`(?:^|\\})[\\s\\S]*?${escapedSelector}\\s*\\{([\\s\\S]*?)\\}`),
   );
   if (!match) {
@@ -33,11 +34,11 @@ describe("conversation message-flow rhythm", () => {
     expect(flow).not.toMatch(/var\(--wuu-grid-leading\)/);
   });
 
-  it("pins split composers to one visible input row instead of the browser default two", () => {
-    const textarea = cssRuleBody(".split-composer textarea");
+  it("keeps split composers on the shared one-row textarea height", () => {
+    const textarea = cssRuleBody(".composer textarea", composerCss);
 
-    expect(textarea).toMatch(/height:\s*60px;/);
-    expect(textarea).toMatch(/min-height:\s*60px;/);
+    expect(textarea).toMatch(/height:\s*72px;/);
+    expect(textarea).toMatch(/min-height:\s*72px;/);
   });
 
   it("keeps the composer clearance on the shared layout landmark", () => {

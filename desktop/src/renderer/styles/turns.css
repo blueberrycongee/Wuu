@@ -60,6 +60,10 @@
   --turn-sources-pill-color-fallback: rgba(127, 127, 127, 0.85);
   --turn-source-icon-color-fallback: rgba(0, 0, 0, 0.85);
   --turn-source-icon-hover-shadow: rgba(0, 0, 0, 0.18);
+  --artifact-preview-overlay-bg: rgba(8, 10, 12, 0.78);
+  --artifact-preview-shell-border: rgba(255, 255, 255, 0.14);
+  --artifact-preview-shell-shadow: rgba(0, 0, 0, 0.36);
+  --artifact-preview-frame-bg: #fff;
 }
 
 .turn {
@@ -4487,7 +4491,7 @@ pre {
   display: grid;
   place-items: center;
   padding: 28px;
-  background: rgba(8, 10, 12, 0.78);
+  background: var(--artifact-preview-overlay-bg);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
@@ -4500,10 +4504,10 @@ pre {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--artifact-preview-shell-border);
   border-radius: var(--radius-lg);
   background: var(--paper);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 24px 80px var(--artifact-preview-shell-shadow);
 }
 
 .artifact-preview-toolbar {
@@ -4587,7 +4591,7 @@ pre {
   height: 100%;
   min-height: 0;
   border: 0;
-  background: white;
+  background: var(--artifact-preview-frame-bg);
 }
 
 .artifact-preview-image {
@@ -4870,7 +4874,7 @@ button.turn-sources-pill:focus-visible {
   background: linear-gradient(
     105deg,
     transparent 20%,
-    color-mix(in srgb, var(--ink-muted, #777) 16%, transparent) 50%,
+    color-mix(in srgb, var(--ink-muted) 16%, transparent) 50%,
     transparent 80%
   );
   transform: translateX(-100%);

@@ -1241,9 +1241,10 @@ func TestStreamRunner_PreRequestCompactUsesColdStartEstimate(t *testing.T) {
 	}
 
 	runner := StreamRunner{
-		Client:                client,
-		Model:                 "gpt-4-turbo",
-		ContextWindowOverride: 5000,
+		Client:                 client,
+		Model:                  "gpt-4-turbo",
+		ContextWindowOverride:  16000,
+		CompactThresholdTokens: 5000,
 	}
 
 	history := []providers.ChatMessage{
@@ -1443,9 +1444,10 @@ func TestStreamRunner_CompactedHistoryDoesNotTriggerImmediateSecondCompact(t *te
 	}
 
 	runner := StreamRunner{
-		Client:                client,
-		Model:                 "gpt-4-turbo",
-		ContextWindowOverride: 5000,
+		Client:                 client,
+		Model:                  "gpt-4-turbo",
+		ContextWindowOverride:  16000,
+		CompactThresholdTokens: 5000,
 	}
 
 	firstHistory := []providers.ChatMessage{
@@ -1527,9 +1529,10 @@ func TestStreamRunner_ContextOverflowStreamErrorCompactsSingleUserTurn(t *testin
 	}
 
 	runner := StreamRunner{
-		Client:                client,
-		Model:                 "test-model",
-		ContextWindowOverride: 1000,
+		Client:                  client,
+		Model:                   "test-model",
+		ContextWindowOverride:   16000,
+		CompactKeepRecentTokens: 1000,
 	}
 	history := []providers.ChatMessage{
 		{Role: "user", Content: "debug the issue"},

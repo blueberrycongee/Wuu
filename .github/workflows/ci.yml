@@ -98,7 +98,11 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
 
       - name: Install
-        run: npm ci --prefix desktop
+        working-directory: desktop
+        run: |
+          npm ci
+          node node_modules/electron/install.js
+          node -e 'require("electron")'
 
       - name: Test native helper
         run: make test-native
