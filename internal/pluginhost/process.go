@@ -35,6 +35,7 @@ type ProcessConfig struct {
 	Env               map[string]string
 	PluginRoot        string
 	ProjectRoot       string
+	WorkspaceID       string
 	WuuHome           string
 	WorkspaceStateDir string
 	Timeout           time.Duration
@@ -151,6 +152,7 @@ func Start(ctx context.Context, config ProcessConfig) (*ProcessClient, error) {
 			PluginID:          config.ID,
 			PluginRoot:        config.PluginRoot,
 			ProjectRoot:       config.ProjectRoot,
+			WorkspaceID:       config.WorkspaceID,
 			WuuHome:           config.WuuHome,
 			WorkspaceStateDir: config.WorkspaceStateDir,
 		},

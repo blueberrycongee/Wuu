@@ -30,6 +30,8 @@ type Task struct {
 	Cron              string    `json:"cron"`
 	Timezone          string    `json:"timezone"`
 	Mode              string    `json:"mode"`
+	WorkspaceID       string    `json:"workspace_id,omitempty"`
+	WorkspaceRoot     string    `json:"workspace_root"`
 	HeartbeatThreadID string    `json:"heartbeat_thread_id,omitempty"`
 	Recurring         bool      `json:"recurring"`
 	Paused            bool      `json:"paused"`
@@ -58,15 +60,17 @@ type persistedState struct {
 }
 
 type controller struct {
-	mu       sync.Mutex
-	host     pluginapi.Host
-	tasks    map[string]Task
-	runs     []Run
-	stop     chan struct{}
-	done     chan struct{}
-	stopOnce sync.Once
-	now      func() time.Time
-	tick     time.Duration
+	mu            sync.Mutex
+	host          pluginapi.Host
+	workspaceID   string
+	workspaceRoot string
+	tasks         map[string]Task
+	runs          []Run
+	stop          chan struct{}
+	done          chan struct{}
+	stopOnce      sync.Once
+	now           func() time.Time
+	tick          time.Duration
 }
 
 func Handler() pluginapi.Handler {
@@ -77,8 +81,8 @@ func Handler() pluginapi.Handler {
 			Capabilities:         []pluginapi.Capability{{ID: capabilityClient, Kind: "decision", Version: 1}, {ID: capabilityLifecycle, Kind: "observe", Version: 1, ErrorPolicy: "isolate"}},
 			RequiredHostServices: []pluginapi.HostService{{ID: pluginapi.HostServiceSessionCreate, Required: true}, {ID: pluginapi.HostServiceSessionSend, Required: true}, {ID: pluginapi.HostServiceStorageGet, Required: true}, {ID: pluginapi.HostServiceStorageSet, Required: true}},
 		},
-		Initialize: func(ctx context.Context, host pluginapi.Host, _ pluginapi.InitializeParams) error {
-			return c.prepare(ctx, host)
+		Initialize: func(ctx context.Context, host pluginapi.Host, params pluginapi.InitializeParams) error {
+			return c.prepare(ctx, host, params)
 		},
 		Activate: c.activate,
 		Shutdown: c.shutdown,
@@ -91,12 +95,14 @@ func Handler() pluginapi.Handler {
 	}
 }
 
-func (c *controller) prepare(ctx context.Context, host pluginapi.Host) error {
+func (c *controller) prepare(ctx context.Context, host pluginapi.Host, params pluginapi.InitializeParams) error {
 	if host == nil {
 		return errors.New("automation host is required")
 	}
 	c.mu.Lock()
 	c.host = host
+	c.workspaceID = strings.TrimSpace(params.WorkspaceID)
+	c.workspaceRoot = strings.TrimSpace(params.ProjectRoot)
 	c.tasks = make(map[string]Task)
 	c.stop = make(chan struct{})
 	c.done = make(chan struct{})
@@ -163,6 +169,8 @@ func (c *controller) load(ctx context.Context) error {
 	defer c.mu.Unlock()
 	for _, task := range state.Tasks {
 		if task.Durable {
+			task.WorkspaceID = c.workspaceID
+			task.WorkspaceRoot = c.workspaceRoot
 			c.tasks[task.ID] = task
 		}
 	}
@@ -244,7 +252,7 @@ func (c *controller) invokeCapability(ctx context.Context, call pluginapi.Capabi
 func (c *controller) clientRequest(ctx context.Context, method string, raw json.RawMessage) (any, error) {
 	switch strings.TrimSpace(method) {
 	case "automation.list":
-		return map[string]any{"tasks": c.snapshotTasks()}, nil
+		return map[string]any{"tasks": c.snapshotTasks(), "workspace": map[string]string{"id": c.workspaceID, "root": c.workspaceRoot}}, nil
 	case "automation.run.list":
 		return map[string]any{"runs": c.snapshotRuns()}, nil
 	case "automation.create":
@@ -332,6 +340,8 @@ func (c *controller) update(ctx context.Context, input mutationInput) (Task, err
 
 func (c *controller) validatedTask(input mutationInput, base Task) (Task, error) {
 	value := base
+	value.WorkspaceID = c.workspaceID
+	value.WorkspaceRoot = c.workspaceRoot
 	if strings.TrimSpace(input.Title) != "" || base.ID == "" {
 		value.Title = strings.TrimSpace(input.Title)
 	}
@@ -449,10 +459,11 @@ func (c *controller) fireDue(ctx context.Context) {
 }
 
 func (c *controller) fire(ctx context.Context, task Task, now time.Time) {
-	runID, err := randomID("run")
-	if err != nil {
-		return
+	scheduledAt := task.NextRunAt.UTC()
+	if scheduledAt.IsZero() {
+		scheduledAt = now
 	}
+	runID := fmt.Sprintf("run-%s-%d", task.ID, scheduledAt.Unix())
 	requestID := "automation-" + runID
 	run := Run{ID: runID, TaskID: task.ID, Task: task, RequestID: requestID, Status: "starting", TriggeredAt: now}
 	c.mu.Lock()
@@ -463,14 +474,19 @@ func (c *controller) fire(ctx context.Context, task Task, now time.Time) {
 	_ = c.saveLocked(ctx)
 	c.mu.Unlock()
 	sessionID := task.HeartbeatThreadID
+	var err error
 	if task.Mode == "new_thread" {
 		var created pluginapi.SessionCreateResult
-		err = c.host.CallHost(ctx, pluginapi.HostServiceSessionCreate, pluginapi.SessionCreateParams{RequestID: "create-" + runID, Name: task.Title, Visibility: "user", ContextSource: "fresh", Workspace: "shared"}, &created)
+		if task.WorkspaceID != c.workspaceID || task.WorkspaceRoot != c.workspaceRoot {
+			err = errors.New("automation target workspace does not match the active plugin workspace")
+		} else {
+			err = c.host.CallHost(ctx, pluginapi.HostServiceSessionCreate, pluginapi.SessionCreateParams{RequestID: "create-" + runID, Name: task.Title, Visibility: "user", ContextSource: "fresh", Workspace: "shared", WorkspaceID: task.WorkspaceID, WorkspaceRoot: task.WorkspaceRoot}, &created)
+		}
 		sessionID = created.SessionID
 	}
 	var sent pluginapi.SessionSendResult
 	if err == nil {
-		err = c.host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: requestID, SessionID: sessionID, Input: pluginapi.SessionInput{Prompt: task.Prompt, ContextBlocks: []pluginapi.TurnContextBlock{{Kind: "automation_trigger", Source: "automation", Content: fmt.Sprintf("task_id=%s\nrun_id=%s\nschedule=%s\ntimezone=%s\ntriggered_at=%s", task.ID, runID, task.Cron, task.Timezone, now.Format(time.RFC3339))}}}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "自动化任务已唤醒 Agent", Name: task.Title}, Cause: "automation.trigger"}, &sent)
+		err = c.host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: requestID, SessionID: sessionID, Input: pluginapi.SessionInput{Prompt: task.Prompt, ContextBlocks: []pluginapi.TurnContextBlock{{Kind: "automation_trigger", Source: "automation", Content: fmt.Sprintf("task_id=%s\nrun_id=%s\nworkspace_id=%s\nworkspace_root=%s\nschedule=%s\ntimezone=%s\ntriggered_at=%s", task.ID, runID, task.WorkspaceID, task.WorkspaceRoot, task.Cron, task.Timezone, now.Format(time.RFC3339))}}}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "自动化任务已唤醒 Agent", Name: task.Title}, Cause: "automation.trigger"}, &sent)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()

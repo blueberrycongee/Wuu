@@ -14,6 +14,7 @@ type testHost struct {
 	mu      sync.Mutex
 	state   string
 	methods []string
+	creates []pluginapi.SessionCreateParams
 	sends   []pluginapi.SessionSendParams
 }
 
@@ -38,6 +39,10 @@ func (h *testHost) CallHost(_ context.Context, method string, params, result any
 		_ = json.Unmarshal(encoded, &input)
 		h.state = input.Value
 	case pluginapi.HostServiceSessionCreate:
+		encoded, _ := json.Marshal(params)
+		var input pluginapi.SessionCreateParams
+		_ = json.Unmarshal(encoded, &input)
+		h.creates = append(h.creates, input)
 		response = pluginapi.SessionCreateResult{SessionID: "generated-session", Created: true}
 	case pluginapi.HostServiceSessionSend:
 		encoded, _ := json.Marshal(params)
@@ -54,7 +59,7 @@ func TestAutomationTimerUsesPublicSessionServicesAndSettlesRun(t *testing.T) {
 	now := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
 	host := &testHost{}
 	c := &controller{now: func() time.Time { return now }, tick: time.Hour}
-	if err := c.prepare(context.Background(), host); err != nil {
+	if err := c.prepare(context.Background(), host, pluginapi.InitializeParams{WorkspaceID: "workspace-one", ProjectRoot: "/workspace/one"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.activate(context.Background()); err != nil {
@@ -72,8 +77,12 @@ func TestAutomationTimerUsesPublicSessionServicesAndSettlesRun(t *testing.T) {
 	c.mu.Unlock()
 	c.fireDue(context.Background())
 	host.mu.Lock()
+	creates := append([]pluginapi.SessionCreateParams(nil), host.creates...)
 	sends := append([]pluginapi.SessionSendParams(nil), host.sends...)
 	host.mu.Unlock()
+	if len(creates) != 1 || creates[0].WorkspaceID != "workspace-one" || creates[0].WorkspaceRoot != "/workspace/one" {
+		t.Fatalf("session creates = %+v", creates)
+	}
 	if len(sends) != 1 || sends[0].SessionID != "generated-session" || sends[0].Cause != "automation.trigger" || sends[0].Presentation == nil || sends[0].Presentation.Kind != "query_bubble" {
 		t.Fatalf("sends = %+v", sends)
 	}
@@ -139,7 +148,7 @@ func TestAutomationShutdownStopsTimerAndNextGenerationRestoresDurableState(t *te
 	now := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
 	host := &testHost{}
 	first := &controller{now: func() time.Time { return now }, tick: time.Hour}
-	if err := first.prepare(context.Background(), host); err != nil {
+	if err := first.prepare(context.Background(), host, pluginapi.InitializeParams{WorkspaceID: "workspace-one", ProjectRoot: "/workspace/one"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := first.activate(context.Background()); err != nil {
@@ -162,7 +171,7 @@ func TestAutomationShutdownStopsTimerAndNextGenerationRestoresDurableState(t *te
 	}
 
 	second := &controller{now: func() time.Time { return now }, tick: time.Hour}
-	if err := second.prepare(context.Background(), host); err != nil {
+	if err := second.prepare(context.Background(), host, pluginapi.InitializeParams{WorkspaceID: "workspace-one", ProjectRoot: "/workspace/one"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := second.activate(context.Background()); err != nil {
@@ -172,7 +181,26 @@ func TestAutomationShutdownStopsTimerAndNextGenerationRestoresDurableState(t *te
 	second.mu.Lock()
 	restored, ok := second.tasks[task.ID]
 	second.mu.Unlock()
-	if !ok || restored.Prompt != task.Prompt || !restored.Durable {
+	if !ok || restored.Prompt != task.Prompt || !restored.Durable || restored.WorkspaceID != "workspace-one" || restored.WorkspaceRoot != "/workspace/one" {
 		t.Fatalf("restored task = %+v, present=%v", restored, ok)
+	}
+}
+
+func TestAutomationRunRequestsAreStableForOneScheduledOccurrence(t *testing.T) {
+	now := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
+	host := &testHost{}
+	c := &controller{host: host, workspaceID: "workspace-one", workspaceRoot: "/workspace/one", tasks: map[string]Task{}, now: func() time.Time { return now }}
+	task := Task{ID: "task-stable", Title: "Review", Prompt: "Review work", Mode: "new_thread", WorkspaceID: "workspace-one", WorkspaceRoot: "/workspace/one", NextRunAt: now}
+
+	c.fire(context.Background(), task, now)
+	c.fire(context.Background(), task, now.Add(10*time.Second))
+
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	if len(host.creates) != 2 || host.creates[0].RequestID != host.creates[1].RequestID {
+		t.Fatalf("create requests = %+v", host.creates)
+	}
+	if len(host.sends) != 2 || host.sends[0].RequestID != host.sends[1].RequestID {
+		t.Fatalf("send requests = %+v", host.sends)
 	}
 }

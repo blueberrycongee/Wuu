@@ -96,6 +96,7 @@ type InitializeParams struct {
 	PluginID                  string   `json:"plugin_id"`
 	PluginRoot                string   `json:"plugin_root"`
 	ProjectRoot               string   `json:"project_root"`
+	WorkspaceID               string   `json:"workspace_id,omitempty"`
 	WuuHome                   string   `json:"wuu_home"`
 	WorkspaceStateDir         string   `json:"workspace_state_dir,omitempty"`
 	SupportedHostServices     []string `json:"supported_host_services,omitempty"`
@@ -441,6 +442,8 @@ type SessionCreateParams struct {
 	ParentSessionID string `json:"parent_session_id,omitempty"`
 	ContextSource   string `json:"context_source"`
 	Workspace       string `json:"workspace,omitempty"`
+	WorkspaceID     string `json:"workspace_id,omitempty"`
+	WorkspaceRoot   string `json:"workspace_root,omitempty"`
 	ModelAlias      string `json:"model_alias,omitempty"`
 }
 

@@ -112,6 +112,7 @@ func TestPluginTurnRequestContextIsBoundedAndRequestOnly(t *testing.T) {
 func TestPluginSessionCreateAndSendPersistProvenanceAndTargetLifecycle(t *testing.T) {
 	client := &fakeClient{response: providersResponse("done")}
 	rt := newTestRuntime(t, client)
+	rt.WorkspaceID = "workspace-one"
 	rt.PluginSessionRouter = runtime.NewPluginSessionRouter()
 	owner := &pluginTurnLifecycleClient{id: "schedule", calls: make(chan pluginhost.AgentTurnLifecycleInput, 2)}
 	other := &pluginTurnLifecycleClient{id: "other", calls: make(chan pluginhost.AgentTurnLifecycleInput, 1)}
@@ -119,9 +120,16 @@ func TestPluginSessionCreateAndSendPersistProvenanceAndTargetLifecycle(t *testin
 	out := &lockedBuffer{}
 	srv := New(rt, out)
 	t.Cleanup(srv.Close)
+	if _, err := rt.PluginSessionRouter.Create(context.Background(), owner.id, pluginhost.SessionCreateParams{
+		RequestID: "wrong-workspace", Visibility: pluginhost.SessionVisibilityUser, ContextSource: pluginhost.SessionContextFresh,
+		WorkspaceID: "workspace-two", WorkspaceRoot: rt.RootDir,
+	}); err == nil {
+		t.Fatal("session creation accepted a different target workspace")
+	}
 
 	created, err := rt.PluginSessionRouter.Create(context.Background(), owner.id, pluginhost.SessionCreateParams{
 		RequestID: "create-1", Visibility: pluginhost.SessionVisibilityUser, ContextSource: pluginhost.SessionContextFresh,
+		WorkspaceID: rt.WorkspaceID, WorkspaceRoot: rt.RootDir,
 	})
 	if err != nil || created.SessionID == "" || !created.Created {
 		t.Fatalf("create = %+v, %v", created, err)

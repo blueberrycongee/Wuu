@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -54,6 +55,8 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	params.ParentSessionID = strings.TrimSpace(params.ParentSessionID)
 	params.ContextSource = strings.TrimSpace(params.ContextSource)
 	params.Workspace = strings.TrimSpace(params.Workspace)
+	params.WorkspaceID = strings.TrimSpace(params.WorkspaceID)
+	params.WorkspaceRoot = strings.TrimSpace(params.WorkspaceRoot)
 	params.ModelAlias = strings.TrimSpace(params.ModelAlias)
 	if pluginID == "" {
 		return pluginhost.SessionCreateResult{}, errors.New("plugin owner is required")
@@ -81,6 +84,12 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	}
 	if params.Workspace == "worktree" && params.ContextSource != pluginhost.SessionContextFork {
 		return pluginhost.SessionCreateResult{}, errors.New("worktree workspace requires fork context")
+	}
+	if params.WorkspaceID != "" && params.WorkspaceID != strings.TrimSpace(s.rt.WorkspaceID) {
+		return pluginhost.SessionCreateResult{}, errors.New("target workspace is not served by this app-server")
+	}
+	if params.WorkspaceRoot != "" && filepath.Clean(params.WorkspaceRoot) != filepath.Clean(s.rt.RootDir) {
+		return pluginhost.SessionCreateResult{}, errors.New("target workspace root is not served by this app-server")
 	}
 	owner := "plugin:" + pluginID
 	if existing, ok, err := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); err != nil {

@@ -221,6 +221,8 @@ type SessionCreateParams struct {
 	ParentSessionID string `json:"parent_session_id,omitempty"`
 	ContextSource   string `json:"context_source"`
 	Workspace       string `json:"workspace,omitempty"`
+	WorkspaceID     string `json:"workspace_id,omitempty"`
+	WorkspaceRoot   string `json:"workspace_root,omitempty"`
 	ModelAlias      string `json:"model_alias,omitempty"`
 }
 

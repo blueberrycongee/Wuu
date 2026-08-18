@@ -12,8 +12,9 @@ not a cloud cron service running independently.
 3. Choose **New automation**, and fill in the name and the task content.
 4. Fill in the five-field Cron expression and an IANA timezone, and choose whether it
    repeats.
-5. Choose **Create** to save. The task state, next execution time, and run records are
-   stored in the plugin's workspace storage.
+5. Choose **Create** to save. The page shows the owning workspace; the task explicitly
+   records its workspace ID and root. Task state, next execution time, and run records
+   are stored in the plugin's workspace storage.
 
 The task content is the prompt handed to the agent on every trigger. Write the scope,
 expected result, and verification explicitly, for example:
@@ -37,8 +38,9 @@ random jitter is added.
 ### New session each time
 
 Desktop-created tasks use `new_thread`, which suits independent checks. Every trigger
-creates a new user-visible session through the public `host.session.create/send`, and
-the results appear in the normal session list.
+creates a new user-visible session in the bound workspace through the public
+`host.session.create/send`, and the results appear in that workspace's normal session
+list. The app server verifies the workspace ID and root before creating the session.
 
 ### Continue a specific session
 
@@ -79,6 +81,10 @@ tasks do not execute in the background.
 - recurring tasks do not catch up missed time points one by one; multiple missed runs
   merge into the next due execution;
 - a one-shot task is removed from the schedule after it runs.
+
+One scheduled occurrence uses stable create and send request IDs. If two Wuu processes
+briefly load the same workspace, the app server converges duplicate requests on the same
+session and turn instead of executing the task twice.
 
 Each due run in new-session mode creates an independent session; `thread_heartbeat`
 uses the core's ordinary Turn queueing and execution lease, so runs queue when the

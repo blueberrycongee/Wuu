@@ -6,7 +6,7 @@ export async function activate(api) {
   api.registerLocale({ id: "automation-en", locale: "en-US", entries: {
     "automation.title": "Automations", "automation.new": "New automation", "automation.empty": "No automations yet",
     "automation.emptyHelp": "Scheduled prompts will show up here.",
-    "automation.name": "Name", "automation.prompt": "Prompt", "automation.schedule": "Cron schedule", "automation.timezone": "Timezone",
+    "automation.name": "Name", "automation.prompt": "Prompt", "automation.schedule": "Cron schedule", "automation.timezone": "Timezone", "automation.workspace": "Workspace",
     "automation.recurring": "Repeat",
     "automation.create": "Create", "automation.cancel": "Cancel", "automation.pause": "Pause", "automation.resume": "Resume", "automation.remove": "Delete",
     "automation.paused": "Paused",
@@ -18,7 +18,7 @@ export async function activate(api) {
   api.registerLocale({ id: "automation-zh", locale: "zh-CN", entries: {
     "automation.title": "自动化", "automation.new": "新建自动化", "automation.empty": "还没有自动化任务",
     "automation.emptyHelp": "按时间执行的提示词会显示在这里。",
-    "automation.name": "名称", "automation.prompt": "提示词", "automation.schedule": "Cron 时间", "automation.timezone": "时区",
+    "automation.name": "名称", "automation.prompt": "提示词", "automation.schedule": "Cron 时间", "automation.timezone": "时区", "automation.workspace": "工作区",
     "automation.recurring": "重复执行",
     "automation.create": "创建", "automation.cancel": "取消", "automation.pause": "暂停", "automation.resume": "继续", "automation.remove": "删除",
     "automation.paused": "已暂停",
@@ -31,6 +31,8 @@ export async function activate(api) {
     .plugin-automation { height:100%; overflow:auto; container-type:inline-size; color:var(--wuu-color-text, var(--ink, #181818)); background:var(--wuu-color-canvas, var(--paper, #fff)); }
     .plugin-automation-head { align-items:center; gap:16px; }
     .plugin-automation-title { margin:0; color:var(--wuu-color-text-strong, var(--ink-strong, var(--ink))); font-size:var(--font-heading,18px); font-weight:var(--weight-semibold,600); letter-spacing:-0.01em; line-height:1.3; }
+    .plugin-automation-heading { flex:1; min-width:0; }
+    .plugin-automation-workspace { margin-top:3px; overflow:hidden; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); text-overflow:ellipsis; white-space:nowrap; }
     .plugin-automation-new { flex:none; }
 
     /* The create form is the one enclosed surface on the page: a quiet
@@ -69,6 +71,11 @@ export async function activate(api) {
     return parts[parts.length - 1] || "UTC";
   }
 
+  function workspaceName(root) {
+    const parts = String(root || "").split(/[\\/]/).filter(Boolean);
+    return parts[parts.length - 1] || root || "—";
+  }
+
   function formatDateTime(iso, timezone) {
     if (!iso) return null;
     const date = new Date(iso);
@@ -99,6 +106,7 @@ export async function activate(api) {
     const tr = props.translate;
     const [tasks, setTasks] = React.useState([]);
     const [runs, setRuns] = React.useState([]);
+    const [workspace, setWorkspace] = React.useState({ id: "", root: "" });
     const [creating, setCreating] = React.useState(false);
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState("");
@@ -110,6 +118,7 @@ export async function activate(api) {
         api.invokeRuntime("automation.run.list", {}).catch(() => null),
       ]).then(([list, runList]) => {
         setTasks(Array.isArray(list?.tasks) ? list.tasks : []);
+        setWorkspace(list?.workspace && typeof list.workspace === "object" ? list.workspace : { id: "", root: "" });
         setRuns(Array.isArray(runList?.runs) ? runList.runs : []);
       });
     }, []);
@@ -120,7 +129,9 @@ export async function activate(api) {
       .sort((a, b) => new Date(b.triggered_at) - new Date(a.triggered_at))[0];
     return h("main", { className: "plugin-automation" }, h(Page, null, h(Stack, { gap: "large" },
       h(Row, { className: "plugin-automation-head" },
-        h("h1", { className: "plugin-automation-title" }, tr("automation.title")),
+        h("div", { className: "plugin-automation-heading" },
+          h("h1", { className: "plugin-automation-title" }, tr("automation.title")),
+          h("div", { className: "plugin-automation-workspace", title: workspace.root }, tr("automation.workspace"), " · ", workspaceName(workspace.root))),
         creating || tasks.length === 0 ? null : h(Button, { className: "plugin-automation-new", variant: "primary", onClick: () => setCreating(true) }, tr("automation.new"))),
       creating ? h(Panel, null, h("div", { className: "plugin-automation-form" },
         h(TextInput, { label: tr("automation.name"), value: draft.title, onChange: (event) => setDraft({ ...draft, title: event.target.value }) }),
