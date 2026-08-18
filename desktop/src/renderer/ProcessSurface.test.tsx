@@ -596,6 +596,23 @@ describe("ProcessSurface", () => {
     ).toBeNull();
   });
 
+  it("anchors the text sweep to the text wrapper so the blobatar does not offset it", () => {
+    const { container } = render({
+      processItems: [makeReadFile("tool-1", "a.ts", "completed")],
+      streaming: false,
+      active: true,
+    });
+
+    const line = container.querySelector(".process-surface-summary-line");
+    expect(line?.classList.contains("wuu-live-text-wave")).toBe(false);
+    const text = container.querySelector(
+      ".process-surface-summary-text.wuu-live-text-wave",
+    );
+    expect(text).not.toBeNull();
+    expect(text?.querySelector(".process-surface-blobatar")).toBeNull();
+    expect(text?.getAttribute("data-text")).toBe(text?.textContent);
+  });
+
   it("shows the fixed round blobatar while reasoning without tool calls", () => {
     const { container } = render({
       processItems: [makeReasoning("reason-1", "thinking", "in_progress")],

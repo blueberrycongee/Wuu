@@ -2299,6 +2299,19 @@
   border-radius: 50%;
 }
 
+/* The sweep overlay duplicates the row text via `data-text` and anchors to
+ * this wrapper, not the whole summary line: the blobatar sits outside it, so
+ * an overlay on the line itself would start one avatar-width left of the
+ * first glyph and paint the sweep misaligned. */
+.process-surface-summary-text {
+  display: inline-flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
 .process-surface-segment {
   display: inline-flex;
   min-width: 0;

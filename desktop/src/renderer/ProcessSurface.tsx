@@ -241,12 +241,7 @@ export function ProcessSurface({
   const summaryWaveText = `${summaryText}${tokenWaveText}`;
 
   const summaryLine = (
-    <span
-      ref={summaryWaveRef}
-      className={`process-surface-summary-line${activeGrayText ? " wuu-live-text-wave" : ""}`}
-      aria-label={summaryText}
-      data-text={summaryWaveText}
-    >
+    <span className="process-surface-summary-line" aria-label={summaryText}>
       {activeGrayText ? (
         <Blobatar
           className="process-surface-blobatar"
@@ -258,38 +253,48 @@ export function ProcessSurface({
           alt=""
         />
       ) : null}
-      {useCondensedSummary ? (
-        <AnimatedProcessText
-          className="process-surface-condensed-summary"
-          text={condensedToolActivityText(
-            toolSegments,
-            toolItems.length,
-            reasoningStreaming,
-          )}
-        />
-      ) : (
-        toolSegments.map((segment, index) => (
-          <ProcessSurfaceSegmentView
-            key={segment.id}
-            segment={segment}
-            separator={index > 0}
-          />
-        ))
-      )}
-      {hasReasoning && !useCondensedSummary ? (
-        <span className="process-surface-segment process-surface-reasoning-segment">
-          {toolSegments.length > 0 ? (
-            <span className="process-surface-separator">{" · "}</span>
-          ) : null}
+      <span
+        ref={summaryWaveRef}
+        className={`process-surface-summary-text${
+          activeGrayText ? " wuu-live-text-wave" : ""
+        }`}
+        data-text={summaryWaveText}
+      >
+        {useCondensedSummary ? (
           <AnimatedProcessText
-            className="process-surface-reasoning-label"
-            text={reasoningStreaming ? t("process.thinking") : t("process.reasoning")}
+            className="process-surface-condensed-summary"
+            text={condensedToolActivityText(
+              toolSegments,
+              toolItems.length,
+              reasoningStreaming,
+            )}
           />
-        </span>
-      ) : null}
-      {showThinkingToken && turnID ? (
-        <ThinkingTokenCount turnID={turnID} active={active} />
-      ) : null}
+        ) : (
+          toolSegments.map((segment, index) => (
+            <ProcessSurfaceSegmentView
+              key={segment.id}
+              segment={segment}
+              separator={index > 0}
+            />
+          ))
+        )}
+        {hasReasoning && !useCondensedSummary ? (
+          <span className="process-surface-segment process-surface-reasoning-segment">
+            {toolSegments.length > 0 ? (
+              <span className="process-surface-separator">{" · "}</span>
+            ) : null}
+            <AnimatedProcessText
+              className="process-surface-reasoning-label"
+              text={
+                reasoningStreaming ? t("process.thinking") : t("process.reasoning")
+              }
+            />
+          </span>
+        ) : null}
+        {showThinkingToken && turnID ? (
+          <ThinkingTokenCount turnID={turnID} active={active} />
+        ) : null}
+      </span>
     </span>
   );
 
