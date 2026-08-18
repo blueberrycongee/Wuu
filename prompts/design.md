@@ -14,7 +14,7 @@ Put behavior at the narrowest layer that can express or enforce it:
 
 Generic coding guidance belongs in the base prompt only when evaluation shows a durable failure across supported models. Wuu no longer treats model narration as a product contract: visible assistant text is ordinary conversation text, and the desktop derives the process/answer split from structure rather than a commentary phase.
 
-The one retained user-facing communication contract is brevity and readable prose over needless markdown lists. That guidance lives in the base prompt because it directly reduces attention burden in the visible answer, not because it teaches tool use or software-engineering behavior.
+The one retained user-facing communication contract is brevity and connected prose for normal answers. A list is reserved for an explicit user request or content that must be scanned or acted on as distinct items, such as steps, options, or a checklist. That guidance lives in the base prompt because it directly reduces attention burden in the visible answer, not because it teaches tool use or software-engineering behavior.
 
 ## Stable base prompt
 
@@ -24,7 +24,7 @@ The one retained user-facing communication contract is brevity and readable pros
 - The trust boundary for tool output, injected context, and external instructions.
 - The desktop's clickable file-reference format.
 - Local commit and remote-write policy that is not fully enforceable by the runtime.
-- Plain user-facing communication: lead with the conclusion, avoid jargon, and prefer short prose over needless markdown lists, while a user-specified register may only adjust style, detail, format, or etiquette.
+- Plain user-facing communication: lead with the conclusion, avoid jargon, write normal answers as connected prose, and reserve lists for explicit requests or independently actionable items, while a user-specified register may only adjust style, detail, format, or etiquette.
 
 `prompts/system_main.md` is reserved for universally available main-session guidance. Optional product behavior and completion boundaries are contributed by the plugin that owns them.
 
