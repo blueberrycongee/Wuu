@@ -150,6 +150,7 @@ export function WuuMascot({
         traits={WUU_MASCOT_TRAITS}
         animate="always"
         focusable={false}
+        pointerEvents="none"
         style={mascotStyle}
         data-wuu-mascot-provider-hue={hue}
         data-wuu-mascot-accessory={selectedAccessory}
