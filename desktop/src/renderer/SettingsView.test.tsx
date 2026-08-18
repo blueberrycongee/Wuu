@@ -199,7 +199,7 @@ describe("SettingsView shell", () => {
     expect(container.querySelector(".settings-page-title")?.textContent).toBe("模型服务");
   });
 
-  it("renders the brand placeholder at the top of the settings sidebar", () => {
+  it("renders the brand lockup at the top of the settings sidebar", () => {
     installBuildInfoStub({
       core: undefined,
       desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
@@ -211,13 +211,12 @@ describe("SettingsView shell", () => {
     const brand = sidebar?.querySelector(".sidebar-brand");
     const backButton = sidebar?.querySelector(".settings-back-button");
 
-    // 品牌占位必须排在 traffic-spacer 之后、返回应用 按钮之前，
-    // 跟主侧栏的相对位置一致；等真正的 logo / lockup 落地后两个测试一起替换。
     expect(brand).not.toBeNull();
     expect(brand?.querySelector(".sidebar-brand-wordmark")?.textContent).toBe("wuu");
+    expect(brand?.querySelector(".sidebar-brand-descriptor")?.textContent).toBe("harness");
     expect(brand?.previousElementSibling).toBe(trafficSpacer);
     expect(brand?.nextElementSibling).toBe(backButton);
-    expect(brand?.textContent?.trim()).toBe("wuu");
+    expect(brand?.textContent?.trim()).toBe("wuuharness");
   });
 
   it("uses the same transparent-until-hover sidebar toggle as the conversation titlebar", () => {

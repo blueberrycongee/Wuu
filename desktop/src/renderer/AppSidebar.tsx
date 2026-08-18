@@ -783,13 +783,9 @@ export function AppSidebar({
     >
       <div className="sidebar-content">
         <div className="traffic-spacer" />
-        {/*
-          * Brand placeholder at the top of the sidebar visible area.
-          * 等真正的 logo / wordmark / lockup 设计落地后整体替换。
-          * 用最少的署名时刻承载识别度。
-          */}
-        <div className="sidebar-brand">
+        <div className="sidebar-brand" aria-label="wuu harness">
           <span className="sidebar-brand-wordmark">wuu</span>
+          <span className="sidebar-brand-descriptor">harness</span>
         </div>
         <nav className="primary-nav" aria-label={t("sidebar.mainNavigation")}>
           <button

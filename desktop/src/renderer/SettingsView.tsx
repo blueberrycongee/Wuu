@@ -826,14 +826,9 @@ export function SettingsView({
           */}
         <div className="sidebar-content">
           <div className="traffic-spacer" />
-          {/*
-            * 同一个品牌占位，复制自主侧栏 AppSidebar 顶部的 .sidebar-brand。
-            * 这里放在 settings-sidebar 的 traffic-spacer 与 返回应用 按钮之间，
-            * 与主侧栏"traffic-spacer → 品牌 → 主操作"的相对位置一一对应，
-            * 这样打开/关闭设置时品牌始终在同一个视觉位置。
-            */}
-          <div className="sidebar-brand">
+          <div className="sidebar-brand" aria-label="wuu harness">
             <span className="sidebar-brand-wordmark">wuu</span>
+            <span className="sidebar-brand-descriptor">harness</span>
           </div>
           <button className="settings-back-button" type="button" onClick={onBack}>
             <ArrowLeft className="icon" />

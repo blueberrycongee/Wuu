@@ -354,7 +354,7 @@ describe("AppSidebar layout", () => {
     );
   });
 
-  it("renders the brand placeholder above the primary nav", () => {
+  it("renders the brand lockup above the primary nav", () => {
     renderSidebar();
 
     const content = container.querySelector(".sidebar-content");
@@ -363,12 +363,8 @@ describe("AppSidebar layout", () => {
 
     expect(brand).not.toBeNull();
     expect(brand?.querySelector(".sidebar-brand-wordmark")?.textContent).toBe("wuu");
-    // 品牌区只放 wordmark，不放"草稿占位"之类的小灰字；textContent 必须只剩 wuu，
-    // 否则 draft 标注会被静悄悄塞回来。
-    expect(brand?.textContent?.trim()).toBe("wuu");
-    expect(brand?.querySelector(".sidebar-brand-tag")).toBeNull();
-    // 品牌占位必须排在 traffic-spacer 之后、primary-nav 之前，等真正的
-    // logo / lockup 落地后这个测试再一起替换。
+    expect(brand?.querySelector(".sidebar-brand-descriptor")?.textContent).toBe("harness");
+    expect(brand?.textContent?.trim()).toBe("wuuharness");
     expect(brand?.nextElementSibling).toBe(primaryNav);
   });
 
