@@ -1601,7 +1601,13 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  align-items: flex-start;
+  /* Keep the row height constant whether or not the sources pill is
+     present. The pill (28px incl. its border) is taller than the 20px
+     process text line, and it pops in while a web search is still
+     streaming; without a reserved height its appearance would grow the
+     row and shift the whole message flow below it by ~6-8px. */
+  min-height: 28px;
+  align-items: center;
   gap: 12px;
 }
 
@@ -4842,7 +4848,6 @@ pre {
   line-height: 1;
   color: var(--ink-muted, var(--turn-sources-pill-color-fallback));
   flex: 0 0 auto;
-  align-self: flex-start;
 }
 
 /* Single-source variant: the whole pill is a <button>, so the user
@@ -4863,10 +4868,6 @@ button.turn-sources-pill:focus-visible {
   background: var(--bg, var(--turn-sources-pill-bg-fallback));
   border-color: var(--border, var(--turn-sources-pill-border-fallback));
   color: var(--ink, var(--turn-sources-pill-color-fallback));
-}
-
-.turn-process-topline .turn-sources-pill {
-  margin-top: -2px;
 }
 
 .turn-sources-icons {
