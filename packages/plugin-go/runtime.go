@@ -450,6 +450,9 @@ type SessionCreateParams struct {
 type SessionCreateResult struct {
 	SessionID string `json:"session_id"`
 	Created   bool   `json:"created"`
+	// WorkspaceRoot is the effective directory the session runs in. It
+	// differs from the project root when the session owns a worktree.
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
 }
 
 type SessionInput struct {

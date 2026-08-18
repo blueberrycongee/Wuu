@@ -252,8 +252,11 @@ Unknown requested types return no matches rather than failing. This is a snapsho
 
 To start ordinary agent work in the background, plugins compose the
 product-neutral Session services: `host.session.create` creates a Session with
-explicit `owner`, `visibility`, `parent`, `fresh | fork`, workspace, and
-optional model-alias semantics; `host.session.send` delivers input to an
+explicit `owner`, `visibility`, `parent`, `fresh | fork`, workspace (`shared`
+project directory or an isolated `worktree` created from the current HEAD), and
+optional model-alias semantics; the create result reports the effective
+`workspace_root` so the plugin can record where the Session actually runs.
+`host.session.send` delivers input to an
 existing Session. A send request carries a plugin-generated `request_id`, the
 model input, request-only context blocks with a size cap, a stable `cause`,
 and an optional `presentation: { kind: "query_bubble", text, name }`.

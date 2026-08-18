@@ -43,6 +43,15 @@ creates a new user-visible session in the bound workspace through the public
 `host.session.create/send`, and the results appear in that workspace's normal session
 list. The app server verifies the workspace ID and root before creating the session.
 
+A task can also govern its own execution workspace. Create it with
+`workspace: "worktree"` (the Desktop form exposes this as "Run in an isolated git
+worktree") and every trigger runs the new session in a dedicated git worktree based
+on the workspace's current HEAD, so scheduled edits never touch the live project
+directory. The worktree persists with its session for review and is reclaimed with
+the session or workspace state cleanup. The run record and the trigger context block
+carry the effective execution root. Worktree isolation applies to `new_thread` tasks
+only; a `thread_heartbeat` target session already has its own workspace binding.
+
 ### Continue a specific session
 
 The plugin's `cron` tool can also create `thread_heartbeat` tasks that deliver the

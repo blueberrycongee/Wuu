@@ -8,9 +8,10 @@ export async function activate(api) {
     "automation.emptyHelp": "Scheduled prompts will show up here.",
     "automation.name": "Name", "automation.prompt": "Prompt", "automation.schedule": "Cron schedule", "automation.timezone": "Timezone", "automation.workspace": "Workspace",
     "automation.recurring": "Repeat", "automation.workspaceHelp": "Tasks and runs shown below belong to this workspace.", "automation.workspaceNone": "No available project workspaces",
+    "automation.isolation": "Run in an isolated git worktree", "automation.isolationHelp": "Each run executes in its own worktree instead of the live project directory.",
     "automation.create": "Create", "automation.cancel": "Cancel", "automation.pause": "Pause", "automation.resume": "Resume", "automation.remove": "Delete",
     "automation.paused": "Paused",
-    "automation.mode.new": "New thread", "automation.mode.wake": "Wake session",
+    "automation.mode.new": "New thread", "automation.mode.wake": "Wake session", "automation.mode.worktree": "worktree",
     "automation.next": "Next", "automation.run.completed": "Completed", "automation.run.failed": "Failed",
     "automation.run.running": "Running", "automation.run.queued": "Queued", "automation.run.interrupted": "Interrupted", "automation.run.never": "No runs yet",
     "automation.placeholder.prompt": "e.g. Summarize yesterday's progress at 9am…", "automation.placeholder.schedule": "0 9 * * 1-5",
@@ -20,9 +21,10 @@ export async function activate(api) {
     "automation.emptyHelp": "按时间执行的提示词会显示在这里。",
     "automation.name": "名称", "automation.prompt": "提示词", "automation.schedule": "Cron 时间", "automation.timezone": "时区", "automation.workspace": "工作区",
     "automation.recurring": "重复执行", "automation.workspaceHelp": "下方任务和运行记录都属于这个工作区。", "automation.workspaceNone": "没有可用的项目工作区",
+    "automation.isolation": "在独立 git worktree 中运行", "automation.isolationHelp": "每次运行都在自己的 worktree 中执行，不直接改动当前项目目录。",
     "automation.create": "创建", "automation.cancel": "取消", "automation.pause": "暂停", "automation.resume": "继续", "automation.remove": "删除",
     "automation.paused": "已暂停",
-    "automation.mode.new": "新会话", "automation.mode.wake": "唤醒会话",
+    "automation.mode.new": "新会话", "automation.mode.wake": "唤醒会话", "automation.mode.worktree": "worktree",
     "automation.next": "下次", "automation.run.completed": "已完成", "automation.run.failed": "失败",
     "automation.run.running": "运行中", "automation.run.queued": "排队中", "automation.run.interrupted": "已中断", "automation.run.never": "暂无运行",
     "automation.placeholder.prompt": "例如：每天早上 9 点整理昨天的进展…", "automation.placeholder.schedule": "0 9 * * 1-5",
@@ -112,7 +114,7 @@ export async function activate(api) {
     const [creating, setCreating] = React.useState(false);
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState("");
-    const [draft, setDraft] = React.useState({ title: "", prompt: "", schedule: "0 9 * * 1-5", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", mode: "new_thread", recurring: true });
+    const [draft, setDraft] = React.useState({ title: "", prompt: "", schedule: "0 9 * * 1-5", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", mode: "new_thread", recurring: true, workspace: "shared" });
     const refreshEpoch = React.useRef(0);
     const availableWorkspaces = workspaces.filter((candidate) => candidate.available !== false);
     const selectedWorkspace = availableWorkspaces.find((candidate) => candidate.id === selectedWorkspaceID);
@@ -209,6 +211,7 @@ export async function activate(api) {
           h(TextInput, { label: tr("automation.schedule"), placeholder: tr("automation.placeholder.schedule"), value: draft.schedule, onChange: (event) => setDraft({ ...draft, schedule: event.target.value }) }),
           h(TextInput, { label: tr("automation.timezone"), value: draft.timezone, onChange: (event) => setDraft({ ...draft, timezone: event.target.value }) })),
         h(Checkbox, { label: tr("automation.recurring"), checked: draft.recurring, onChange: (event) => setDraft({ ...draft, recurring: event.target.checked }) }),
+        h(Checkbox, { label: tr("automation.isolation"), description: tr("automation.isolationHelp"), checked: draft.workspace === "worktree", onChange: (event) => setDraft({ ...draft, workspace: event.target.checked ? "worktree" : "shared" }) }),
         h(Row, { className: "plugin-automation-form-actions" },
           h(Button, { variant: "ghost", onClick: () => setCreating(false) }, tr("automation.cancel")),
           h(Button, { variant: "primary", disabled: busy || !selectedWorkspace || !draft.prompt.trim(), onClick: async () => { if (await act("automation.create", { ...draft, durable: true })) setCreating(false); } }, tr("automation.create"))))) : null,
@@ -229,6 +232,7 @@ export async function activate(api) {
               h("div", { className: "plugin-automation-meta" },
                 h("code", { className: "plugin-automation-chip plugin-automation-chip-code" }, task.cron),
                 h("span", { className: "plugin-automation-chip plugin-automation-chip-mode" }, tr(task.mode === "thread_heartbeat" ? "automation.mode.wake" : "automation.mode.new")),
+                task.workspace_mode === "worktree" ? h("span", { className: "plugin-automation-chip" }, tr("automation.mode.worktree")) : null,
                 h("span", { className: "plugin-automation-tz" }, shortTimezone(task.timezone))),
               h("div", { className: "plugin-automation-meta plugin-automation-status" },
                 next ? h("span", null, h("span", { className: "plugin-automation-status-label" }, tr("automation.next")), " ", next) : null,

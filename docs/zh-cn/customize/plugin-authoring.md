@@ -203,7 +203,9 @@ initialize 里用 `required_services` 声明消费项，声明是获得调用权
 `host.data.subscribe` 尚未注册成生产可用的插件 Service。
 
 需要在后台发起普通 Agent 工作时，插件组合产品中立的 Session 服务：`host.session.create` 创建具有明确
-owner、visibility、parent、fresh/fork、workspace 和可选模型别名语义的 Session；`host.session.send` 向已有
+owner、visibility、parent、fresh/fork、workspace（`shared` 项目目录，或基于当前 HEAD
+创建的独立 `worktree`）和可选模型别名语义的 Session；创建结果会返回实际生效的
+`workspace_root`，便于插件记录 Session 的真实运行目录。`host.session.send` 向已有
 Session 投递输入。send 请求包含插件生成的 `request_id`、模型输入、有大小上限的 request-only
 context blocks、稳定 cause，以及可选的 `presentation: { kind: "query_bubble", text, name }`。
 插件通过 `if_running: "queue" | "steer"` 决定目标繁忙时的投递方式：`queue` 在当前 Turn 之后

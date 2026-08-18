@@ -82,9 +82,8 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	if params.Workspace != "shared" && params.Workspace != "worktree" {
 		return pluginhost.SessionCreateResult{}, errors.New("workspace must be shared or worktree")
 	}
-	if params.Workspace == "worktree" && params.ContextSource != pluginhost.SessionContextFork {
-		return pluginhost.SessionCreateResult{}, errors.New("worktree workspace requires fork context")
-	}
+	// A worktree session runs in its own git worktree based on the fork
+	// parent's directory, or on the project root for fresh context.
 	if params.WorkspaceID != "" && params.WorkspaceID != strings.TrimSpace(s.rt.WorkspaceID) {
 		return pluginhost.SessionCreateResult{}, errors.New("target workspace is not served by this app-server")
 	}
@@ -95,16 +94,16 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	if existing, ok, err := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); err != nil {
 		return pluginhost.SessionCreateResult{}, err
 	} else if ok {
-		return pluginhost.SessionCreateResult{SessionID: existing.ID, Created: false}, nil
+		return pluginhost.SessionCreateResult{SessionID: existing.ID, Created: false, WorkspaceRoot: existing.CWD}, nil
 	}
 	th, err := s.createPluginSessionThread(owner, params)
 	if err != nil {
 		if existing, ok, findErr := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); findErr == nil && ok {
-			return pluginhost.SessionCreateResult{SessionID: existing.ID, Created: false}, nil
+			return pluginhost.SessionCreateResult{SessionID: existing.ID, Created: false, WorkspaceRoot: existing.CWD}, nil
 		}
 		return pluginhost.SessionCreateResult{}, err
 	}
-	return pluginhost.SessionCreateResult{SessionID: th.ID, Created: true}, nil
+	return pluginhost.SessionCreateResult{SessionID: th.ID, Created: true, WorkspaceRoot: th.CWD}, nil
 }
 
 func (s *Server) listPluginSessions(_ context.Context, pluginID string, params pluginhost.SessionListParams) (pluginhost.SessionListResult, error) {

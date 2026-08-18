@@ -34,6 +34,13 @@ IANA 名称，例如 `Asia/Shanghai`；创建时默认采用系统时区。插�
 `host.session.create/send` 在任务绑定的工作区创建一个新的用户可见会话，结果出现在该工作区
 的普通会话列表中。App Server 会核对任务携带的工作区 ID 和根目录，避免投递到其他工作区。
 
+任务还可以治理自己的执行工作区：以 `workspace: "worktree"` 创建（桌面表单中的
+“在独立 git worktree 中运行”），每次触发都会在基于工作区当前 HEAD 的独立 git
+worktree 中运行新会话，计划任务的改动不会直接落入当前项目目录。worktree 随其会话
+保留以供审查，并随会话或工作区状态清理回收。运行记录和触发上下文块都会携带实际
+执行根目录。worktree 隔离只适用于 `new_thread` 任务；`thread_heartbeat` 的目标会话
+已有自己的工作区绑定。
+
 ### 继续指定会话
 
 插件的 `cron` Tool 还可创建 `thread_heartbeat` 任务，把生成的普通 query 投递到已有会话。

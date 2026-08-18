@@ -33,6 +33,7 @@ type Task struct {
 	Mode              string    `json:"mode"`
 	WorkspaceID       string    `json:"workspace_id,omitempty"`
 	WorkspaceRoot     string    `json:"workspace_root"`
+	WorkspaceMode     string    `json:"workspace_mode,omitempty"`
 	HeartbeatThreadID string    `json:"heartbeat_thread_id,omitempty"`
 	Recurring         bool      `json:"recurring"`
 	Paused            bool      `json:"paused"`
@@ -42,17 +43,18 @@ type Task struct {
 }
 
 type Run struct {
-	ID          string     `json:"id"`
-	TaskID      string     `json:"task_id"`
-	Task        Task       `json:"task"`
-	RequestID   string     `json:"request_id"`
-	Status      string     `json:"status"`
-	TriggeredAt time.Time  `json:"triggered_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	SessionID   string     `json:"session_id,omitempty"`
-	TurnID      string     `json:"turn_id,omitempty"`
-	QueueID     string     `json:"queue_id,omitempty"`
-	Error       string     `json:"error,omitempty"`
+	ID            string     `json:"id"`
+	TaskID        string     `json:"task_id"`
+	Task          Task       `json:"task"`
+	RequestID     string     `json:"request_id"`
+	Status        string     `json:"status"`
+	TriggeredAt   time.Time  `json:"triggered_at"`
+	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+	SessionID     string     `json:"session_id,omitempty"`
+	TurnID        string     `json:"turn_id,omitempty"`
+	QueueID       string     `json:"queue_id,omitempty"`
+	WorkspaceRoot string     `json:"workspace_root,omitempty"`
+	Error         string     `json:"error,omitempty"`
 }
 
 type persistedState struct {
@@ -78,7 +80,7 @@ func Handler() pluginapi.Handler {
 	c := &controller{now: time.Now, tick: 15 * time.Second}
 	return pluginapi.Handler{
 		Definition: pluginapi.Definition{
-			Tools:                []pluginapi.Tool{{ID: "cron", Description: "Manage scheduled Agent prompts. action=list returns tasks; action=add creates a one-shot or recurring task from a five-field cron expression; action=remove deletes a task. Use new_thread for an independent visible conversation and thread_heartbeat to wake an existing conversation.", InputSchema: cronSchema(), ExecutionScopes: []string{"root"}}},
+			Tools:                []pluginapi.Tool{{ID: "cron", Description: "Manage scheduled Agent prompts. action=list returns tasks; action=add creates a one-shot or recurring task from a five-field cron expression; action=remove deletes a task. Use new_thread for an independent visible conversation and thread_heartbeat to wake an existing conversation. Set workspace=worktree so each triggered session runs in its own git worktree instead of the shared project directory.", InputSchema: cronSchema(), ExecutionScopes: []string{"root"}}},
 			Capabilities:         []pluginapi.Capability{{ID: capabilityClient, Kind: "decision", Version: 1}, {ID: capabilityLifecycle, Kind: "observe", Version: 1, ErrorPolicy: "isolate"}},
 			RequiredHostServices: []pluginapi.HostService{{ID: pluginapi.HostServiceSessionCreate, Required: true}, {ID: pluginapi.HostServiceSessionSend, Required: true}, {ID: pluginapi.HostServiceStorageGet, Required: true}, {ID: pluginapi.HostServiceStorageSet, Required: true}},
 		},
@@ -289,6 +291,7 @@ type mutationInput struct {
 	Timezone          string `json:"timezone,omitempty"`
 	Mode              string `json:"mode,omitempty"`
 	HeartbeatThreadID string `json:"heartbeat_thread_id,omitempty"`
+	Workspace         string `json:"workspace,omitempty"`
 	WorkspaceID       string `json:"workspace_id,omitempty"`
 	WorkspaceRoot     string `json:"workspace_root,omitempty"`
 	Recurring         *bool  `json:"recurring,omitempty"`
@@ -405,6 +408,18 @@ func (c *controller) validatedTask(input mutationInput, base Task) (Task, error)
 	if value.Mode == "thread_heartbeat" && value.HeartbeatThreadID == "" {
 		return Task{}, errors.New("thread heartbeat automation requires a thread id")
 	}
+	if strings.TrimSpace(input.Workspace) != "" || base.ID == "" {
+		value.WorkspaceMode = strings.TrimSpace(input.Workspace)
+	}
+	if value.WorkspaceMode == "" {
+		value.WorkspaceMode = "shared"
+	}
+	if value.WorkspaceMode != "shared" && value.WorkspaceMode != "worktree" {
+		return Task{}, fmt.Errorf("invalid automation workspace %q", value.WorkspaceMode)
+	}
+	if value.WorkspaceMode == "worktree" && value.Mode == "thread_heartbeat" {
+		return Task{}, errors.New("worktree workspace requires new_thread mode")
+	}
 	next, err := expr.NextRun(c.now().In(loc))
 	if err != nil {
 		return Task{}, err
@@ -483,19 +498,25 @@ func (c *controller) fire(ctx context.Context, task Task, now time.Time) {
 	_ = c.saveLocked(ctx)
 	c.mu.Unlock()
 	sessionID := task.HeartbeatThreadID
+	workspaceMode := task.WorkspaceMode
+	if workspaceMode == "" {
+		workspaceMode = "shared"
+	}
+	executionRoot := ""
 	var err error
 	if task.Mode == "new_thread" {
 		var created pluginapi.SessionCreateResult
 		if task.WorkspaceID != c.workspaceID || task.WorkspaceRoot != c.workspaceRoot {
 			err = errors.New("automation target workspace does not match the active plugin workspace")
 		} else {
-			err = c.host.CallHost(ctx, pluginapi.HostServiceSessionCreate, pluginapi.SessionCreateParams{RequestID: "create-" + runID, Name: task.Title, Visibility: "user", ContextSource: "fresh", Workspace: "shared", WorkspaceID: task.WorkspaceID, WorkspaceRoot: task.WorkspaceRoot}, &created)
+			err = c.host.CallHost(ctx, pluginapi.HostServiceSessionCreate, pluginapi.SessionCreateParams{RequestID: "create-" + runID, Name: task.Title, Visibility: "user", ContextSource: "fresh", Workspace: workspaceMode, WorkspaceID: task.WorkspaceID, WorkspaceRoot: task.WorkspaceRoot}, &created)
 		}
 		sessionID = created.SessionID
+		executionRoot = created.WorkspaceRoot
 	}
 	var sent pluginapi.SessionSendResult
 	if err == nil {
-		err = c.host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: requestID, SessionID: sessionID, Input: pluginapi.SessionInput{Prompt: task.Prompt, ContextBlocks: []pluginapi.TurnContextBlock{{Kind: "automation_trigger", Source: "automation", Content: fmt.Sprintf("task_id=%s\nrun_id=%s\nworkspace_id=%s\nworkspace_root=%s\nschedule=%s\ntimezone=%s\ntriggered_at=%s", task.ID, runID, task.WorkspaceID, task.WorkspaceRoot, task.Cron, task.Timezone, now.Format(time.RFC3339))}}}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "自动化任务已唤醒 Agent", Name: task.Title}, Cause: "automation.trigger"}, &sent)
+		err = c.host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: requestID, SessionID: sessionID, Input: pluginapi.SessionInput{Prompt: task.Prompt, ContextBlocks: []pluginapi.TurnContextBlock{{Kind: "automation_trigger", Source: "automation", Content: fmt.Sprintf("task_id=%s\nrun_id=%s\nworkspace_id=%s\nworkspace_root=%s\nworkspace_mode=%s\nexecution_root=%s\nschedule=%s\ntimezone=%s\ntriggered_at=%s", task.ID, runID, task.WorkspaceID, task.WorkspaceRoot, workspaceMode, executionRoot, task.Cron, task.Timezone, now.Format(time.RFC3339))}}}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "自动化任务已唤醒 Agent", Name: task.Title}, Cause: "automation.trigger"}, &sent)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -504,6 +525,7 @@ func (c *controller) fire(ctx context.Context, task Task, now time.Time) {
 			continue
 		}
 		c.runs[index].SessionID = sessionID
+		c.runs[index].WorkspaceRoot = executionRoot
 		if err != nil {
 			finished := c.now().UTC()
 			c.runs[index].Status = "failed"
@@ -584,5 +606,5 @@ func randomID(prefix string) (string, error) {
 }
 
 func cronSchema() map[string]any {
-	return map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"list", "add", "remove"}}, "cron": map[string]any{"type": "string"}, "prompt": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "timezone": map[string]any{"type": "string"}, "mode": map[string]any{"type": "string", "enum": []string{"new_thread", "thread_heartbeat"}}, "heartbeat_thread_id": map[string]any{"type": "string"}, "recurring": map[string]any{"type": "boolean"}, "durable": map[string]any{"type": "boolean"}, "id": map[string]any{"type": "string"}}, "required": []string{"action"}}
+	return map[string]any{"type": "object", "properties": map[string]any{"action": map[string]any{"type": "string", "enum": []string{"list", "add", "remove"}}, "cron": map[string]any{"type": "string"}, "prompt": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "timezone": map[string]any{"type": "string"}, "mode": map[string]any{"type": "string", "enum": []string{"new_thread", "thread_heartbeat"}}, "heartbeat_thread_id": map[string]any{"type": "string"}, "workspace": map[string]any{"type": "string", "enum": []string{"shared", "worktree"}}, "recurring": map[string]any{"type": "boolean"}, "durable": map[string]any{"type": "boolean"}, "id": map[string]any{"type": "string"}}, "required": []string{"action"}}
 }
