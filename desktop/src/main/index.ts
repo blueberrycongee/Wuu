@@ -433,6 +433,23 @@ function appServerRequest<T>(
     : appServerClientPool.request<T>(method, params);
 }
 
+function runtimeContextForWorkspaceID(workspaceID: string): RuntimeContext {
+  const id = workspaceID.trim();
+  if (!id) {
+    throw new Error("workspace id is required");
+  }
+  const project = projectManager.list().projects.find(
+    (candidate) => candidate.id === id,
+  );
+  if (!project) {
+    throw new Error(`workspace ${id} is not registered`);
+  }
+  if (project.missing) {
+    throw new Error(`workspace ${project.name} is unavailable`);
+  }
+  return { kind: "project", project_id: project.id, cwd: project.path };
+}
+
 function codexPetDirs(): string[] {
   const primaryPetsDir = defaultCodexPetsDir(wuuHomePath());
   ensureCodexPetsDir(primaryPetsDir);
@@ -1594,8 +1611,18 @@ app.whenReady().then(async () => {
     appServerRequest<PluginStorageResult>(event, "plugin/storage/get", params));
   ipcMain.handle("wuu:plugin-storage-set", (event, params: PluginStorageSetParams) =>
     appServerRequest<PluginStorageResult>(event, "plugin/storage/set", params));
-  ipcMain.handle("wuu:plugin-runtime-request", (event, params: PluginClientRequestParams) =>
-    appServerRequest<PluginClientRequestResult>(event, "plugin/client/request", params));
+  ipcMain.handle("wuu:plugin-runtime-request", (event, params: PluginClientRequestParams) => {
+    const workspaceID = params.workspace_id?.trim();
+    if (!workspaceID) {
+      return appServerRequest<PluginClientRequestResult>(event, "plugin/client/request", params);
+    }
+    const { workspace_id: _workspaceID, ...request } = params;
+    return appServerClientPool.requestInContext<PluginClientRequestResult>(
+      runtimeContextForWorkspaceID(workspaceID),
+      "plugin/client/request",
+      request,
+    );
+  });
   ipcMain.handle(
     "wuu:config-provider-remove",
     (

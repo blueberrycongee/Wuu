@@ -164,7 +164,8 @@ export interface PluginGenerationApi {
   readonly ui: PluginUIKit;
   readonly pluginId: string;
   readonly generation: string;
-  invokeRuntime(method: string, input?: unknown): Promise<unknown>;
+  invokeRuntime(method: string, input?: unknown, options?: PluginRuntimeInvokeOptions): Promise<unknown>;
+  listWorkspaces(): Promise<PluginWorkspaceSnapshot>;
   onHostEvent(handler: (event: unknown) => void): Disposable;
   registerSlot(slotId: PluginSlotId, contribution: PluginSlotRegistration): Disposable;
   registerSurface(surfaceId: PluginSurfaceId, contribution: PluginSurfaceRegistration): Disposable;
@@ -195,6 +196,22 @@ export interface PluginGenerationApi {
   registerStatusItem(item: StatusItemDefinition): Disposable;
   registerPresenter(definition: PresenterDefinition): Disposable;
   registerToolActivityPresenter(definition: ToolActivityPresenterDefinition): Disposable;
+}
+
+export interface PluginRuntimeInvokeOptions {
+  readonly workspaceId?: string;
+}
+
+export interface PluginWorkspace {
+  readonly id: string;
+  readonly name: string;
+  readonly root: string;
+  readonly available: boolean;
+}
+
+export interface PluginWorkspaceSnapshot {
+  readonly workspaces: readonly PluginWorkspace[];
+  readonly activeWorkspaceId?: string;
 }
 
 export interface ActivatePluginGenerationOptions {
@@ -329,7 +346,9 @@ export interface PluginHostOptions {
     generation: string;
     method: string;
     input?: unknown;
+    workspaceId?: string;
   }>) => Promise<unknown>;
+  listWorkspaces?: () => Promise<PluginWorkspaceSnapshot>;
 }
 
 interface OrderedRecord {
@@ -491,6 +510,7 @@ export class PluginHost {
 
   private readonly styleContainer?: PluginHostOptions["styleContainer"];
   private readonly runtimeInvoker?: PluginHostOptions["invokeRuntime"];
+  private readonly workspaceLister?: PluginHostOptions["listWorkspaces"];
   private readonly activeGenerations = new Map<string, GenerationState>();
   private readonly pendingActivations = new Map<string, PendingActivation>();
   private readonly slotSnapshots = new Map<PluginSlotId, readonly RegisteredPluginSlotContribution[]>();
@@ -527,6 +547,7 @@ export class PluginHost {
     this.ui = createPluginUIKit(options.react);
     this.styleContainer = options.styleContainer;
     this.runtimeInvoker = options.invokeRuntime;
+    this.workspaceLister = options.listWorkspaces;
   }
 
   async activateGeneration(options: ActivatePluginGenerationOptions): Promise<Disposable> {
@@ -862,7 +883,7 @@ export class PluginHost {
       ui: this.ui,
       pluginId: state.pluginId,
       generation: state.generation,
-      invokeRuntime: async (method: string, input?: unknown) => {
+      invokeRuntime: async (method: string, input?: unknown, options?: PluginRuntimeInvokeOptions) => {
         if (!this.runtimeInvoker) {
           throw new Error("Plugin runtime requests are unavailable");
         }
@@ -874,7 +895,17 @@ export class PluginHost {
           generation: state.generation,
           method: requireNonEmpty(method, "plugin runtime method"),
           input,
+          ...(options?.workspaceId ? { workspaceId: options.workspaceId } : {}),
         });
+      },
+      listWorkspaces: async () => {
+        if (!this.workspaceLister) {
+          throw new Error("Workspace listing is unavailable");
+        }
+        if (this.activeGenerations.get(state.pluginId) !== state || state.disposed) {
+          throw new Error("Plugin generation is no longer active");
+        }
+        return this.workspaceLister();
       },
       onHostEvent: (handler: (event: unknown) => void) => {
         this.assertUsable(state);

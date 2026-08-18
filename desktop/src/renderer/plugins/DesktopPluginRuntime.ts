@@ -26,15 +26,29 @@ export interface DesktopPluginFailure {
 
 export const desktopPluginHost = new PluginHost({
   react: React,
-  invokeRuntime: async ({ pluginId, generation, method, input }) => {
+  invokeRuntime: async ({ pluginId, generation, method, input, workspaceId }) => {
     const response = await window.wuu?.requestPluginRuntime?.({
       id: pluginId,
       fingerprint: generation,
       method,
       input,
+      ...(workspaceId ? { workspace_id: workspaceId } : {}),
     });
     if (!response) throw new Error("Plugin runtime requests are unavailable");
     return response.result;
+  },
+  listWorkspaces: async () => {
+    const result = await window.wuu?.listProjects?.();
+    if (!result) throw new Error("Workspace listing is unavailable");
+    return {
+      workspaces: result.projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        root: project.path,
+        available: project.missing !== true,
+      })),
+      activeWorkspaceId: result.active_project_id,
+    };
   },
 });
 export const desktopCompositionRoot = createDesktopCompositionRoot();

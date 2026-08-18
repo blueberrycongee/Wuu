@@ -6,14 +6,15 @@ not a cloud cron service running independently.
 
 ## Create an automation
 
-1. Install and enable the first-party Automation plugin, and select the workspace the
-   task belongs to in the desktop.
-2. Open **Automations** from the navigation entry contributed by the plugin.
+1. Install and enable the first-party Automation plugin, then open **Automations** from
+   the navigation entry contributed by the plugin.
+2. Use the **Workspace** selector at the top of the page to choose the project workspace
+   where the task should run. This does not switch the conversation currently open in Desktop.
 3. Choose **New automation**, and fill in the name and the task content.
 4. Fill in the five-field Cron expression and an IANA timezone, and choose whether it
    repeats.
-5. Choose **Create** to save. The page shows the owning workspace; the task explicitly
-   records its workspace ID and root. Task state, next execution time, and run records
+5. Choose **Create** to save. The request is routed to the selected workspace's plugin
+   runtime, and the task records its workspace ID and root. Task state, next execution time, and run records
    are stored in the plugin's workspace storage.
 
 The task content is the prompt handed to the agent on every trigger. Write the scope,
@@ -55,7 +56,8 @@ limitations:
 
 ## Manage tasks
 
-The automation list shows the task content, Cron, timezone, and session mode, and
+The workspace selector also controls which workspace's tasks the list displays. The
+automation list shows the task content, Cron, timezone, and session mode, and
 supports pausing, resuming, or deleting. The current page does not offer search,
 in-place editing, or manual immediate runs; to change task content, delete and
 recreate it.

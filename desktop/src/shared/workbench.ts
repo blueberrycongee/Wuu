@@ -169,6 +169,11 @@ export interface PluginUICheckboxProps extends Omit<React.InputHTMLAttributes<HT
   description?: React.ReactNode;
 }
 
+export interface PluginUISelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  label: React.ReactNode;
+  description?: React.ReactNode;
+}
+
 export interface PluginUIEmptyStateProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
   title: React.ReactNode;
   description?: React.ReactNode;
@@ -207,6 +212,7 @@ export interface PluginUIKit {
   readonly ToolbarToggle: React.ComponentType<PluginUIToolbarToggleProps>;
   readonly TextInput: React.ComponentType<PluginUITextInputProps>;
   readonly TextArea: React.ComponentType<PluginUITextAreaProps>;
+  readonly Select: React.ComponentType<PluginUISelectProps>;
   readonly Checkbox: React.ComponentType<PluginUICheckboxProps>;
   readonly EmptyState: React.ComponentType<PluginUIEmptyStateProps>;
   readonly LoadingState: React.ComponentType<PluginUILoadingStateProps>;
@@ -330,6 +336,22 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     }));
   }
 
+  function Select({ className, label, description, children, ...props }: PluginUISelectProps): React.ReactNode {
+    return react.createElement("label", {
+      className: "plugin-ui-field",
+      "data-wuu-component": "plugin-ui-field",
+    },
+    react.createElement("span", { className: "plugin-ui-field-label" }, label),
+    description !== undefined
+      ? react.createElement("span", { className: "plugin-ui-field-description" }, description)
+      : null,
+    react.createElement("select", {
+      ...props,
+      className: joinPluginUIClass("plugin-ui-input plugin-ui-select", className),
+      "data-wuu-component": "plugin-ui-select",
+    }, children));
+  }
+
   function Checkbox({ className, label, description, ...props }: PluginUICheckboxProps): React.ReactNode {
     return react.createElement("label", {
       className: joinPluginUIClass("plugin-ui-checkbox", className),
@@ -427,6 +449,7 @@ export function createPluginUIKit(react: typeof React): PluginUIKit {
     ToolbarToggle,
     TextInput,
     TextArea,
+    Select,
     Checkbox,
     EmptyState,
     LoadingState,

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -288,6 +289,8 @@ type mutationInput struct {
 	Timezone          string `json:"timezone,omitempty"`
 	Mode              string `json:"mode,omitempty"`
 	HeartbeatThreadID string `json:"heartbeat_thread_id,omitempty"`
+	WorkspaceID       string `json:"workspace_id,omitempty"`
+	WorkspaceRoot     string `json:"workspace_root,omitempty"`
 	Recurring         *bool  `json:"recurring,omitempty"`
 	Paused            *bool  `json:"paused,omitempty"`
 	Durable           *bool  `json:"durable,omitempty"`
@@ -339,6 +342,12 @@ func (c *controller) update(ctx context.Context, input mutationInput) (Task, err
 }
 
 func (c *controller) validatedTask(input mutationInput, base Task) (Task, error) {
+	if expected := strings.TrimSpace(input.WorkspaceID); expected != "" && expected != c.workspaceID {
+		return Task{}, errors.New("automation target workspace does not match the active plugin workspace")
+	}
+	if expected := strings.TrimSpace(input.WorkspaceRoot); expected != "" && filepath.Clean(expected) != filepath.Clean(c.workspaceRoot) {
+		return Task{}, errors.New("automation target workspace root does not match the active plugin workspace")
+	}
 	value := base
 	value.WorkspaceID = c.workspaceID
 	value.WorkspaceRoot = c.workspaceRoot

@@ -1,13 +1,13 @@
 export async function activate(api) {
   const React = api.react;
   const h = React.createElement;
-  const { Page, Panel, Card, Stack, Row, Button, TextInput, TextArea, Checkbox, EmptyState } = api.ui;
+  const { Page, Panel, Card, Stack, Row, Button, TextInput, TextArea, Select, Checkbox, EmptyState } = api.ui;
 
   api.registerLocale({ id: "automation-en", locale: "en-US", entries: {
     "automation.title": "Automations", "automation.new": "New automation", "automation.empty": "No automations yet",
     "automation.emptyHelp": "Scheduled prompts will show up here.",
     "automation.name": "Name", "automation.prompt": "Prompt", "automation.schedule": "Cron schedule", "automation.timezone": "Timezone", "automation.workspace": "Workspace",
-    "automation.recurring": "Repeat",
+    "automation.recurring": "Repeat", "automation.workspaceHelp": "Tasks and runs shown below belong to this workspace.", "automation.workspaceNone": "No available project workspaces",
     "automation.create": "Create", "automation.cancel": "Cancel", "automation.pause": "Pause", "automation.resume": "Resume", "automation.remove": "Delete",
     "automation.paused": "Paused",
     "automation.mode.new": "New thread", "automation.mode.wake": "Wake session",
@@ -19,7 +19,7 @@ export async function activate(api) {
     "automation.title": "自动化", "automation.new": "新建自动化", "automation.empty": "还没有自动化任务",
     "automation.emptyHelp": "按时间执行的提示词会显示在这里。",
     "automation.name": "名称", "automation.prompt": "提示词", "automation.schedule": "Cron 时间", "automation.timezone": "时区", "automation.workspace": "工作区",
-    "automation.recurring": "重复执行",
+    "automation.recurring": "重复执行", "automation.workspaceHelp": "下方任务和运行记录都属于这个工作区。", "automation.workspaceNone": "没有可用的项目工作区",
     "automation.create": "创建", "automation.cancel": "取消", "automation.pause": "暂停", "automation.resume": "继续", "automation.remove": "删除",
     "automation.paused": "已暂停",
     "automation.mode.new": "新会话", "automation.mode.wake": "唤醒会话",
@@ -29,17 +29,18 @@ export async function activate(api) {
   }});
   api.registerStyle({ id: "automation-catalog", css: `
     .plugin-automation { height:100%; overflow:auto; container-type:inline-size; color:var(--wuu-color-text, var(--ink, #181818)); background:var(--wuu-color-canvas, var(--paper, #fff)); }
-    .plugin-automation-head { align-items:center; gap:16px; }
+    .plugin-automation-head { align-items:flex-end; gap:16px; }
     .plugin-automation-title { margin:0; color:var(--wuu-color-text-strong, var(--ink-strong, var(--ink))); font-size:var(--font-heading,18px); font-weight:var(--weight-semibold,600); letter-spacing:-0.01em; line-height:1.3; }
     .plugin-automation-heading { flex:1; min-width:0; }
     .plugin-automation-workspace { margin-top:3px; overflow:hidden; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); text-overflow:ellipsis; white-space:nowrap; }
+    .plugin-automation-workspace-picker { width:min(320px, 42cqi); flex:none; }
     .plugin-automation-new { flex:none; }
 
     /* The create form is the one enclosed surface on the page: a quiet
      * hairline panel so the in-progress draft reads as a temporary zone. */
     .plugin-automation-form { display:flex; flex-direction:column; gap:14px; }
     .plugin-automation-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    @container (max-width: 560px) { .plugin-automation-form-grid { grid-template-columns:1fr; } }
+    @container (max-width: 560px) { .plugin-automation-head { align-items:stretch; flex-direction:column; } .plugin-automation-workspace-picker { width:100%; } .plugin-automation-form-grid { grid-template-columns:1fr; } }
     .plugin-automation-form-actions { justify-content:flex-end; gap:8px; }
 
     .plugin-automation-list { display:grid; gap:10px; }
@@ -106,24 +107,82 @@ export async function activate(api) {
     const tr = props.translate;
     const [tasks, setTasks] = React.useState([]);
     const [runs, setRuns] = React.useState([]);
-    const [workspace, setWorkspace] = React.useState({ id: "", root: "" });
+    const [workspaces, setWorkspaces] = React.useState([]);
+    const [selectedWorkspaceID, setSelectedWorkspaceID] = React.useState("");
     const [creating, setCreating] = React.useState(false);
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState("");
     const [draft, setDraft] = React.useState({ title: "", prompt: "", schedule: "0 9 * * 1-5", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", mode: "new_thread", recurring: true });
-    const refresh = React.useCallback(() => {
+    const refreshEpoch = React.useRef(0);
+    const availableWorkspaces = workspaces.filter((candidate) => candidate.available !== false);
+    const selectedWorkspace = availableWorkspaces.find((candidate) => candidate.id === selectedWorkspaceID);
+    const loadWorkspaces = React.useCallback(async () => {
       setError("");
-      return Promise.all([
-        api.invokeRuntime("automation.list", {}).catch((reason) => { setError(String(reason)); return null; }),
-        api.invokeRuntime("automation.run.list", {}).catch(() => null),
-      ]).then(([list, runList]) => {
-        setTasks(Array.isArray(list?.tasks) ? list.tasks : []);
-        setWorkspace(list?.workspace && typeof list.workspace === "object" ? list.workspace : { id: "", root: "" });
-        setRuns(Array.isArray(runList?.runs) ? runList.runs : []);
-      });
+      try {
+        const snapshot = await api.listWorkspaces();
+        const items = Array.isArray(snapshot?.workspaces) ? snapshot.workspaces : [];
+        const available = items.filter((candidate) => candidate?.available !== false && candidate?.id);
+        setWorkspaces(items);
+        setSelectedWorkspaceID((current) => {
+          if (available.some((candidate) => candidate.id === current)) return current;
+          if (available.some((candidate) => candidate.id === snapshot?.activeWorkspaceId)) return snapshot.activeWorkspaceId;
+          return available[0]?.id || "";
+        });
+      } catch (reason) {
+        setWorkspaces([]);
+        setSelectedWorkspaceID("");
+        setError(String(reason));
+      }
     }, []);
-    React.useEffect(() => { void refresh(); }, [refresh]);
-    const act = async (method, input) => { setBusy(true); setError(""); try { await api.invokeRuntime(method, input); await refresh(); } catch (reason) { setError(String(reason)); } finally { setBusy(false); } };
+    const refresh = React.useCallback(async (workspaceID) => {
+      const epoch = ++refreshEpoch.current;
+      if (!workspaceID) {
+        setTasks([]);
+        setRuns([]);
+        return;
+      }
+      setError("");
+      try {
+        const options = { workspaceId: workspaceID };
+        const [list, runList] = await Promise.all([
+          api.invokeRuntime("automation.list", {}, options),
+          api.invokeRuntime("automation.run.list", {}, options).catch(() => null),
+        ]);
+        if (epoch !== refreshEpoch.current) return;
+        if (list?.workspace?.id !== workspaceID) throw new Error("Automation runtime returned a different workspace");
+        setTasks(Array.isArray(list?.tasks) ? list.tasks : []);
+        setRuns(Array.isArray(runList?.runs) ? runList.runs : []);
+      } catch (reason) {
+        if (epoch !== refreshEpoch.current) return;
+        setTasks([]);
+        setRuns([]);
+        setError(String(reason));
+      }
+    }, []);
+    React.useEffect(() => { void loadWorkspaces(); }, [loadWorkspaces]);
+    React.useEffect(() => { void refresh(selectedWorkspaceID); }, [refresh, selectedWorkspaceID]);
+    const act = async (method, input) => {
+      if (!selectedWorkspace) {
+        setError(tr("automation.workspaceNone"));
+        return false;
+      }
+      setBusy(true);
+      setError("");
+      try {
+        await api.invokeRuntime(method, {
+          ...input,
+          workspace_id: selectedWorkspace.id,
+          workspace_root: selectedWorkspace.root,
+        }, { workspaceId: selectedWorkspace.id });
+        await refresh(selectedWorkspace.id);
+        return true;
+      } catch (reason) {
+        setError(String(reason));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    };
     const lastRunFor = (task) => runs
       .filter((run) => run.task_id === task.id)
       .sort((a, b) => new Date(b.triggered_at) - new Date(a.triggered_at))[0];
@@ -131,8 +190,18 @@ export async function activate(api) {
       h(Row, { className: "plugin-automation-head" },
         h("div", { className: "plugin-automation-heading" },
           h("h1", { className: "plugin-automation-title" }, tr("automation.title")),
-          h("div", { className: "plugin-automation-workspace", title: workspace.root }, tr("automation.workspace"), " · ", workspaceName(workspace.root))),
-        creating || tasks.length === 0 ? null : h(Button, { className: "plugin-automation-new", variant: "primary", onClick: () => setCreating(true) }, tr("automation.new"))),
+          h("div", { className: "plugin-automation-workspace", title: selectedWorkspace?.root || "" }, selectedWorkspace?.root || tr("automation.workspaceNone"))),
+        h("div", { className: "plugin-automation-workspace-picker" },
+          h(Select, {
+            label: tr("automation.workspace"),
+            description: tr("automation.workspaceHelp"),
+            value: selectedWorkspaceID,
+            disabled: busy || availableWorkspaces.length === 0,
+            onChange: (event) => setSelectedWorkspaceID(event.target.value),
+          }, availableWorkspaces.length === 0
+            ? h("option", { value: "" }, tr("automation.workspaceNone"))
+            : availableWorkspaces.map((candidate) => h("option", { key: candidate.id, value: candidate.id }, candidate.name || workspaceName(candidate.root))))),
+        creating || tasks.length === 0 ? null : h(Button, { className: "plugin-automation-new", variant: "primary", disabled: !selectedWorkspace, onClick: () => setCreating(true) }, tr("automation.new"))),
       creating ? h(Panel, null, h("div", { className: "plugin-automation-form" },
         h(TextInput, { label: tr("automation.name"), value: draft.title, onChange: (event) => setDraft({ ...draft, title: event.target.value }) }),
         h(TextArea, { label: tr("automation.prompt"), rows: 4, placeholder: tr("automation.placeholder.prompt"), value: draft.prompt, onChange: (event) => setDraft({ ...draft, prompt: event.target.value }) }),
@@ -142,10 +211,10 @@ export async function activate(api) {
         h(Checkbox, { label: tr("automation.recurring"), checked: draft.recurring, onChange: (event) => setDraft({ ...draft, recurring: event.target.checked }) }),
         h(Row, { className: "plugin-automation-form-actions" },
           h(Button, { variant: "ghost", onClick: () => setCreating(false) }, tr("automation.cancel")),
-          h(Button, { variant: "primary", disabled: busy || !draft.prompt.trim(), onClick: async () => { await act("automation.create", { ...draft, durable: true }); setCreating(false); } }, tr("automation.create"))))) : null,
+          h(Button, { variant: "primary", disabled: busy || !selectedWorkspace || !draft.prompt.trim(), onClick: async () => { if (await act("automation.create", { ...draft, durable: true })) setCreating(false); } }, tr("automation.create"))))) : null,
       error ? h("div", { className: "plugin-automation-error", role: "alert" }, error) : null,
       tasks.length === 0
-        ? h(EmptyState, { title: tr("automation.empty"), description: tr("automation.emptyHelp"), actions: h(Button, { variant: "primary", onClick: () => setCreating(true) }, tr("automation.new")) })
+        ? h(EmptyState, { title: tr("automation.empty"), description: selectedWorkspace ? tr("automation.emptyHelp") : tr("automation.workspaceNone"), actions: h(Button, { variant: "primary", disabled: !selectedWorkspace, onClick: () => setCreating(true) }, tr("automation.new")) })
         : h("div", { className: "plugin-automation-list" }, tasks.map((task) => {
             const title = task.title || task.prompt;
             const body = task.title && task.title !== task.prompt ? task.prompt : "";

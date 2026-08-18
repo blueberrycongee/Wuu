@@ -605,6 +605,9 @@ export interface PluginStorageResult {
 export interface PluginClientRequestParams extends PluginIdentityParams {
   method: string;
   input?: unknown;
+  /** Desktop routing hint. The main process resolves this stable project id
+   * to a registered workspace and does not forward it to the app-server. */
+  workspace_id?: string;
 }
 export interface PluginClientRequestResult { result?: unknown; }
 

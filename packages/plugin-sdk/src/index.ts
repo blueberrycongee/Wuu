@@ -162,6 +162,15 @@ export interface PluginUICheckboxProps extends PluginUIContainerProps {
   readonly onChange?: (event: unknown) => void;
 }
 
+export interface PluginUISelectProps extends PluginUIContainerProps {
+  readonly label: unknown;
+  readonly description?: unknown;
+  readonly value?: string | number;
+  readonly defaultValue?: string | number;
+  readonly disabled?: boolean;
+  readonly onChange?: (event: unknown) => void;
+}
+
 export interface PluginUIEmptyStateProps extends PluginUIContainerProps {
   readonly title: unknown;
   readonly description?: unknown;
@@ -200,6 +209,7 @@ export interface PluginUIKit {
   readonly ToolbarToggle: HostUIComponent<PluginUIToolbarToggleProps>;
   readonly TextInput: HostUIComponent<PluginUITextInputProps>;
   readonly TextArea: HostUIComponent<PluginUITextAreaProps>;
+  readonly Select: HostUIComponent<PluginUISelectProps>;
   readonly Checkbox: HostUIComponent<PluginUICheckboxProps>;
   readonly EmptyState: HostUIComponent<PluginUIEmptyStateProps>;
   readonly LoadingState: HostUIComponent<PluginUILoadingStateProps>;
@@ -413,7 +423,9 @@ export interface PluginGenerationApi {
   readonly pluginId: string;
   readonly generation: string;
   /** Invoke one method owned by this plugin's active runtime generation. */
-  invokeRuntime(method: string, input?: unknown): Promise<unknown>;
+  invokeRuntime(method: string, input?: unknown, options?: PluginRuntimeInvokeOptions): Promise<unknown>;
+  /** List registered project workspaces that a trusted extension may target. */
+  listWorkspaces(): Promise<PluginWorkspaceSnapshot>;
   /** Observe host lifecycle events; disposal is bound to this generation. */
   onHostEvent(handler: (event: unknown) => void): Disposable;
   registerSlot(slotId: string, contribution: SlotRegistration): Disposable;
@@ -434,6 +446,22 @@ export interface PluginGenerationApi {
   registerStatusItem(item: StatusItemDefinition): Disposable;
   registerPresenter(definition: PresenterDefinition): Disposable;
   registerToolActivityPresenter(definition: ToolActivityPresenterDefinition): Disposable;
+}
+
+export interface PluginRuntimeInvokeOptions {
+  readonly workspaceId?: string;
+}
+
+export interface PluginWorkspace {
+  readonly id: string;
+  readonly name: string;
+  readonly root: string;
+  readonly available: boolean;
+}
+
+export interface PluginWorkspaceSnapshot {
+  readonly workspaces: readonly PluginWorkspace[];
+  readonly activeWorkspaceId?: string;
 }
 
 /** Minimal type for the host-owned React instance; plugins never bundle React. */
