@@ -512,7 +512,33 @@ const CachedConversationPane = memo(function CachedConversationPane({
       </div>
     </ConversationRenderActivityProvider>
   );
-});
+}, reuseCachedConversationPane);
+
+function reuseCachedConversationPane(
+  previous: CachedConversationPaneProps,
+  next: CachedConversationPaneProps,
+): boolean {
+  // A hidden pane only needs the newest props when it becomes visible again.
+  // Freezing it here prevents background thread events from reconciling a full
+  // retained conversation tree. The false -> true transition always renders
+  // and receives the latest thread snapshot from the parent.
+  if (!previous.isActive && !next.isActive) {
+    return true;
+  }
+
+  const previousKeys = Object.keys(previous) as Array<
+    keyof CachedConversationPaneProps
+  >;
+  if (previousKeys.length !== Object.keys(next).length) {
+    return false;
+  }
+  for (const key of previousKeys) {
+    if (previous[key] !== next[key]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 type PaneTurnViewProps = {
   turn: Turn;

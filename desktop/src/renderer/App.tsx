@@ -293,13 +293,6 @@ const ENVIRONMENT_PANEL_WIDTH_CSS = `${ENVIRONMENT_PANEL_WIDTH_PX}px`;
 // rail is a thin at-a-glance index; if there are more queries than fit,
 // we collapse the tail into a single bar.
 const QUERY_HISTORY_RAIL_MAX_BARS = 20;
-// Keep the active conversation pane plus a small recency buffer mounted.
-// Limit 1 made every tab switch a full TurnView remount — the multi-second
-// white frame on long threads. A bound is still needed because a hidden pane
-// re-renders whenever its background thread streams; content-visibility
-// keeps the retained DOM out of the render path, so the cost of a warm pane
-// is memory plus cheap memo-bailout renders.
-const CACHED_THREAD_PANE_LIMIT = 3;
 type EnvironmentDialog = "commit" | "pull-request" | null;
 const RENDERER_ENV = (
   import.meta as ImportMeta & {
@@ -1234,11 +1227,11 @@ export function App(): JSX.Element {
     () => runtimeViewForConversation(state.initialized, activeThread, activeTurn),
     [state.initialized, activeThread, activeTurn],
   );
-  // Per-thread keep-alive for the main conversation pane. We keep the active
-  // thread and a small recency buffer mounted so switching back does not
-  // unmount/remount the entire <TurnView> tree. Keeping every open tab mounted
-  // makes long sessions progressively heavier because each hidden pane still
-  // retains its full React subtree.
+  // Per-thread keep-alive for the main conversation pane. An open tab that has
+  // already been visited stays mounted, so switching back never falls over an
+  // arbitrary cache boundary and synchronously rebuilds a long <TurnView> tree.
+  // Hidden panes suspend their presentation work in CachedConversationPanes;
+  // closing the tab releases the retained subtree.
   //
   // Crucially we derive the cache synchronously from state.sessionTabs
   // and state.thread via useMemo, not via useState + useEffect. The
@@ -1263,10 +1256,7 @@ export function App(): JSX.Element {
     const recentIDs = cachedThreadPaneHistoryRef.current.filter(
       (id) => openThreadIDs.has(id) && id !== activeID,
     );
-    const next = [
-      ...(activeID ? [activeID] : []),
-      ...recentIDs,
-    ].slice(0, CACHED_THREAD_PANE_LIMIT);
+    const next = [...(activeID ? [activeID] : []), ...recentIDs];
     cachedThreadPaneHistoryRef.current = next;
     return next;
   }, [state.thread?.id, state.sessionTabs]);

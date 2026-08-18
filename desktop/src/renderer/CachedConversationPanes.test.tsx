@@ -277,12 +277,14 @@ describe("CachedConversationPanes session switching", () => {
       [changedThreadB.id, changedThreadB],
     ]);
     renderActiveThread(threadA.id);
-    expect(paneB?.hasAttribute("data-layout-settled")).toBe(false);
+    expect(paneB?.hasAttribute("data-layout-settled")).toBe(true);
 
     renderActiveThread(threadB.id);
+    expect(paneB?.hasAttribute("data-layout-settled")).toBe(false);
     expect(frameCallbacks).toHaveLength(1);
     expect(paneB?.getAttribute("data-active")).toBe("true");
     const settleThreadBAndHide = (): void => {
+      expect(paneB?.hasAttribute("data-layout-settled")).toBe(false);
       runTwoStableFrames();
       renderActiveThread(threadA.id);
       expect(frameCallbacks).toHaveLength(0);
@@ -293,7 +295,7 @@ describe("CachedConversationPanes session switching", () => {
       "turn-2": { text: "消息流暂时中断", liveProgress: true },
     };
     renderActiveThread(threadA.id);
-    expect(paneB?.hasAttribute("data-layout-settled")).toBe(false);
+    expect(paneB?.hasAttribute("data-layout-settled")).toBe(true);
 
     renderActiveThread(threadB.id);
     settleThreadBAndHide();
@@ -301,13 +303,13 @@ describe("CachedConversationPanes session switching", () => {
       "turn-2": { text: "约 2 秒后继续", liveProgress: true },
     };
     renderActiveThread(threadA.id);
-    expect(paneB?.hasAttribute("data-layout-settled")).toBe(false);
+    expect(paneB?.hasAttribute("data-layout-settled")).toBe(true);
 
     renderActiveThread(threadB.id);
     settleThreadBAndHide();
     turnStreamStatus = {};
     renderActiveThread(threadA.id);
-    expect(paneB?.hasAttribute("data-layout-settled")).toBe(false);
+    expect(paneB?.hasAttribute("data-layout-settled")).toBe(true);
 
     renderActiveThread(threadB.id);
     settleThreadBAndHide();
@@ -315,7 +317,7 @@ describe("CachedConversationPanes session switching", () => {
       { id: "context-b", threadID: threadB.id, loading: true },
     ];
     renderActiveThread(threadA.id);
-    expect(paneB?.hasAttribute("data-layout-settled")).toBe(false);
+    expect(paneB?.hasAttribute("data-layout-settled")).toBe(true);
 
     renderActiveThread(threadB.id);
     settleThreadBAndHide();
@@ -323,7 +325,7 @@ describe("CachedConversationPanes session switching", () => {
       { id: "instructions-b", threadID: threadB.id, loading: true },
     ];
     renderActiveThread(threadA.id);
-    expect(paneB?.hasAttribute("data-layout-settled")).toBe(false);
+    expect(paneB?.hasAttribute("data-layout-settled")).toBe(true);
 
     renderActiveThread(threadB.id);
     settleThreadBAndHide();
@@ -337,7 +339,7 @@ describe("CachedConversationPanes session switching", () => {
       [forkedThreadB.id, forkedThreadB],
     ]);
     renderActiveThread(threadA.id);
-    expect(paneB?.hasAttribute("data-layout-settled")).toBe(false);
+    expect(paneB?.hasAttribute("data-layout-settled")).toBe(true);
   });
 
   it("does not re-render an unrelated hidden conversation", () => {
@@ -396,5 +398,64 @@ describe("CachedConversationPanes session switching", () => {
     expect(turnListRenders.get("thread-a")).toBe(2);
     expect(turnListRenders.get("thread-b")).toBe(2);
     expect(turnListRenders.get("thread-c")).toBe(1);
+  });
+
+  it("defers hidden thread updates until the conversation becomes active", () => {
+    const threadA = chatThread("thread-a", {});
+    const threadB = chatThread("thread-b", {});
+    let threadsByID = new Map([
+      [threadA.id, threadA],
+      [threadB.id, threadB],
+    ]);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    roots.push(root);
+    const stableProps = {
+      threadIDs: [threadA.id, threadB.id],
+      contextCompositionEntries: [],
+      instructionFilesEntries: [],
+      onStreamFrame: () => {},
+      onCollapseComplete: () => {},
+      onDismissContextComposition: () => {},
+      onDismissInstructions: () => {},
+      canEditThreadMessage: () => false,
+      onForkMessage: () => {},
+      onOpenAgent: () => {},
+      onEditMessage: () => {},
+      onCancelEditMessage: () => {},
+      onSubmitEditMessage: () => {},
+      onOpenFileDiff: () => {},
+      turnStreamStatus: {},
+    } satisfies Omit<
+      ComponentProps<typeof CachedConversationPanes>,
+      "activeThreadID" | "threadsByID"
+    >;
+    const renderActiveThread = (activeThreadID: string): void => {
+      act(() => {
+        root.render(
+          <ImagePreviewProvider>
+            <CachedConversationPanes
+              {...stableProps}
+              activeThreadID={activeThreadID}
+              threadsByID={threadsByID}
+            />
+          </ImagePreviewProvider>,
+        );
+      });
+    };
+
+    renderActiveThread(threadA.id);
+    expect(turnListRenders.get(threadB.id)).toBe(1);
+
+    threadsByID = new Map([
+      [threadA.id, threadA],
+      [threadB.id, { ...threadB, preview: "updated in background" }],
+    ]);
+    renderActiveThread(threadA.id);
+    expect(turnListRenders.get(threadB.id)).toBe(1);
+
+    renderActiveThread(threadB.id);
+    expect(turnListRenders.get(threadB.id)).toBe(2);
   });
 });
