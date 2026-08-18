@@ -2163,7 +2163,13 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	}
 	var titleHistory []providers.ChatMessage
 	if err == nil {
-		titleHistory = cloneHistory(th.History)
+		// Title generation must use the admission snapshot, not th.History.
+		// A successful turn may replace th.History with compacted provider
+		// history, where the original first user prompt has been summarized away
+		// or a later retained user message looks like the first one. The admission
+		// snapshot is immutable for this run and preserves both the original title
+		// source and the user-message count used to gate first-turn generation.
+		titleHistory = cloneHistory(history)
 	}
 	accountingTurn := th.ensureTurnLocked(turnID, now)
 	startedAt := now

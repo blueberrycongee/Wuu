@@ -242,6 +242,19 @@ func (s *Server) generateThreadTitleCore(threadID string, history []providers.Ch
 	}
 
 	firstUser, ok := firstUserMessageForTitle(history, forceFirstUser)
+	if forceFirstUser {
+		// Provider history is rewritten by compaction. Session Summary is the
+		// immutable preview captured from the original first user message, so use
+		// it for manual regeneration instead of accidentally titling a retained
+		// post-compaction message. Probe/synthetic threads have no metadata and
+		// continue to use the supplied history.
+		if metadata, found, err := session.Find(s.rt.SessionDir, threadID); err != nil {
+			providers.DebugLogf("title[%s]: failed to load original title source: %v", threadID, err)
+		} else if found && strings.TrimSpace(metadata.Summary) != "" {
+			firstUser = strings.TrimSpace(metadata.Summary)
+			ok = true
+		}
+	}
 	if !ok {
 		res.SkipReason = "no eligible first user message"
 		providers.DebugLogf("title[%s]: skipped (%s)", threadID, res.SkipReason)
