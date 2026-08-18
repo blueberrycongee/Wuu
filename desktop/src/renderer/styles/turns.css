@@ -1945,16 +1945,6 @@
   align-self: center;
 }
 
-/* The active toolcall's blobatar: a small round ball seeded by the tool
- * name, shown only while the row is running. Sized explicitly because the
- * generic .activity-row svg rule pins any svg child to 12px. */
-.activity-row .activity-blobatar {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-}
-
 .tool-activity-marker-track {
   fill: none;
   stroke: currentColor;

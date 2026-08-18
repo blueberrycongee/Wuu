@@ -195,19 +195,4 @@ describe("ToolActivityRow", () => {
     mount({ items: [inFlight], streaming: true });
     expect(surfaceText()).toBe("查看");
   });
-
-  it("prepends a blobatar seeded by the active tool while the row is running", () => {
-    mount({ items: [fakeInFlightReadFileTool()], streaming: true });
-
-    const blobatar = container?.querySelector<HTMLImageElement>(
-      "img.activity-blobatar",
-    );
-    expect(blobatar).not.toBeNull();
-    expect(blobatar?.getAttribute("src")).toContain("data:image/svg+xml");
-
-    // Once the tool settles, the blobatar disappears and the quiet marker
-    // is all that remains at the line start.
-    rerender({ items: [fakeReadFileTool()], streaming: false });
-    expect(container?.querySelector("img.activity-blobatar")).toBeNull();
-  });
 });
