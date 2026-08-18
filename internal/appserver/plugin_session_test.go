@@ -593,3 +593,36 @@ func TestQueuedUserWorkHasPriorityOverPluginWakeups(t *testing.T) {
 		t.Fatalf("second queued turn = %+v, %t", second, ok)
 	}
 }
+
+func TestPluginTurnLifecycleOutboxDropsInactivePluginEvents(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{response: providersResponse("done")})
+	// An empty host has no lifecycle capability: delivery is impossible, so
+	// terminal events must be dropped instead of replayed forever.
+	rt.PluginHost = pluginhost.New()
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	t.Cleanup(srv.Close)
+
+	input := pluginhost.AgentTurnLifecycleInput{
+		RequestID: "peer:req:ghost", State: pluginhost.TurnLifecycleCompleted,
+		ThreadID: "thread-1", FinalOutput: "done",
+	}
+	payload, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.PutPluginTurnLifecycleOutbox(rt.SessionDir, "ghost", input.RequestID, payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.notifyPluginTurnLifecycle(context.Background(), "ghost", input); err != nil {
+		t.Fatalf("notifyPluginTurnLifecycle: %v", err)
+	}
+	entries, err := session.ListPluginTurnLifecycleOutbox(rt.SessionDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("inactive plugin lifecycle events were not dropped: %+v", entries)
+	}
+}
+

@@ -2732,12 +2732,14 @@ func (s *Server) drainQueuedTurns(threadID string) {
 	if err != nil && !executionBusy && !retryableAdmission {
 		providers.DebugLogf("start queued turn for thread %q: %v", threadID, err)
 		if reference := entry.snapshot.PluginTurn; reference != nil {
-			if lifecycleErr := s.notifyPluginTurnLifecycle(context.Background(), reference.PluginID, pluginhost.AgentTurnLifecycleInput{
+			// Terminal observation: persist to the outbox and deliver in the
+			// background. The drain must never synchronously re-enter a plugin
+			// helper that may be blocked inside a host service call waiting on
+			// this very drain (single-worker plugin processes).
+			s.notifyPluginTurnLifecycleAsync(reference.PluginID, pluginhost.AgentTurnLifecycleInput{
 				RequestID: reference.RequestID, State: pluginhost.TurnLifecycleFailed,
 				ThreadID: threadID, QueueID: reference.QueueID, Error: err.Error(),
-			}); lifecycleErr != nil {
-				providers.DebugLogf("notify queued plugin turn failure for thread %q: %v", threadID, lifecycleErr)
-			}
+			})
 		}
 		_ = s.writeNotification(NotificationTurnDequeued, TurnDequeuedNotification{
 			ThreadID: threadID,
@@ -3080,13 +3082,14 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 	}
 	launch.Commit()
 	if reference := started.runtime.PluginTurn; reference != nil {
-		if lifecycleErr := s.notifyPluginTurnLifecycle(context.Background(), reference.PluginID, pluginhost.AgentTurnLifecycleInput{
+		// Best-effort background observation. Plugin helpers are single-worker
+		// processes; a synchronous call from the drain can re-enter a helper
+		// that is blocked in a host service waiting on this drain.
+		s.notifyPluginTurnLifecycleAsync(reference.PluginID, pluginhost.AgentTurnLifecycleInput{
 			RequestID: reference.RequestID, State: pluginhost.TurnLifecycleRunning,
 			ThreadID: threadID, TurnID: started.turnID, QueueID: reference.QueueID,
 			StartedAt: &started.admittedAt,
-		}); lifecycleErr != nil {
-			providers.DebugLogf("notify plugin turn running for thread %q: %v", threadID, lifecycleErr)
-		}
+		})
 	}
 	return true, nil
 }

@@ -96,6 +96,15 @@ func (s *Server) persistPluginTurnLifecycle(pluginID string, input pluginhost.Ag
 func (s *Server) deliverPluginTurnLifecycle(ctx context.Context, pluginID string, input pluginhost.AgentTurnLifecycleInput, terminal bool) error {
 	capability, ok := s.rt.PluginHost.Capability(pluginID, pluginhost.CapabilityAgentTurnLifecycle)
 	if !ok {
+		// The owning plugin is no longer active (disabled, removed, or failed),
+		// so the event can never be acknowledged. Drop terminal events instead
+		// of leaving them to replay forever; non-terminal events have no outbox
+		// row. This keeps plugin effects reversible when a plugin is disabled.
+		if terminal {
+			if err := session.DeletePluginTurnLifecycleOutbox(s.rt.SessionDir, pluginID, input.RequestID); err != nil {
+				providers.DebugLogf("drop plugin lifecycle outbox event for inactive plugin %q/%q: %v", pluginID, input.RequestID, err)
+			}
+		}
 		return nil
 	}
 	var output pluginhost.AgentTurnLifecycleOutput
