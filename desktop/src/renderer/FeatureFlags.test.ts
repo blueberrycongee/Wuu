@@ -13,11 +13,23 @@ describe("frontend feature flags", () => {
     expect(ENABLE_REMOTE_CONTROL).toBe(true);
   });
 
-  it("keeps collaboration disabled unless explicitly enabled", async () => {
+  it("enables collaboration in development and keeps release builds opt-in", async () => {
+    // Development builds include the entry by default; no opt-in variable is
+    // needed (the explicit "false" here only proves the variable is not read).
     vi.stubEnv("VITE_ENABLE_GROUP_CHAT", "false");
     let featureFlags = await import("./FeatureFlags");
+    expect(featureFlags.ENABLE_GROUP_CHAT).toBe(true);
+
+    // Release builds statically replace DEV with false; Vitest has no
+    // production mode, so a false DEV stub stands in for that build shape.
+    // Without the opt-in variable the flag stays closed...
+    vi.resetModules();
+    vi.stubEnv("DEV", false);
+    vi.stubEnv("VITE_ENABLE_GROUP_CHAT", "false");
+    featureFlags = await import("./FeatureFlags");
     expect(featureFlags.ENABLE_GROUP_CHAT).toBe(false);
 
+    // ...and only opens when explicitly opted in.
     vi.resetModules();
     vi.stubEnv("VITE_ENABLE_GROUP_CHAT", "true");
     featureFlags = await import("./FeatureFlags");

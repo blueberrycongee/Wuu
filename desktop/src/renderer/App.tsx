@@ -19,6 +19,7 @@ import type {
   InitializeResult,
   InputFile,
   InputImage,
+  NamedAgent,
   PopOutInitResult,
   PluginPackageInstallResult,
   PluginPackageRemoveResult,
@@ -76,7 +77,10 @@ import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import {
   AppSidebar,
 } from "./AppSidebar";
-import { ChannelView, type ChannelSection } from "./ChannelView";
+import { ChannelView } from "./ChannelView";
+import { CollaborationAgentView } from "./CollaborationAgentView";
+import { CollaborationSidebar } from "./CollaborationSidebar";
+import type { AppMode } from "./AppModeSwitch";
 import {
   type EnvironmentPanelMenu,
   type EnvironmentPanelMotionState,
@@ -95,11 +99,7 @@ import {
   cloneSessionTabDraft,
   composerSubmissionDetail,
   conversationPaneThreadsByID,
-  createAgentsSessionTab,
-  createChannelRoomSessionTab,
-  channelRoomSessionTabID,
   createDraftSessionTab,
-  createTasksSessionTab,
   emptyComposerDraft,
   ensureSessionTab,
   handleStreamingNotification,
@@ -117,7 +117,6 @@ import {
   SCRATCH_PSEUDO_PROJECT_ID,
   scratchThreadSummaries,
   queryTextsForThread,
-  reconcileChannelRoomSessionTabs,
   reduceServerEvent,
   mergeListedThreads,
   resolveComposerRunningAction,
@@ -148,10 +147,8 @@ import {
   type ThreadSummary,
 } from "./AppState";
 import {
-  archiveChannelRoomPreference,
   channelRoomIsPinned,
   readChannelRoomPreferences,
-  togglePinnedChannelRoom,
   unarchiveChannelRoomPreference,
   visibleChannelRooms,
   writeChannelRoomPreferences,
@@ -557,12 +554,18 @@ export function App(): JSX.Element {
   // once per session: after the first initialized snapshot we never re-open
   // it on later provider changes (configured, skipped, or dismissed).
   const providerSetupEvaluatedRef = useRef(false);
+  const [appMode, setAppMode] = useState<AppMode>("harness");
   const [newRoomRequest, setNewRoomRequest] = useState(0);
+  const [newAgentRequest, setNewAgentRequest] = useState(0);
+  const [editAgentRequestID, setEditAgentRequestID] = useState("");
+  const [namedAgents, setNamedAgents] = useState<NamedAgent[]>([]);
+  const [selectedCollaborationAgentID, setSelectedCollaborationAgentID] = useState("");
+  const [selectedChannelRoomIDState, setSelectedChannelRoomIDState] = useState("");
+  const [channelComposerDrafts, setChannelComposerDrafts] = useState<Record<string, ComposerDraftState>>({});
   // Rooms (with per-room unread counts) live at the App level so the unified
   // sidebar and the channel canvas share one source of truth; selection is
   // controlled here and passed into ChannelView.
   const [channelRooms, setChannelRooms] = useState<ChannelRoom[]>([]);
-  const [channelRoomsLoaded, setChannelRoomsLoaded] = useState(false);
   const [channelRoomPreferences, setChannelRoomPreferences] =
     useState<ChannelRoomPreferences>(readChannelRoomPreferences);
   useEffect(() => {
@@ -591,10 +594,9 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (!ENABLE_GROUP_CHAT || !window.wuu || !state.initialized) {
       setChannelRooms([]);
-      setChannelRoomsLoaded(false);
+      setNamedAgents([]);
       return;
     }
-    setChannelRoomsLoaded(false);
     let active = true;
     const refresh = async (): Promise<void> => {
       try {
@@ -604,10 +606,13 @@ export function App(): JSX.Element {
           setChannelRooms((current) =>
             sameChannelRooms(current, rooms) ? current : rooms,
           );
-          setChannelRoomsLoaded(true);
+        }
+        if (typeof window.wuu!.listNamedAgents === "function") {
+          const agentResult = await window.wuu!.listNamedAgents();
+          if (active) setNamedAgents(agentResult.agents ?? []);
         }
       } catch (reason) {
-        console.warn("channel rooms refresh failed", reason);
+        console.warn("collaboration directory refresh failed", reason);
       }
     };
     void refresh();
@@ -935,17 +940,6 @@ export function App(): JSX.Element {
   const cachedThreadPaneHistoryRef = useRef<string[]>([]);
   const draftSessionTabCounterRef = useRef(0);
   const currentSessionTab = activeSessionTab(state);
-  const channelSection: ChannelSection | null =
-    currentSessionTab?.kind === "channel-room"
-      ? "rooms"
-      : currentSessionTab?.kind === "agents"
-        ? "agents"
-        : currentSessionTab?.kind === "tasks"
-          ? "tasks"
-          : null;
-  const channelsOpen = channelSection !== null;
-  const activeChannelRoomID =
-    currentSessionTab?.kind === "channel-room" ? currentSessionTab.roomID : "";
   const activeChannelRooms = useMemo(
     () => visibleChannelRooms(channelRooms, channelRoomPreferences),
     [channelRoomPreferences, channelRooms],
@@ -966,15 +960,16 @@ export function App(): JSX.Element {
     () => channelRooms.filter((room) => channelRoomPreferences.archivedRoomIDs.includes(room.id)),
     [channelRoomPreferences.archivedRoomIDs, channelRooms],
   );
-  const lastSelectedChannelRoomIDRef = useRef("");
-  if (activeChannelRoomID) {
-    lastSelectedChannelRoomIDRef.current = activeChannelRoomID;
-  }
   const selectedChannelRoomID =
-    activeChannelRoomID ||
-    (activeChannelRooms.some((room) => room.id === lastSelectedChannelRoomIDRef.current)
-      ? lastSelectedChannelRoomIDRef.current
+    (activeChannelRooms.some((room) => room.id === selectedChannelRoomIDState)
+      ? selectedChannelRoomIDState
       : activeChannelRooms[0]?.id ?? "");
+  const selectedCollaborationAgent =
+    namedAgents.find((agent) => agent.id === selectedCollaborationAgentID);
+  const activeChannelComposerDraft = useMemo(
+    () => channelComposerDrafts[selectedChannelRoomID] ?? emptyComposerDraft(),
+    [channelComposerDrafts, selectedChannelRoomID],
+  );
   const channelUnreadByRoomID = useMemo(
     () =>
       Object.fromEntries(
@@ -983,12 +978,6 @@ export function App(): JSX.Element {
     [activeChannelRooms],
   );
 
-  useEffect(() => {
-    if (!channelRoomsLoaded) {
-      return;
-    }
-    setState((current) => reconcileChannelRoomSessionTabs(current, activeChannelRooms));
-  }, [activeChannelRooms, channelRoomsLoaded]);
   const [skillsAssistantDraft, setSkillsAssistantDraft] = useState("");
   const [skillsAssistantThreadID, setSkillsAssistantThreadID] = useState<string>();
   const [skillsAssistantStatus, setSkillsAssistantStatus] = useState("");
@@ -2960,13 +2949,13 @@ export function App(): JSX.Element {
     const api = window.wuu as Partial<typeof window.wuu>;
     if (typeof api.onCodexPetJumpRequest !== "function") return;
     return api.onCodexPetJumpRequest((event) => {
+      setAppMode("harness");
       revealConversationFromFocusedWorkspace();
       void activateThread(event.thread_id);
     });
   }, [activateThread, revealConversationFromFocusedWorkspace]);
 
   const {
-    openGlobalSessionTab,
     selectSessionTab,
     closeSessionTab,
     closeSessionTabs,
@@ -3001,12 +2990,13 @@ export function App(): JSX.Element {
   }
 
   function selectChannelRoom(roomID: string): void {
-    const context = appStateRef.current.activeContext;
     const room = activeChannelRooms.find((candidate) => candidate.id === roomID);
-    if (!context || !room) {
+    if (!room) {
       return;
     }
-    openGlobalSessionTab(createChannelRoomSessionTab(room.id, room.name, context));
+    setSelectedChannelRoomIDState(room.id);
+    setSelectedCollaborationAgentID("");
+    setAppMode("collaboration");
     clearChannelRoomUnread(room.id);
     prepareChannelTab();
   }
@@ -3015,63 +3005,46 @@ export function App(): JSX.Element {
     roomID: string,
     draft: ComposerDraftState,
   ): void {
-    setState((current) => {
-      let changed = false;
-      const sessionTabs = current.sessionTabs.map((tab) => {
-        if (tab.kind !== "channel-room" || tab.roomID !== roomID) {
-          return tab;
-        }
-        if (
-          tab.prompt === draft.prompt &&
-          tab.images === draft.images &&
-          tab.files === draft.files
-        ) {
-          return tab;
-        }
-        changed = true;
-        return {
-          ...tab,
-          prompt: draft.prompt,
-          images: draft.images,
-          files: draft.files,
-        };
-      });
-      return changed ? { ...current, sessionTabs } : current;
-    });
+    if (!roomID) return;
+    setChannelComposerDrafts((current) => ({ ...current, [roomID]: draft }));
   }
 
-  function openChannelAgentsView(): void {
-    const context = appStateRef.current.activeContext;
-    if (!context) {
-      return;
-    }
-    openGlobalSessionTab(createAgentsSessionTab(context));
+  function openCollaborationView(): void {
+    setAppMode("collaboration");
     prepareChannelTab();
   }
 
-  function openChannelTasksView(): void {
-    const context = appStateRef.current.activeContext;
-    if (!context) {
-      return;
-    }
-    openGlobalSessionTab(createTasksSessionTab(context));
-    prepareChannelTab();
+  function openHarnessView(): void {
+    setAppMode("harness");
+    setSelectedCollaborationAgentID("");
   }
 
   function openChannelsView(): void {
-    const room =
-      activeChannelRooms.find((candidate) => candidate.id === selectedChannelRoomID) ??
-      activeChannelRooms[0];
-    if (room) {
-      selectChannelRoom(room.id);
-      return;
-    }
-    openChannelAgentsView();
+    setSelectedCollaborationAgentID("");
+    openCollaborationView();
+  }
+
+  function selectCollaborationAgent(agentID: string): void {
+    if (!namedAgents.some((agent) => agent.id === agentID)) return;
+    setSelectedCollaborationAgentID(agentID);
+    setAppMode("collaboration");
+    prepareChannelTab();
   }
 
   function openNewChannelRoom(): void {
     openChannelsView();
     setNewRoomRequest((count) => count + 1);
+  }
+
+  function openNewNamedAgent(): void {
+    openChannelsView();
+    setNewAgentRequest((count) => count + 1);
+  }
+
+  function manageNamedAgent(agentID: string): void {
+    setSelectedCollaborationAgentID("");
+    setEditAgentRequestID(agentID);
+    setAppMode("collaboration");
   }
 
   function focusHeroAfter(
@@ -3269,16 +3242,6 @@ export function App(): JSX.Element {
       writeChannelRoomPreferences(next);
       return next;
     });
-  }
-
-  function toggleChannelRoomPinnedState(room: ChannelRoom): void {
-    updateChannelRoomPreferences((current) => togglePinnedChannelRoom(current, room.id));
-  }
-
-  function archiveChannelRoom(room: ChannelRoom): void {
-    updateChannelRoomPreferences((current) => archiveChannelRoomPreference(current, room.id));
-    void closeSessionTab(channelRoomSessionTabID(room.id));
-    setArchiveTip({ threadID: room.id, threadTitle: room.name });
   }
 
   function unarchiveChannelRoom(room: Pick<ChannelRoom, "id">): void {
@@ -4430,6 +4393,26 @@ export function App(): JSX.Element {
               </button>
             </div>
           ) : null}
+          {appMode === "collaboration" && ENABLE_GROUP_CHAT ? (
+            <CollaborationSidebar
+              initialized={Boolean(state.initialized)}
+              agents={namedAgents}
+              rooms={[...pinnedChannelRooms, ...sidebarChannelRooms]}
+              selectedAgentID={selectedCollaborationAgent?.id}
+              selectedRoomID={selectedChannelRoomID}
+              onSelectAgent={selectCollaborationAgent}
+              onSelectRoom={selectChannelRoom}
+              onCreateAgent={openNewNamedAgent}
+              onCreateRoom={openNewChannelRoom}
+              onSwitchToHarness={openHarnessView}
+              onPointerEnter={openSidebarDrawer}
+              onPointerLeave={(event) => scheduleSidebarDrawerCloseFromPointerLeave(event.nativeEvent)}
+              onOpenSettings={() => {
+                setSettingsInitialPage("providers");
+                setSettingsOpen(true);
+              }}
+            />
+          ) : (
           <AppSidebar
             state={state}
             sidebarProjects={sidebarProjects}
@@ -4461,17 +4444,7 @@ export function App(): JSX.Element {
               openSkillsTab();
             }}
             groupChatEnabled={ENABLE_GROUP_CHAT}
-            channelRooms={sidebarChannelRooms}
-            pinnedChannelRooms={pinnedChannelRooms}
-            activeChannelRoomID={channelSection === "rooms" ? selectedChannelRoomID : undefined}
-            activeChannelSection={channelSection}
-            onSelectChannelRoom={selectChannelRoom}
-            onToggleChannelRoomPinned={toggleChannelRoomPinnedState}
-            onArchiveChannelRoom={archiveChannelRoom}
-            onOpenChannelAgents={openChannelAgentsView}
-            onOpenChannelTasks={openChannelTasksView}
-            onOpenChannels={openChannelsView}
-            onCreateChannelRoom={openNewChannelRoom}
+            onSwitchToCollaboration={openCollaborationView}
             onToggleConversationSearch={toggleConversationSearch}
             onSeedConversationFixture={seedConversationFixture}
             onOpenChipGallery={() => setChipGalleryOpen(true)}
@@ -4538,6 +4511,7 @@ export function App(): JSX.Element {
               setSettingsOpen(true);
             }}
           />
+          )}
 
           {sidebarDrawerMode ? null : (
             <div
@@ -4581,14 +4555,14 @@ export function App(): JSX.Element {
           environmentPanelReserved ? " environment-panel-reserved" : ""
         }${
           sideThreadPanelVisible ? " side-thread-panel-visible" : ""
-        }${sessionTabsVisible ? " session-tabs-visible" : ""}${
+        }${sessionTabsVisible && appMode === "harness" ? " session-tabs-visible" : ""}${
           showingSkillsCatalog && ENABLE_MANAGEMENT_ASSISTANT
             ? " skills-assistant-visible"
             : ""
         }`}
         ref={conversationPaneRef}
       >
-        {ENABLE_GROUP_CHAT && channelsOpen ? (
+        {ENABLE_GROUP_CHAT && appMode === "collaboration" ? (
           <>
             <header className="titlebar" data-wuu-component="conversation-titlebar">
               <div className="title-block channel-title-block">
@@ -4612,52 +4586,32 @@ export function App(): JSX.Element {
                     <SidePanelToggleIcon side="left" open={!sidebarCollapsed} />
                   </button>
                 ) : null}
-                <ConversationTitleContent
-                  state={state}
-                  crossWorkspaceThreads={sidebarThreads}
-                  sessionTabsVisible={sessionTabsVisible}
-                  pendingSwitchThreadID={visiblePendingThreadID}
-                  pendingComposerMessagesByThread={pendingComposerMessagesByThread}
-                  channelUnreadByRoomID={channelUnreadByRoomID}
-                  activeTitle={activeTitle}
-                  onSelectSessionTab={(tabID) => void selectSessionTab(tabID)}
-                  onCloseSessionTab={(tabID) => void closeSessionTab(tabID)}
-                  onCloseSessionTabs={(tabIDs) => void closeSessionTabs(tabIDs)}
-                  onPopOutSessionTab={(tabID) => void popOutSessionTab(tabID)}
-                  onStartNewThread={startNewThreadWithComposerFocus}
-                  onReorderSessionTabs={reorderSessionTabs}
-                />
+                <span className="collaboration-titlebar-label">{t("sidebar.collaboration")}</span>
               </div>
               <div
                 className="title-actions channel-title-actions-placeholder"
                 aria-hidden="true"
               />
             </header>
-            <ChannelView
+            {selectedCollaborationAgent ? (
+              <CollaborationAgentView agent={selectedCollaborationAgent} onManage={() => manageNamedAgent(selectedCollaborationAgent.id)} />
+            ) : <ChannelView
               initialized={sessionRuntime ?? state.initialized}
-              section={channelSection ?? "rooms"}
+              section="rooms"
               archivedRoomIDs={channelRoomPreferences.archivedRoomIDs}
               selectedRoomID={selectedChannelRoomID}
               onSelectRoom={selectChannelRoom}
               onRoomRead={clearChannelRoomUnread}
               onOpenMemoryDirectory={openAgentMemoryDirectory}
-              composerDraft={
-                currentSessionTab?.kind === "channel-room"
-                  ? {
-                      prompt: currentSessionTab.prompt,
-                      images: currentSessionTab.images,
-                      files: currentSessionTab.files,
-                    }
-                  : undefined
-              }
-              onComposerDraftChange={
-                currentSessionTab?.kind === "channel-room"
-                  ? (draft) => updateChannelRoomDraft(currentSessionTab.roomID, draft)
-                  : undefined
-              }
+              composerDraft={activeChannelComposerDraft}
+              onComposerDraftChange={(draft) => updateChannelRoomDraft(selectedChannelRoomID, draft)}
               newRoomRequest={newRoomRequest}
               onNewRoomRequestHandled={() => setNewRoomRequest(0)}
-            />
+              newAgentRequest={newAgentRequest}
+              onNewAgentRequestHandled={() => setNewAgentRequest(0)}
+              editAgentRequestID={editAgentRequestID}
+              onEditAgentRequestHandled={() => setEditAgentRequestID("")}
+            />}
           </>
         ) : (
           <>

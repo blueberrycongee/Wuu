@@ -13,11 +13,13 @@ export function ChannelMemberPicker({
   selectedAgentIDs,
   onToggle,
   label,
+  maxSelected,
 }: {
   agents: NamedAgent[];
   selectedAgentIDs: string[];
   onToggle: (agentID: string) => void;
   label?: string;
+  maxSelected?: number;
 }): JSX.Element {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -57,7 +59,9 @@ export function ChannelMemberPicker({
     <section className="channel-member-picker" aria-labelledby="channel-member-picker-label">
       <div className="channel-member-picker-heading">
         <span id="channel-member-picker-label">{label ?? t("channels.groupMembers")}</span>
-        <span>{t("channels.selectedMembers", { count: selectedAgentIDs.length })}</span>
+        <span>{maxSelected == null
+          ? t("channels.selectedMembers", { count: selectedAgentIDs.length })
+          : t("channels.selectedMembersWithLimit", { count: selectedAgentIDs.length, max: maxSelected })}</span>
       </div>
       <div className="channel-member-picker-control">
         <label className="channel-member-picker-search">
@@ -86,12 +90,14 @@ export function ChannelMemberPicker({
             <div className="channel-member-picker-empty">{t(query ? "channels.noMatchingAgents" : "channels.noAgents")}</div>
           ) : visibleAgents.map((agent, index) => {
             const selected = selectedAgentIDs.includes(agent.id);
+            const disabled = !selected && maxSelected != null && selectedAgentIDs.length >= maxSelected;
             return (
               <button
                 className="channel-member-picker-option"
                 type="button"
                 role="option"
                 aria-selected={selected}
+                disabled={disabled}
                 key={agent.id}
                 ref={(node) => { optionRefs.current[index] = node; }}
                 onClick={() => onToggle(agent.id)}

@@ -15,7 +15,6 @@ import {
   Plus,
   Search,
   Settings,
-  UsersRound,
 } from "lucide-react";
 import {
   type CSSProperties,
@@ -55,14 +54,13 @@ import {
   type AppState,
   type ThreadSummary,
 } from "./AppState";
-import { formatChannelUnreadCount } from "./ChannelView";
 import type { ConversationFixtureKind } from "./ConversationFixtures";
 import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
 import { PinnedThreadList, ProjectGroup } from "./ThreadSidebar";
 import { SidebarSection, SidebarSectionDragHandleContext } from "./SidebarSection";
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
 import { PluginIcon } from "./PublicIcon";
-import { CollabNodesIcon } from "./CollabNodesIcon";
+import { AppModeSwitch } from "./AppModeSwitch";
 import { useI18n } from "./i18n";
 import {
   NavigationPresentation,
@@ -94,69 +92,6 @@ export const SIDEBAR_SECTION_PINNED = "__wuu_pinned__";
  * predictable regardless of how the user reorders projects.
  */
 export const SIDEBAR_SECTION_COLLAB = "__wuu_collab__";
-
-function ChannelRoomSidebarRow({
-  room,
-  active,
-  pinned,
-  onSelect,
-  onTogglePinned,
-  onArchive,
-}: {
-  room: ChannelRoom;
-  active: boolean;
-  pinned: boolean;
-  onSelect?: (roomID: string) => void;
-  onTogglePinned?: (room: ChannelRoom) => void;
-  onArchive?: (room: ChannelRoom) => void;
-}): JSX.Element {
-  const { t } = useI18n();
-  const unread = room.unread_count ?? 0;
-  const hasUnread = !active && unread > 0;
-  return (
-    <div
-      className={`thread-row sidebar-session-row sidebar-room-row${active ? " active" : ""}${hasUnread ? " has-unread" : ""}`}
-      data-room-id={room.id}
-    >
-      <button
-        className="thread-row-main"
-        type="button"
-        aria-current={active ? "page" : undefined}
-        onClick={() => onSelect?.(room.id)}
-      >
-        <span className="thread-row-title">{room.name}</span>
-      </button>
-      {hasUnread ? (
-        <span
-          className="channel-room-unread"
-          aria-label={t("channels.unreadMessages", { count: unread })}
-        >
-          {formatChannelUnreadCount(unread)}
-        </span>
-      ) : null}
-      <div className="thread-row-actions" aria-label={t("channels.roomActions")}>
-        <button
-          className={`sidebar-row-icon-button thread-row-action ${pinned ? "active" : ""}`}
-          type="button"
-          aria-label={t(pinned ? "sidebar.unpin" : "sidebar.pin")}
-          title={t(pinned ? "sidebar.unpin" : "sidebar.pin")}
-          onClick={() => onTogglePinned?.(room)}
-        >
-          <Pin className="icon-sm" />
-        </button>
-        <button
-          className="sidebar-row-icon-button thread-row-action archive"
-          type="button"
-          aria-label={t("sidebar.archiveAction")}
-          title={t("sidebar.archiveAction")}
-          onClick={() => onArchive?.(room)}
-        >
-          <Archive className="icon-sm" />
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /**
  * Reconcile the persisted sidebar section order against the current
@@ -369,17 +304,6 @@ export function AppSidebar({
   onStartNewThread,
   onOpenSkillsTab,
   groupChatEnabled = false,
-  channelRooms = [],
-  pinnedChannelRooms = [],
-  activeChannelRoomID,
-  activeChannelSection = null,
-  onSelectChannelRoom,
-  onToggleChannelRoomPinned,
-  onArchiveChannelRoom,
-  onOpenChannelAgents,
-  onOpenChannelTasks,
-  onOpenChannels,
-  onCreateChannelRoom,
   onToggleConversationSearch,
   onSeedConversationFixture,
   onOpenChipGallery,
@@ -401,6 +325,7 @@ export function AppSidebar({
   onPointerEnter,
   onPointerLeave,
   onOpenSettings,
+  onSwitchToCollaboration,
   pluginHost = desktopPluginHost,
   workbenchController = desktopWorkbenchController,
 }: {
@@ -474,6 +399,7 @@ export function AppSidebar({
   onPointerEnter?: () => void;
   onPointerLeave?: (event: ReactPointerEvent<HTMLElement>) => void;
   onOpenSettings: () => void;
+  onSwitchToCollaboration?: () => void;
   pluginHost?: PluginHost;
   workbenchController?: WorkbenchController;
 }): JSX.Element {
@@ -553,16 +479,9 @@ export function AppSidebar({
     ? sectionHeaderInfoByIDRef.current.get(draggingSectionID)
     : undefined;
   const pinnedRows = pinnedThreads;
-  const hasPinnedRows = pinnedRows.length > 0 || pinnedChannelRooms.length > 0;
+  const hasPinnedRows = pinnedRows.length > 0;
   const pinnedCollapsed = collapsedSidebarSectionIDs.has(
     SIDEBAR_SECTION_PINNED,
-  );
-  const collabCollapsed = collapsedSidebarSectionIDs.has(
-    SIDEBAR_SECTION_COLLAB,
-  );
-  const collabUnreadTotal = channelRooms.reduce(
-    (sum, room) => sum + (room.unread_count ?? 0),
-    0,
   );
   const functionalGroups = ([{
     id: "workspace" as const,
@@ -594,19 +513,6 @@ export function AppSidebar({
         onActivate: () => activateNative(onToggleConversationSearch),
       },
     ];
-    if (groupChatEnabled) {
-      nodes.push({
-        id: "command:agents",
-        kind: "command",
-        label: t("channels.agents"),
-        icon: "users",
-        active: activeChannelSection === "agents",
-        disabled: !state.initialized || onOpenChannelAgents === undefined,
-        onActivate: onOpenChannelAgents
-          ? () => activateNative(onOpenChannelAgents)
-          : undefined,
-      });
-    }
     nodes.push(
       {
         id: "command:skills",
@@ -646,37 +552,6 @@ export function AppSidebar({
           state.lastViewedTurnByThreadID,
           () => onSelectThread(thread.id),
           () => onTogglePinned(thread),
-        ));
-      }
-      for (const room of pinnedChannelRooms) {
-        nodes.push(roomNavigationNode(
-          room,
-          "section:pinned",
-          activeChannelRoomID,
-          onSelectChannelRoom,
-          onToggleChannelRoomPinned,
-          true,
-        ));
-      }
-    }
-
-    if (groupChatEnabled) {
-      nodes.push({
-        id: "section:collaboration",
-        kind: "section",
-        label: t("sidebar.collaboration"),
-        icon: "collaboration",
-        depth: 0,
-        unread: collabUnreadTotal > 0,
-      });
-      for (const room of channelRooms) {
-        nodes.push(roomNavigationNode(
-          room,
-          "section:collaboration",
-          activeChannelRoomID,
-          onSelectChannelRoom,
-          onToggleChannelRoomPinned,
-          false,
         ));
       }
     }
@@ -761,14 +636,13 @@ export function AppSidebar({
     });
     return Object.freeze(nodes);
   }, [
-    activateNative, activeChannelRoomID, activeChannelSection, activeProjectID, activeThreadID,
-    channelRooms, collabUnreadTotal, debugFixturesVisible, fixturesEnabled,
-    groupChatEnabled, hasPinnedRows, hasRuntimeContext,
-    onOpenChannelAgents, onOpenChipGallery, onOpenSettings, onOpenSkillsTab,
-    onSeedConversationFixture, onSelectChannelRoom,
+    activateNative, activeProjectID, activeThreadID,
+    debugFixturesVisible, fixturesEnabled, hasPinnedRows, hasRuntimeContext,
+    onOpenChipGallery, onOpenSettings, onOpenSkillsTab,
+    onSeedConversationFixture,
     onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
-    onStartNewThread, onToggleChannelRoomPinned, onToggleConversationSearch,
-    onTogglePinned, pinnedChannelRooms, pinnedRows, projectThreadsByProjectID,
+    onStartNewThread, onToggleConversationSearch,
+    onTogglePinned, pinnedRows, projectThreadsByProjectID,
     searchOpen, sectionOrder, sidebarProjects, sidebarScratchPseudoActive,
     activePluginMainView, openPluginNavigation, pluginNavigationEntries,
     state.activeProjectId, state.initialized, state.lastViewedTurnByThreadID, t,
@@ -783,10 +657,11 @@ export function AppSidebar({
     >
       <div className="sidebar-content">
         <div className="traffic-spacer" />
-        <div className="sidebar-brand" aria-label="wuu harness">
-          <span className="sidebar-brand-wordmark">wuu</span>
-          <span className="sidebar-brand-descriptor">harness</span>
-        </div>
+        <AppModeSwitch
+          mode="harness"
+          collaborationEnabled={groupChatEnabled}
+          onChange={(mode) => { if (mode === "collaboration") onSwitchToCollaboration?.(); }}
+        />
         <nav className="primary-nav" aria-label={t("sidebar.mainNavigation")}>
           <button
             className="nav-item"
@@ -807,18 +682,6 @@ export function AppSidebar({
             <Search className="icon-lg" />
             <span>{t("sidebar.searchConversations")}</span>
           </button>
-          {groupChatEnabled ? (
-            <button
-              className="nav-item"
-              type="button"
-              aria-current={activeChannelSection === "agents" ? "page" : undefined}
-              onClick={() => onOpenChannelAgents && activateNative(onOpenChannelAgents)}
-              disabled={!state.initialized}
-            >
-              <UsersRound className="icon-lg" />
-              <span>{t("channels.agents")}</span>
-            </button>
-          ) : null}
           <button
             className="nav-item"
             onClick={() => activateNative(onOpenSkillsTab)}
@@ -938,67 +801,6 @@ export function AppSidebar({
                       onRename={onRenameThread}
                       
                     />
-                    {pinnedChannelRooms.map((room) => (
-                      <ChannelRoomSidebarRow
-                        key={room.id}
-                        room={room}
-                        active={room.id === activeChannelRoomID}
-                        pinned
-                        onSelect={onSelectChannelRoom}
-                        onTogglePinned={onToggleChannelRoomPinned}
-                        onArchive={onArchiveChannelRoom}
-                      />
-                    ))}
-                  </SidebarSection>
-                </div>
-              </div>
-            </section>
-          ) : null}
-          {groupChatEnabled ? (
-            <section
-              className="sidebar-functional-group collab-functional-group"
-              aria-label={t("sidebar.collaboration")}
-            >
-              <div className="sidebar-functional-group-body">
-                <div className="collab-section">
-                  <SidebarSection
-                    expanded={!collabCollapsed}
-                    iconKind="collab"
-                    CollapsedIcon={CollabNodesIcon}
-                    ExpandedIcon={CollabNodesIcon}
-                    label={t("sidebar.collaboration")}
-                    ariaLabel={t(collabCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.collaboration") })}
-                    title={t(collabCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.collaboration") })}
-                    unread={collabCollapsed && collabUnreadTotal > 0}
-                    onToggle={() =>
-                      onToggleSidebarSectionCollapsed(SIDEBAR_SECTION_COLLAB)
-                    }
-                    newItemButton={
-                      <button
-                        className="sidebar-functional-action sidebar-section-add-action"
-                        type="button"
-                        aria-label={t("channels.newRoom")}
-                        title={t("channels.newRoom")}
-                        onClick={onCreateChannelRoom ?? onOpenChannels}
-                      >
-                        <Plus aria-hidden="true" />
-                      </button>
-                    }
-                    emptyNote={t("sidebar.collaborationEmpty")}
-                  >
-                    <div className="sidebar-collab-list">
-                      {channelRooms.map((room) => (
-                        <ChannelRoomSidebarRow
-                          key={room.id}
-                          room={room}
-                          active={room.id === activeChannelRoomID}
-                          pinned={false}
-                          onSelect={onSelectChannelRoom}
-                          onTogglePinned={onToggleChannelRoomPinned}
-                          onArchive={onArchiveChannelRoom}
-                        />
-                      ))}
-                    </div>
                   </SidebarSection>
                 </div>
               </div>
@@ -1190,30 +992,5 @@ function threadNavigationNode(
     running: isThreadRunning(thread),
     onActivate,
     onTogglePinned,
-  };
-}
-
-function roomNavigationNode(
-  room: ChannelRoom,
-  parentId: string,
-  activeRoomID: string | undefined,
-  onSelect: ((roomID: string) => void) | undefined,
-  onTogglePinned: ((room: ChannelRoom) => void) | undefined,
-  pinned: boolean,
-): NavigationSourceNode {
-  return {
-    id: `room:${room.id}`,
-    kind: "room",
-    label: room.name,
-    parentId,
-    depth: 2,
-    active: room.id === activeRoomID,
-    pinned,
-    unread: (room.unread_count ?? 0) > 0,
-    disabled: onSelect === undefined,
-    onActivate: onSelect === undefined ? undefined : () => onSelect(room.id),
-    onTogglePinned: onTogglePinned === undefined
-      ? undefined
-      : () => onTogglePinned(room),
   };
 }

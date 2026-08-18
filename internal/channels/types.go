@@ -4,6 +4,7 @@ import "time"
 
 const (
 	MaxRoomMembers  = 32
+	MaxRoomAgents   = 6
 	MaxMessageRunes = 4000
 	DraftExpiry     = 24 * time.Hour
 	MinReminderDur  = time.Minute

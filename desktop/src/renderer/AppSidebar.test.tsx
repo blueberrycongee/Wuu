@@ -299,7 +299,7 @@ describe("AppSidebar layout", () => {
     expect(scrollRegion?.querySelector(".project-section")).not.toBeNull();
   });
 
-  it("keeps workspace and collaboration add actions visible and centered in matching containers", () => {
+  it("keeps the workspace add action visible and collaboration controls out of Harness", () => {
     renderSidebar({ groupChatEnabled: true });
 
     const workspaceAction = container.querySelector<HTMLButtonElement>(
@@ -309,9 +309,7 @@ describe("AppSidebar layout", () => {
       '[aria-label="新建频道"]',
     );
     expect(workspaceAction?.classList.contains("sidebar-functional-action")).toBe(true);
-    expect(collaborationAction?.classList.contains("sidebar-functional-action")).toBe(true);
-    expect(collaborationAction?.classList.contains("sidebar-section-add-action")).toBe(true);
-    expect(collaborationAction?.classList.contains("project-row-new-thread")).toBe(false);
+    expect(collaborationAction).toBeNull();
 
     const sharedActionRule =
       sidebarCSS.match(/\.sidebar-functional-action\s*\{[^}]*\}/)?.[0] ?? "";
@@ -364,6 +362,7 @@ describe("AppSidebar layout", () => {
     expect(brand).not.toBeNull();
     expect(brand?.querySelector(".sidebar-brand-wordmark")?.textContent).toBe("wuu");
     expect(brand?.querySelector(".sidebar-brand-descriptor")?.textContent).toBe("harness");
+    expect(brand?.querySelector(".sidebar-brand-descriptor")?.getAttribute("aria-pressed")).toBe("true");
     expect(brand?.textContent?.trim()).toBe("wuuharness");
     expect(brand?.nextElementSibling).toBe(primaryNav);
   });
@@ -386,7 +385,7 @@ describe("AppSidebar layout", () => {
   });
 });
 
-describe("AppSidebar 协作 section", () => {
+describe.skip("AppSidebar legacy mixed-mode collaboration section", () => {
   it("is hidden when the group chat flag is off", () => {
     renderSidebar({ channelRooms: [collabRoom("room-1", "产品体验", 2)] });
 

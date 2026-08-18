@@ -848,6 +848,9 @@ func (s *Service) CreateRoom(ctx context.Context, params CreateRoomParams) (Room
 	if err != nil {
 		return Room{}, err
 	}
+	if roomAgentCount(members) > MaxRoomAgents {
+		return Room{}, fmt.Errorf("room agent limit is %d", MaxRoomAgents)
+	}
 	if params.Kind == RoomDM && len(members) != 2 {
 		return Room{}, errors.New("dm rooms require exactly two members")
 	}
@@ -1070,6 +1073,13 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 		if err := rows.Err(); err != nil {
 			return Room{}, fmt.Errorf("list room agent members for update: %w", err)
 		}
+		if len(desiredAgents) > MaxRoomAgents {
+			for agentID := range desiredAgents {
+				if _, exists := existingAgents[agentID]; !exists {
+					return Room{}, fmt.Errorf("room agent limit is %d", MaxRoomAgents)
+				}
+			}
+		}
 		for agentID := range existingAgents {
 			if _, keep := desiredAgents[agentID]; keep {
 				continue
@@ -1255,6 +1265,16 @@ func normalizeMembers(input []RoomMember, createdBy string) ([]RoomMember, error
 		return nil, fmt.Errorf("room member limit is %d", MaxRoomMembers)
 	}
 	return members, nil
+}
+
+func roomAgentCount(members []RoomMember) int {
+	count := 0
+	for _, member := range members {
+		if member.MemberType == MemberAgent {
+			count++
+		}
+	}
+	return count
 }
 
 func randomID(prefix string, byteCount int) (string, error) {

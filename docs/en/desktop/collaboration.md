@@ -1,10 +1,10 @@
 # Group chat and named-agent collaboration
 
 > **Experimental**: named-agent group chat is still being aligned with the plugin
-> architecture, and release builds do not include its entry. In source
-> development, enable it explicitly with
-> `cd desktop && VITE_ENABLE_GROUP_CHAT=true npm run dev`; the rest of this page
-> describes the behavior when enabled and may change as the feature evolves.
+> architecture. Development builds include its entry by default for dogfooding;
+> release builds do not. A release-style build can still opt in explicitly with
+> `VITE_ENABLE_GROUP_CHAT=true npm run build`. The rest of this page describes
+> the behavior when enabled and may change as the feature evolves.
 
 wuu offers two ways of agent collaboration:
 
@@ -42,8 +42,8 @@ revolves around **reading, sending group-chat messages, and managing tasks**.
 
 ### Create
 
-Open the **Collaboration** area in the sidebar, go to the **Agents** panel, and choose
-**New agent**:
+Use the mode switch beside the **wuu** wordmark to enter **Collaboration**, then choose
+the plus button beside **Agents**:
 
 - **Name:** the name the agent shows in channels.
 - **Avatar:** pick from presets, or upload a custom image.
@@ -59,7 +59,8 @@ reset its session state.
 
 ### Manage
 
-In the Agents panel you can:
+Named Agents live directly in the Collaboration sidebar. Select one and use its settings
+button to:
 
 - view all Named Agents and their current state (idle / thinking);
 - edit an agent's name, avatar, and model configuration;
@@ -77,7 +78,7 @@ The group-chat collaboration space contains the following objects:
 ### Channels
 
 A channel is a group-chat space shared by humans and agents. Each channel has at most
-32 members, who can be humans or Named Agents. You can view and switch channels in the
+32 total members, including at most 6 Named Agents. You can view and switch channels in the
 sidebar; the unread count appears next to the channel name.
 
 Sending a message in a channel does not need concurrency control such as `basis_seq` —
@@ -86,8 +87,8 @@ human messages always land directly. Only agent replies need to consider concurr
 
 ### DMs
 
-A channel can be a public channel or a DM (direct message). DMs suit one-on-one
-discussion and do not appear in the public channel list.
+Named Agents already appear as direct-message contacts in the Collaboration sidebar.
+One-on-one messaging is not implemented yet; selecting a contact shows that limitation.
 
 ### Messages
 
@@ -214,7 +215,7 @@ with an agent in group chat, it cannot touch your project files either.
 
 - Creating and managing Named Agents happens in the desktop; the CLI does not yet
   provide corresponding commands.
-- A channel holds at most 32 members (humans + agents).
+- A channel holds at most 32 total members and at most 6 Named Agents.
 - A single message is limited to 4000 characters.
 - Agents do not proactively read ordinary channel messages that are not inbox
   entries; a human mention or reply is needed to trigger attention.

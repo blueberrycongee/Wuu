@@ -53,6 +53,7 @@ const CHANNEL_SPLIT_COLLAPSED_WIDTH = 44;
 const CHANNEL_SPLIT_WIDTH_STEP = 16;
 const THREAD_PANEL_WIDTH_KEY = "wuu.channels.threadPanelWidth";
 const THREAD_PANEL_MIN_WIDTH = 320;
+const MAX_ROOM_AGENTS = 6;
 const THREAD_PANEL_MAX_WIDTH = 720;
 const THREAD_PANEL_DEFAULT_WIDTH = 420;
 const THREAD_PANEL_WIDTH_STEP = 24;
@@ -317,7 +318,7 @@ function taskStateKey(state?: string): "channels.taskState.open" | "channels.tas
   return "channels.taskState.open";
 }
 
-export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = [], onSectionChange, selectedRoomID: controlledRoomID, onSelectRoom, onRoomRead, onOpenMemoryDirectory, composerDraft, onComposerDraftChange, newRoomRequest, onNewRoomRequestHandled }: {
+export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = [], onSectionChange, selectedRoomID: controlledRoomID, onSelectRoom, onRoomRead, onOpenMemoryDirectory, composerDraft, onComposerDraftChange, newRoomRequest, onNewRoomRequestHandled, newAgentRequest, onNewAgentRequestHandled, editAgentRequestID, onEditAgentRequestHandled }: {
   initialized?: InitializeResult;
   section?: ChannelSection;
   archivedRoomIDs?: string[];
@@ -343,6 +344,10 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
   // dialog; the dialog itself stays inside this view.
   newRoomRequest?: number;
   onNewRoomRequestHandled?: () => void;
+  newAgentRequest?: number;
+  onNewAgentRequestHandled?: () => void;
+  editAgentRequestID?: string;
+  onEditAgentRequestHandled?: () => void;
 }): JSX.Element {
   const { formatDate, locale, t } = useI18n();
   const [agents, setAgents] = useState<NamedAgent[]>([]);
@@ -527,6 +532,28 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
     openNewRoom();
     onNewRoomRequestHandled?.();
   }, [newRoomRequest]);
+
+  useEffect(() => {
+    if (!newAgentRequest) return;
+    setEditingAgentID("");
+    setAgentName("");
+    setAgentAvatarKey(randomAgentAvatarKey());
+    setAgentAvatarImage("");
+    setAgentAvatarError("");
+    setAgentModel("");
+    setAgentEffort("");
+    setSetupPanel("agent");
+    onNewAgentRequestHandled?.();
+  }, [newAgentRequest]);
+
+  useEffect(() => {
+    if (!editAgentRequestID) return;
+    const agent = agents.find((candidate) => candidate.id === editAgentRequestID);
+    if (!agent) return;
+    loadAgentDraft(agent);
+    setSetupPanel("agent");
+    onEditAgentRequestHandled?.();
+  }, [agents, editAgentRequestID]);
 
   useEffect(() => {
     setActiveThreadRootID("");
@@ -1181,7 +1208,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
     setRoomAgentIDs((current) =>
       current.includes(agentID)
         ? current.filter((candidate) => candidate !== agentID)
-        : [...current, agentID],
+        : current.length < MAX_ROOM_AGENTS ? [...current, agentID] : current,
     );
   }
 
@@ -1189,7 +1216,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
     setRoomMemberSelectionIDs((current) =>
       current.includes(agentID)
         ? current.filter((candidate) => candidate !== agentID)
-        : [...current, agentID],
+        : roomAgentIDs.length + current.length < MAX_ROOM_AGENTS ? [...current, agentID] : current,
     );
   }
 
@@ -2068,7 +2095,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                   className="channel-room-member-add"
                   type="button"
                   onClick={() => openRoomMemberMode("add")}
-                  disabled={agents.every((agent) => roomAgentIDs.includes(agent.id))}
+                  disabled={roomAgentIDs.length >= MAX_ROOM_AGENTS || agents.every((agent) => roomAgentIDs.includes(agent.id))}
                 >
                   <Plus className="icon" aria-hidden="true" />
                   <span>{t("channels.addMember")}</span>
@@ -2132,7 +2159,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 <input value={roomName} onChange={(event) => setRoomName(event.currentTarget.value)} autoFocus placeholder={t("channels.newRoom")} />
               </label>
             </div>
-            <ChannelMemberPicker agents={agents} selectedAgentIDs={roomAgentIDs} onToggle={toggleRoomAgent} />
+            <ChannelMemberPicker agents={agents} selectedAgentIDs={roomAgentIDs} onToggle={toggleRoomAgent} maxSelected={MAX_ROOM_AGENTS} />
           </div>
         )}
       />
@@ -2160,6 +2187,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
               selectedAgentIDs={roomMemberSelectionIDs}
               onToggle={toggleRoomMemberSelection}
               label={t("channels.availableAgents")}
+              maxSelected={Math.max(0, MAX_ROOM_AGENTS - roomAgentIDs.length)}
             />
           </div>
         ) : null}
