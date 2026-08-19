@@ -1,6 +1,5 @@
 import {
   Archive,
-  ChevronRight,
   Clock,
   FileText,
   Folder,
@@ -17,13 +16,9 @@ import {
   Settings,
 } from "lucide-react";
 import {
-  type CSSProperties,
-  type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
   type RefObject,
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -41,12 +36,9 @@ import {
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import {
-  arrayMove,
   SortableContext,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import type { ChannelRoom, DesktopProject } from "../shared/protocol";
 import {
   isThreadRunning,
@@ -57,7 +49,14 @@ import {
 import type { ConversationFixtureKind } from "./ConversationFixtures";
 import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
 import { PinnedThreadList, ProjectGroup } from "./ThreadSidebar";
-import { SidebarSection, SidebarSectionDragHandleContext } from "./SidebarSection";
+import { SidebarSection } from "./SidebarSection";
+import {
+  SidebarSectionDragPreview,
+  SortableSidebarSection,
+  reorderSidebarSections,
+  type SidebarSectionHeaderInfo,
+} from "./SortableSidebarSection";
+export { reorderSidebarSections } from "./SortableSidebarSection";
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
 import { PluginIcon } from "./PublicIcon";
 import { AppModeSwitch } from "./AppModeSwitch";
@@ -156,18 +155,6 @@ export function reconcileSidebarSectionOrder(
  *     (e.g. the active section was removed from the reconcile result
  *     while the drag was in flight).
  */
-export function reorderSidebarSections(
-  order: string[],
-  activeId: string,
-  overId: string | null | undefined,
-): string[] {
-  if (!overId || activeId === overId) return order;
-  const from = order.indexOf(activeId);
-  const to = order.indexOf(overId);
-  if (from === -1 || to === -1) return order;
-  return arrayMove(order, from, to);
-}
-
 // Context that lets SidebarSection — a shared component used by both
 // the non-sortable pinned section and the sortable Agents / 对话 / 项目
 // sections — pick up the dnd-kit activator listeners when it's inside a
@@ -179,110 +166,6 @@ export function reorderSidebarSections(
 // (SidebarSection) and provider side (SortableSection, below) share a
 // single import without a circular type dependency. SidebarSection
 // also exports the hook SidebarSection uses to read the handle.
-
-type SectionHeaderInfo = {
-  label: string;
-  iconKind: string;
-  CollapsedIcon: React.ComponentType<{ className?: string }>;
-  ExpandedIcon: React.ComponentType<{ className?: string }>;
-};
-
-function SectionDragPreview({
-  info,
-}: {
-  info: SectionHeaderInfo;
-}): JSX.Element {
-  // Header-only preview rendered inside <DragOverlay>. Mirrors the
-  // SidebarSection anatomy (icon pair + label + chevron) so the floating
-  // preview reads as the same row the user grabbed. No toggle button —
-  // DragOverlay should be inert while dragging.
-  return (
-    <div className="sidebar-section-drag-overlay">
-      <div className="sidebar-section-row project-row expanded">
-        <span className="project-row-icon">
-          <info.CollapsedIcon
-            className="icon-lg project-row-icon-state collapsed"
-            data-project-icon-kind={info.iconKind}
-            data-project-icon-state="collapsed"
-            aria-hidden="true"
-          />
-          <info.ExpandedIcon
-            className="icon-lg project-row-icon-state expanded"
-            data-project-icon-kind={info.iconKind}
-            aria-hidden="true"
-          />
-        </span>
-        <span className="project-row-label">
-          <span className="project-row-name">{info.label}</span>
-          <ChevronRight
-            className="project-row-chevron icon"
-            aria-hidden="true"
-          />
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function SortableSection({
-  id,
-  className,
-  ariaLabel,
-  headerInfo,
-  registerHeaderInfo,
-  children,
-}: {
-  id: string;
-  className: string;
-  ariaLabel: string;
-  headerInfo: SectionHeaderInfo;
-  // Called on every render with the current id → info mapping so the
-  // DragOverlay can render the right header while a drag is in flight.
-  // Kept as a callback rather than a side-effect of mounting because
-  // sectionOrder is reconciled on every project-list change and stale
-  // ids must drop out of the lookup cleanly.
-  registerHeaderInfo: (id: string, info: SectionHeaderInfo | null) => void;
-  children: ReactNode;
-}): JSX.Element {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
-  // Depend on the individual fields (not the object) so the parent's
-  // per-render headerInfo literal doesn't re-run the effect every render.
-  const { label, iconKind, CollapsedIcon, ExpandedIcon } = headerInfo;
-  useEffect(() => {
-    registerHeaderInfo(id, { label, iconKind, CollapsedIcon, ExpandedIcon });
-    return () => {
-      registerHeaderInfo(id, null);
-    };
-  }, [id, label, iconKind, CollapsedIcon, ExpandedIcon, registerHeaderInfo]);
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-  const dragHandleProps: HTMLAttributes<HTMLButtonElement> = {
-    ...attributes,
-    ...listeners,
-  };
-  return (
-    <section
-      ref={setNodeRef}
-      className={className}
-      aria-label={ariaLabel}
-      data-section-id={id}
-      style={style}
-    >
-      <SidebarSectionDragHandleContext.Provider value={{ dragHandleProps, isDragging }}>
-        {children}
-      </SidebarSectionDragHandleContext.Provider>
-    </section>
-  );
-}
 
 export function AppSidebar({
   state,
@@ -464,9 +347,9 @@ export function AppSidebar({
   // render the right header for the currently dragged section. Using a
   // ref (not state) avoids an extra render when a child mounts and
   // keeps the lookup cheap during high-frequency drag pointer moves.
-  const sectionHeaderInfoByIDRef = useRef<Map<string, SectionHeaderInfo>>(new Map());
+  const sectionHeaderInfoByIDRef = useRef<Map<string, SidebarSectionHeaderInfo>>(new Map());
   const registerSectionHeaderInfo = useCallback(
-    (id: string, info: SectionHeaderInfo | null): void => {
+    (id: string, info: SidebarSectionHeaderInfo | null): void => {
       if (info === null) {
         sectionHeaderInfoByIDRef.current.delete(id);
       } else {
@@ -879,7 +762,7 @@ export function AppSidebar({
               ? t("sidebar.project")
               : t("sidebar.projectNamed", { name: project.name });
             return (
-              <SortableSection
+              <SortableSidebarSection
                 key={key}
                 id={key}
                 className="project-section"
@@ -919,7 +802,7 @@ export function AppSidebar({
                   onRemoveProject={onRemoveProject}
                   onRelocateProject={onRelocateProject}
                 />
-              </SortableSection>
+              </SortableSidebarSection>
             );
                       })}
                     </div>
@@ -933,7 +816,7 @@ export function AppSidebar({
                 }}
               >
                 {draggingSectionInfo ? (
-                  <SectionDragPreview info={draggingSectionInfo} />
+                  <SidebarSectionDragPreview info={draggingSectionInfo} />
                 ) : null}
               </DragOverlay>
             </DndContext>
