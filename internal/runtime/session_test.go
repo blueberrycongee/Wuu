@@ -1700,7 +1700,7 @@ func TestNewSessionUsesConfiguredModelLimitForContextWindow(t *testing.T) {
 	}
 }
 
-func TestNewSessionUnknownModelDisablesProactiveContextWindow(t *testing.T) {
+func TestNewSessionUnknownModelUsesConservativeProactiveContextWindow(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("WUU_HOME", filepath.Join(home, "state"))
@@ -1726,12 +1726,20 @@ func TestNewSessionUnknownModelDisablesProactiveContextWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	t.Cleanup(func() {
+		if _, cleanupErr := rt.Cleanup(); cleanupErr != nil {
+			t.Errorf("Cleanup: %v", cleanupErr)
+		}
+	})
 
-	if rt.StreamRunner.ContextWindowOverride != 0 {
-		t.Fatalf("ContextWindowOverride = %d, want 0 for unknown BYOK model", rt.StreamRunner.ContextWindowOverride)
+	if rt.StreamRunner.ContextWindowOverride != 64_000 {
+		t.Fatalf("ContextWindowOverride = %d, want conservative 64000 for unknown BYOK model", rt.StreamRunner.ContextWindowOverride)
 	}
 	if rt.StreamRunner.MaxInputTokens != 0 {
 		t.Fatalf("MaxInputTokens = %d, want 0 for unknown BYOK model", rt.StreamRunner.MaxInputTokens)
+	}
+	if rt.StreamRunner.OutputReserveTokens != 16_000 || rt.StreamRunner.CompactThresholdTokens != 40_000 {
+		t.Fatalf("unexpected unknown-model compact budget: output=%d threshold=%d", rt.StreamRunner.OutputReserveTokens, rt.StreamRunner.CompactThresholdTokens)
 	}
 }
 

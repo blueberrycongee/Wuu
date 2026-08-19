@@ -634,6 +634,37 @@ describe("SettingsView provider configuration", () => {
 });
 
 describe("SettingsView advanced settings", () => {
+  it("labels an unknown model's conservative context estimate", async () => {
+    installBuildInfoStub({
+      core: undefined,
+      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
+    });
+    const { rootText } = renderSettings({
+      initialPage: "advanced",
+      initialized: baseInitialized({
+        provider: "custom",
+        model: "private-unknown-model",
+        advanced_settings: {
+          max_steps: 0,
+          max_context_tokens: 0,
+          temperature: 0,
+          disable_auto_compact: false,
+          compact_keep_recent_tokens: 20000,
+          context_window_tokens: 64000,
+          context_window_source: "conservative_fallback",
+          output_reserve_tokens: 16000,
+          compact_threshold_tokens: 40000,
+        },
+      }),
+      onAdvancedSave: vi.fn().mockResolvedValue(undefined),
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(rootText()).toContain("模型未识别，按 64k 保守估算（可手动覆盖）");
+    expect(rootText()).toContain("64,000");
+  });
+
   it("renders compaction controls and saves each field on commit", async () => {
     installBuildInfoStub({
       core: undefined,

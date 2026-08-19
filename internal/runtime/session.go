@@ -1679,9 +1679,9 @@ func ResolveModelBudget(model string, provider config.ProviderConfig, agentOverr
 	return modelbudget.Resolve(model, provider, agentOverride)
 }
 
-// ResolveContextWindow resolves the trusted model context size used for
-// proactive auto-compact. A zero return means the model limit is unknown; the
-// runtime should skip proactive compaction and rely on provider overflow errors.
+// ResolveContextWindow resolves the operational model context size used for
+// proactive auto-compact. Unknown models receive modelbudget's conservative
+// estimate so they do not wait for a provider overflow before compacting.
 func ResolveContextWindow(model string, provider config.ProviderConfig, agentOverride int) int {
 	return ResolveModelBudget(model, provider, agentOverride).ContextWindowTokens
 }

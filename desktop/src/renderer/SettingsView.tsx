@@ -2979,6 +2979,10 @@ function advancedContextSourceLabel(source: string | undefined, t: Translate): s
       return t("advanced.sourceInputLimit");
     case "agent_max_context_tokens":
       return t("advanced.sourceManualLimit");
+    case "model_registry":
+      return t("advanced.sourceModelRegistry");
+    case "conservative_fallback":
+      return t("advanced.sourceConservativeFallback");
     case "unknown":
     case "":
     case undefined:

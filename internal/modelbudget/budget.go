@@ -5,6 +5,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/modelcatalog"
+	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
 type Source string
@@ -15,6 +16,8 @@ const (
 	SourceProviderModelLimit    Source = "provider_model_limit"
 	SourceProviderInputLimit    Source = "provider_input_limit"
 	SourceAgentOverride         Source = "agent_max_context_tokens"
+	SourceModelRegistry         Source = "model_registry"
+	SourceConservativeFallback  Source = "conservative_fallback"
 )
 
 const CodexSubscriptionGPT5InputCap = 272_000
@@ -56,7 +59,7 @@ func Resolve(model string, provider config.ProviderConfig, agentOverride int) Bu
 
 	context, source := resolveContextWindow(model, apiModel, provider, agentOverride)
 	input := resolveInputWindow(model, apiModel, provider)
-	output := configuredModelOutputLimit(model, provider)
+	output := resolveOutputLimit(model, apiModel, provider)
 	outputReserve := output
 	// The prompt ceiling is the context window, clamped by a published
 	// input cap when the channel has one (e.g. Codex subscription 272k).
@@ -89,7 +92,7 @@ func Resolve(model string, provider config.ProviderConfig, agentOverride int) Bu
 		UsableInputTokens:      usable,
 		CompactThresholdTokens: usable,
 		ContextWindowSource:    source,
-		ContextWindowKnown:     source != SourceUnknown && context > 0,
+		ContextWindowKnown:     source != SourceUnknown && source != SourceConservativeFallback && context > 0,
 	}
 }
 
@@ -118,7 +121,28 @@ func resolveContextWindow(model, apiModel string, provider config.ProviderConfig
 	if agentOverride > 0 {
 		return agentOverride, SourceAgentOverride
 	}
-	return 0, SourceUnknown
+	// Prefer the provider-facing API ID over a local alias. Curated indexes can
+	// contain short generic names (for example "fast"), but the API ID is the
+	// model that actually owns the context contract.
+	for _, candidate := range []string{apiModel, model} {
+		if window, ok := providers.KnownContextWindowFor(candidate); ok {
+			return window, SourceModelRegistry
+		}
+	}
+	// Keep proactive and reactive compaction usable even for a brand-new or
+	// private model. This is deliberately marked as an estimate rather than
+	// trusted metadata so callers can explain it and users can override it.
+	return providers.ContextWindowFor(model), SourceConservativeFallback
+}
+
+func resolveOutputLimit(model, apiModel string, provider config.ProviderConfig) int {
+	if limit := configuredModelOutputLimit(model, provider); limit > 0 {
+		return limit
+	}
+	if strings.TrimSpace(apiModel) != "" {
+		return providers.MaxOutputTokensFor(apiModel)
+	}
+	return providers.MaxOutputTokensFor(model)
 }
 
 func resolveInputWindow(model, apiModel string, provider config.ProviderConfig) int {

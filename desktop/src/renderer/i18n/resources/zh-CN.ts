@@ -412,6 +412,8 @@ export const zhCN = {
   "advanced.sourceModelConfig": "来自模型配置",
   "advanced.sourceInputLimit": "来自当前通道输入上限",
   "advanced.sourceManualLimit": "来自手动上限",
+  "advanced.sourceModelRegistry": "来自内置模型目录",
+  "advanced.sourceConservativeFallback": "模型未识别，按 64k 保守估算（可手动覆盖）",
   "advanced.sourceUnknown": "未识别，主动压缩只依赖服务错误恢复",
   "mcp.authCodeNamed": "{name} 授权码",
   "mcp.authCode": "授权码",

@@ -20,9 +20,9 @@ import (
 //     family rules ("claude-sonnet" → 200k) that catch any vendor's
 //     proxy-renamed variant.
 //
-// If neither source recognizes the model, ok is false. Agent runtimes use this
-// path for proactive auto-compact so BYOK models with unknown limits do not get
-// silently treated as 64k-context models.
+// If neither source recognizes the model, ok is false. Budget resolution uses
+// this distinction to report trusted registry metadata separately from its
+// explicit conservative fallback.
 func KnownContextWindowFor(model string) (window int, ok bool) {
 	if model == "" {
 		return 0, false
@@ -60,9 +60,9 @@ func KnownContextWindowFor(model string) (window int, ok bool) {
 }
 
 // ContextWindowFor returns the context window size in tokens for the given model
-// identifier. Unknown models fall back to defaultContextWindow for legacy callers
-// and display code. Runtime proactive auto-compact should use
-// KnownContextWindowFor instead so unknown BYOK models remain reactive-only.
+// identifier. Unknown models fall back to defaultContextWindow. Callers that
+// need to distinguish trusted metadata from this estimate should use
+// KnownContextWindowFor first.
 func ContextWindowFor(model string) int {
 	if w, ok := KnownContextWindowFor(model); ok {
 		return w

@@ -6,32 +6,32 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 )
 
-func TestResolveMiniMaxM3WithoutProviderLimitStaysUnknown(t *testing.T) {
+func TestResolveMiniMaxM3WithoutProviderLimitUsesRegistry(t *testing.T) {
 	budget := Resolve("MiniMax-M3", config.ProviderConfig{Type: "anthropic"}, 0)
-	if budget.ContextWindowTokens != 0 {
-		t.Fatalf("ContextWindowTokens = %d, want 0", budget.ContextWindowTokens)
+	if budget.ContextWindowTokens != 1_000_000 {
+		t.Fatalf("ContextWindowTokens = %d, want 1000000", budget.ContextWindowTokens)
 	}
-	if budget.ContextWindowSource != SourceUnknown || budget.ContextWindowKnown {
+	if budget.ContextWindowSource != SourceModelRegistry || !budget.ContextWindowKnown {
 		t.Fatalf("unexpected context source: source=%q known=%v", budget.ContextWindowSource, budget.ContextWindowKnown)
 	}
-	if budget.OutputReserveTokens != 0 {
-		t.Fatalf("OutputReserveTokens = %d, want 0 without provider metadata", budget.OutputReserveTokens)
+	if budget.OutputReserveTokens != 131_072 {
+		t.Fatalf("OutputReserveTokens = %d, want registry fallback 131072", budget.OutputReserveTokens)
 	}
-	if budget.CompactThresholdTokens != 0 {
-		t.Fatalf("CompactThresholdTokens = %d, want 0", budget.CompactThresholdTokens)
+	if budget.CompactThresholdTokens != 967_000 {
+		t.Fatalf("CompactThresholdTokens = %d, want 967000", budget.CompactThresholdTokens)
 	}
 }
 
-func TestResolveUnknownModelStaysUnknown(t *testing.T) {
+func TestResolveUnknownModelUsesConservativeOperationalBudget(t *testing.T) {
 	budget := Resolve("private-unknown-model", config.ProviderConfig{Type: "anthropic"}, 0)
-	if budget.ContextWindowTokens != 0 || budget.ContextWindowKnown {
-		t.Fatalf("unknown model should not get a synthetic context window: %+v", budget)
+	if budget.ContextWindowTokens != 64_000 || budget.ContextWindowKnown {
+		t.Fatalf("unknown model should get an explicitly estimated context window: %+v", budget)
 	}
-	if budget.ContextWindowSource != SourceUnknown {
-		t.Fatalf("ContextWindowSource = %q, want %q", budget.ContextWindowSource, SourceUnknown)
+	if budget.ContextWindowSource != SourceConservativeFallback {
+		t.Fatalf("ContextWindowSource = %q, want %q", budget.ContextWindowSource, SourceConservativeFallback)
 	}
-	if budget.UsableInputTokens != 0 || budget.CompactThresholdTokens != 0 {
-		t.Fatalf("unknown model should not synthesize compact thresholds: %+v", budget)
+	if budget.OutputReserveTokens != 16_000 || budget.UsableInputTokens != 40_000 || budget.CompactThresholdTokens != 40_000 {
+		t.Fatalf("unexpected conservative compact budget: %+v", budget)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestResolveProviderOverrideWins(t *testing.T) {
 	}
 }
 
-func TestResolveAliasDoesNotUseAPIModelRegistry(t *testing.T) {
+func TestResolveAliasUsesAPIModelRegistry(t *testing.T) {
 	provider := config.ProviderConfig{
 		Type: "anthropic",
 		Models: map[string]config.ProviderModelConfig{
@@ -90,11 +90,11 @@ func TestResolveAliasDoesNotUseAPIModelRegistry(t *testing.T) {
 	if budget.APIModel != "MiniMax-M3" {
 		t.Fatalf("APIModel = %q, want MiniMax-M3", budget.APIModel)
 	}
-	if budget.ContextWindowTokens != 0 || budget.ContextWindowSource != SourceUnknown {
-		t.Fatalf("alias should not infer API model context registry: %+v", budget)
+	if budget.ContextWindowTokens != 1_000_000 || budget.ContextWindowSource != SourceModelRegistry || !budget.ContextWindowKnown {
+		t.Fatalf("alias should infer API model context registry: %+v", budget)
 	}
-	if budget.OutputReserveTokens != 0 {
-		t.Fatalf("alias should not infer API model output reserve, got %+v", budget)
+	if budget.OutputReserveTokens != 131_072 {
+		t.Fatalf("alias should infer API model output reserve, got %+v", budget)
 	}
 }
 
@@ -118,13 +118,13 @@ func TestResolveAliasUsesAPIModelCodexCap(t *testing.T) {
 	}
 }
 
-func TestEffectiveContextWindowUsesCodexInputCapWhenModelWindowUnknown(t *testing.T) {
+func TestEffectiveContextWindowUsesCodexInputCapBelowRegistryWindow(t *testing.T) {
 	budget := Resolve("gpt-5.5", config.ProviderConfig{
 		Type:  "openai-codex",
 		Model: "gpt-5.5",
 	}, 0)
-	if budget.ContextWindowTokens != 0 || budget.ContextWindowSource != SourceUnknown {
-		t.Fatalf("model context window should stay unknown: %+v", budget)
+	if budget.ContextWindowTokens != 400_000 || budget.ContextWindowSource != SourceModelRegistry {
+		t.Fatalf("model context window should come from the registry: %+v", budget)
 	}
 	got, source := budget.EffectiveContextWindow()
 	if got != CodexSubscriptionGPT5InputCap || source != SourceProviderInputLimit {

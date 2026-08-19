@@ -1178,9 +1178,9 @@ func TestRunToolLoop_ContextOverflowStopsWhenCompactUnchanged(t *testing.T) {
 	}
 }
 
-func TestRunToolLoop_ContextOverflowOnlyRetriesOnce(t *testing.T) {
+func TestRunToolLoop_ContextOverflowAllowsOneMoreChangedCompaction(t *testing.T) {
 	overflow := &providers.HTTPError{StatusCode: 400, Body: "context_length_exceeded", ContextOverflow: true}
-	step := &fakeStep{results: []StepResult{{}, {}}, errs: []error{overflow, overflow}}
+	step := &fakeStep{results: []StepResult{{}, {}, {Content: "ok"}}, errs: []error{overflow, overflow, nil}}
 	cfg := LoopConfig{Model: "m", Compact: func(_ context.Context, m []providers.ChatMessage) ([]providers.ChatMessage, error) { return m[1:], nil }}
 	history := []providers.ChatMessage{
 		userMsg("old"),
@@ -1188,15 +1188,37 @@ func TestRunToolLoop_ContextOverflowOnlyRetriesOnce(t *testing.T) {
 		userMsg("big"),
 	}
 
+	result, err := RunToolLoop(context.Background(), history, cfg, step)
+	if err != nil {
+		t.Fatalf("expected second changed compaction to recover, got %v", err)
+	}
+	if result.Content != "ok" || len(step.calls) != 3 {
+		t.Fatalf("expected two bounded retries and success, result=%q calls=%d", result.Content, len(step.calls))
+	}
+}
+
+func TestRunToolLoop_ContextOverflowRecoveryRemainsBounded(t *testing.T) {
+	overflow := &providers.HTTPError{StatusCode: 400, Body: "context_length_exceeded", ContextOverflow: true}
+	step := &fakeStep{results: []StepResult{{}, {}, {}}, errs: []error{overflow, overflow, overflow}}
+	compactCalls := 0
+	cfg := LoopConfig{Model: "m", Compact: func(_ context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+		compactCalls++
+		return messages[1:], nil
+	}}
+	history := []providers.ChatMessage{
+		userMsg("oldest"),
+		{Role: "assistant", Content: "old answer"},
+		userMsg("newer"),
+		{Role: "assistant", Content: "newer answer"},
+		userMsg("big"),
+	}
+
 	_, err := RunToolLoop(context.Background(), history, cfg, step)
-	if err == nil {
-		t.Fatal("expected second overflow to surface")
+	if err == nil || !providers.IsContextOverflow(err) {
+		t.Fatalf("expected the third overflow to surface, got %v", err)
 	}
-	if !providers.IsContextOverflow(err) {
-		t.Fatalf("expected context-overflow error, got %v", err)
-	}
-	if len(step.calls) != 2 {
-		t.Fatalf("expected one retry after changed compact, got %d calls", len(step.calls))
+	if compactCalls != maxReactiveCompactAttempts || len(step.calls) != maxReactiveCompactAttempts+1 {
+		t.Fatalf("recovery was not bounded: compact calls=%d step calls=%d", compactCalls, len(step.calls))
 	}
 }
 

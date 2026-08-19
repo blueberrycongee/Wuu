@@ -414,6 +414,8 @@ export const enUS = {
   "advanced.sourceModelConfig": "From the model configuration",
   "advanced.sourceInputLimit": "From the current channel input limit",
   "advanced.sourceManualLimit": "From the manual limit",
+  "advanced.sourceModelRegistry": "From the built-in model registry",
+  "advanced.sourceConservativeFallback": "Unknown model; conservatively estimated at 64k (you can override it)",
   "advanced.sourceUnknown": "Unknown; proactive compaction will only recover from provider errors",
   "mcp.authCodeNamed": "{name} authorization code",
   "mcp.authCode": "Authorization code",

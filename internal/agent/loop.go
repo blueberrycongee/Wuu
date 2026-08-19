@@ -143,16 +143,16 @@ func RunToolLoop(
 
 	var (
 		totalIn, totalOut, totalCacheCreation, totalCacheRead int
-		// Reactive auto-compact (overflow recovery) runs at most once
-		// per Run; if a single compaction isn't enough, surfacing the
-		// error is more honest than silently looping. Proactive compact
+		// Reactive auto-compact (overflow recovery) is bounded but may make a
+		// second, more aggressive pass when the first changed history still
+		// does not fit. Proactive compact
 		// runs before provider requests, including mid-turn continuation
 		// requests after completed tool results. A failed or no-op
 		// proactive attempt suppresses further proactive attempts for
 		// this Run so the loop cannot spin on an unhelpful compactor.
-		overflowCompacted   bool
-		proactiveSuppressed bool
-		historyRewritten    bool
+		overflowCompactAttempts int
+		proactiveSuppressed     bool
+		historyRewritten        bool
 		// Tracks current context fill so we can decide whether to
 		// proactively compact before the next round. Uses
 		// response.usage as ground truth + delta estimation for
@@ -510,13 +510,13 @@ func RunToolLoop(
 		result, err := step.Execute(ctx, req)
 		lastAgentOperationID = req.Operation.ID
 		if err != nil {
-			// Context window exceeded — try a one-shot compaction of
+			// Context window exceeded — try bounded compaction of
 			// older history and re-issue. Provider-agnostic; the
 			// CompactFn carries whatever client/model knowledge it
 			// needs. This is the reactive backstop for the case
 			// where our proactive estimate undercounted.
-			if effectiveCompact != nil && providers.IsContextOverflow(err) && !overflowCompacted {
-				overflowCompacted = true // gate first; never retry twice
+			if effectiveCompact != nil && providers.IsContextOverflow(err) && overflowCompactAttempts < maxReactiveCompactAttempts {
+				overflowCompactAttempts++ // gate first so failures cannot spin
 				usageBefore := usage.Breakdown()
 				before := usageBefore.Total()
 				msgsBefore := len(messages)
@@ -826,6 +826,11 @@ func compactAttemptWithUsage(info CompactAttemptInfo, usage UsageBreakdown) Comp
 	info.UsageAdjustment = usage.Adjustment
 	return info
 }
+
+// maxReactiveCompactAttempts allows one follow-up shrink when provider-side
+// counting proves the first estimate was still too generous, while keeping a
+// hard bound against retry loops.
+const maxReactiveCompactAttempts = 2
 
 // proactiveCompactThreshold returns the absolute token count at which
 // the loop should run a proactive compact pass, or 0 if proactive
