@@ -39,6 +39,33 @@ func TestCreateAndList(t *testing.T) {
 	}
 }
 
+func TestHistoryContentPartsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	sess, err := CreateWithMetadata(dir, "thread-content-parts", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := json.RawMessage(`[{"type":"pasted_text","text":"pasted body\n"},{"type":"text","text":"question"}]`)
+	if err := AppendHistoryRecord(dir, sess.ID, HistoryRecord{
+		Role:         "user",
+		Content:      "pasted body\nquestion",
+		ContentParts: want,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := LoadHistoryRecords(dir, sess.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("history record count = %d, want 1", len(records))
+	}
+	if string(records[0].ContentParts) != string(want) {
+		t.Fatalf("ContentParts = %s, want %s", records[0].ContentParts, want)
+	}
+}
+
 func TestDirUsesUserHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("WUU_HOME", "")

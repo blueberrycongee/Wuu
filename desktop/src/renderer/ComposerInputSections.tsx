@@ -34,6 +34,7 @@ import { composerStatusIsLiveProgress, composerStatusText } from "./ComposerType
 import { useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 import { TruncatedText } from "./TruncatedText";
+import type { MessageContentPart } from "../shared/protocol";
 
 export function ComposerAttachmentStrip({
   files,
@@ -138,7 +139,7 @@ export function SplitPaneComposer({
   onPasteAttachmentFiles: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
   onRemoveImage: (id: string) => void;
-  onSend: () => void;
+  onSend: (promptOverride?: string, contentParts?: MessageContentPart[]) => void;
   onInterrupt: () => void;
 }): JSX.Element {
   const { t } = useI18n();
@@ -179,7 +180,8 @@ export function SplitPaneComposer({
     listRef: collapsedPromptListRef,
     handlePaste: handleCollapsedComposerPaste,
     revealBlock: revealCollapsedPromptBlock,
-    removeBlock: removeCollapsedPromptBlock
+    removeBlock: removeCollapsedPromptBlock,
+    contentPartsForPrompt: collapsedContentPartsForPrompt,
   } = useCollapsedComposerPrompt({
     prompt,
     setPrompt,
@@ -242,7 +244,12 @@ export function SplitPaneComposer({
 
   function submitComposer(): void {
     resetQueryHistoryNavigation();
-    onSend();
+    const contentParts = collapsedContentPartsForPrompt(prompt);
+    if (contentParts) {
+      onSend(prompt, contentParts);
+    } else {
+      onSend();
+    }
     focusComposerSoon();
   }
 

@@ -473,15 +473,15 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:file-show-menu", path),
   openExternal: (url: string) =>
     ipcRenderer.invoke("wuu:open-external", url),
-  startTurn: (threadId: string, prompt: string, images, files, permissionMode, activeDocument) =>
-    ipcRenderer.invoke("wuu:turn-start", threadId, prompt, images, files, permissionMode, activeDocument),
-  queueTurn: (threadId: string, prompt: string, images, clientId, files, permissionMode, activeDocument) =>
-    ipcRenderer.invoke("wuu:turn-queue", threadId, prompt, images, clientId, files, permissionMode, activeDocument),
-  updateQueuedTurn: (threadId: string, queueId: string, prompt: string, images, files) =>
-    ipcRenderer.invoke("wuu:turn-update-queued", threadId, queueId, prompt, images, files),
+  startTurn: (threadId: string, prompt: string, images, files, permissionMode, activeDocument, contentParts) =>
+    ipcRenderer.invoke("wuu:turn-start", threadId, prompt, images, files, permissionMode, activeDocument, contentParts),
+  queueTurn: (threadId: string, prompt: string, images, clientId, files, permissionMode, activeDocument, contentParts) =>
+    ipcRenderer.invoke("wuu:turn-queue", threadId, prompt, images, clientId, files, permissionMode, activeDocument, contentParts),
+  updateQueuedTurn: (threadId: string, queueId: string, prompt: string, images, files, contentParts) =>
+    ipcRenderer.invoke("wuu:turn-update-queued", threadId, queueId, prompt, images, files, contentParts),
   dequeueTurn: (threadId: string, queueId: string) =>
     ipcRenderer.invoke("wuu:turn-dequeue", threadId, queueId),
-  steerTurn: (threadId: string, expectedTurnId: string, prompt: string, images, clientId, files, activeDocument) =>
+  steerTurn: (threadId: string, expectedTurnId: string, prompt: string, images, clientId, files, activeDocument, contentParts) =>
     ipcRenderer.invoke(
       "wuu:turn-steer",
       threadId,
@@ -491,6 +491,7 @@ const api: WuuDesktopApi = {
       clientId,
       files,
       activeDocument,
+      contentParts,
     ),
   unsteerTurn: (threadId: string, steerId: string) =>
     ipcRenderer.invoke("wuu:turn-unsteer", threadId, steerId),

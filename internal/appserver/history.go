@@ -58,6 +58,7 @@ type persistedMessage struct {
 	Steered             bool                               `json:"steered,omitempty"`
 	ReasoningContent    string                             `json:"reasoning_content,omitempty"`
 	ReasoningBlocks     []providers.ReasoningBlock         `json:"reasoning_blocks,omitempty"`
+	ContentParts        []providers.MessageContentPart     `json:"content_parts,omitempty"`
 	Images              []persistedImage                   `json:"images,omitempty"`
 	Files               []persistedFile                    `json:"files,omitempty"`
 	ToolCalls           []persistedToolCall                `json:"tool_calls,omitempty"`
@@ -139,6 +140,7 @@ func chatMessagesFromPersistedMessages(records []persistedMessage) []providers.C
 			Steered:              rec.Steered,
 			ReasoningContent:     rec.ReasoningContent,
 			ReasoningBlocks:      append([]providers.ReasoningBlock(nil), rec.ReasoningBlocks...),
+			ContentParts:         append([]providers.MessageContentPart(nil), rec.ContentParts...),
 			ToolCallID:           rec.ToolCallID,
 			ToolInvocationID:     rec.ToolInvocationID,
 			ToolResultKind:       providers.NormalizeToolCallKind(rec.ToolResultKind),
@@ -467,6 +469,7 @@ func historyRecordFromPersistedMessage(rec persistedMessage) sessionstore.Histor
 		Steered:             rec.Steered,
 		ReasoningContent:    rec.ReasoningContent,
 		ReasoningBlocks:     mustJSON(rec.ReasoningBlocks),
+		ContentParts:        mustJSON(rec.ContentParts),
 		Images:              mustJSON(rec.Images),
 		Files:               mustJSON(rec.Files),
 		ToolCalls:           mustJSON(rec.ToolCalls),
@@ -527,6 +530,9 @@ func persistedMessageFromHistoryRecord(rec sessionstore.HistoryRecord) (persiste
 		Model:               rec.Model,
 	}
 	if err := unmarshalRaw(rec.ReasoningBlocks, &out.ReasoningBlocks); err != nil {
+		return persistedMessage{}, err
+	}
+	if err := unmarshalRaw(rec.ContentParts, &out.ContentParts); err != nil {
 		return persistedMessage{}, err
 	}
 	if err := unmarshalRaw(rec.Images, &out.Images); err != nil {

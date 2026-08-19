@@ -31,6 +31,7 @@ import type {
   DesktopProject,
   GitStatusResult,
   InitializeResult,
+  MessageContentPart,
   RuntimeContext,
   SkillSummary
 } from "../shared/protocol";
@@ -260,9 +261,9 @@ export function Composer({
   onGuideQueuedMessage: (id: string) => void;
   onEditQueuedMessage: (id: string) => void;
   onEditGuideMessage: (id: string) => void;
-  onSend: (promptOverride?: string) => void;
-  onSteer?: (promptOverride?: string) => void;
-  onQueue?: (promptOverride?: string) => void;
+  onSend: (promptOverride?: string, contentParts?: MessageContentPart[]) => void;
+  onSteer?: (promptOverride?: string, contentParts?: MessageContentPart[]) => void;
+  onQueue?: (promptOverride?: string, contentParts?: MessageContentPart[]) => void;
   onInterrupt: () => void;
   telemetryTurnID?: string;
   tokensPerSecond?: number;
@@ -456,7 +457,8 @@ export function Composer({
     listRef: collapsedPromptListRef,
     handlePaste: handleCollapsedComposerPaste,
     revealBlock: revealCollapsedPromptBlock,
-    removeBlock: removeCollapsedPromptBlock
+    removeBlock: removeCollapsedPromptBlock,
+    contentPartsForPrompt: collapsedContentPartsForPrompt,
   } = useCollapsedComposerPrompt({
     prompt,
     setPrompt,
@@ -627,7 +629,7 @@ export function Composer({
   }
 
   function submitComposerWith(
-    onSubmit: (promptOverride?: string) => void,
+    onSubmit: (promptOverride?: string, contentParts?: MessageContentPart[]) => void,
     promptOverride = prompt,
   ): void {
     resetQueryHistoryNavigation();
@@ -641,7 +643,12 @@ export function Composer({
       applySlashCommand(actionCommand, submitSlashDraft);
       return;
     }
-    onSubmit(promptOverride);
+    const contentParts = collapsedContentPartsForPrompt(promptOverride);
+    if (contentParts) {
+      onSubmit(promptOverride, contentParts);
+    } else {
+      onSubmit(promptOverride);
+    }
     setSubmissionClearRevision((current) => current + 1);
     focusComposerSoon();
   }

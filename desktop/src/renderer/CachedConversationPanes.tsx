@@ -3,6 +3,7 @@ import type {
   Agent,
   InputFile,
   InputImage,
+  MessageContentPart,
   Thread,
   ThreadItem,
   Turn,
@@ -65,6 +66,7 @@ export type CachedConversationPanesProps = {
     text: string,
     images: InputImage[],
     files: InputFile[],
+    contentParts?: MessageContentPart[],
   ) => void;
   onOpenFileDiff: (thread: Thread, selection: TurnFileDiffSelection) => void;
   onOpenTurnRuns?: (thread: Thread, turnID: string) => void;
@@ -221,6 +223,7 @@ const CachedConversationPane = memo(function CachedConversationPane({
       text: string,
       images: InputImage[],
       files: InputFile[],
+      contentParts?: MessageContentPart[],
     ) =>
       onSubmitEditMessage(
         threadRef.current,
@@ -229,6 +232,7 @@ const CachedConversationPane = memo(function CachedConversationPane({
         text,
         images,
         files,
+        contentParts,
       ),
     [onSubmitEditMessage],
   );
@@ -561,6 +565,7 @@ type PaneTurnViewProps = {
     text: string,
     images: InputImage[],
     files: InputFile[],
+    contentParts?: MessageContentPart[],
   ) => void;
   onOpenFileDiff: (selection: TurnFileDiffSelection) => void;
   onOpenTurnRuns?: (turnID: string) => void;

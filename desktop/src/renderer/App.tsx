@@ -19,6 +19,7 @@ import type {
   InitializeResult,
   InputFile,
   InputImage,
+  MessageContentPart,
   NamedAgent,
   PopOutInitResult,
   PluginPackageInstallResult,
@@ -2131,6 +2132,7 @@ export function App(): JSX.Element {
       text: string,
       images: InputImage[],
       files: InputFile[],
+      contentParts?: MessageContentPart[],
     ) => {
       void submitEditedThreadMessageFromHistory(
         thread,
@@ -2139,6 +2141,7 @@ export function App(): JSX.Element {
         text,
         images,
         files,
+        contentParts,
       );
     },
   );
@@ -2720,15 +2723,15 @@ export function App(): JSX.Element {
         onGuideQueuedMessage={(id) => void guideQueuedMessage(id)}
         onEditQueuedMessage={(id) => void editQueuedMessage(id)}
         onEditGuideMessage={(id) => void editGuideMessage(id)}
-        onSend={(promptOverride) => void sendPrompt("queue", promptOverride)}
+        onSend={(promptOverride, contentParts) => void sendPrompt("queue", promptOverride, contentParts)}
         onSteer={
           activeThreadIsRunning && activeThread && activeThreadCanSteer
-            ? (promptOverride) => void sendPrompt("steer", promptOverride)
+            ? (promptOverride, contentParts) => void sendPrompt("steer", promptOverride, contentParts)
             : undefined
         }
         onQueue={
           activeThreadIsRunning && activeThread
-            ? (promptOverride) => void sendPrompt("queue", promptOverride)
+            ? (promptOverride, contentParts) => void sendPrompt("queue", promptOverride, contentParts)
             : undefined
         }
         onInterrupt={() => void interrupt()}
@@ -3387,6 +3390,7 @@ export function App(): JSX.Element {
   async function sendPrompt(
     runningAction: "queue" | "steer" = "queue",
     promptOverride?: string,
+    contentParts?: MessageContentPart[],
   ): Promise<void> {
     if (viewSwitchPending) {
       return;
@@ -3395,6 +3399,7 @@ export function App(): JSX.Element {
       promptOverride ?? currentPrimaryComposerDraft().prompt,
       composerImages,
       composerFiles,
+      contentParts,
     );
     const activeDocumentPath =
       activeWorkspaceFile && activeWorkspaceFile !== dismissedActiveDocumentPath
@@ -3632,6 +3637,7 @@ export function App(): JSX.Element {
         files,
         targetThread.permission_mode || currentState.initialized.permissions?.mode,
         message.activeDocument,
+        ...(message.contentParts === undefined ? [] : [message.contentParts] as const),
       );
       updateThreadPendingComposerMessages(targetThread.id, (previous) => ({
         ...previous,
@@ -3690,6 +3696,7 @@ export function App(): JSX.Element {
         message.id,
         files,
         message.activeDocument,
+        ...(message.contentParts === undefined ? [] : [message.contentParts] as const),
       );
       updateThreadPendingComposerMessages(targetThread.id, (previous) => ({
         ...previous,
@@ -3844,6 +3851,7 @@ export function App(): JSX.Element {
         files,
         thread.permission_mode || currentState.initialized.permissions?.mode,
         message.activeDocument,
+        ...(message.contentParts === undefined ? [] : [message.contentParts] as const),
       );
       setState((current) =>
         updateThreadByID(
@@ -3921,12 +3929,21 @@ export function App(): JSX.Element {
     return true;
   }
 
-  async function sendPromptForPane(pane: ConversationPaneID): Promise<void> {
+  async function sendPromptForPane(
+    pane: ConversationPaneID,
+    promptOverride?: string,
+    contentParts?: MessageContentPart[],
+  ): Promise<void> {
     if (viewSwitchPending) {
       return;
     }
     const draft = splitComposerDrafts[pane] ?? emptyComposerDraft();
-    const message = createComposerMessage(draft.prompt, draft.images, draft.files);
+    const message = createComposerMessage(
+      promptOverride ?? draft.prompt,
+      draft.images,
+      draft.files,
+      contentParts,
+    );
     const currentState = appStateRef.current;
     const targetThread = threadForPane(currentState, pane);
     if (targetThread?.read_only) {
@@ -4049,6 +4066,7 @@ export function App(): JSX.Element {
         files,
         targetThread.permission_mode || currentState.initialized.permissions?.mode,
         message.activeDocument,
+        ...(message.contentParts === undefined ? [] : [message.contentParts] as const),
       );
       setState((current) =>
         updateThreadByID(
@@ -4186,6 +4204,7 @@ export function App(): JSX.Element {
         files,
         targetThread.permission_mode || currentState.initialized.permissions?.mode,
         message.activeDocument,
+        ...(message.contentParts === undefined ? [] : [message.contentParts] as const),
       );
       setState((current) =>
         updateThreadByID(
@@ -4854,7 +4873,9 @@ export function App(): JSX.Element {
                     }
                     onRemoveFile={removeSplitComposerFile}
                     onRemoveImage={removeSplitComposerImage}
-                    onSend={(pane) => void sendPromptForPane(pane)}
+                    onSend={(pane, promptOverride, contentParts) =>
+                      void sendPromptForPane(pane, promptOverride, contentParts)
+                    }
                     onInterrupt={(pane) => void interruptPane(pane)}
                     onForkMessage={(thread, turnID, itemID) =>
                       void forkThreadFromMessage(thread, turnID, itemID)
@@ -4871,6 +4892,7 @@ export function App(): JSX.Element {
                       text,
                       images,
                       files,
+                      contentParts,
                       pane,
                     ) =>
                       void submitEditedThreadMessageFromHistory(
@@ -4880,6 +4902,7 @@ export function App(): JSX.Element {
                         text,
                         images,
                         files,
+                        contentParts,
                         pane,
                       )
                     }

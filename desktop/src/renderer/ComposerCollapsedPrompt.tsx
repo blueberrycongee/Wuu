@@ -9,6 +9,7 @@ import {
   useState
 } from "react";
 import { clipboardAttachmentFiles } from "./ComposerMessages";
+import type { MessageContentPart } from "../shared/protocol";
 import { translateCurrent as translate } from "./i18n";
 import { TruncatedText } from "./TruncatedText";
 
@@ -28,6 +29,23 @@ const COLLAPSIBLE_COMPOSER_PROMPT_SOFT_LINE_CHARS = 84;
 // text always lives in the canonical prompt.
 const FOLDED_PROMPT_REGISTRY_MAX_ENTRIES = 64;
 const foldedPromptRegistry = new Map<string, { prefix: string; texts: string[] }>();
+
+export function rememberCollapsedPromptParts(
+  storageKey: string,
+  prompt: string,
+  contentParts: MessageContentPart[] | undefined,
+): void {
+  const texts = (contentParts ?? [])
+    .filter((part) => part.type === "pasted_text")
+    .map((part) => part.text);
+  const prefix = texts.join("");
+  if (!storageKey || texts.length === 0 || !prompt.startsWith(prefix)) return;
+  foldedPromptRegistry.set(storageKey, { prefix, texts });
+  if (foldedPromptRegistry.size > FOLDED_PROMPT_REGISTRY_MAX_ENTRIES) {
+    const oldestKey = foldedPromptRegistry.keys().next().value;
+    if (oldestKey !== undefined) foldedPromptRegistry.delete(oldestKey);
+  }
+}
 
 export function isCollapsibleComposerPrompt(text: string): boolean {
   if (text.trim().length === 0) {
@@ -138,8 +156,10 @@ export function useCollapsedComposerPrompt({
   ) => void;
   revealBlock: (index: number) => void;
   removeBlock: (index: number) => void;
+  contentPartsForPrompt: (prompt: string) => MessageContentPart[] | undefined;
 } {
   const [blocks, setBlocks] = useState<CollapsedComposerPromptBlock[]>([]);
+  const blocksRef = useRef<CollapsedComposerPromptBlock[]>([]);
   const blockIDRef = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -150,6 +170,22 @@ export function useCollapsedComposerPrompt({
 
   function nextBlockID(): string {
     return `composer-prompt-block-${Date.now().toString(36)}-${blockIDRef.current++}`;
+  }
+
+  function replaceBlocks(nextBlocks: CollapsedComposerPromptBlock[]): void {
+    blocksRef.current = nextBlocks;
+    setBlocks(nextBlocks);
+  }
+
+  function contentPartsForPrompt(nextPrompt: string): MessageContentPart[] | undefined {
+    const nextBlocks = blocksRef.current;
+    const nextPrefix = nextBlocks.map((block) => block.text).join("");
+    if (nextBlocks.length === 0 || !nextPrompt.startsWith(nextPrefix)) return undefined;
+    const visibleText = nextPrompt.slice(nextPrefix.length);
+    return [
+      ...nextBlocks.map((block) => ({ type: "pasted_text" as const, text: block.text })),
+      ...(visibleText ? [{ type: "text" as const, text: visibleText }] : []),
+    ];
   }
 
   function persistFold(nextBlocks: CollapsedComposerPromptBlock[], nextPrefix: string): void {
@@ -188,12 +224,12 @@ export function useCollapsedComposerPrompt({
     if (entry.prefix.length === 0 || !prompt.startsWith(entry.prefix)) {
       return;
     }
-    setBlocks(entry.texts.map((text) => ({ id: nextBlockID(), text })));
+    replaceBlocks(entry.texts.map((text) => ({ id: nextBlockID(), text })));
   }, [blocks.length, prompt, storageKey]);
 
   useEffect(() => {
     if (blocks.length > 0 && !prompt.startsWith(prefix)) {
-      setBlocks([]);
+      replaceBlocks([]);
     }
   }, [blocks.length, prefix, prompt]);
 
@@ -242,7 +278,7 @@ export function useCollapsedComposerPrompt({
     };
     const nextBlocks = hasBlocks ? [...blocks, nextBlock] : [nextBlock];
     const nextPrefix = `${hasBlocks ? prefix : ""}${pastedText}`;
-    setBlocks(nextBlocks);
+    replaceBlocks(nextBlocks);
     setPrompt(nextPrefix);
     persistFold(nextBlocks, nextPrefix);
     focusComposerSoon();
@@ -259,7 +295,7 @@ export function useCollapsedComposerPrompt({
     const nextBlocks = activeBlocks.filter((_, blockIndex) => blockIndex !== index);
     const nextPrefix = nextBlocks.map((block) => block.text).join("");
     const nextVisiblePrompt = `${visiblePrompt}${revealedBlock.text}`;
-    setBlocks(nextBlocks);
+    replaceBlocks(nextBlocks);
     setPrompt(`${nextPrefix}${nextVisiblePrompt}`);
     persistFold(nextBlocks, nextPrefix);
     focusComposerSoon();
@@ -271,7 +307,7 @@ export function useCollapsedComposerPrompt({
     }
     const nextBlocks = activeBlocks.filter((_, blockIndex) => blockIndex !== index);
     const nextPrefix = nextBlocks.map((block) => block.text).join("");
-    setBlocks(nextBlocks);
+    replaceBlocks(nextBlocks);
     setPrompt(`${nextPrefix}${visiblePrompt}`);
     persistFold(nextBlocks, nextPrefix);
     focusComposerSoon();
@@ -285,6 +321,7 @@ export function useCollapsedComposerPrompt({
     listRef,
     handlePaste,
     revealBlock,
-    removeBlock
+    removeBlock,
+    contentPartsForPrompt,
   };
 }

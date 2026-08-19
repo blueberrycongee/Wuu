@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import type { InputFile, InputImage, Thread, ThreadItem } from "../shared/protocol";
+import type { InputFile, InputImage, MessageContentPart, Thread, ThreadItem } from "../shared/protocol";
 import type { ForkMode } from "./ConversationForkDialog";
 import {
   cloneComposerDraft,
@@ -103,6 +103,7 @@ export type ConversationHistoryActions = {
     text: string,
     images: InputImage[],
     files: InputFile[],
+    contentParts?: MessageContentPart[],
     pane?: ConversationPaneID,
   ) => Promise<void>;
 };
@@ -340,6 +341,7 @@ deps.rememberConversationScrollForEdit();
     text: string,
     images: InputImage[],
     files: InputFile[],
+    contentParts?: MessageContentPart[],
     pane?: ConversationPaneID,
   ): Promise<void> {
     if (!deps.appStateRef.current.activeContext || sourceThread.read_only) {
@@ -357,7 +359,7 @@ deps.rememberConversationScrollForEdit();
       data: file.data,
       filename: file.filename,
     }));
-    const message = createComposerMessage(text, composerImages, composerFiles);
+    const message = createComposerMessage(text, composerImages, composerFiles, contentParts);
     if (!message) {
       deps.setAppState((current) => ({
         ...current,

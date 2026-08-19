@@ -1361,6 +1361,13 @@ export type ThreadItemType =
   | "error";
 export type ThreadItemStatus = "in_progress" | "completed" | "failed";
 
+// Ordered user-authored content carried by one message bubble. Binary
+// attachments remain in `images` / `files`; these parts preserve the
+// distinction between instructions and pasted reference text.
+export type MessageContentPart =
+  | { type: "text"; text: string }
+  | { type: "pasted_text"; text: string; title?: string };
+
 export type ToolCallDisplay = {
   kind?: string;
   // Short user-facing name. The raw tool name remains the stable dispatch
@@ -1938,6 +1945,7 @@ export type ThreadItem = {
   terminal?: boolean;
   role?: string;
   text?: string;
+  content_parts?: MessageContentPart[];
   // input_text is the raw user input when it differs from the displayed
   // bubble text (for example a plugin-generated wake message with a generic
   // query bubble but a specific delivered prompt).
@@ -2004,6 +2012,7 @@ export type HeldUserMessage = {
   prompt?: string;
   images?: InputImage[];
   files?: InputFile[];
+  content_parts?: MessageContentPart[];
 };
 
 export type ThreadResumeResult = {
@@ -2604,6 +2613,7 @@ export type WuuDesktopApi = {
     files?: InputFile[],
     permissionMode?: string,
     activeDocument?: ActiveDocumentContext,
+    contentParts?: MessageContentPart[],
   ) => Promise<{ turn: Turn }>;
   queueTurn: (
     threadId: string,
@@ -2613,6 +2623,7 @@ export type WuuDesktopApi = {
     files?: InputFile[],
     permissionMode?: string,
     activeDocument?: ActiveDocumentContext,
+    contentParts?: MessageContentPart[],
   ) => Promise<{ queued: QueuedTurn }>;
   updateQueuedTurn: (
     threadId: string,
@@ -2620,6 +2631,7 @@ export type WuuDesktopApi = {
     prompt: string,
     images?: InputImage[],
     files?: InputFile[],
+    contentParts?: MessageContentPart[],
   ) => Promise<{ ok: boolean; queued: QueuedTurn }>;
   dequeueTurn: (threadId: string, queueId: string) => Promise<{ ok: boolean }>;
   steerTurn: (
@@ -2630,6 +2642,7 @@ export type WuuDesktopApi = {
     clientId?: string,
     files?: InputFile[],
     activeDocument?: ActiveDocumentContext,
+    contentParts?: MessageContentPart[],
   ) => Promise<{ turn_id: string }>;
   unsteerTurn: (threadId: string, steerId: string) => Promise<{ ok: boolean }>;
   interruptTurn: (threadId: string) => Promise<{ ok: boolean }>;

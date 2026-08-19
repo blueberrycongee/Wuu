@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import type {
   InputFile,
   InputImage,
+  MessageContentPart,
   Thread,
   ThreadItem,
   UserQuestionAnswer,
@@ -71,7 +72,7 @@ export function ConversationSplitPane({
   onPasteAttachmentFiles: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
   onRemoveImage: (id: string) => void;
-  onSend: () => void;
+  onSend: (promptOverride?: string, contentParts?: MessageContentPart[]) => void;
   onInterrupt: () => void;
   onForkMessage: (turnID: string, itemID: string) => void;
   onOpenFile?: (path: string) => void;
@@ -84,6 +85,7 @@ export function ConversationSplitPane({
     text: string,
     images: InputImage[],
     files: InputFile[],
+    contentParts?: MessageContentPart[],
   ) => void;
   onStreamFrame: () => void;
   onOpenFileDiff?: (selection: TurnFileDiffSelection) => void;
@@ -193,8 +195,8 @@ export function ConversationSplitPane({
                   onCancelEditMessage={onCancelEditMessage}
                   onSubmitEditMessage={
                     onSubmitEditMessage
-                      ? (turnID, item, text, images, files) =>
-                          onSubmitEditMessage(turnID, item, text, images, files)
+                      ? (turnID, item, text, images, files, contentParts) =>
+                          onSubmitEditMessage(turnID, item, text, images, files, contentParts)
                       : undefined
                   }
                   onOpenFileDiff={onOpenFileDiff}

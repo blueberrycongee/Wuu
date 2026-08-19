@@ -1547,12 +1547,13 @@ type GitCommitMessageResult struct {
 }
 
 type TurnStartParams struct {
-	ThreadID       string           `json:"thread_id"`
-	Prompt         string           `json:"prompt"`
-	Images         []TurnStartImage `json:"images,omitempty"`
-	Files          []TurnStartFile  `json:"files,omitempty"`
-	PermissionMode *string          `json:"permission_mode,omitempty"`
-	ActiveDocument *ActiveDocument  `json:"active_document,omitempty"`
+	ThreadID       string                         `json:"thread_id"`
+	Prompt         string                         `json:"prompt"`
+	Images         []TurnStartImage               `json:"images,omitempty"`
+	Files          []TurnStartFile                `json:"files,omitempty"`
+	PermissionMode *string                        `json:"permission_mode,omitempty"`
+	ActiveDocument *ActiveDocument                `json:"active_document,omitempty"`
+	ContentParts   []providers.MessageContentPart `json:"content_parts,omitempty"`
 }
 
 type ActiveDocument struct {
@@ -1628,13 +1629,14 @@ type ThreadCompactStartResult struct {
 }
 
 type TurnQueueParams struct {
-	ThreadID       string           `json:"thread_id"`
-	Prompt         string           `json:"prompt"`
-	Images         []TurnStartImage `json:"images,omitempty"`
-	Files          []TurnStartFile  `json:"files,omitempty"`
-	ClientID       string           `json:"client_id,omitempty"`
-	PermissionMode *string          `json:"permission_mode,omitempty"`
-	ActiveDocument *ActiveDocument  `json:"active_document,omitempty"`
+	ThreadID       string                         `json:"thread_id"`
+	Prompt         string                         `json:"prompt"`
+	Images         []TurnStartImage               `json:"images,omitempty"`
+	Files          []TurnStartFile                `json:"files,omitempty"`
+	ClientID       string                         `json:"client_id,omitempty"`
+	PermissionMode *string                        `json:"permission_mode,omitempty"`
+	ActiveDocument *ActiveDocument                `json:"active_document,omitempty"`
+	ContentParts   []providers.MessageContentPart `json:"content_parts,omitempty"`
 }
 
 type QueuedTurn struct {
@@ -1650,11 +1652,12 @@ type TurnQueueResult struct {
 }
 
 type TurnUpdateQueuedParams struct {
-	ThreadID string           `json:"thread_id"`
-	QueueID  string           `json:"queue_id"`
-	Prompt   string           `json:"prompt"`
-	Images   []TurnStartImage `json:"images,omitempty"`
-	Files    []TurnStartFile  `json:"files,omitempty"`
+	ThreadID     string                         `json:"thread_id"`
+	QueueID      string                         `json:"queue_id"`
+	Prompt       string                         `json:"prompt"`
+	Images       []TurnStartImage               `json:"images,omitempty"`
+	Files        []TurnStartFile                `json:"files,omitempty"`
+	ContentParts []providers.MessageContentPart `json:"content_parts,omitempty"`
 }
 
 type TurnUpdateQueuedResult struct {
@@ -1668,13 +1671,14 @@ type TurnDequeueParams struct {
 }
 
 type TurnSteerParams struct {
-	ThreadID       string           `json:"thread_id"`
-	Prompt         string           `json:"prompt"`
-	Images         []TurnStartImage `json:"images,omitempty"`
-	Files          []TurnStartFile  `json:"files,omitempty"`
-	ExpectedTurnID string           `json:"expected_turn_id"`
-	ClientID       string           `json:"client_id,omitempty"`
-	ActiveDocument *ActiveDocument  `json:"active_document,omitempty"`
+	ThreadID       string                         `json:"thread_id"`
+	Prompt         string                         `json:"prompt"`
+	Images         []TurnStartImage               `json:"images,omitempty"`
+	Files          []TurnStartFile                `json:"files,omitempty"`
+	ExpectedTurnID string                         `json:"expected_turn_id"`
+	ClientID       string                         `json:"client_id,omitempty"`
+	ActiveDocument *ActiveDocument                `json:"active_document,omitempty"`
+	ContentParts   []providers.MessageContentPart `json:"content_parts,omitempty"`
 }
 
 type TurnSteerResult struct {
@@ -1682,12 +1686,13 @@ type TurnSteerResult struct {
 }
 
 type HeldUserMessage struct {
-	ID       string           `json:"id"`
-	ThreadID string           `json:"thread_id"`
-	Origin   string           `json:"origin"`
-	Prompt   string           `json:"prompt,omitempty"`
-	Images   []TurnStartImage `json:"images,omitempty"`
-	Files    []TurnStartFile  `json:"files,omitempty"`
+	ID           string                         `json:"id"`
+	ThreadID     string                         `json:"thread_id"`
+	Origin       string                         `json:"origin"`
+	Prompt       string                         `json:"prompt,omitempty"`
+	Images       []TurnStartImage               `json:"images,omitempty"`
+	Files        []TurnStartFile                `json:"files,omitempty"`
+	ContentParts []providers.MessageContentPart `json:"content_parts,omitempty"`
 }
 
 type TurnUnsteerParams struct {
@@ -2026,9 +2031,10 @@ type ThreadItem struct {
 	// Terminal marks an assistant message that carried no tool calls and is
 	// therefore the turn's final answer. It is derived structurally from the
 	// assistant message, not from a provider phase signal.
-	Terminal bool   `json:"terminal,omitempty"`
-	Role     string `json:"role,omitempty"`
-	Text     string `json:"text,omitempty"`
+	Terminal     bool                           `json:"terminal,omitempty"`
+	Role         string                         `json:"role,omitempty"`
+	Text         string                         `json:"text,omitempty"`
+	ContentParts []providers.MessageContentPart `json:"content_parts,omitempty"`
 	// InputText carries the raw user input when it differs from the displayed
 	// bubble text (for example a plugin-generated wake message that shows a
 	// generic query bubble but delivers a specific prompt to the model).

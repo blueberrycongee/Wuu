@@ -271,6 +271,35 @@ describe("ThreadItemView", () => {
     expect(container?.textContent).toContain("Short query.");
   });
 
+  it("renders pasted text beside a separate regular-text bubble", () => {
+    const pastedText = "pasted line\n".repeat(80);
+    render({
+      item: {
+        ...makeUserMessage(`${pastedText}Follow-up question.`),
+        content_parts: [
+          { type: "pasted_text", text: pastedText, title: "Pasted notes" },
+          { type: "text", text: "Follow-up question." },
+        ],
+      },
+      turnStatus: "completed",
+      streaming: false,
+    });
+
+    const attachments = container?.querySelector(".user-message-attachments");
+    const textBubble = container?.querySelector(".message.user-message");
+    expect(attachments).not.toBeNull();
+    expect(attachments?.nextElementSibling).toBe(textBubble);
+    expect(textBubble?.querySelector(".user-message-pasted-text")).toBeNull();
+    expect(container?.querySelector(".user-message-long-card")).toBeNull();
+    expect(container?.querySelector(".user-message-pasted-text")?.textContent).toContain("Pasted notes");
+    expect(container?.textContent).toContain("Follow-up question.");
+
+    act(() => {
+      container?.querySelector<HTMLButtonElement>(".user-message-pasted-text-toggle")?.click();
+    });
+    expect(container?.querySelector(".user-message-pasted-text-content")?.textContent).toBe(pastedText);
+  });
+
   it("collapses long wrapped user messages without explicit line breaks", () => {
     const longSingleParagraph = "pasted query ".repeat(150);
 

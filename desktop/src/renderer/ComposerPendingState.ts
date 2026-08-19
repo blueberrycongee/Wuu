@@ -1,5 +1,6 @@
 import { useRef, useState, type MutableRefObject } from "react";
 import type {
+  MessageContentPart,
   ServerEvent,
   Thread,
   ThreadResumeResult,
@@ -35,6 +36,7 @@ import {
 } from "./ComposerPendingMessages";
 import { isRecord, recordValue, stringValue } from "./ToolActivity";
 import { localizedText, translateCurrent } from "./i18n";
+import { rememberCollapsedPromptParts } from "./ComposerCollapsedPrompt";
 
 function heldComposerMessage(
   value: unknown,
@@ -81,11 +83,24 @@ function heldComposerMessage(
       ];
     },
   );
+  const contentParts = (Array.isArray(value.content_parts) ? value.content_parts : []).flatMap<MessageContentPart>(
+    (candidate): MessageContentPart[] => {
+      if (!isRecord(candidate)) return [];
+      const type = stringValue(candidate, "type");
+      const text = stringValue(candidate, "text");
+      if ((type !== "text" && type !== "pasted_text") || !text) return [];
+      const title = stringValue(candidate, "title");
+      return type === "pasted_text"
+        ? [{ type: "pasted_text" as const, text, ...(title ? { title } : {}) }]
+        : [{ type: "text" as const, text }];
+    },
+  );
   return {
     id,
     text: stringValue(value, "prompt") ?? "",
     images,
     files,
+    contentParts,
     held: true,
     heldPosition: position,
     origin,
@@ -459,6 +474,7 @@ export function useComposerPendingState({
     threadID: string,
     message: QueuedComposerMessage,
   ): void {
+    rememberCollapsedPromptParts(threadID, message.text, message.contentParts);
     restoreComposerDraftForThread(threadID, {
       prompt: message.text,
       images: message.images.map((image) => ({ ...image })),

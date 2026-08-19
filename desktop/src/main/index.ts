@@ -2127,6 +2127,7 @@ app.whenReady().then(async () => {
       files?: InputFile[],
       permissionMode?: string,
       activeDocument?: ActiveDocumentContext,
+      contentParts?: import("../shared/protocol").MessageContentPart[],
     ) =>
       appServerRequest<{ turn: Turn }>(event, "turn/start", {
         thread_id: threadId,
@@ -2135,6 +2136,7 @@ app.whenReady().then(async () => {
         files: files ?? [],
         ...(permissionMode === undefined ? {} : { permission_mode: permissionMode }),
         ...(activeDocument === undefined ? {} : { active_document: activeDocument }),
+        ...(contentParts === undefined ? {} : { content_parts: contentParts }),
       }),
   );
   ipcMain.handle(
@@ -2148,6 +2150,7 @@ app.whenReady().then(async () => {
       files?: InputFile[],
       permissionMode?: string,
       activeDocument?: ActiveDocumentContext,
+      contentParts?: import("../shared/protocol").MessageContentPart[],
     ) =>
       appServerRequest(event, "turn/queue", {
         thread_id: threadId,
@@ -2157,6 +2160,7 @@ app.whenReady().then(async () => {
         client_id: clientId,
         ...(permissionMode === undefined ? {} : { permission_mode: permissionMode }),
         ...(activeDocument === undefined ? {} : { active_document: activeDocument }),
+        ...(contentParts === undefined ? {} : { content_parts: contentParts }),
       }),
   );
   ipcMain.handle(
@@ -2168,6 +2172,7 @@ app.whenReady().then(async () => {
       prompt: string,
       images?: InputImage[],
       files?: InputFile[],
+      contentParts?: import("../shared/protocol").MessageContentPart[],
     ) =>
       appServerRequest(event, "turn/update-queued", {
         thread_id: threadId,
@@ -2175,6 +2180,7 @@ app.whenReady().then(async () => {
         prompt,
         images: images ?? [],
         files: files ?? [],
+        ...(contentParts === undefined ? {} : { content_parts: contentParts }),
       }),
   );
   ipcMain.handle(
@@ -2196,6 +2202,7 @@ app.whenReady().then(async () => {
       clientId?: string,
       files?: InputFile[],
       activeDocument?: ActiveDocumentContext,
+      contentParts?: import("../shared/protocol").MessageContentPart[],
     ) =>
       appServerRequest(event, "turn/steer", {
         thread_id: threadId,
@@ -2205,6 +2212,7 @@ app.whenReady().then(async () => {
         files: files ?? [],
         client_id: clientId,
         ...(activeDocument === undefined ? {} : { active_document: activeDocument }),
+        ...(contentParts === undefined ? {} : { content_parts: contentParts }),
       }),
   );
   ipcMain.handle("wuu:turn-unsteer", (event, threadId: string, steerId: string) =>

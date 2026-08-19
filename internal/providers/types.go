@@ -179,6 +179,14 @@ func NormalizeMessagePhase(phase string) MessagePhase {
 	}
 }
 
+// MessageContentPart preserves the authored structure of one user message.
+// Providers still consume ChatMessage.Content as flattened text.
+type MessageContentPart struct {
+	Type  string `json:"type"`
+	Text  string `json:"text,omitempty"`
+	Title string `json:"title,omitempty"`
+}
+
 // ChatMessage is a generic multi-provider chat message.
 type ChatMessage struct {
 	Role           string
@@ -214,7 +222,9 @@ type ChatMessage struct {
 	ReasoningBlocks  []ReasoningBlock
 	Images           []InputImage
 	Files            []InputFile
-	ToolCallID       string
+	// ContentParts is durable presentation metadata; provider adapters ignore it.
+	ContentParts []MessageContentPart `json:"content_parts,omitempty"`
+	ToolCallID   string
 	// ToolInvocationID is Wuu's durable identity for the execution. Provider
 	// adapters must continue using ToolCallID for protocol correlation.
 	ToolInvocationID string

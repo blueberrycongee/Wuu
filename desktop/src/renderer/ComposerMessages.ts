@@ -1,5 +1,11 @@
 import type { ClipboardEvent as ReactClipboardEvent } from "react";
-import type { ActiveDocumentContext, InputFile, InputImage, Turn } from "../shared/protocol";
+import type {
+  ActiveDocumentContext,
+  InputFile,
+  InputImage,
+  MessageContentPart,
+  Turn,
+} from "../shared/protocol";
 import { formatCurrentNumber, translateCurrent } from "./i18n";
 
 // Renderer-side image compression runs on the Electron canvas before the
@@ -71,6 +77,7 @@ export type QueuedComposerMessage = {
   text: string;
   images: ComposerImage[];
   files: ComposerFile[];
+  contentParts?: MessageContentPart[];
   activeDocument?: ActiveDocumentContext;
   held?: boolean;
   heldPosition?: number;
@@ -371,7 +378,8 @@ export function isComposerImagePending(image: ComposerImage): boolean {
 export function createComposerMessage(
   text: string,
   images: ComposerImage[],
-  files: ComposerFile[] = []
+  files: ComposerFile[] = [],
+  contentParts?: MessageContentPart[],
 ): QueuedComposerMessage | undefined {
   const trimmed = text.trim();
   if (!trimmed && images.length === 0 && files.length === 0) {
@@ -381,7 +389,8 @@ export function createComposerMessage(
     id: nextComposerMessageID(),
     text,
     images: images.map((image) => ({ ...image })),
-    files: files.map((file) => ({ ...file }))
+    files: files.map((file) => ({ ...file })),
+    contentParts: contentParts?.map((part) => ({ ...part })),
   };
 }
 
@@ -403,6 +412,12 @@ export function mergeGuideMessages(messages: QueuedComposerMessage[]): QueuedCom
       .join("\n"),
     images: messages.flatMap((message) => message.images.map((image) => ({ ...image }))),
     files: messages.flatMap((message) => message.files.map((file) => ({ ...file }))),
+    contentParts: messages.some((message) => message.contentParts?.length)
+      ? messages.flatMap((message) =>
+          message.contentParts?.map((part) => ({ ...part })) ??
+          (message.text.trim() ? [{ type: "text" as const, text: message.text.trim() }] : []),
+        )
+      : undefined,
     activeDocument: latestActiveDocument ? { ...latestActiveDocument } : undefined,
   };
 }
@@ -476,6 +491,7 @@ export function createOptimisticTurn(
         type: "user_message",
         status: "completed",
         text: message.text,
+        content_parts: message.contentParts?.map((part) => ({ ...part })),
         images: optimisticInputImagesFromComposer(message.images),
         files: inputFilesFromComposer(message.files),
       },

@@ -3,6 +3,7 @@
 import type {
   InputFile,
   InputImage,
+  MessageContentPart,
   ThreadItem,
   Turn,
 } from "../shared/protocol";
@@ -45,6 +46,7 @@ export type TurnViewProps = {
     text: string,
     images: InputImage[],
     files: InputFile[],
+    contentParts?: MessageContentPart[],
   ) => void;
   onCollapseComplete?: () => void;
   onOpenFileDiff?: (selection: TurnFileDiffSelection) => void;

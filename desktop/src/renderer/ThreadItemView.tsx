@@ -8,8 +8,9 @@ import {
   useRef,
   useState
 } from "react";
-import { ChevronDown, ChevronUp, Info, Plus, Send } from "lucide-react";
-import type { InputFile, InputImage, ThreadItem, Turn } from "../shared/protocol";
+import { ChevronDown, ChevronUp, FileText, Info, Plus, Send } from "lucide-react";
+import type { InputFile, InputImage, MessageContentPart, ThreadItem, Turn } from "../shared/protocol";
+import { CollapsedComposerPromptCard, collapsedComposerPromptTitle } from "./ComposerCollapsedPrompt";
 import {
   clipboardAttachmentFiles,
   composerFileFromFile,
@@ -90,6 +91,7 @@ interface ThreadItemViewProps {
     text: string,
     images: InputImage[],
     files: InputFile[],
+    contentParts?: MessageContentPart[],
   ) => void;
   onOpenAgent?: (agentID: string) => void;
   editSummaryCard?: JSX.Element;
@@ -291,13 +293,14 @@ function BuiltInThreadItemView({
               initialText={text}
               submitting={Boolean(editSubmitting)}
               onCancel={onCancelEditMessage}
-              onSubmit={(nextText, nextImages, nextFiles) =>
-                onSubmitEditMessage?.(turnID, item, nextText, nextImages, nextFiles)
+              onSubmit={(nextText, nextImages, nextFiles, contentParts) =>
+                onSubmitEditMessage?.(turnID, item, nextText, nextImages, nextFiles, contentParts)
               }
             />
           ) : (
-            <UserMessageBubble
+            <UserMessageContent
               text={displayText}
+              contentParts={item.content_parts}
               images={item.images ?? []}
               files={item.files ?? []}
               cwd={cwd}
@@ -426,58 +429,124 @@ function BuiltInThreadItemView({
   }
 }
 
-function UserMessageBubble({
+function UserMessageContent({
   text,
+  contentParts,
   images,
   files,
   cwd,
   onOpenFile,
 }: {
   text: string;
+  contentParts?: MessageContentPart[];
   images: InputImage[];
   files: InputFile[];
   cwd?: string;
   onOpenFile?: (path: string) => void;
 }): JSX.Element {
   const { t } = useI18n();
+  const structured = Boolean(contentParts?.length);
+  const pastedParts = (contentParts ?? []).filter(
+    (part): part is Extract<MessageContentPart, { type: "pasted_text" }> =>
+      part.type === "pasted_text",
+  );
+  const textParts = (contentParts ?? []).filter(
+    (part): part is Extract<MessageContentPart, { type: "text" }> => part.type === "text",
+  );
+  const hasAttachments = images.length > 0 || files.length > 0 || pastedParts.length > 0;
+  const hasTextBubble = structured
+    ? textParts.some((part) => part.text.length > 0)
+    : text.length > 0;
   // Threshold + preview logic + state keying all live in
   // `./LongTextCollapse` so the chat bubble can reuse the exact same
   // numbers. The hook's `{text, expanded}` state shape is what makes
   // the toggle survive a parent re-render with a new message body
   // without flashing the previous expansion — see the module doc.
-  const { collapsible, expanded, toggleExpanded } = useLongTextCollapse(text);
+  const { collapsible, expanded, toggleExpanded } = useLongTextCollapse(structured ? "" : text);
   const collapsed = collapsible && !expanded;
   const displayedText = collapsed ? collapsedLongTextPreview(text) : text;
 
   return (
-    <div
-      className={`message user-message${
-        collapsible
-          ? ` user-message-long-card ${expanded ? "expanded" : "collapsed"}`
-          : ""
-      }`}
-      data-wuu-component="message-bubble"
-      data-wuu-variant="user"
-    >
-      {images.length ? <MessageImageGrid images={images} /> : null}
-      {files.length ? <MessageFileList files={files} /> : null}
-      {collapsible ? (
-        <div className="user-message-raw-query">{displayedText}</div>
-      ) : text ? (
-        <RichContent text={text} cwd={cwd} onOpenFile={onOpenFile} />
+    <>
+      {hasAttachments ? (
+        <div className="user-message-attachments" data-wuu-component="message-attachments">
+          {images.length ? <MessageImageGrid images={images} collapsedLimit={4} /> : null}
+          {files.length ? <MessageFileList files={files} collapsedLimit={3} /> : null}
+          {pastedParts.map((part, index) => (
+            <MessagePastedTextPart key={`${part.type}-${index}`} part={part} />
+          ))}
+        </div>
       ) : null}
-      {collapsible ? (
-        <button
-          type="button"
-          className="user-message-expand-toggle"
-          aria-expanded={expanded}
-          onClick={toggleExpanded}
+      {hasTextBubble ? (
+        <div
+          className={`message user-message${
+            collapsible
+              ? ` user-message-long-card ${expanded ? "expanded" : "collapsed"}`
+              : ""
+          }`}
+          data-wuu-component="message-bubble"
+          data-wuu-variant="user"
         >
-          <span>{expanded ? t("common.collapse") : t("common.showMore")}</span>
-          {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
-        </button>
+          {structured ? (
+            <div className="user-message-content-parts">
+              {textParts.map((part, index) =>
+                part.text ? (
+                  <div className="user-message-text-part" key={`${part.type}-${index}`}>
+                    <RichContent text={part.text} cwd={cwd} onOpenFile={onOpenFile} />
+                  </div>
+                ) : null,
+              )}
+            </div>
+          ) : collapsible ? (
+            <div className="user-message-raw-query">{displayedText}</div>
+          ) : (
+            <RichContent text={text} cwd={cwd} onOpenFile={onOpenFile} />
+          )}
+          {collapsible ? (
+            <button
+              type="button"
+              className="user-message-expand-toggle"
+              aria-expanded={expanded}
+              onClick={toggleExpanded}
+            >
+              <span>{expanded ? t("common.collapse") : t("common.showMore")}</span>
+              {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+            </button>
+          ) : null}
+        </div>
       ) : null}
-    </div>
+    </>
+  );
+}
+
+function MessagePastedTextPart({
+  part,
+}: {
+  part: Extract<MessageContentPart, { type: "pasted_text" }>;
+}): JSX.Element {
+  const { locale, t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const title = part.title || collapsedComposerPromptTitle(part.text);
+  const characterCount = part.text.length.toLocaleString(locale);
+  return (
+    <section className={`user-message-pasted-text${expanded ? " expanded" : ""}`}>
+      <button
+        type="button"
+        className="user-message-pasted-text-toggle"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <span className="user-message-pasted-text-icon" aria-hidden="true">
+          <FileText />
+        </span>
+        <span className="user-message-pasted-text-labels">
+          <strong>{title}</strong>
+          <span>{t("message.pastedTextMeta", { count: characterCount })}</span>
+        </span>
+        {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+      </button>
+      {expanded ? <pre className="user-message-pasted-text-content">{part.text}</pre> : null}
+    </section>
   );
 }
 
@@ -495,17 +564,32 @@ function UserMessageInlineEditor({
   initialText: string;
   submitting: boolean;
   onCancel?: () => void;
-  onSubmit?: (text: string, images: InputImage[], files: InputFile[]) => void;
+  onSubmit?: (
+    text: string,
+    images: InputImage[],
+    files: InputFile[],
+    contentParts?: MessageContentPart[],
+  ) => void;
 }): JSX.Element {
   const { t } = useI18n();
-  const [text, setText] = useState(initialText);
+  const initialPastedParts = (item.content_parts ?? []).filter(
+    (part): part is Extract<MessageContentPart, { type: "pasted_text" }> =>
+      part.type === "pasted_text",
+  );
+  const initialTextParts = (item.content_parts ?? []).filter(
+    (part): part is Extract<MessageContentPart, { type: "text" }> => part.type === "text",
+  );
+  const [text, setText] = useState(
+    item.content_parts?.length ? initialTextParts.map((part) => part.text).join("") : initialText,
+  );
+  const [pastedParts, setPastedParts] = useState(initialPastedParts);
   const [images, setImages] = useState<InputImage[]>(item.images ?? []);
   const [files, setFiles] = useState<InputFile[]>(item.files ?? []);
   const [dragOver, setDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const hasAttachments = images.length > 0 || files.length > 0;
+  const hasAttachments = images.length > 0 || files.length > 0 || pastedParts.length > 0;
   const canSubmit = text.trim().length > 0 || hasAttachments;
 
   // Re-seed local state when the editor is reopened on a different user
@@ -513,10 +597,19 @@ function UserMessageInlineEditor({
   // after a stream update). Without this, editing message B and then
   // cancelling back to message A would show B's draft in A.
   useEffect(() => {
-    setText(initialText);
+    const nextParts = item.content_parts ?? [];
+    const nextPastedParts = nextParts.filter(
+      (part): part is Extract<MessageContentPart, { type: "pasted_text" }> =>
+        part.type === "pasted_text",
+    );
+    const nextTextParts = nextParts.filter(
+      (part): part is Extract<MessageContentPart, { type: "text" }> => part.type === "text",
+    );
+    setText(nextParts.length ? nextTextParts.map((part) => part.text).join("") : initialText);
+    setPastedParts(nextPastedParts);
     setImages(item.images ?? []);
     setFiles(item.files ?? []);
-  }, [initialText, item.id, item.images, item.files]);
+  }, [initialText, item.id, item.images, item.files, item.content_parts]);
 
   useEffect(() => {
     window.requestAnimationFrame(() => {
@@ -540,7 +633,25 @@ function UserMessageInlineEditor({
     if (!canSubmit || submitting) {
       return;
     }
-    onSubmit?.(text, images, files);
+    const contentParts: MessageContentPart[] = [
+      ...pastedParts,
+      ...(text.length > 0 ? [{ type: "text" as const, text }] : []),
+    ];
+    const fullText = contentParts.length
+      ? contentParts.map((part) => part.text).join("")
+      : text;
+    onSubmit?.(fullText, images, files, contentParts.length ? contentParts : undefined);
+  }
+
+  function revealPastedPart(index: number): void {
+    const part = pastedParts[index];
+    if (!part) return;
+    setPastedParts((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    setText((current) => `${current}${part.text}`);
+  }
+
+  function removePastedPart(index: number): void {
+    setPastedParts((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
   async function addAttachmentFiles(filesToAdd: File[]): Promise<void> {
@@ -674,6 +785,18 @@ function UserMessageInlineEditor({
       ) : null}
       {files.length > 0 ? (
         <MessageFileList files={files} onRemove={removeFile} />
+      ) : null}
+      {pastedParts.length > 0 ? (
+        <div className="user-message-edit-pasted-texts">
+          {pastedParts.map((part, index) => (
+            <CollapsedComposerPromptCard
+              key={`${part.type}-${index}`}
+              text={part.text}
+              onReveal={() => revealPastedPart(index)}
+              onRemove={() => removePastedPart(index)}
+            />
+          ))}
+        </div>
       ) : null}
       <textarea
         ref={textareaRef}

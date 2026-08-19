@@ -155,7 +155,7 @@ func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
 		}
 		return s.startThreadCompactTurn(ctx, req, th, params.Prompt)
 	}
-	userMsg, err := userMessageFromPrompt(params.Prompt, images, files)
+	userMsg, err := userMessageFromPrompt(params.Prompt, images, files, params.ContentParts)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -449,7 +449,7 @@ func (s *Server) handleTurnQueue(req Request) error {
 	if queueID == "" {
 		queueID = session.NewID()
 	}
-	msg, err := userMessageFromPrompt(params.Prompt, images, files)
+	msg, err := userMessageFromPrompt(params.Prompt, images, files, params.ContentParts)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -518,7 +518,7 @@ func (s *Server) handleTurnUpdateQueued(req Request) error {
 		return s.writeResponse(req.ID, nil, errors.New("thread is read-only"))
 	}
 
-	msg, err := userMessageFromPrompt(params.Prompt, images, files)
+	msg, err := userMessageFromPrompt(params.Prompt, images, files, params.ContentParts)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -675,7 +675,7 @@ func (s *Server) handleTurnSteer(req Request) error {
 		}
 		steerMsg = removedTurn.msg
 	} else {
-		steerMsg, err = userMessageFromPrompt(params.Prompt, images, files)
+		steerMsg, err = userMessageFromPrompt(params.Prompt, images, files, params.ContentParts)
 		if err != nil {
 			th.mu.Unlock()
 			return s.writeResponse(req.ID, nil, err)
@@ -1262,7 +1262,7 @@ func normalizeTurnStartFiles(files []TurnStartFile) ([]providers.InputFile, erro
 	return out, nil
 }
 
-func userMessageFromPrompt(prompt string, images []providers.InputImage, files []providers.InputFile) (providers.ChatMessage, error) {
+func userMessageFromPrompt(prompt string, images []providers.InputImage, files []providers.InputFile, contentPartSets ...[]providers.MessageContentPart) (providers.ChatMessage, error) {
 	content, display, ok := renderLightweightSlashCommandPrompt(prompt)
 	msg, err := literalUserMessageFromPrompt(content, images, files)
 	if err != nil {
@@ -1271,7 +1271,35 @@ func userMessageFromPrompt(prompt string, images []providers.InputImage, files [
 	if ok {
 		msg.DisplayContent = display
 	}
+	if len(contentPartSets) > 0 {
+		parts := normalizeMessageContentParts(contentPartSets[0])
+		var flattened strings.Builder
+		for _, part := range parts {
+			flattened.WriteString(part.Text)
+		}
+		// Turn handlers trim the outer prompt before this point, while pasted
+		// clipboard text may legitimately retain leading/trailing whitespace.
+		// Compare the same canonical form so that harmless boundary whitespace
+		// does not discard the card metadata; internal ordering/content must still
+		// match exactly.
+		if len(parts) > 0 && strings.TrimSpace(flattened.String()) == prompt {
+			msg.ContentParts = parts
+		}
+	}
 	return msg, nil
+}
+
+func normalizeMessageContentParts(parts []providers.MessageContentPart) []providers.MessageContentPart {
+	out := make([]providers.MessageContentPart, 0, len(parts))
+	for _, part := range parts {
+		part.Type = strings.TrimSpace(part.Type)
+		if (part.Type != "text" && part.Type != "pasted_text") || part.Text == "" {
+			continue
+		}
+		part.Title = strings.TrimSpace(part.Title)
+		out = append(out, part)
+	}
+	return out
 }
 
 // literalUserMessageFromPrompt builds a user-role message without interpreting

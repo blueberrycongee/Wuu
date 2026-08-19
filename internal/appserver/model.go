@@ -1344,6 +1344,7 @@ func chatMessageItem(id string, msg providers.ChatMessage) ThreadItem {
 			Status:           ThreadItemStatusCompleted,
 			Role:             "user",
 			Text:             chatMessageDisplayContent(msg),
+			ContentParts:     append([]providers.MessageContentPart(nil), msg.ContentParts...),
 			InputText:        chatMessageInputText(msg),
 			Images:           threadItemImages(msg.Images),
 			Files:            threadItemFiles(msg.Files),
@@ -1415,6 +1416,7 @@ func chatMessageFromPersistedMessage(rec persistedMessage) providers.ChatMessage
 		Steered:              rec.Steered,
 		ReasoningContent:     rec.ReasoningContent,
 		ReasoningBlocks:      append([]providers.ReasoningBlock(nil), rec.ReasoningBlocks...),
+		ContentParts:         append([]providers.MessageContentPart(nil), rec.ContentParts...),
 		ToolCallID:           rec.ToolCallID,
 		ToolResultKind:       providers.NormalizeToolCallKind(rec.ToolResultKind),
 		FinishReason:         providers.FinishReason(strings.TrimSpace(rec.FinishReason)),
@@ -1594,6 +1596,7 @@ func filePreview(file providers.InputFile, index int) string {
 func cloneThreadItem(item ThreadItem) ThreadItem {
 	item.Images = append([]ThreadItemImage(nil), item.Images...)
 	item.Files = append([]ThreadItemFile(nil), item.Files...)
+	item.ContentParts = append([]providers.MessageContentPart(nil), item.ContentParts...)
 	item.Display = cloneToolCallDisplay(item.Display)
 	item.ResultDetail = cloneToolResult(item.ResultDetail)
 	return item

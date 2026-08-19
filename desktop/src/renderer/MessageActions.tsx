@@ -1,9 +1,47 @@
-import { AlertCircle, Check, Copy, FileText, GitFork, PencilLine, SquareTerminal, X } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  FileText,
+  GitFork,
+  PencilLine,
+  SquareTerminal,
+  X,
+} from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
 import type { InputFile, InputImage } from "../shared/protocol";
 import { imageSource } from "./ComposerMessages";
 import { useImagePreview } from "./ImagePreview";
 import { useI18n } from "./i18n";
+
+function fileNameParts(filename: string): { stem: string; extension: string } {
+  const dot = filename.lastIndexOf(".");
+  if (dot <= 0 || dot === filename.length - 1) {
+    return { stem: filename, extension: "" };
+  }
+  return { stem: filename.slice(0, dot), extension: filename.slice(dot) };
+}
+
+function base64ByteLength(data: string): number {
+  const payload = data.includes(",") ? data.slice(data.indexOf(",") + 1) : data;
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((payload.length * 3) / 4) - padding);
+}
+
+function formatFileSize(data: string): string {
+  const bytes = base64ByteLength(data);
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const kilobytes = bytes / 1024;
+  if (kilobytes < 1024) {
+    return `${kilobytes < 10 ? kilobytes.toFixed(1) : Math.round(kilobytes)} KB`;
+  }
+  const megabytes = kilobytes / 1024;
+  return `${megabytes < 10 ? megabytes.toFixed(1) : Math.round(megabytes)} MB`;
+}
 
 export function AgentMessageActions({
   getText,
@@ -162,18 +200,33 @@ export function MessageEditButton({
 export function MessageImageGrid({
   images,
   onRemove,
+  collapsedLimit,
 }: {
   images: InputImage[];
   /** When provided, each image gets a remove button (used inside the inline editor). */
   onRemove?: (index: number) => void;
+  /** Static message grids collapse after this many previews. Editors always show all images. */
+  collapsedLimit?: number;
 }): JSX.Element {
   const { t } = useI18n();
   const { openPreview } = useImagePreview();
+  const [expanded, setExpanded] = useState(false);
+  const effectiveLimit = onRemove ? undefined : collapsedLimit;
+  const hasOverflow = Boolean(effectiveLimit && images.length > effectiveLimit);
+  const collapsed = hasOverflow && !expanded;
+  const visibleImages = collapsed && effectiveLimit ? images.slice(0, effectiveLimit) : images;
+  const hiddenCount = effectiveLimit ? images.length - effectiveLimit : 0;
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [images.length]);
+
   return (
     <div className={`message-images${onRemove ? " message-images-editable" : ""}`}>
-      {images.map((image, index) => {
+      {visibleImages.map((image, index) => {
         const src = imageSource(image);
         const label = t("composer.imageNumber", { number: index + 1 });
+        const overflowPreview = collapsed && index === visibleImages.length - 1;
         const handleOpen = (): void => {
           openPreview({ src, alt: label, title: label });
         };
@@ -189,12 +242,23 @@ export function MessageImageGrid({
               className="message-image"
               src={src}
               alt={label}
-              role="button"
-              tabIndex={0}
-              aria-label={t("composer.enlargeNamed", { name: label })}
-              onClick={handleOpen}
-              onKeyDown={handleKeyDown}
+              role={overflowPreview ? undefined : "button"}
+              tabIndex={overflowPreview ? -1 : 0}
+              aria-label={overflowPreview ? undefined : t("composer.enlargeNamed", { name: label })}
+              onClick={overflowPreview ? undefined : handleOpen}
+              onKeyDown={overflowPreview ? undefined : handleKeyDown}
             />
+            {overflowPreview ? (
+              <button
+                type="button"
+                className="message-image-overflow"
+                aria-label={t("message.showMoreImages", { count: hiddenCount })}
+                aria-expanded={false}
+                onClick={() => setExpanded(true)}
+              >
+                +{hiddenCount}
+              </button>
+            ) : null}
             {onRemove ? (
               <button
                 type="button"
@@ -212,6 +276,17 @@ export function MessageImageGrid({
           </div>
         );
       })}
+      {hasOverflow && expanded ? (
+        <button
+          type="button"
+          className="message-attachment-collapse"
+          aria-expanded={true}
+          onClick={() => setExpanded(false)}
+        >
+          <ChevronUp aria-hidden="true" />
+          <span>{t("message.collapseImages")}</span>
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -219,33 +294,74 @@ export function MessageImageGrid({
 export function MessageFileList({
   files,
   onRemove,
+  collapsedLimit,
 }: {
   files: InputFile[];
   /** When provided, each file gets a remove button (used inside the inline editor). */
   onRemove?: (index: number) => void;
+  /** Static message lists collapse after this many files. Editors always show all files. */
+  collapsedLimit?: number;
 }): JSX.Element {
   const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const effectiveLimit = onRemove ? undefined : collapsedLimit;
+  const hasOverflow = Boolean(effectiveLimit && files.length > effectiveLimit);
+  const visibleFiles = hasOverflow && !expanded && effectiveLimit
+    ? files.slice(0, effectiveLimit)
+    : files;
+  const hiddenCount = effectiveLimit ? files.length - effectiveLimit : 0;
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [files.length]);
+
   return (
     <div className={`message-files${onRemove ? " message-files-editable" : ""}`}>
-      {files.map((file, index) => (
-        <div className="message-file-frame" key={`${file.media_type}-${file.filename ?? index}-${index}`}>
-          <div className="message-file">
-            <FileText className="icon" aria-hidden="true" />
-            <span>{file.filename?.trim() || t("message.fileNumber", { number: index + 1 })}</span>
+      {visibleFiles.map((file, index) => {
+        const filename = file.filename?.trim() || t("message.fileNumber", { number: index + 1 });
+        const { stem, extension } = fileNameParts(filename);
+        const kind = extension ? extension.slice(1).toUpperCase() : file.media_type.split("/").pop()?.toUpperCase();
+        return (
+          <div className="message-file-frame" key={`${file.media_type}-${file.filename ?? index}-${index}`}>
+            <div className="message-file" title={filename}>
+              <FileText className="icon" aria-hidden="true" />
+              <span className="message-file-details">
+                <span className="message-file-name">
+                  <span className="message-file-name-stem">{stem}</span>
+                  {extension ? <span className="message-file-name-extension">{extension}</span> : null}
+                </span>
+                <span className="message-file-meta">{kind ? `${kind} · ` : ""}{formatFileSize(file.data)}</span>
+              </span>
+            </div>
+            {onRemove ? (
+              <button
+                type="button"
+                className="message-file-remove"
+                aria-label={t("message.removeFileNamed", { name: filename })}
+                title={t("common.remove")}
+                onClick={() => onRemove(index)}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
-          {onRemove ? (
-            <button
-              type="button"
-              className="message-file-remove"
-              aria-label={t("message.removeFileNamed", { name: file.filename?.trim() || index + 1 })}
-              title={t("common.remove")}
-              onClick={() => onRemove(index)}
-            >
-              <X size={12} aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-      ))}
+        );
+      })}
+      {hasOverflow ? (
+        <button
+          type="button"
+          className="message-attachment-more"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+          <span>
+            {expanded
+              ? t("message.collapseFiles")
+              : t("message.showMoreFiles", { count: hiddenCount })}
+          </span>
+        </button>
+      ) : null}
     </div>
   );
 }

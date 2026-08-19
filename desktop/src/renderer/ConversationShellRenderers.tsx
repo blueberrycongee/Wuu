@@ -16,6 +16,7 @@ import type {
   Agent,
   InputFile,
   InputImage,
+  MessageContentPart,
   Thread,
   ThreadItem,
   UserQuestionAnswer,
@@ -81,7 +82,11 @@ export type ConversationSplitPaneRendererProps = {
   ) => void;
   onRemoveFile: (pane: ConversationPaneID, id: string) => void;
   onRemoveImage: (pane: ConversationPaneID, id: string) => void;
-  onSend: (pane: ConversationPaneID) => void;
+  onSend: (
+    pane: ConversationPaneID,
+    promptOverride?: string,
+    contentParts?: MessageContentPart[],
+  ) => void;
   onInterrupt: (pane: ConversationPaneID) => void;
   onForkMessage: (thread: Thread, turnID: string, itemID: string) => void;
   onOpenFile?: (thread: Thread, path: string) => void;
@@ -101,6 +106,7 @@ export type ConversationSplitPaneRendererProps = {
     text: string,
     images: InputImage[],
     files: InputFile[],
+    contentParts: MessageContentPart[] | undefined,
     pane: ConversationPaneID,
   ) => void;
   onStreamFrame: () => void;
@@ -166,7 +172,7 @@ export function ConversationSplitPaneRenderer({
       onPasteAttachmentFiles={(files) => onPasteAttachmentFiles(pane, files)}
       onRemoveFile={(id) => onRemoveFile(pane, id)}
       onRemoveImage={(id) => onRemoveImage(pane, id)}
-      onSend={() => onSend(pane)}
+      onSend={(promptOverride, contentParts) => onSend(pane, promptOverride, contentParts)}
       onInterrupt={() => onInterrupt(pane)}
       onForkMessage={(turnID, itemID) => onForkMessage(thread, turnID, itemID)}
       onOpenFile={(path) => onOpenFile?.(thread, path)}
@@ -184,8 +190,8 @@ export function ConversationSplitPaneRenderer({
           : undefined
       }
       onCancelEditMessage={onCancelEditMessage}
-      onSubmitEditMessage={(turnID, item, text, images, files) =>
-        onSubmitEditMessage(thread, turnID, item, text, images, files, pane)
+      onSubmitEditMessage={(turnID, item, text, images, files, contentParts) =>
+        onSubmitEditMessage(thread, turnID, item, text, images, files, contentParts, pane)
       }
       onStreamFrame={onStreamFrame}
       onOpenFileDiff={(selection) => onOpenFileDiff(thread.id, selection)}

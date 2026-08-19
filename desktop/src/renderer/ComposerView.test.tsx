@@ -20,6 +20,7 @@ import { PluginHost } from "./plugins/PluginHost";
 import type {
   DesktopProject,
   InitializeResult,
+  MessageContentPart,
   PermissionSummary,
   RuntimeContext,
   SkillSummary,
@@ -243,7 +244,7 @@ function renderStatefulSplitPaneComposer(props: {
   initialPrompt?: string;
   readOnly?: boolean;
   onPasteAttachmentFiles?: (files: File[]) => void;
-  onSend?: (prompt: string) => void;
+  onSend?: (prompt: string, contentParts?: MessageContentPart[]) => void;
 }): void {
   function Harness(): JSX.Element {
     const [prompt, setPrompt] = useState(props.initialPrompt ?? "");
@@ -260,7 +261,11 @@ function renderStatefulSplitPaneComposer(props: {
           onPasteAttachmentFiles={props.onPasteAttachmentFiles ?? (() => {})}
           onRemoveFile={() => {}}
           onRemoveImage={() => {}}
-          onSend={() => props.onSend?.(prompt)}
+          onSend={(promptOverride, contentParts) => {
+            const nextPrompt = promptOverride ?? prompt;
+            if (contentParts) props.onSend?.(nextPrompt, contentParts);
+            else props.onSend?.(nextPrompt);
+          }}
           onInterrupt={() => {}}
         />
       </ImagePreviewProvider>
@@ -310,7 +315,7 @@ function dispatchDrag(
 
 function renderStatefulComposer(props: {
   initialPrompt?: string;
-  onSend?: (prompt: string) => void;
+  onSend?: (prompt: string, contentParts?: MessageContentPart[]) => void;
   onCommitPrompt?: (prompt: string, commit: (prompt: string) => void) => void;
   activeContext?: RuntimeContext;
   readOnly?: boolean;
@@ -390,7 +395,11 @@ function renderStatefulComposer(props: {
           onGuideQueuedMessage={() => {}}
           onEditQueuedMessage={() => {}}
           onEditGuideMessage={() => {}}
-          onSend={(promptOverride) => props.onSend?.(promptOverride ?? prompt)}
+          onSend={(promptOverride, contentParts) => {
+            const nextPrompt = promptOverride ?? prompt;
+            if (contentParts) props.onSend?.(nextPrompt, contentParts);
+            else props.onSend?.(nextPrompt);
+          }}
           onInterrupt={() => {}}
           tokensPerSecond={0}
           queryHistorySessionID={props.queryHistorySessionID}
@@ -1721,7 +1730,10 @@ describe("Composer long text folding", () => {
       sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
 
-    expect(onSend).toHaveBeenCalledWith(`${longText}\n要求后续变更`);
+    expect(onSend).toHaveBeenCalledWith(`${longText}\n要求后续变更`, [
+      { type: "pasted_text", text: longText },
+      { type: "text", text: "\n要求后续变更" },
+    ]);
   });
 
   it("reveals a folded long paste back into the textarea", () => {
@@ -1830,7 +1842,11 @@ describe("Composer long text folding", () => {
       sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
 
-    expect(onSend).toHaveBeenCalledWith(`${firstLongText}${secondLongText}\n要求后续变更`);
+    expect(onSend).toHaveBeenCalledWith(`${firstLongText}${secondLongText}\n要求后续变更`, [
+      { type: "pasted_text", text: firstLongText },
+      { type: "pasted_text", text: secondLongText },
+      { type: "text", text: "\n要求后续变更" },
+    ]);
   });
 
   it("removes only the folded prefix and keeps the follow-up draft", () => {
@@ -2843,7 +2859,10 @@ describe("composer drag and drop", () => {
       textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     });
 
-    expect(onSend).toHaveBeenCalledWith(`${longText}要求后续变更`);
+    expect(onSend).toHaveBeenCalledWith(`${longText}要求后续变更`, [
+      { type: "pasted_text", text: longText },
+      { type: "text", text: "要求后续变更" },
+    ]);
   });
 
   it("reveals a folded long paste back into the split pane textarea", () => {

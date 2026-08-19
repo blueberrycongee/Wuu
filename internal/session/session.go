@@ -112,6 +112,7 @@ type HistoryRecord struct {
 	Steered             bool            `json:"steered,omitempty"`
 	ReasoningContent    string          `json:"reasoning_content,omitempty"`
 	ReasoningBlocks     json.RawMessage `json:"reasoning_blocks,omitempty"`
+	ContentParts        json.RawMessage `json:"content_parts,omitempty"`
 	Images              json.RawMessage `json:"images,omitempty"`
 	Files               json.RawMessage `json:"files,omitempty"`
 	ToolCalls           json.RawMessage `json:"tool_calls,omitempty"`
@@ -962,6 +963,7 @@ func migrateSchema(db *sql.DB) error {
 				steered INTEGER NOT NULL DEFAULT 0,
 				reasoning_content TEXT NOT NULL DEFAULT '',
 			reasoning_blocks_json TEXT NOT NULL DEFAULT '',
+			content_parts_json TEXT NOT NULL DEFAULT '',
 			images_json TEXT NOT NULL DEFAULT '',
 			files_json TEXT NOT NULL DEFAULT '',
 			tool_calls_json TEXT NOT NULL DEFAULT '',
@@ -1395,6 +1397,9 @@ WHERE workflow_id = ''`); err != nil {
 	if err := addColumnIfMissing(db, "session_messages", "hidden", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	if err := addColumnIfMissing(db, "session_messages", "content_parts_json", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if err := addColumnIfMissing(db, "session_messages", "cache_creation_tokens", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
@@ -1685,18 +1690,18 @@ func insertHistoryRecordTx(tx *sql.Tx, id string, seq int, rec HistoryRecord) er
 	_, err := tx.Exec(`
 			INSERT INTO session_messages (
 				session_id, seq, role, content, display_content, origin, origin_id, cause, presentation_kind, read_only, phase, provider_item_id, provider_item_model, client_id, hidden, steered, reasoning_content,
-				reasoning_blocks_json, images_json, files_json, tool_calls_json, discovered_tools_json,
+				reasoning_blocks_json, content_parts_json, images_json, files_json, tool_calls_json, discovered_tools_json,
 				tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens,
 				provider, model
 			) VALUES (
 				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-				?, ?, ?, ?, ?,
+				?, ?, ?, ?, ?, ?,
 				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			)`,
 		id, seq, strings.ToLower(strings.TrimSpace(rec.Role)), rec.Content, rec.DisplayContent,
 		strings.TrimSpace(rec.Origin), strings.TrimSpace(rec.OriginID), strings.TrimSpace(rec.Cause), strings.TrimSpace(rec.PresentationKind), boolInt(rec.ReadOnly),
 		strings.TrimSpace(rec.Phase), strings.TrimSpace(rec.ProviderItemID), strings.TrimSpace(rec.ProviderItemModel), rec.ClientID, boolInt(rec.Hidden), boolInt(rec.Steered), rec.ReasoningContent,
-		rawJSONText(rec.ReasoningBlocks), rawJSONText(rec.Images), rawJSONText(rec.Files), rawJSONText(rec.ToolCalls), rawJSONText(rec.DiscoveredTools),
+		rawJSONText(rec.ReasoningBlocks), rawJSONText(rec.ContentParts), rawJSONText(rec.Images), rawJSONText(rec.Files), rawJSONText(rec.ToolCalls), rawJSONText(rec.DiscoveredTools),
 		rec.ToolCallID, rec.ToolInvocationID, rec.ToolResultKind, rawJSONText(rec.ToolResult), rec.FinishReason, rec.StopReason, boolInt(rec.Truncated), rec.Name, nullableValueTimeText(rec.At), rec.InputTokens, rec.OutputTokens, rec.ContextTokens, rec.CacheCreationTokens, rec.CacheReadTokens,
 		strings.TrimSpace(rec.Provider), strings.TrimSpace(rec.Model),
 	)
@@ -1742,7 +1747,7 @@ WHERE owner_id = ? AND status = 'settled'
 const historyRecordsSelect = `
 	SELECT seq, role, content, display_content, origin, origin_id, cause, presentation_kind, read_only, phase, client_id, hidden, steered, reasoning_content,
 	       provider_item_id, provider_item_model,
-	       reasoning_blocks_json, images_json, files_json, tool_calls_json, discovered_tools_json,
+	       reasoning_blocks_json, content_parts_json, images_json, files_json, tool_calls_json, discovered_tools_json,
 	       tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens,
 	       provider, model
 	FROM session_messages`
@@ -1769,13 +1774,13 @@ func scanHistoryRecords(rows *sql.Rows) ([]HistoryRecord, error) {
 	for rows.Next() {
 		var rec HistoryRecord
 		var hidden, steered, truncated, readOnly int
-		var reasoningBlocks, images, files, toolCalls, discoveredTools, toolResult string
+		var reasoningBlocks, contentParts, images, files, toolCalls, discoveredTools, toolResult string
 		var at sql.NullString
 		if err := rows.Scan(
 			&rec.Seq,
 			&rec.Role, &rec.Content, &rec.DisplayContent, &rec.Origin, &rec.OriginID, &rec.Cause, &rec.PresentationKind, &readOnly, &rec.Phase, &rec.ClientID, &hidden, &steered, &rec.ReasoningContent,
 			&rec.ProviderItemID, &rec.ProviderItemModel,
-			&reasoningBlocks, &images, &files, &toolCalls, &discoveredTools,
+			&reasoningBlocks, &contentParts, &images, &files, &toolCalls, &discoveredTools,
 			&rec.ToolCallID, &rec.ToolInvocationID, &rec.ToolResultKind, &toolResult, &rec.FinishReason, &rec.StopReason, &truncated, &rec.Name, &at, &rec.InputTokens, &rec.OutputTokens, &rec.ContextTokens, &rec.CacheCreationTokens, &rec.CacheReadTokens,
 			&rec.Provider, &rec.Model,
 		); err != nil {
@@ -1786,6 +1791,7 @@ func scanHistoryRecords(rows *sql.Rows) ([]HistoryRecord, error) {
 		rec.Steered = steered != 0
 		rec.Truncated = truncated != 0
 		rec.ReasoningBlocks = rawMessage(reasoningBlocks)
+		rec.ContentParts = rawMessage(contentParts)
 		rec.Images = rawMessage(images)
 		rec.Files = rawMessage(files)
 		rec.ToolCalls = rawMessage(toolCalls)
