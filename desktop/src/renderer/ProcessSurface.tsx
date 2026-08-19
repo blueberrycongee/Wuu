@@ -28,7 +28,7 @@ import {
   turnTokenCountText,
 } from "./ThinkingTokenCount";
 import { translateCurrent as translate, useI18n } from "./i18n";
-import { WuuMascot } from "./WuuMascot";
+import { WuuMascot, type WuuMascotActivity } from "./WuuMascot";
 
 /**
  * How long to wait after the fold opens before snapping the reasoning
@@ -43,10 +43,12 @@ const PROCESS_BLOBATAR_EXIT_FALLBACK_MS = 180;
 
 export function ProcessSurfaceMascot({
   active,
+  activity = "idle",
   provider,
   model,
 }: {
   active: boolean;
+  activity?: WuuMascotActivity;
   provider?: string;
   model?: string;
 }): JSX.Element | null {
@@ -74,6 +76,7 @@ export function ProcessSurfaceMascot({
       size={28}
       provider={provider}
       model={model}
+      activity={active ? activity : "idle"}
       onAnimationEnd={() => {
         if (!active) setKeepMounted(false);
       }}
@@ -155,6 +158,28 @@ function processKindLabel(kind: ToolActivityProcessSegment["kind"]): string {
   }
 }
 
+function mascotActivityForToolKind(
+  kind: ToolActivityProcessSegment["kind"] | undefined,
+): WuuMascotActivity {
+  switch (kind) {
+    case "search":
+    case "list":
+    case "browser":
+      return "search";
+    case "edit":
+    case "create":
+      return "edit";
+    case "command":
+      return "command";
+    case "read":
+    case "context":
+    case "skill":
+      return "read";
+    default:
+      return "tool";
+  }
+}
+
 function isToolActivityItem(item: ThreadItem): boolean {
   return TOOL_ACTIVITY_ITEM_TYPES.has(item.type);
 }
@@ -214,6 +239,15 @@ export function ProcessSurface({
   const reasoningStreaming =
     streaming &&
     reasoningItems.some((item) => item.status === "in_progress");
+  const currentToolSegment =
+    [...toolSegments]
+      .reverse()
+      .find((segment) => segment.status === "running") ??
+    toolSegments.at(-1);
+  const mascotActivity: WuuMascotActivity =
+    reasoningStreaming || (hasReasoning && toolItems.length === 0)
+      ? "thinking"
+      : mascotActivityForToolKind(currentToolSegment?.kind);
   const useCondensedSummary =
     toolItems.length >= CONDENSED_SUMMARY_MIN_TOOL_COUNT &&
     toolSegments.length > 1;
@@ -293,6 +327,7 @@ export function ProcessSurface({
     <span className="process-surface-summary-line" aria-label={summaryText}>
       <ProcessSurfaceMascot
         active={processEntryActive}
+        activity={mascotActivity}
         provider={provider}
         model={model}
       />

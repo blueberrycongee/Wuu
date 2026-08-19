@@ -52,6 +52,117 @@
     stroke var(--mo-morph, 400ms) var(--mo-morph-ease, ease-in-out);
 }
 
+/* Activity changes tune the shared Blobatar clock rather than starting a
+ * second animation on the outer SVG. Body breathing, bobbing, eye morphs, and
+ * portaled accessories therefore stay phase-linked through stage changes. */
+[data-wuu-mascot-activity="thinking"] {
+  --mo-rate: 1.12;
+}
+
+[data-wuu-mascot-activity="search"] {
+  --mo-rate: 0.86;
+}
+
+[data-wuu-mascot-activity="edit"] {
+  --mo-rate: 0.72;
+}
+
+[data-wuu-mascot-activity="command"] {
+  --mo-rate: 0.66;
+}
+
+[data-wuu-mascot-activity="tool"] {
+  --mo-rate: 0.76;
+}
+
+.wuu-mascot-activity-prop {
+  pointer-events: none;
+  transform-box: view-box;
+  transform-origin: center;
+  animation: wuu-mascot-activity-arrive 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.wuu-mascot-activity-motion {
+  transform-box: view-box;
+  transform-origin: 82px 61px;
+}
+
+.wuu-mascot-activity-line {
+  fill: none;
+  stroke: var(--mo-eye);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4.2;
+}
+
+.wuu-mascot-activity-fill {
+  fill: color-mix(in oklab, var(--mo-head) 28%, white);
+  stroke: var(--mo-eye);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3.5;
+}
+
+.wuu-mascot-activity-solid {
+  fill: var(--mo-eye);
+}
+
+.wuu-mascot-thinking-bubble {
+  fill: color-mix(in oklab, var(--mo-head) 16%, white);
+  stroke: var(--mo-eye);
+  stroke-width: 2.8;
+}
+
+.wuu-mascot-activity-prop-thinking .wuu-mascot-activity-motion {
+  transform-origin: 79px 24px;
+  animation: wuu-mascot-thinking-prop 1.35s ease-in-out infinite alternate;
+}
+
+.wuu-mascot-activity-prop-search .wuu-mascot-activity-motion {
+  transform-origin: 88px 65px;
+  animation: wuu-mascot-search-prop 900ms ease-in-out infinite alternate;
+}
+
+.wuu-mascot-activity-prop-edit .wuu-mascot-activity-motion {
+  transform-origin: 80px 65px;
+  animation: wuu-mascot-edit-prop 520ms ease-in-out infinite alternate;
+}
+
+.wuu-mascot-activity-prop-command .wuu-mascot-activity-motion {
+  animation: wuu-mascot-command-prop 760ms ease-in-out infinite alternate;
+}
+
+@keyframes wuu-mascot-activity-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scale(0.72);
+  }
+}
+
+@keyframes wuu-mascot-thinking-prop {
+  to {
+    transform: translateY(-1.5px) rotate(2deg);
+  }
+}
+
+@keyframes wuu-mascot-search-prop {
+  to {
+    transform: rotate(-8deg) translateX(-1px);
+  }
+}
+
+@keyframes wuu-mascot-edit-prop {
+  to {
+    transform: translate(-1.5px, 1.5px) rotate(-2deg);
+  }
+}
+
+@keyframes wuu-mascot-command-prop {
+  to {
+    transform: translateY(-1px) scale(1.04);
+  }
+}
+
 @keyframes wuu-mascot-accessory-arrive {
   from {
     opacity: 0;
@@ -60,7 +171,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wuu-mascot-accessory {
+  .wuu-mascot-accessory,
+  .wuu-mascot-activity-prop,
+  .wuu-mascot-activity-motion {
     animation: none;
   }
 }

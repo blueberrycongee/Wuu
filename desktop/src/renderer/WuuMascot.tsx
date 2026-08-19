@@ -1,4 +1,5 @@
 import { _layout, palette } from "blobatar";
+import { happy, smug, surprised, type Expression } from "blobatar/expression";
 import { Blobatar } from "blobatar/react";
 import "blobatar/motion.css";
 import {
@@ -45,6 +46,29 @@ export type WuuMascotAccessory =
   | "cat-ears"
   | "ribbon"
   | "necktie";
+
+export type WuuMascotActivity =
+  | "idle"
+  | "thinking"
+  | "search"
+  | "edit"
+  | "command"
+  | "read"
+  | "tool";
+
+const WUU_MASCOT_ACTIVITY_EXPRESSIONS: Readonly<
+  Record<WuuMascotActivity, Expression | undefined>
+> = {
+  idle: undefined,
+  // A quiet head-cocked pose reads as concentration without relying on the
+  // explicit activity prop below alone. Eye geometry still morphs in place.
+  thinking: smug,
+  search: surprised,
+  edit: happy,
+  command: happy,
+  read: smug,
+  tool: happy,
+};
 
 type WuuMascotRuntime = {
   provider?: string;
@@ -130,12 +154,14 @@ type WuuMascotProps = Omit<
   provider?: string;
   model?: string;
   accessory?: WuuMascotAccessory;
+  activity?: WuuMascotActivity;
 };
 
 export function WuuMascot({
   provider,
   model,
   accessory,
+  activity = "idle",
   style,
   ...svgProps
 }: WuuMascotProps): JSX.Element {
@@ -173,11 +199,13 @@ export function WuuMascot({
         background={false}
         traits={WUU_MASCOT_TRAITS}
         animate="always"
+        expression={WUU_MASCOT_ACTIVITY_EXPRESSIONS[activity]}
         focusable={false}
         pointerEvents="none"
         style={mascotStyle}
         data-wuu-mascot-provider-hue={hue}
         data-wuu-mascot-accessory={selectedAccessory}
+        data-wuu-mascot-activity={activity}
       />
       {/* Portal into the rendered body group rather than beside it. This keeps
           the accessory under the eye layer, inside Blobatar's exact breathe and
@@ -192,7 +220,117 @@ export function WuuMascot({
             bodyLayer,
           )
         : null}
+      {bodyLayer && activity !== "idle"
+        ? createPortal(
+            <MascotActivityProp key={activity} activity={activity} />,
+            bodyLayer,
+          )
+        : null}
     </>
+  );
+}
+
+function MascotActivityProp({
+  activity,
+}: {
+  activity: Exclude<WuuMascotActivity, "idle">;
+}): JSX.Element {
+  return (
+    <g
+      className={`wuu-mascot-activity-prop wuu-mascot-activity-prop-${activity}`}
+      aria-hidden="true"
+    >
+      <g className="wuu-mascot-activity-motion">
+        {activity === "thinking" ? (
+          <>
+            <circle
+              className="wuu-mascot-thinking-bubble"
+              cx="79"
+              cy="24"
+              r="14"
+            />
+            <path
+              className="wuu-mascot-activity-line"
+              d="M 73 19 C 73.5 12 84.5 12 85.5 18.5 C 86.5 24 79 24 79 29"
+            />
+            <circle
+              className="wuu-mascot-activity-solid"
+              cx="79"
+              cy="34.5"
+              r="3"
+            />
+          </>
+        ) : null}
+        {activity === "search" ? (
+          <>
+            <circle
+              className="wuu-mascot-activity-fill"
+              cx="78"
+              cy="53"
+              r="10"
+            />
+            <path
+              className="wuu-mascot-activity-line"
+              d="M 85 61 L 95 72"
+            />
+          </>
+        ) : null}
+        {activity === "edit" ? (
+          <>
+            <path
+              className="wuu-mascot-activity-fill"
+              d="M 68 71 L 87 50 L 94 57 L 74 77 L 66 79 Z"
+            />
+            <path
+              className="wuu-mascot-activity-line"
+              d="M 84 54 L 91 61 M 68 72 L 74 77"
+            />
+          </>
+        ) : null}
+        {activity === "command" ? (
+          <>
+            <rect
+              className="wuu-mascot-activity-fill"
+              x="67"
+              y="51"
+              width="28"
+              height="23"
+              rx="6"
+            />
+            <path
+              className="wuu-mascot-activity-line"
+              d="M 73 58 L 78 62.5 L 73 67 M 82 67 L 89 67"
+            />
+          </>
+        ) : null}
+        {activity === "read" ? (
+          <>
+            <path
+              className="wuu-mascot-activity-fill"
+              d="M 68 50 Q 77 47 82 52 Q 87 47 96 50 L 96 73 Q 87 70 82 75 Q 77 70 68 73 Z"
+            />
+            <path
+              className="wuu-mascot-activity-line"
+              d="M 82 52 L 82 75"
+            />
+          </>
+        ) : null}
+        {activity === "tool" ? (
+          <>
+            <path
+              className="wuu-mascot-activity-line"
+              d="M 82 49 L 82 73 M 70 61 L 94 61 M 73.5 52.5 L 90.5 69.5 M 90.5 52.5 L 73.5 69.5"
+            />
+            <circle
+              className="wuu-mascot-activity-fill"
+              cx="82"
+              cy="61"
+              r="5.5"
+            />
+          </>
+        ) : null}
+      </g>
+    </g>
   );
 }
 

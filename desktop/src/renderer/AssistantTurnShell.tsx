@@ -676,7 +676,10 @@ function ReasoningFold({
       onToggle={handleToggle}
     >
       <summary className="turn-reasoning-summary">
-        <ProcessSurfaceMascot active={Boolean(activeGray)} />
+        <ProcessSurfaceMascot
+          active={Boolean(activeGray)}
+          activity="thinking"
+        />
         <span ref={waveRef} className={textClass} data-text={reasoningWaveText}>
           <AnimatedProcessText
             className="turn-reasoning-summary-label"
