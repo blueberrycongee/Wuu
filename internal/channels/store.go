@@ -199,6 +199,14 @@ func (s *Service) migrate() error {
 			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_room_members_member ON room_members(member_type, member_id, room_id)`,
+		`CREATE TABLE IF NOT EXISTS direct_messages (
+			human_id TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			room_id TEXT NOT NULL UNIQUE,
+			PRIMARY KEY (human_id, agent_id),
+			FOREIGN KEY (agent_id) REFERENCES named_agents(id) ON DELETE CASCADE,
+			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS room_messages (
 			id TEXT PRIMARY KEY,
 			room_id TEXT NOT NULL,
@@ -768,6 +776,13 @@ func (s *Service) DeleteNamedAgent(ctx context.Context, id string) error {
 		return fmt.Errorf("begin named agent delete: %w", err)
 	}
 	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM rooms
+		WHERE kind = 'dm' AND id IN (
+			SELECT room_id FROM room_members WHERE member_type = 'agent' AND member_id = ?
+		)`, id); err != nil {
+		return fmt.Errorf("delete named agent direct messages: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE room_messages SET task_owner = NULL WHERE task_owner = ?`, id); err != nil {
 		return fmt.Errorf("clear named agent task ownership: %w", err)
 	}
@@ -904,6 +919,126 @@ func (s *Service) CreateRoom(ctx context.Context, params CreateRoomParams) (Room
 	return room, nil
 }
 
+// OpenDirectMessage returns the one persistent DM shared by a human and a
+// named agent, creating it when needed. The pair table makes this operation
+// idempotent across restarts and protects against concurrent creators.
+func (s *Service) OpenDirectMessage(ctx context.Context, humanID, agentID string) (Room, error) {
+	humanID = strings.TrimSpace(humanID)
+	agentID = strings.TrimSpace(agentID)
+	if humanID == "" {
+		return Room{}, errors.New("direct message human id is required")
+	}
+	if agentID == "" {
+		return Room{}, errors.New("direct message agent id is required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var roomID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT room_id FROM direct_messages WHERE human_id = ? AND agent_id = ?`, humanID, agentID,
+	).Scan(&roomID)
+	if err == nil {
+		return s.GetRoom(ctx, roomID)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Room{}, fmt.Errorf("find direct message: %w", err)
+	}
+
+	// Adopt a DM created before the pair index existed instead of duplicating
+	// it during migration from the original room-only representation.
+	err = s.db.QueryRowContext(ctx, `
+		SELECT rooms.id
+		FROM rooms
+		JOIN room_members AS human_member
+			ON human_member.room_id = rooms.id AND human_member.member_type = 'human' AND human_member.member_id = ?
+		JOIN room_members AS agent_member
+			ON agent_member.room_id = rooms.id AND agent_member.member_type = 'agent' AND agent_member.member_id = ?
+		WHERE rooms.kind = 'dm'
+			AND (SELECT COUNT(*) FROM room_members WHERE room_id = rooms.id) = 2
+		ORDER BY rooms.created_at, rooms.id
+		LIMIT 1`, humanID, agentID,
+	).Scan(&roomID)
+	if err == nil {
+		if _, insertErr := s.db.ExecContext(ctx, `
+			INSERT INTO direct_messages (human_id, agent_id, room_id) VALUES (?, ?, ?)
+			ON CONFLICT(human_id, agent_id) DO NOTHING`, humanID, agentID, roomID); insertErr != nil {
+			return Room{}, fmt.Errorf("index existing direct message: %w", insertErr)
+		}
+		if lookupErr := s.db.QueryRowContext(ctx, `
+			SELECT room_id FROM direct_messages WHERE human_id = ? AND agent_id = ?`, humanID, agentID,
+		).Scan(&roomID); lookupErr != nil {
+			return Room{}, fmt.Errorf("reload indexed direct message: %w", lookupErr)
+		}
+		return s.GetRoom(ctx, roomID)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Room{}, fmt.Errorf("find legacy direct message: %w", err)
+	}
+
+	var agentName string
+	if err := s.db.QueryRowContext(ctx, `SELECT name FROM named_agents WHERE id = ?`, agentID).Scan(&agentName); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Room{}, fmt.Errorf("%w: named agent %q", ErrNotFound, agentID)
+		}
+		return Room{}, fmt.Errorf("load direct message agent: %w", err)
+	}
+	id, err := randomID("room", 12)
+	if err != nil {
+		return Room{}, err
+	}
+	now := fromMillis(toMillis(s.now()))
+	room := Room{
+		ID: id, Kind: RoomDM, Name: agentName, CreatedBy: humanID, CreatedAt: now,
+		Members: []RoomMember{
+			{RoomID: id, MemberType: MemberHuman, MemberID: humanID, JoinedAt: now},
+			{RoomID: id, MemberType: MemberAgent, MemberID: agentID, JoinedAt: now},
+		},
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Room{}, fmt.Errorf("begin direct message create: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO rooms (id, kind, name, avatar_image, created_by, created_at) VALUES (?, ?, ?, '', ?, ?)`,
+		room.ID, room.Kind, room.Name, room.CreatedBy, toMillis(room.CreatedAt)); err != nil {
+		return Room{}, fmt.Errorf("insert direct message room: %w", err)
+	}
+	for _, member := range room.Members {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO room_members (room_id, member_type, member_id, joined_at) VALUES (?, ?, ?, ?)`,
+			room.ID, member.MemberType, member.MemberID, toMillis(member.JoinedAt)); err != nil {
+			return Room{}, fmt.Errorf("insert direct message member: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO room_cursors (room_id, member_type, member_id, last_read_seq) VALUES (?, ?, ?, 0)`,
+			room.ID, member.MemberType, member.MemberID); err != nil {
+			return Room{}, fmt.Errorf("initialize direct message cursor: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO direct_messages (human_id, agent_id, room_id) VALUES (?, ?, ?)`, humanID, agentID, room.ID); err != nil {
+		if isUniqueConstraint(err) {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return Room{}, fmt.Errorf("resolve direct message create conflict: %w", rollbackErr)
+			}
+			if lookupErr := s.db.QueryRowContext(ctx, `
+				SELECT room_id FROM direct_messages WHERE human_id = ? AND agent_id = ?`, humanID, agentID,
+			).Scan(&roomID); lookupErr != nil {
+				return Room{}, fmt.Errorf("reload concurrent direct message: %w", lookupErr)
+			}
+			return s.GetRoom(ctx, roomID)
+		}
+		return Room{}, fmt.Errorf("index direct message: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Room{}, fmt.Errorf("commit direct message create: %w", err)
+	}
+	return room, nil
+}
+
 func (s *Service) GetRoom(ctx context.Context, id string) (Room, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -1025,6 +1160,9 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 			return Room{}, fmt.Errorf("%w: room %q", ErrNotFound, id)
 		}
 		return Room{}, fmt.Errorf("read room for update: %w", err)
+	}
+	if kind == RoomDM && params.Members != nil {
+		return Room{}, errors.New("direct message members cannot be changed")
 	}
 	if params.Name != nil {
 		if _, err := tx.ExecContext(ctx, `UPDATE rooms SET name = ? WHERE id = ?`, name, id); err != nil {

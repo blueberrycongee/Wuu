@@ -78,7 +78,6 @@ import {
   AppSidebar,
 } from "./AppSidebar";
 import { ChannelView } from "./ChannelView";
-import { CollaborationAgentView } from "./CollaborationAgentView";
 import { CollaborationSidebar } from "./CollaborationSidebar";
 import type { AppMode } from "./AppModeSwitch";
 import {
@@ -560,6 +559,7 @@ export function App(): JSX.Element {
   const [editAgentRequestID, setEditAgentRequestID] = useState("");
   const [namedAgents, setNamedAgents] = useState<NamedAgent[]>([]);
   const [selectedCollaborationAgentID, setSelectedCollaborationAgentID] = useState("");
+  const selectedCollaborationAgentRequestRef = useRef("");
   const [selectedChannelRoomIDState, setSelectedChannelRoomIDState] = useState("");
   const [channelComposerDrafts, setChannelComposerDrafts] = useState<Record<string, ComposerDraftState>>({});
   // Rooms (with per-room unread counts) live at the App level so the unified
@@ -941,7 +941,13 @@ export function App(): JSX.Element {
   const draftSessionTabCounterRef = useRef(0);
   const currentSessionTab = activeSessionTab(state);
   const activeChannelRooms = useMemo(
-    () => visibleChannelRooms(channelRooms, channelRoomPreferences),
+    () => [
+      ...visibleChannelRooms(
+        channelRooms.filter((room) => room.kind === "channel"),
+        channelRoomPreferences,
+      ),
+      ...channelRooms.filter((room) => room.kind === "dm"),
+    ],
     [channelRoomPreferences, channelRooms],
   );
   const pinnedChannelRooms = useMemo(
@@ -957,7 +963,7 @@ export function App(): JSX.Element {
     [activeChannelRooms, channelRoomPreferences],
   );
   const archivedChannelRooms = useMemo(
-    () => channelRooms.filter((room) => channelRoomPreferences.archivedRoomIDs.includes(room.id)),
+    () => channelRooms.filter((room) => room.kind === "channel" && channelRoomPreferences.archivedRoomIDs.includes(room.id)),
     [channelRoomPreferences.archivedRoomIDs, channelRooms],
   );
   const selectedChannelRoomID =
@@ -2995,6 +3001,7 @@ export function App(): JSX.Element {
       return;
     }
     setSelectedChannelRoomIDState(room.id);
+    selectedCollaborationAgentRequestRef.current = "";
     setSelectedCollaborationAgentID("");
     setAppMode("collaboration");
     clearChannelRoomUnread(room.id);
@@ -3016,19 +3023,47 @@ export function App(): JSX.Element {
 
   function openHarnessView(): void {
     setAppMode("harness");
+    selectedCollaborationAgentRequestRef.current = "";
     setSelectedCollaborationAgentID("");
   }
 
   function openChannelsView(): void {
+    selectedCollaborationAgentRequestRef.current = "";
     setSelectedCollaborationAgentID("");
     openCollaborationView();
   }
 
-  function selectCollaborationAgent(agentID: string): void {
+  async function selectCollaborationAgent(agentID: string): Promise<void> {
     if (!namedAgents.some((agent) => agent.id === agentID)) return;
+    selectedCollaborationAgentRequestRef.current = agentID;
     setSelectedCollaborationAgentID(agentID);
     setAppMode("collaboration");
     prepareChannelTab();
+    const existingDirectMessage = activeChannelRooms.find(
+      (room) => room.kind === "dm" && room.members.some(
+        (member) => member.member_type === "agent" && member.member_id === agentID,
+      ),
+    );
+    if (existingDirectMessage) {
+      setSelectedChannelRoomIDState(existingDirectMessage.id);
+      clearChannelRoomUnread(existingDirectMessage.id);
+    }
+    if (!window.wuu || typeof window.wuu.openChannelDirectMessage !== "function") return;
+    try {
+      const result = await window.wuu.openChannelDirectMessage({ agent_id: agentID });
+      setChannelRooms((current) => {
+        const existing = current.findIndex((room) => room.id === result.room.id);
+        if (existing < 0) return [...current, result.room];
+        const next = [...current];
+        next[existing] = result.room;
+        return next;
+      });
+      if (selectedCollaborationAgentRequestRef.current !== agentID) return;
+      setSelectedChannelRoomIDState(result.room.id);
+      clearChannelRoomUnread(result.room.id);
+    } catch (error) {
+      if (selectedCollaborationAgentRequestRef.current === agentID) showErrorToast(error);
+    }
   }
 
   function openNewChannelRoom(): void {
@@ -3039,12 +3074,6 @@ export function App(): JSX.Element {
   function openNewNamedAgent(): void {
     openChannelsView();
     setNewAgentRequest((count) => count + 1);
-  }
-
-  function manageNamedAgent(agentID: string): void {
-    setSelectedCollaborationAgentID("");
-    setEditAgentRequestID(agentID);
-    setAppMode("collaboration");
   }
 
   function focusHeroAfter(
@@ -4593,9 +4622,7 @@ export function App(): JSX.Element {
                 aria-hidden="true"
               />
             </header>
-            {selectedCollaborationAgent ? (
-              <CollaborationAgentView agent={selectedCollaborationAgent} onManage={() => manageNamedAgent(selectedCollaborationAgent.id)} />
-            ) : <ChannelView
+            <ChannelView
               initialized={sessionRuntime ?? state.initialized}
               section="rooms"
               archivedRoomIDs={channelRoomPreferences.archivedRoomIDs}
@@ -4611,7 +4638,7 @@ export function App(): JSX.Element {
               onNewAgentRequestHandled={() => setNewAgentRequest(0)}
               editAgentRequestID={editAgentRequestID}
               onEditAgentRequestHandled={() => setEditAgentRequestID("")}
-            />}
+            />
           </>
         ) : (
           <>

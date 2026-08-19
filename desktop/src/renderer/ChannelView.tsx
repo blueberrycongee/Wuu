@@ -612,6 +612,11 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
     () => rooms.find((room) => room.id === selectedRoomID),
     [rooms, selectedRoomID],
   );
+  const selectedRoomTitle = useMemo(() => {
+    if (!selectedRoom || selectedRoom.kind !== "dm") return selectedRoom?.name ?? "";
+    const agentID = selectedRoom.members.find((member) => member.member_type === "agent")?.member_id;
+    return agents.find((agent) => agent.id === agentID)?.name ?? selectedRoom.name;
+  }, [agents, selectedRoom]);
   const roomIncludesCurrentUser = selectedRoom?.members.some(
     (member) => member.member_type === "human" && member.member_id === "local-user",
   ) ?? false;
@@ -1394,7 +1399,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
           {selectedRoom ? (
             <header className="channel-room-header">
               <div className="channel-room-header-title">
-                <h2>{selectedRoom.name}</h2>
+                <h2>{selectedRoomTitle}</h2>
               </div>
               {respondingAgents.length > 0 ? (
                 <div
@@ -1421,7 +1426,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                   </span>
                 </div>
               ) : null}
-              <div className="channel-room-header-actions">
+              {selectedRoom.kind === "channel" ? <div className="channel-room-header-actions">
                 <button
                   className="icon-button"
                   type="button"
@@ -1431,7 +1436,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 >
                   <Settings2 className="icon" />
                 </button>
-              </div>
+              </div> : null}
             </header>
           ) : null}
           {!loading && rooms.length === 0 ? (

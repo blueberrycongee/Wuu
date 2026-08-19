@@ -11,6 +11,7 @@ import {
   type ChannelMessageListParams,
   type ChannelMessageSendParams,
   type ChannelRoomCreateParams,
+  type ChannelDirectMessageOpenParams,
   type ChannelRoomUpdateParams,
   type ChannelRoomDeleteParams,
   type ChannelRoomReadParams,
@@ -303,6 +304,8 @@ const api: WuuDesktopApi = {
   listChannelRooms: () => ipcRenderer.invoke("wuu:channel-room-list"),
   createChannelRoom: (params: ChannelRoomCreateParams) =>
     ipcRenderer.invoke("wuu:channel-room-create", params),
+  openChannelDirectMessage: (params: ChannelDirectMessageOpenParams) =>
+    ipcRenderer.invoke("wuu:channel-direct-message-open", params),
   updateChannelRoom: (params: ChannelRoomUpdateParams) =>
     ipcRenderer.invoke("wuu:channel-room-update", params),
   deleteChannelRoom: (params: ChannelRoomDeleteParams) =>

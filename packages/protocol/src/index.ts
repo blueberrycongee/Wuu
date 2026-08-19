@@ -868,6 +868,8 @@ export type ChannelRoomCreateParams = {
   agent_ids?: string[];
 };
 export type ChannelRoomCreateResult = { room: ChannelRoom };
+export type ChannelDirectMessageOpenParams = { agent_id: string };
+export type ChannelDirectMessageOpenResult = { room: ChannelRoom };
 export type ChannelRoomUpdateParams = {
   room_id: string;
   name?: string;
@@ -2469,6 +2471,7 @@ export type WuuDesktopApi = {
   resetNamedAgent: (params: ChannelAgentResetParams) => Promise<ChannelAgentResetResult>;
   listChannelRooms: () => Promise<ChannelRoomListResult>;
   createChannelRoom: (params: ChannelRoomCreateParams) => Promise<ChannelRoomCreateResult>;
+  openChannelDirectMessage: (params: ChannelDirectMessageOpenParams) => Promise<ChannelDirectMessageOpenResult>;
   updateChannelRoom: (params: ChannelRoomUpdateParams) => Promise<ChannelRoomUpdateResult>;
   deleteChannelRoom: (params: ChannelRoomDeleteParams) => Promise<ChannelRoomDeleteResult>;
   markChannelRoomRead: (params: ChannelRoomReadParams) => Promise<ChannelRoomReadResult>;

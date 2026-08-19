@@ -980,6 +980,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleChannelRoomList(ctx, req)
 	case MethodChannelRoomCreate:
 		return s.handleChannelRoomCreate(ctx, req)
+	case MethodChannelDirectMessageOpen:
+		return s.handleChannelDirectMessageOpen(ctx, req)
 	case MethodChannelRoomUpdate:
 		return s.handleChannelRoomUpdate(ctx, req)
 	case MethodChannelRoomDelete:

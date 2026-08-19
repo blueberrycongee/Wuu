@@ -258,6 +258,23 @@ func (s *Server) handleChannelRoomCreate(ctx context.Context, req Request) error
 	return s.writeResponse(req.ID, ChannelRoomCreateResult{Room: room}, err)
 }
 
+func (s *Server) handleChannelDirectMessageOpen(ctx context.Context, req Request) error {
+	if s == nil || s.channelService == nil {
+		return s.writeResponse(req.ID, nil, errors.New("channels service is unavailable"))
+	}
+	var params ChannelDirectMessageOpenParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	room, err := s.channelService.OpenDirectMessage(ctx, localChannelHumanID, params.AgentID)
+	if err == nil {
+		rooms := []channels.Room{room}
+		err = s.attachLocalHumanUnreadCounts(ctx, rooms)
+		room = rooms[0]
+	}
+	return s.writeResponse(req.ID, ChannelDirectMessageOpenResult{Room: room}, err)
+}
+
 func (s *Server) handleChannelRoomUpdate(ctx context.Context, req Request) error {
 	if s == nil || s.channelService == nil {
 		return s.writeResponse(req.ID, nil, errors.New("channels service is unavailable"))

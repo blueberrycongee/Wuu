@@ -51,10 +51,19 @@ export function CollaborationSidebar({
   );
   const visibleRooms = useMemo(
     () => normalizedQuery
-      ? rooms.filter((room) => searchable(room.name).includes(normalizedQuery))
-      : rooms,
+      ? rooms.filter((room) => room.kind === "channel" && searchable(room.name).includes(normalizedQuery))
+      : rooms.filter((room) => room.kind === "channel"),
     [normalizedQuery, rooms],
   );
+  const directMessagesByAgentID = useMemo(() => {
+    const result = new Map<string, ChannelRoom>();
+    for (const room of rooms) {
+      if (room.kind !== "dm") continue;
+      const agentID = room.members.find((member) => member.member_type === "agent")?.member_id;
+      if (agentID) result.set(agentID, room);
+    }
+    return result;
+  }, [rooms]);
 
   return (
     <aside
@@ -93,23 +102,29 @@ export function CollaborationSidebar({
               </button>
             </div>
             <div className="collaboration-contact-list">
-              {visibleAgents.map((agent) => (
-                <button
-                  className={`collaboration-contact-row${selectedAgentID === agent.id ? " active" : ""}`}
-                  type="button"
-                  aria-current={selectedAgentID === agent.id ? "page" : undefined}
-                  key={agent.id}
-                  onClick={() => onSelectAgent(agent.id)}
-                >
-                  <span className="collaboration-contact-avatar" aria-hidden="true">
-                    <AgentAvatarMark seed={agent.id} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
-                  </span>
-                  <span className="collaboration-contact-copy">
-                    <strong>{agent.name}</strong>
-                    <small>{t("channels.directMessage")}</small>
-                  </span>
-                </button>
-              ))}
+              {visibleAgents.map((agent) => {
+                const directMessage = directMessagesByAgentID.get(agent.id);
+                const selected = selectedAgentID === agent.id || directMessage?.id === selectedRoomID;
+                const unread = selected ? 0 : (directMessage?.unread_count ?? 0);
+                return (
+                  <button
+                    className={`collaboration-contact-row${selected ? " active" : ""}${unread > 0 ? " has-unread" : ""}`}
+                    type="button"
+                    aria-current={selected ? "page" : undefined}
+                    key={agent.id}
+                    onClick={() => onSelectAgent(agent.id)}
+                  >
+                    <span className="collaboration-contact-avatar" aria-hidden="true">
+                      <AgentAvatarMark seed={agent.id} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
+                    </span>
+                    <span className="collaboration-contact-copy">
+                      <strong>{agent.name}</strong>
+                      <small>{t("channels.directMessage")}</small>
+                    </span>
+                    {unread > 0 ? <span className="collaboration-contact-unread">{formatChannelUnreadCount(unread)}</span> : null}
+                  </button>
+                );
+              })}
               {visibleAgents.length === 0 ? (
                 <div className="collaboration-contact-empty">{t(query ? "channels.noMatchingAgents" : "channels.noAgents")}</div>
               ) : null}
