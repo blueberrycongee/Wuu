@@ -46,7 +46,8 @@ describe("resolveWuuCommand (issue #8: never run a workspace-local core)", () =>
 
   it("prefers the packaged app-owned binary over PATH", () => {
     const resourcesPath = mkdtempSync(join(tmpdir(), "wuu-resources-"));
-    const binary = join(resourcesPath, "bin", "wuu-core");
+    const binaryName = process.platform === "win32" ? "wuu-core.exe" : "wuu-core";
+    const binary = join(resourcesPath, "bin", binaryName);
     mkdirSync(join(resourcesPath, "bin"), { recursive: true });
     writeFileSync(binary, "#!/bin/sh\n");
     expect(resolveWuuCommand({}, "/repo/wuu", undefined, resourcesPath)).toEqual({
@@ -54,6 +55,23 @@ describe("resolveWuuCommand (issue #8: never run a workspace-local core)", () =>
       args: [],
       cwd: "/repo/wuu",
     });
+  });
+
+  it("only selects a core binary for the current platform", () => {
+    const resourcesPath = mkdtempSync(join(tmpdir(), "wuu-resources-platform-"));
+    const bin = join(resourcesPath, "bin");
+    mkdirSync(bin, { recursive: true });
+    const unixBinary = join(bin, "wuu-core");
+    const windowsBinary = join(bin, "wuu-core.exe");
+    writeFileSync(unixBinary, "unix");
+    writeFileSync(windowsBinary, "windows");
+
+    expect(
+      resolveWuuCommand({}, "/repo/wuu", undefined, resourcesPath, "win32"),
+    ).toMatchObject({ command: windowsBinary });
+    expect(
+      resolveWuuCommand({}, "/repo/wuu", undefined, resourcesPath, "linux"),
+    ).toMatchObject({ command: unixBinary });
   });
 
   it("prefers the explicit desktop-core override over go run", () => {

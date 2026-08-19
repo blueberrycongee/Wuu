@@ -65,6 +65,46 @@ jobs:
       - name: Check, test, and build
         run: make theme-surface-matrix-check check-desktop test-desktop build-desktop
 
+  windows-desktop-check:
+    name: Windows desktop check
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Test and typecheck
+        run: |
+          npm test
+          npm run typecheck
+
+      - name: Package Windows app
+        run: npm run pack:win
+
+      - name: Verify packaged app
+        shell: pwsh
+        run: |
+          $app = Get-ChildItem release -Recurse -Filter wuu.exe | Select-Object -First 1
+          $core = Get-ChildItem release -Recurse -Filter wuu-core.exe | Select-Object -First 1
+          if (-not $app) { throw "Packaged wuu.exe is missing" }
+          if (-not $core) { throw "Packaged wuu-core.exe is missing" }
+          & $core.FullName --version
+
   clients-check:
     name: Clients check
     runs-on: ubuntu-latest

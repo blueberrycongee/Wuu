@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { resolve } from "node:path";
 import type {
   RuntimeContext,
   TerminalSessionEvent,
@@ -50,16 +51,12 @@ describe("resolveTerminalCwd", () => {
     const params: TerminalSessionStartParams = {
       cwd: "/repo/worktrees/fork-1/project",
     };
-    expect(resolveTerminalCwd(context, params)).toBe(
-      "/repo/worktrees/fork-1/project",
-    );
+    expect(resolveTerminalCwd(context, params)).toBe(resolve(params.cwd!));
   });
 
   it("normalizes a relative override to an absolute path", () => {
     const params: TerminalSessionStartParams = { cwd: "relative/worktree" };
-    const resolved = resolveTerminalCwd(context, params);
-    expect(resolved.endsWith("/relative/worktree")).toBe(true);
-    expect(resolved.startsWith("/")).toBe(true);
+    expect(resolveTerminalCwd(context, params)).toBe(resolve(params.cwd!));
   });
 
   it("ignores an empty-string override and falls back to the runtime context", () => {

@@ -216,6 +216,21 @@ describe("GitService commit message generation", () => {
 });
 
 describe("GitService worktree roots", () => {
+  it.skipIf(process.platform !== "win32")(
+    "accepts a known Windows worktree path with different casing",
+    () => {
+      const root = makeRepository();
+      const differentlyCasedRoot = root.toUpperCase();
+
+      expect(
+        serviceFor(root, [], [differentlyCasedRoot]).status(
+          {},
+          differentlyCasedRoot,
+        ).is_repo,
+      ).toBe(true);
+    },
+  );
+
   it("returns the same root for sibling directories in one working tree", () => {
     const root = makeRepository();
     const frontend = join(root, "frontend");
@@ -245,19 +260,22 @@ describe("GitService worktree roots", () => {
     expect(gitWorkingTreeBusy(root, [])).toBe(true);
   });
 
-  it("matches symlinked sibling paths to the same working tree", () => {
-    const root = makeRepository();
-    const frontend = join(root, "frontend");
-    const backend = join(root, "backend");
-    const alias = mkdtempSync(join(tmpdir(), "wuu-git-alias-"));
-    rmSync(alias, { recursive: true, force: true });
-    roots.push(alias);
-    mkdirSync(frontend);
-    mkdirSync(backend);
-    symlinkSync(root, alias, "dir");
+  it.skipIf(process.platform === "win32")(
+    "matches symlinked sibling paths to the same working tree",
+    () => {
+      const root = makeRepository();
+      const frontend = join(root, "frontend");
+      const backend = join(root, "backend");
+      const alias = mkdtempSync(join(tmpdir(), "wuu-git-alias-"));
+      rmSync(alias, { recursive: true, force: true });
+      roots.push(alias);
+      mkdirSync(frontend);
+      mkdirSync(backend);
+      symlinkSync(root, alias, "dir");
 
-    expect(gitWorkingTreeBusy(frontend, [join(alias, "backend")])).toBe(true);
-  });
+      expect(gitWorkingTreeBusy(frontend, [join(alias, "backend")])).toBe(true);
+    },
+  );
 
   it("allows a running thread in an independent linked worktree", () => {
     const root = makeRepository();

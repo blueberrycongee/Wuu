@@ -31,6 +31,7 @@ export function resolveWuuCommand(
   workdir: string,
   sourceRoot: string | undefined,
   resourcesPath?: string,
+  platform: NodeJS.Platform = process.platform,
 ): WuuCommand {
   if (env.WUU_DESKTOP_CORE) {
     return { command: env.WUU_DESKTOP_CORE, args: [], cwd: workdir };
@@ -38,24 +39,21 @@ export function resolveWuuCommand(
   if (sourceRoot && env.WUU_DESKTOP_USE_GO_RUN === "1") {
     return { command: "go", args: ["run", "./cmd/wuu"], cwd: sourceRoot };
   }
-  const packaged = resolvePackagedWuuCore(resourcesPath);
+  const packaged = resolvePackagedWuuCore(resourcesPath, platform);
   if (packaged) {
     return { command: packaged, args: [], cwd: workdir };
   }
   throw new Error("wuu desktop core is missing; reinstall the desktop app");
 }
 
-function resolvePackagedWuuCore(resourcesPath: string | undefined): string | undefined {
+function resolvePackagedWuuCore(
+  resourcesPath: string | undefined,
+  platform: NodeJS.Platform,
+): string | undefined {
   if (!resourcesPath) {
     return undefined;
   }
-  for (const candidate of [
-    join(resourcesPath, "bin", "wuu-core"),
-    join(resourcesPath, "bin", "wuu-core.exe"),
-  ]) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return undefined;
+  const binary = platform === "win32" ? "wuu-core.exe" : "wuu-core";
+  const candidate = join(resourcesPath, "bin", binary);
+  return existsSync(candidate) ? candidate : undefined;
 }

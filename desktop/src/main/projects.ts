@@ -115,7 +115,7 @@ export class ProjectManager {
     // folder (via relocate, not re-add) keeps the same identity and its
     // workspace state + conversation history stay connected.
     const existingIndex = this.store.projects.findIndex(
-      (project) => resolve(project.path) === resolvedPath,
+      (project) => sameProjectPath(project.path, resolvedPath),
     );
     const existing =
       existingIndex >= 0 ? this.store.projects[existingIndex] : undefined;
@@ -219,6 +219,14 @@ export class ProjectManager {
   private save(): void {
     writeProjectStoreFile(projectStorePath(), this.store);
   }
+}
+
+function sameProjectPath(left: string, right: string): boolean {
+  const resolvedLeft = resolve(left);
+  const resolvedRight = resolve(right);
+  return process.platform === "win32"
+    ? resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+    : resolvedLeft === resolvedRight;
 }
 
 function projectStorePath(): string {

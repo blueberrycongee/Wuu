@@ -25,8 +25,13 @@ if (!command) {
 const child = spawn(command, args.slice(index + 1), {
   stdio: "inherit",
   env,
-  // Windows tool shims are .cmd batch files; only a shell can start those.
-  shell: process.platform === "win32",
+  // Windows tool shims and bare npm-script commands may resolve to .cmd
+  // files, which require cmd.exe. Native .exe/.com programs must be spawned
+  // directly so arguments such as `node -e "..."` are not re-parsed or
+  // corrupted by an extra shell (and do not trigger Node's shell+args warning).
+  shell:
+    process.platform === "win32" &&
+    !/\.(?:exe|com)$/i.test(command),
 });
 child.on("error", (error) => {
   console.error(`env-run: ${error.message}`);

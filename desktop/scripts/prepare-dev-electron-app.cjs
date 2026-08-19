@@ -208,6 +208,7 @@ function installElectronBinary() {
 function ensureSourceElectronApp({
   sourceAppExists = () => existsSync(sourceApp),
   installElectron = installElectronBinary,
+  installerPath = electronInstallerPath,
   electronVersion = installedElectronVersion(),
 } = {}) {
   if (sourceAppExists()) return true;
@@ -219,7 +220,7 @@ function ensureSourceElectronApp({
   if (result.status !== 0) {
     throw new Error(
       `Electron ${electronVersion} install failed with status ${result.status ?? "unknown"}. `
-      + `Run the local installer directly to see the full error: node ${electronInstallerPath()}`,
+      + `Run the local installer directly to see the full error: node ${installerPath()}`,
     );
   }
   if (!sourceAppExists()) {

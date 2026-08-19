@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
-const { resolve } = require("node:path");
+const { join, resolve } = require("node:path");
 const packageJSON = require("../package.json");
 const {
   launchEnvironment,
@@ -71,15 +71,33 @@ assert.equal(
 );
 assert.equal(
   helperPathForApp("/repo/desktop/build/dev-host/Wuu Dev.app"),
-  "/repo/desktop/build/dev-host/Wuu Dev.app/Contents/Resources/bin/wuu-cua-mac",
+  join(
+    "/repo/desktop/build/dev-host/Wuu Dev.app",
+    "Contents",
+    "Resources",
+    "bin",
+    "wuu-cua-mac",
+  ),
 );
 assert.equal(
   pipHelperPathForApp("/repo/desktop/build/dev-host/Wuu Dev.app"),
-  "/repo/desktop/build/dev-host/Wuu Dev.app/Contents/Resources/bin/wuu-cua-mac-pip",
+  join(
+    "/repo/desktop/build/dev-host/Wuu Dev.app",
+    "Contents",
+    "Resources",
+    "bin",
+    "wuu-cua-mac-pip",
+  ),
 );
 assert.equal(
   speechHelperPathForApp("/repo/desktop/build/dev-host/Wuu Dev.app"),
-  "/repo/desktop/build/dev-host/Wuu Dev.app/Contents/Resources/bin/wuu-speech-mac",
+  join(
+    "/repo/desktop/build/dev-host/Wuu Dev.app",
+    "Contents",
+    "Resources",
+    "bin",
+    "wuu-speech-mac",
+  ),
 );
 assert.equal(
   sourceHashFromBuildInfo({ sourceHash: "a".repeat(64) }, () => "fallback"),
@@ -101,6 +119,8 @@ const devLauncherSource = readFileSync(resolve(__dirname, "dev.cjs"), "utf8");
 assert.doesNotMatch(devLauncherSource, /env\.WUU_ENABLE_CUA_MAC\s*=\s*["']1["']/);
 assert.match(devLauncherSource, /build-core\.cjs/);
 assert.match(devLauncherSource, /--plugins-only/);
+assert.match(devLauncherSource, /WUU_DESKTOP_USE_GO_RUN\s*=\s*["']1["']/);
+assert.match(devLauncherSource, /WUU_SOURCE_ROOT\s*=\s*repoRoot/);
 assert.equal(packageJSON.scripts["build:core"], "node scripts/build-core.cjs");
 assert.equal(
   packageJSON.scripts["build:core:win"],
@@ -228,6 +248,7 @@ assert.throws(
   () => ensureSourceElectronApp({
     sourceAppExists: () => false,
     installElectron: () => ({ status: 1 }),
+    installerPath: () => "/repo/desktop/node_modules/electron/install.js",
     electronVersion: "42.3.0",
   }),
   /status 1/,

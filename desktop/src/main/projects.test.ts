@@ -242,6 +242,20 @@ describe("ProjectManager project store migration", () => {
 });
 
 describe("ProjectManager runtime context availability", () => {
+  it.skipIf(process.platform !== "win32")(
+    "deduplicates Windows project paths case-insensitively",
+    async () => {
+      const projectPath = await createProjectDir("case-insensitive");
+      const manager = new ProjectManager();
+
+      const first = manager.add(projectPath);
+      const second = manager.add(projectPath.toUpperCase());
+
+      expect(second.projects).toHaveLength(1);
+      expect(second.projects[0]?.id).toBe(first.projects[0]?.id);
+    },
+  );
+
   it("registers a workspace without changing the active runtime context", async () => {
     const activePath = await createProjectDir("active");
     const addedPath = await createProjectDir("added");

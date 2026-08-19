@@ -10,6 +10,7 @@ const {
 const { ensureDevSigningIdentity } = require("./dev-signing.cjs");
 
 const desktopRoot = resolve(__dirname, "..");
+const repoRoot = resolve(desktopRoot, "..");
 const buildHelper = join(__dirname, "build-cua-mac.cjs");
 const buildSpeechHelper = join(__dirname, "build-speech-mac.cjs");
 const buildPluginHelpers = join(__dirname, "build-core.cjs");
@@ -50,6 +51,13 @@ if (pluginHelperBuild.status !== 0) {
 }
 
 const env = { ...process.env };
+// electron-vite launches Electron directly on Windows and Linux. Unlike the
+// macOS LaunchServices wrapper below, that path does not inject the source
+// checkout or opt in to `go run`, so the main process would otherwise fail
+// immediately with "wuu desktop core is missing". Keep local development on
+// the source-owned core on every platform.
+env.WUU_DESKTOP_USE_GO_RUN = "1";
+env.WUU_SOURCE_ROOT = repoRoot;
 if (env.WUU_ENABLE_BROWSER === "1") {
   env.VITE_ENABLE_BROWSER = "true";
 }

@@ -84,8 +84,8 @@ describe("cuaFrameHelperCandidates", () => {
       "/app",
       ["/repo"],
     )).toEqual([
-      "/app/bin/wuu-cua-mac-pip",
-      "/repo/desktop/build/bin/wuu-cua-mac-pip",
+      join("/app", "bin", "wuu-cua-mac-pip"),
+      join("/repo", "desktop", "build", "bin", "wuu-cua-mac-pip"),
     ]);
   });
 
@@ -97,7 +97,7 @@ describe("cuaFrameHelperCandidates", () => {
       },
       undefined,
       [],
-    )).toEqual(["/app/bin/wuu-cua-mac-pip"]);
+    )).toEqual([join("/app", "bin", "wuu-cua-mac-pip")]);
   });
 
   it("detects aliases that resolve to the same executable file", () => {
@@ -108,11 +108,17 @@ describe("cuaFrameHelperCandidates", () => {
       const hardlink = join(root, "wuu-cua-mac-pip-hardlink");
       const copy = join(root, "wuu-cua-mac-pip-copy");
       writeFileSync(mcp, "signed helper bytes");
-      symlinkSync(mcp, symlink);
+      if (process.platform !== "win32") {
+        // Creating symlinks on Windows requires Developer Mode or elevation;
+        // hard links below exercise the same file-identity branch there.
+        symlinkSync(mcp, symlink);
+      }
       linkSync(mcp, hardlink);
       writeFileSync(copy, "signed helper bytes");
 
-      expect(isSameExecutableFile(symlink, mcp)).toBe(true);
+      if (process.platform !== "win32") {
+        expect(isSameExecutableFile(symlink, mcp)).toBe(true);
+      }
       expect(isSameExecutableFile(hardlink, mcp)).toBe(true);
       expect(isSameExecutableFile(copy, mcp)).toBe(false);
     } finally {
