@@ -886,7 +886,7 @@
   border-radius: 999px;
   padding: 2px 5px;
   background: var(--info);
-  color: white;
+  color: var(--ink-on-accent);
   font-size: 10px;
   font-weight: var(--weight-semibold);
   text-align: center;

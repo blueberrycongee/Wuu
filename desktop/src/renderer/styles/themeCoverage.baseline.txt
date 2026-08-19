@@ -213,6 +213,7 @@ settings.css .settings-usage-trend-day i background --settings-heatmap-level-4
 side-thread.css .side-thread-panel__resizer:hover::before, .side-thread-panel__resizer:focus-visible::before, .resizing-side-thread .side-thread-panel__resizer::before background --sidebar-resizer-hover-bg
 side-thread.css .side-thread-panel__resizer:hover::before, .side-thread-panel__resizer:focus-visible::before, .resizing-side-thread .side-thread-panel__resizer::before box-shadow --sidebar-resizer-hover-ring
 sidebar.css .app-shell .workspace-right-panel[data-sheet="arming"], .app-shell .workspace-right-panel[data-sheet="open"], .app-shell .workspace-right-panel[data-sheet="parked"] box-shadow --ink-overlay-12
+sidebar.css .collaboration-contact-row:hover, .collaboration-contact-row:focus-visible background --ink-overlay-4
 sidebar.css .dev-fixture-nav border-top --sidebar-dev-fixture-nav-border
 sidebar.css .nav-item:focus-visible, .project-row:focus-visible, .thread-row:focus-visible box-shadow --sidebar-nav-item-focus-shadow
 sidebar.css .nav-item[aria-current="page"] background --sidebar-row-selected-bg
@@ -292,6 +293,8 @@ turns.css .instruction-file-preview background --ink-overlay-4
 turns.css .instruction-file-toggle:focus-visible box-shadow --ink-overlay-18
 turns.css .instruction-file-toggle:hover, .instruction-file-row.expanded .instruction-file-toggle background --ink-overlay-4
 turns.css .message-actions .message-action-button.failed background --danger-soft
+turns.css .message-attachment-more:focus-visible, .message-attachment-collapse:focus-visible outline --ink-overlay-18
+turns.css .message-attachment-more:hover, .message-attachment-collapse:hover background --ink-overlay-6
 turns.css .message-copy-button box-shadow --ink-overlay-8
 turns.css .message-copy-button background --message-copy-bg
 turns.css .message-copy-button:hover, .message-copy-button:focus-visible box-shadow --ink-overlay-12
@@ -300,6 +303,9 @@ turns.css .message-copy-button.failed background --danger-soft
 turns.css .message-file border --ink-overlay-12
 turns.css .message-file background --message-file-bg
 turns.css .message-image border --ink-overlay-12
+turns.css .message-image-overflow background --message-image-overflow-bg
+turns.css .message-image-overflow color --message-image-overflow-fg
+turns.css .message-image-overflow:hover background --message-image-overflow-bg-hover
 turns.css .message-image-remove, .message-file-remove border --ink-overlay-12
 turns.css .message-image-remove, .message-file-remove box-shadow --ink-overlay-12
 turns.css .plugin-conversation-card-header border-bottom --ink-overlay-6
@@ -338,6 +344,9 @@ turns.css .user-message-block.user-message-jump-flash > .user-message, .user-mes
 turns.css .user-message-block.user-message-jump-flash > .user-message, .user-message-block.user-message-jump-flash > .user-message-edit box-shadow --user-message-jump-shadow-18
 turns.css .user-message-edit-button:focus-visible box-shadow --ink-overlay-8
 turns.css .user-message-edit.user-message-edit-drop-active box-shadow --ink-overlay-18
+turns.css .user-message-pasted-text border --ink-overlay-12
+turns.css .user-message-pasted-text-content border-top --ink-overlay-12
+turns.css .user-message-pasted-text-toggle:focus-visible outline --ink-overlay-18
 turns.css 0% box-shadow --user-message-jump-shadow-0
 turns.css 100% box-shadow --user-message-jump-shadow-0
 turns.css 12% background --user-message-jump-flash-bg
@@ -428,6 +437,8 @@ workspace.css .workspace-tree-context-menu border --ink-overlay-12
 workspace.css .workspace-tree-context-menu box-shadow --ink-overlay-6
 workspace.css .workspace-tree-context-menu box-shadow --ink-overlay-8
 workspace.css .workspace-tree-context-menu-item:hover, .workspace-tree-context-menu-item:focus-visible background --ink-overlay-4
+wuu-mascot.css .wuu-mascot-activity-fill fill --wuu-mascot-mix-white
 wuu-mascot.css .wuu-mascot-fill fill --wuu-mascot-mix-white
 wuu-mascot.css .wuu-mascot-halo stroke --wuu-mascot-mix-white
 wuu-mascot.css .wuu-mascot-petal fill --wuu-mascot-mix-white
+wuu-mascot.css .wuu-mascot-thinking-bubble fill --wuu-mascot-mix-white

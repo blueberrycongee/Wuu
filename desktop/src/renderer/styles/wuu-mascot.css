@@ -106,7 +106,7 @@
 }
 
 .wuu-mascot-activity-fill {
-  fill: color-mix(in oklab, var(--mo-head) 28%, white);
+  fill: color-mix(in oklab, var(--mo-head) 28%, var(--wuu-mascot-mix-white));
   stroke: var(--mo-eye);
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -118,7 +118,7 @@
 }
 
 .wuu-mascot-thinking-bubble {
-  fill: color-mix(in oklab, var(--mo-head) 16%, white);
+  fill: color-mix(in oklab, var(--mo-head) 16%, var(--wuu-mascot-mix-white));
   stroke: var(--mo-eye);
   stroke-width: 2.8;
 }

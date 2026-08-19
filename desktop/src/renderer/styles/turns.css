@@ -10,6 +10,9 @@
   --message-copy-bg: rgba(255, 255, 255, 0.72);
   --message-file-bg: rgba(255, 255, 255, 0.82);
   --message-file-fg: var(--wuu-color-text, var(--gray-800));
+  --message-image-overflow-bg: rgba(20, 24, 28, 0.62);
+  --message-image-overflow-bg-hover: rgba(20, 24, 28, 0.72);
+  --message-image-overflow-fg: #fff;
   --instruction-files-error-fallback: var(--wuu-color-danger, #d3524f);
   --stream-cursor-default-color: #2f4a5f;
   --reasoning-stream-cursor-color: var(--gray-500);
@@ -836,15 +839,15 @@
   place-items: center;
   border: 0;
   border-radius: var(--radius-sm);
-  background: rgba(20, 24, 28, 0.62);
-  color: #fff;
+  background: var(--message-image-overflow-bg);
+  color: var(--message-image-overflow-fg);
   cursor: pointer;
   font-size: 1rem;
   font-weight: var(--weight-semibold);
 }
 
 .message-image-overflow:hover {
-  background: rgba(20, 24, 28, 0.72);
+  background: var(--message-image-overflow-bg-hover);
 }
 
 .message-image-overflow:focus-visible {
