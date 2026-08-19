@@ -218,7 +218,7 @@ export const zhCN = {
   "channels.completeTask": "完成",
   "sidebar.pinned": "置顶",
   "sidebar.agents": "Agents",
-  "sidebar.collaboration": "协作",
+  "sidebar.collaboration": "collaboration",
   "sidebar.harness": "harness",
   "sidebar.productMode": "Wuu 模式",
   "sidebar.collaborationEmpty": "还没有频道",
