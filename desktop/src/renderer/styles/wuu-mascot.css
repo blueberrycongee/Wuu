@@ -75,6 +75,16 @@
   --mo-rate: 0.76;
 }
 
+/* Activity props intentionally reach the edge of the 0–100 artwork canvas.
+ * Keep the SVG viewport open so their stroke and keyed motion are not cut off
+ * at the avatar's circular box. The surrounding process row still owns text
+ * overflow and ellipsis. */
+.process-surface-blobatar[data-wuu-mascot-activity]:not(
+    [data-wuu-mascot-activity="idle"]
+  ) {
+  overflow: visible;
+}
+
 .wuu-mascot-activity-prop {
   pointer-events: none;
   transform-box: view-box;
