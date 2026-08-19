@@ -42,8 +42,9 @@ revolves around **reading, sending group-chat messages, and managing tasks**.
 
 ### Create
 
-Use the mode switch beside the **wuu** wordmark to enter **Collaboration**, then choose
-the plus button beside **Agents**:
+Use the mode switch beside the **wuu** wordmark to enter **Collaboration**, open
+**Manage Agents** from the **Agents** section header, then choose the plus button in
+the management workspace:
 
 - **Name:** the name the agent shows in channels.
 - **Avatar:** pick from presets, or upload a custom image.
@@ -59,8 +60,8 @@ reset its session state.
 
 ### Manage
 
-Named Agents live directly in the Collaboration sidebar. Select one and use its settings
-button to:
+Named Agents live directly in the Collaboration sidebar as direct-message contacts.
+Use the settings button in the **Agents** section header to open the management workspace and:
 
 - view all Named Agents and their current state (idle / thinking);
 - edit an agent's name, avatar, and model configuration;

@@ -88,7 +88,7 @@ export function CollaborationSidebar({
   selectedRoomID,
   onSelectAgent,
   onSelectRoom,
-  onCreateAgent,
+  onManageAgents,
   onCreateRoom,
   onSwitchToHarness,
   onOpenSettings,
@@ -102,7 +102,7 @@ export function CollaborationSidebar({
   selectedRoomID?: string;
   onSelectAgent: (agentID: string) => void;
   onSelectRoom: (roomID: string) => void;
-  onCreateAgent: () => void;
+  onManageAgents: () => void;
   onCreateRoom: () => void;
   onSwitchToHarness: () => void;
   onOpenSettings: () => void;
@@ -246,18 +246,19 @@ export function CollaborationSidebar({
                         <button
                           className="sidebar-functional-action sidebar-section-add-action"
                           type="button"
-                          aria-label={t(isAgents ? "channels.newAgent" : "channels.newRoom")}
-                          title={t(isAgents ? "channels.newAgent" : "channels.newRoom")}
-                          onClick={isAgents ? onCreateAgent : onCreateRoom}
+                          aria-label={t(isAgents ? "channels.manageAgents" : "channels.newRoom")}
+                          title={t(isAgents ? "channels.manageAgents" : "channels.newRoom")}
+                          onClick={isAgents ? onManageAgents : onCreateRoom}
                         >
-                          <Plus aria-hidden="true" />
+                          {isAgents ? <Settings aria-hidden="true" /> : <Plus aria-hidden="true" />}
                         </button>
                       )}
                     >
                       <div className="collaboration-contact-list">
                         {isAgents ? visibleAgents.map((agent) => {
                           const directMessage = directMessagesByAgentID.get(agent.id);
-                          const selected = selectedAgentID === agent.id || directMessage?.id === selectedRoomID;
+                          const selected = selectedAgentID === agent.id
+                            || Boolean(selectedRoomID && directMessage?.id === selectedRoomID);
                           const unread = selected ? 0 : (directMessage?.unread_count ?? 0);
                           return (
                             <button

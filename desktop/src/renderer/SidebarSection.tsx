@@ -177,7 +177,6 @@ export function SidebarSection({
     if (!element) return;
     const measuredHeight = element.scrollHeight;
     setBodyHeight(measuredHeight);
-    setPhase("opening");
     const frame = window.requestAnimationFrame(() => {
       setBodyHeight(measuredHeight);
     });
@@ -189,7 +188,7 @@ export function SidebarSection({
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
     };
-  }, [expanded, mounted, phase, children, emptyNote]);
+  }, [expanded, mounted, phase]);
 
   useEffect(() => {
     if (!expanded || phase !== "open") return;

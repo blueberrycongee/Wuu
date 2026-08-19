@@ -78,7 +78,7 @@ import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import {
   AppSidebar,
 } from "./AppSidebar";
-import { ChannelView } from "./ChannelView";
+import { ChannelView, type ChannelSection } from "./ChannelView";
 import { CollaborationSidebar } from "./CollaborationSidebar";
 import type { AppMode } from "./AppModeSwitch";
 import {
@@ -555,9 +555,8 @@ export function App(): JSX.Element {
   // it on later provider changes (configured, skipped, or dismissed).
   const providerSetupEvaluatedRef = useRef(false);
   const [appMode, setAppMode] = useState<AppMode>("harness");
+  const [collaborationSection, setCollaborationSection] = useState<ChannelSection>("rooms");
   const [newRoomRequest, setNewRoomRequest] = useState(0);
-  const [newAgentRequest, setNewAgentRequest] = useState(0);
-  const [editAgentRequestID, setEditAgentRequestID] = useState("");
   const [namedAgents, setNamedAgents] = useState<NamedAgent[]>([]);
   const [selectedCollaborationAgentID, setSelectedCollaborationAgentID] = useState("");
   const selectedCollaborationAgentRequestRef = useRef("");
@@ -3006,18 +3005,33 @@ export function App(): JSX.Element {
     setSelectedChannelRoomIDState(room.id);
     selectedCollaborationAgentRequestRef.current = "";
     setSelectedCollaborationAgentID("");
+    setCollaborationSection("rooms");
     setAppMode("collaboration");
     clearChannelRoomUnread(room.id);
     prepareChannelTab();
   }
 
-  function updateChannelRoomDraft(
+  const updateChannelRoomDraft = useCallback((
     roomID: string,
     draft: ComposerDraftState,
-  ): void {
+  ): void => {
     if (!roomID) return;
-    setChannelComposerDrafts((current) => ({ ...current, [roomID]: draft }));
-  }
+    setChannelComposerDrafts((current) => {
+      const existing = current[roomID];
+      if (
+        existing?.prompt === draft.prompt
+        && existing.images === draft.images
+        && existing.files === draft.files
+      ) {
+        return current;
+      }
+      return { ...current, [roomID]: draft };
+    });
+  }, []);
+
+  const updateSelectedChannelRoomDraft = useCallback((draft: ComposerDraftState): void => {
+    updateChannelRoomDraft(selectedChannelRoomID, draft);
+  }, [selectedChannelRoomID, updateChannelRoomDraft]);
 
   function openCollaborationView(): void {
     setAppMode("collaboration");
@@ -3033,6 +3047,7 @@ export function App(): JSX.Element {
   function openChannelsView(): void {
     selectedCollaborationAgentRequestRef.current = "";
     setSelectedCollaborationAgentID("");
+    setCollaborationSection("rooms");
     openCollaborationView();
   }
 
@@ -3040,6 +3055,7 @@ export function App(): JSX.Element {
     if (!namedAgents.some((agent) => agent.id === agentID)) return;
     selectedCollaborationAgentRequestRef.current = agentID;
     setSelectedCollaborationAgentID(agentID);
+    setCollaborationSection("rooms");
     setAppMode("collaboration");
     prepareChannelTab();
     const existingDirectMessage = activeChannelRooms.find(
@@ -3074,9 +3090,12 @@ export function App(): JSX.Element {
     setNewRoomRequest((count) => count + 1);
   }
 
-  function openNewNamedAgent(): void {
-    openChannelsView();
-    setNewAgentRequest((count) => count + 1);
+  function openAgentManagement(): void {
+    selectedCollaborationAgentRequestRef.current = "";
+    setSelectedCollaborationAgentID("");
+    setCollaborationSection("agents");
+    setAppMode("collaboration");
+    prepareChannelTab();
   }
 
   function focusHeroAfter(
@@ -4446,11 +4465,11 @@ export function App(): JSX.Element {
               initialized={Boolean(state.initialized)}
               agents={namedAgents}
               rooms={[...pinnedChannelRooms, ...sidebarChannelRooms]}
-              selectedAgentID={selectedCollaborationAgent?.id}
-              selectedRoomID={selectedChannelRoomID}
+              selectedAgentID={collaborationSection === "rooms" ? selectedCollaborationAgent?.id : undefined}
+              selectedRoomID={collaborationSection === "rooms" ? selectedChannelRoomID : undefined}
               onSelectAgent={selectCollaborationAgent}
               onSelectRoom={selectChannelRoom}
-              onCreateAgent={openNewNamedAgent}
+              onManageAgents={openAgentManagement}
               onCreateRoom={openNewChannelRoom}
               onSwitchToHarness={openHarnessView}
               onPointerEnter={openSidebarDrawer}
@@ -4634,7 +4653,9 @@ export function App(): JSX.Element {
                     <SidePanelToggleIcon side="left" open={!sidebarCollapsed} />
                   </button>
                 ) : null}
-                <span className="collaboration-titlebar-label">{t("sidebar.collaboration")}</span>
+                <span className="collaboration-titlebar-label">
+                  {t(collaborationSection === "agents" ? "channels.manageAgents" : "sidebar.collaboration")}
+                </span>
               </div>
               <div
                 className="title-actions channel-title-actions-placeholder"
@@ -4643,20 +4664,16 @@ export function App(): JSX.Element {
             </header>
             <ChannelView
               initialized={sessionRuntime ?? state.initialized}
-              section="rooms"
+              section={collaborationSection}
               archivedRoomIDs={channelRoomPreferences.archivedRoomIDs}
               selectedRoomID={selectedChannelRoomID}
               onSelectRoom={selectChannelRoom}
               onRoomRead={clearChannelRoomUnread}
               onOpenMemoryDirectory={openAgentMemoryDirectory}
               composerDraft={activeChannelComposerDraft}
-              onComposerDraftChange={(draft) => updateChannelRoomDraft(selectedChannelRoomID, draft)}
+              onComposerDraftChange={updateSelectedChannelRoomDraft}
               newRoomRequest={newRoomRequest}
               onNewRoomRequestHandled={() => setNewRoomRequest(0)}
-              newAgentRequest={newAgentRequest}
-              onNewAgentRequestHandled={() => setNewAgentRequest(0)}
-              editAgentRequestID={editAgentRequestID}
-              onEditAgentRequestHandled={() => setEditAgentRequestID("")}
             />
           </>
         ) : (
