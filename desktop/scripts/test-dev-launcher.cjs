@@ -71,15 +71,15 @@ assert.equal(
 );
 assert.equal(
   helperPathForApp("/repo/desktop/build/dev-host/Wuu Dev.app"),
-  "/repo/desktop/build/dev-host/Wuu Dev.app/Contents/Resources/bin/wuu-cua-mac",
+  resolve("/repo/desktop/build/dev-host/Wuu Dev.app", "Contents", "Resources", "bin", "wuu-cua-mac"),
 );
 assert.equal(
   pipHelperPathForApp("/repo/desktop/build/dev-host/Wuu Dev.app"),
-  "/repo/desktop/build/dev-host/Wuu Dev.app/Contents/Resources/bin/wuu-cua-mac-pip",
+  resolve("/repo/desktop/build/dev-host/Wuu Dev.app", "Contents", "Resources", "bin", "wuu-cua-mac-pip"),
 );
 assert.equal(
   speechHelperPathForApp("/repo/desktop/build/dev-host/Wuu Dev.app"),
-  "/repo/desktop/build/dev-host/Wuu Dev.app/Contents/Resources/bin/wuu-speech-mac",
+  resolve("/repo/desktop/build/dev-host/Wuu Dev.app", "Contents", "Resources", "bin", "wuu-speech-mac"),
 );
 assert.equal(
   sourceHashFromBuildInfo({ sourceHash: "a".repeat(64) }, () => "fallback"),
