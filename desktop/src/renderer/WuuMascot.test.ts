@@ -1,6 +1,25 @@
+import { VERSION as BLOBATAR_VERSION, _layout } from "blobatar";
 import { describe, expect, it } from "vitest";
 import { AVATAR_HUES } from "./DefaultAvatar";
 import { providerMascotHue } from "./WuuMascot";
+
+describe("vendored mascot geometry", () => {
+  it("keeps both Wuu eyes readable at compact process-row sizes", () => {
+    const layout = _layout("wuu", {
+      traits: { shape: 0.2, "body.ratio": 0.5 },
+      perspective: { yaw: -32, pitch: 16, strength: 1 },
+    });
+
+    expect(BLOBATAR_VERSION).toBe("0.2.0-wuu.6");
+    for (const eye of layout.eyes) {
+      expect(eye.rx / layout.body.rx).toBeGreaterThan(0.085);
+    }
+    expect(layout.eyes[0].rx).toBeLessThan(layout.eyes[1].rx);
+    expect(Math.abs(layout.eyes[1].surfaceRot ?? 0)).toBeGreaterThan(
+      Math.abs(layout.eyes[0].surfaceRot ?? 0),
+    );
+  });
+});
 
 describe("providerMascotHue", () => {
   it("gives configured providers distinct colours until the palette is exhausted", () => {

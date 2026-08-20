@@ -19,6 +19,7 @@ import "./styles/wuu-mascot.css";
 const WUU_MASCOT_NAME = "wuu";
 const WUU_MASCOT_DEFAULT_HUE = 14;
 const WUU_MASCOT_TRAITS = { shape: 0.2, "body.ratio": 0.5 } as const;
+const WUU_MASCOT_PERSPECTIVE = { yaw: -32, pitch: 16, strength: 1 } as const;
 const WUU_MASCOT_LAYOUT = _layout(WUU_MASCOT_NAME, {
   traits: WUU_MASCOT_TRAITS,
 });
@@ -215,6 +216,7 @@ export function WuuMascot({
         hue={WUU_MASCOT_DEFAULT_HUE}
         background={false}
         traits={WUU_MASCOT_TRAITS}
+        perspective={activity === "read" ? WUU_MASCOT_PERSPECTIVE : undefined}
         animate="always"
         expression={WUU_MASCOT_ACTIVITY_EXPRESSIONS[activity]}
         focusable={false}
