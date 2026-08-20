@@ -98,12 +98,12 @@
 .context-compaction-mascot {
   position: relative;
   display: inline-flex;
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
   align-items: center;
   justify-content: center;
-  margin-right: 8px;
+  margin-right: 6px;
 }
 
 .process-surface-summary-line .context-compaction-mascot .process-surface-blobatar {
@@ -117,43 +117,72 @@
 }
 
 .context-compaction-black-hole {
+  --wuu-compact-hole-core: #000;
+  --wuu-compact-hole-inner: #111;
+  --wuu-compact-hole-edge: #4c4c56;
+  --wuu-compact-hole-ring-dark: #17171c;
+  --wuu-compact-hole-ring-mid: #25252d;
+  --wuu-compact-hole-head: var(--mo-head, #df8a6f);
+  --wuu-compact-hole-eye: var(--mo-eye, #111);
+  --wuu-compact-hole-highlight: white;
   position: absolute;
-  inset: 3px;
+  inset: 5px;
   border-radius: 50%;
   opacity: 0;
-  background: radial-gradient(circle at center, #000 0 43%, #111 55%, #4c4c56 69%, transparent 72%);
+  background: radial-gradient(
+    circle at center,
+    var(--wuu-compact-hole-core) 0 43%,
+    var(--wuu-compact-hole-inner) 55%,
+    var(--wuu-compact-hole-edge) 69%,
+    transparent 72%
+  );
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--mo-eye, #111) 35%, transparent),
-    0 0 8px color-mix(in srgb, var(--mo-eye, #111) 26%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--wuu-compact-hole-eye) 35%, transparent),
+    0 0 8px color-mix(in srgb, var(--wuu-compact-hole-eye) 26%, transparent);
   pointer-events: none;
 }
 
 .context-compaction-black-hole::before {
   position: absolute;
-  inset: -4px;
+  /* The summary line clips its mascot slot for text ellipsis. Keep the 28px
+   * ring inside the padded 32px slot instead of hard-cutting its outer edge. */
+  inset: -3px;
   border-radius: inherit;
   background: conic-gradient(
     from 0deg,
     transparent 0 12%,
-    color-mix(in srgb, var(--mo-head, #df8a6f) 70%, white) 28%,
-    #17171c 46%,
+    color-mix(in srgb, var(--wuu-compact-hole-head) 70%, var(--wuu-compact-hole-highlight)) 28%,
+    var(--wuu-compact-hole-ring-dark) 46%,
     transparent 62% 78%,
-    color-mix(in srgb, var(--mo-head, #df8a6f) 45%, #25252d) 92%
+    color-mix(in srgb, var(--wuu-compact-hole-head) 45%, var(--wuu-compact-hole-ring-mid)) 92%
   );
   content: "";
-  filter: blur(0.6px);
-  mask: radial-gradient(circle, transparent 0 48%, #000 54% 68%, transparent 74%);
-  animation: wuu-mascot-black-hole-spin 720ms linear infinite;
+  mask: radial-gradient(
+    circle,
+    transparent 0 48%,
+    var(--wuu-compact-hole-core) 54% 68%,
+    transparent 74%
+  );
 }
 
 .context-compaction-notice.in_progress .context-compaction-black-hole {
   animation: wuu-mascot-black-hole var(--wuu-compact-cycle) ease-in-out infinite;
+  will-change: opacity, transform;
 }
 
 .context-compaction-notice.in_progress .context-compaction-copy {
   transform-origin: left center;
   animation: wuu-context-copy-vacuum var(--wuu-compact-cycle) ease-in infinite;
   will-change: opacity, transform, filter;
+}
+
+/* Cached conversations stay mounted, and the Desktop window can be hidden.
+ * Freeze compaction's decorative loops when neither surface is paintable. */
+:root[data-renderer-hidden] .context-compaction-notice.in_progress *,
+:root[data-renderer-hidden] .context-compaction-notice.in_progress .context-compaction-black-hole::before,
+.cached-conversation-pane[data-active="false"] .context-compaction-notice.in_progress *,
+.cached-conversation-pane[data-active="false"] .context-compaction-notice.in_progress .context-compaction-black-hole::before {
+  animation-play-state: paused !important;
 }
 
 .wuu-mascot-activity-prop {
@@ -304,12 +333,6 @@
   87% {
     opacity: 1;
     transform: scale(1);
-  }
-}
-
-@keyframes wuu-mascot-black-hole-spin {
-  to {
-    transform: rotate(1turn);
   }
 }
 
