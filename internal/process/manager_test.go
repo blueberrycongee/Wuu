@@ -30,6 +30,15 @@ func TestStartListAndPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, dir := range []string{filepath.Join(runtimeDir, "processes"), filepath.Join(runtimeDir, "logs")} {
+		info, statErr := os.Stat(dir)
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
+		if got := info.Mode().Perm(); got != 0o700 {
+			t.Fatalf("process runtime directory %q mode = %o, want 700", dir, got)
+		}
+	}
 	p, err := m.Start(context.Background(), StartOptions{Command: "echo hello; sleep 1", OwnerKind: OwnerMainAgent, OwnerID: "main", Lifecycle: LifecycleManaged})
 	if err != nil {
 		t.Fatal(err)
@@ -53,6 +62,13 @@ func TestStartListAndPersist(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("process record mode = %o, want 600", got)
+	}
+	logInfo, err := os.Stat(p.LogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := logInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("process log mode = %o, want 600", got)
 	}
 }
 

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -16,12 +17,9 @@ func (policyTestSandboxProvider) Confine(context.Context, []string, processsandb
 }
 
 func TestProcessSandboxPolicyMapsWorkspaceBoundary(t *testing.T) {
-	if !processsandbox.Supported() {
-		t.Skip("filesystem process sandbox backend is not available on this platform")
-	}
 	root := t.TempDir()
-	env := &Env{RootDir: root}
-	policy, tempDir, err := env.processSandboxPolicy(context.Background())
+	env := &Env{RootDir: root, FileScopeRoots: []string{root, os.TempDir()}}
+	policy, tempDir, err := env.processSandboxPolicyWithBuiltIn(context.Background(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,6 +30,9 @@ func TestProcessSandboxPolicyMapsWorkspaceBoundary(t *testing.T) {
 	wantTemp, _ := filepath.EvalSymlinks(tempDir)
 	normalized := make(map[string]bool)
 	for _, candidate := range policy.WritableRoots {
+		if sameRuntimeFileScopePath(candidate, os.TempDir()) {
+			t.Fatalf("writable roots must not include shared system temp %q: %#v", os.TempDir(), policy.WritableRoots)
+		}
 		if evaluated, err := filepath.EvalSymlinks(candidate); err == nil {
 			candidate = evaluated
 		}
@@ -40,10 +41,17 @@ func TestProcessSandboxPolicyMapsWorkspaceBoundary(t *testing.T) {
 	if !normalized[wantRoot] || !normalized[wantTemp] {
 		t.Fatalf("writable roots = %#v, want workspace %q and temp %q", policy.WritableRoots, wantRoot, wantTemp)
 	}
+	info, err := os.Stat(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("private temp mode = %v, want 700", got)
+	}
 
 	env.boundaryConfigured = true
 	env.AllowMutations = false
-	policy, _, err = env.processSandboxPolicy(context.Background())
+	policy, _, err = env.processSandboxPolicyWithBuiltIn(context.Background(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,8 +60,20 @@ func TestProcessSandboxPolicyMapsWorkspaceBoundary(t *testing.T) {
 	}
 
 	env.Unconfined = true
-	if policy, _, err := env.processSandboxPolicy(context.Background()); err != nil || policy != nil {
+	if policy, _, err := env.processSandboxPolicyWithBuiltIn(context.Background(), true); err != nil || policy != nil {
 		t.Fatalf("unconfined policy = %#v, want nil", policy)
+	}
+}
+
+func TestProcessSandboxTempRejectsSymlink(t *testing.T) {
+	base := t.TempDir()
+	target := t.TempDir()
+	if err := os.Symlink(target, filepath.Join(base, "process-tmp")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	env := &Env{RootDir: t.TempDir(), SessionDir: base}
+	if _, err := env.ensureProcessSandboxTempDir(); err == nil {
+		t.Fatal("symlinked process temp must be rejected")
 	}
 }
 

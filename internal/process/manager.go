@@ -262,10 +262,10 @@ func NewManagerWithHostGeneration(rootDir, hostGenerationID string, runtimeDirs 
 		handles:          make(map[string]*processHandle),
 		recheckWake:      make(chan struct{}, 1),
 	}
-	if err := os.MkdirAll(m.registryDir, 0o755); err != nil {
+	if err := ensurePrivateProcessDir(m.registryDir); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(m.logDir, 0o755); err != nil {
+	if err := ensurePrivateProcessDir(m.logDir); err != nil {
 		return nil, err
 	}
 	if err := m.resumePersistedManagedProcesses(); err != nil {
@@ -273,6 +273,20 @@ func NewManagerWithHostGeneration(rootDir, hostGenerationID string, runtimeDirs 
 	}
 	go m.recheckScheduler()
 	return m, nil
+}
+
+func ensurePrivateProcessDir(path string) error {
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("process runtime path is not a real directory: %s", path)
+	}
+	return os.Chmod(path, 0o700)
 }
 
 // SetRootDir changes the default working directory and confinement root for
@@ -345,13 +359,22 @@ func (m *Manager) Start(ctx context.Context, opt StartOptions) (*Process, error)
 	if err := m.save(p); err != nil {
 		return nil, err
 	}
-	logf, err := os.OpenFile(p.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logf, err := os.OpenFile(p.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		p.Status = StatusFailed
 		p.LastError = err.Error()
 		_ = m.save(p)
 		m.publish(Event{Type: EventFailed, Process: *p})
 		return p, err
+	}
+	if err := logf.Chmod(0o600); err != nil {
+		_ = logf.Close()
+		p.Status = StatusFailed
+		p.LastError = err.Error()
+		p.UpdatedAt = time.Now()
+		_ = m.save(p)
+		m.publish(Event{Type: EventFailed, Process: *p})
+		return p, fmt.Errorf("secure process log: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		_ = logf.Close()

@@ -119,3 +119,34 @@ jobs:
 
       - name: Package macOS app
         run: make build-macos
+
+  windows-check:
+    name: Windows native check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Test Go runtime on Windows
+        run: go test ./cmd/... ./internal/... ./prompts/...
+
+      - name: Install Desktop dependencies
+        run: npm ci --prefix desktop
+
+      - name: Check and test Desktop on Windows
+        run: |
+          npm --prefix desktop run typecheck
+          npm --prefix desktop test
+
+      - name: Package unpacked Windows app
+        run: npm --prefix desktop run pack:win

@@ -30,11 +30,18 @@ func (e *Env) processSandboxPolicyWithBuiltIn(ctx context.Context, builtInAvaila
 		return &processsandbox.Policy{Mode: processsandbox.ModeReadOnly}, "", nil
 	}
 
-	roots := e.FileScopeRoots
+	roots := make([]string, 0, len(e.FileScopeRoots)+2)
+	for _, root := range e.FileScopeRoots {
+		// File tools may use the system temp directory as a convenience scope,
+		// but granting it to a process would let every command write anywhere
+		// under the shared host temp tree. Commands get a private temp below.
+		if sameRuntimeFileScopePath(root, os.TempDir()) {
+			continue
+		}
+		roots = append(roots, root)
+	}
 	if len(roots) == 0 {
 		roots = []string{e.RootDir}
-	} else {
-		roots = append([]string(nil), roots...)
 	}
 	if execRoot, err := e.ExecRootDir(ctx); err == nil && strings.TrimSpace(execRoot) != "" {
 		replaced := false
@@ -75,6 +82,13 @@ func (e *Env) ensureProcessSandboxTempDir() (string, error) {
 	}
 	if err := os.MkdirAll(tempDir, 0o700); err != nil {
 		return "", fmt.Errorf("create private process temp directory: %w", err)
+	}
+	info, err := os.Lstat(tempDir)
+	if err != nil {
+		return "", fmt.Errorf("inspect private process temp directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return "", fmt.Errorf("private process temp path is not a real directory: %s", tempDir)
 	}
 	if err := os.Chmod(tempDir, 0o700); err != nil {
 		return "", fmt.Errorf("secure private process temp directory: %w", err)

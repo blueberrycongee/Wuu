@@ -228,8 +228,13 @@ func executeShellCommandInDir(ctx context.Context, env *Env, command string, tim
 	mgr, mgrErr := env.ProcessManager()
 	if mgrErr == nil && mgr != nil {
 		if id, logPath := mgr.ReserveProcessLog(); id != "" {
-			if f, openErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); openErr == nil {
-				reservedID, logf = id, f
+			if f, openErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); openErr == nil {
+				if chmodErr := f.Chmod(0o600); chmodErr == nil {
+					reservedID, logf = id, f
+				} else {
+					_ = f.Close()
+					_ = os.Remove(logPath)
+				}
 			}
 		}
 	}
