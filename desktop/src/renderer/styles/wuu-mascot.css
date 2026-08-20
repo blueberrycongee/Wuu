@@ -89,13 +89,71 @@
   overflow: visible;
 }
 
-/* Compaction squeezes the complete mascot toward its center, then lets it
- * softly rebound. This sits below Blobatar's bob layer, so its normal breathing
- * remains intact instead of being replaced. */
+/* The compaction row shares one clock across the mascot, black hole, and copy:
+ * three quick squeezes, one strenuous two-axis press, then a short vacuum pass. */
+.context-compaction-notice.in_progress {
+  --wuu-compact-cycle: 5.4s;
+}
+
+.context-compaction-mascot {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+}
+
+.process-surface-summary-line .context-compaction-mascot .process-surface-blobatar {
+  margin-right: 0;
+}
+
 .process-surface-blobatar[data-wuu-mascot-activity="compact"] .mo-bob > g {
   transform-box: view-box;
   transform-origin: center;
-  animation: wuu-mascot-compact 1.15s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  animation: wuu-mascot-compact var(--wuu-compact-cycle, 5.4s) ease-in-out infinite;
+}
+
+.context-compaction-black-hole {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(circle at center, #000 0 43%, #111 55%, #4c4c56 69%, transparent 72%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--mo-eye, #111) 35%, transparent),
+    0 0 8px color-mix(in srgb, var(--mo-eye, #111) 26%, transparent);
+  pointer-events: none;
+}
+
+.context-compaction-black-hole::before {
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 12%,
+    color-mix(in srgb, var(--mo-head, #df8a6f) 70%, white) 28%,
+    #17171c 46%,
+    transparent 62% 78%,
+    color-mix(in srgb, var(--mo-head, #df8a6f) 45%, #25252d) 92%
+  );
+  content: "";
+  filter: blur(0.6px);
+  mask: radial-gradient(circle, transparent 0 48%, #000 54% 68%, transparent 74%);
+  animation: wuu-mascot-black-hole-spin 720ms linear infinite;
+}
+
+.context-compaction-notice.in_progress .context-compaction-black-hole {
+  animation: wuu-mascot-black-hole var(--wuu-compact-cycle) ease-in-out infinite;
+}
+
+.context-compaction-notice.in_progress .context-compaction-copy {
+  transform-origin: left center;
+  animation: wuu-context-copy-vacuum var(--wuu-compact-cycle) ease-in infinite;
+  will-change: opacity, transform, filter;
 }
 
 .wuu-mascot-activity-prop {
@@ -188,14 +246,99 @@
 
 @keyframes wuu-mascot-compact {
   0%,
+  7%,
+  14%,
+  21%,
+  29%,
+  38%,
   100% {
+    opacity: 1;
     scale: 1 1;
   }
-  42% {
-    scale: 0.72 1.08;
+  10% {
+    scale: 0.82 1.04;
   }
-  62% {
-    scale: 1.04 0.97;
+  18% {
+    scale: 0.76 1.07;
+  }
+  26% {
+    scale: 0.68 1.1;
+  }
+  47% {
+    scale: 0.4 1.2;
+  }
+  56% {
+    scale: 1.18 0.36;
+  }
+  64% {
+    opacity: 1;
+    scale: 0.14 0.14;
+  }
+  69%,
+  92% {
+    opacity: 0;
+    scale: 0 0;
+  }
+  93% {
+    opacity: 0;
+    scale: 1 1;
+  }
+}
+
+@keyframes wuu-mascot-black-hole {
+  0%,
+  60%,
+  94%,
+  100% {
+    opacity: 0;
+    transform: scale(0.16);
+  }
+  68% {
+    opacity: 1;
+    transform: scale(0.92);
+  }
+  75% {
+    opacity: 1;
+    transform: scale(1.16);
+  }
+  87% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes wuu-mascot-black-hole-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes wuu-context-copy-vacuum {
+  0%,
+  69% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(0) scale(1);
+  }
+  76% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(-3px) scale(0.98, 0.9);
+  }
+  88% {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translateX(-22px) scale(0.02);
+  }
+  92% {
+    opacity: 0;
+    filter: blur(0);
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(0) scale(1);
   }
 }
 
@@ -210,7 +353,14 @@
   .wuu-mascot-accessory,
   .wuu-mascot-activity-prop,
   .wuu-mascot-activity-motion,
-  .process-surface-blobatar[data-wuu-mascot-activity="compact"] .mo-bob > g {
+  .process-surface-blobatar[data-wuu-mascot-activity="compact"] .mo-bob > g,
+  .context-compaction-black-hole,
+  .context-compaction-black-hole::before,
+  .context-compaction-notice.in_progress .context-compaction-copy {
     animation: none;
+  }
+
+  .context-compaction-black-hole {
+    display: none;
   }
 }

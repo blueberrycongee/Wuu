@@ -150,10 +150,15 @@ export function ContextCompactionNotice({
             className="process-surface-summary-line"
             aria-label={description}
           >
-            <ProcessSurfaceMascot active={inProgress} activity="compact" />
+            {inProgress ? (
+              <span className="context-compaction-mascot" aria-hidden="true">
+                <ProcessSurfaceMascot active activity="compact" />
+                <span className="context-compaction-black-hole" />
+              </span>
+            ) : null}
             <span
               ref={waveRef}
-              className={`process-surface-summary-text${inProgress ? " wuu-live-text-wave" : ""}`}
+              className={`process-surface-summary-text context-compaction-copy${inProgress ? " wuu-live-text-wave" : ""}`}
               data-text={title}
             >
               <span className="process-surface-segment context-compaction-title">
