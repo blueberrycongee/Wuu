@@ -54,6 +54,14 @@ describe("conversation shell visible center", () => {
     expect(step).toMatch(/text-overflow:\s*ellipsis;/);
   });
 
+  it("shows overflow statuses as standalone capsules without a menu card", () => {
+    const overflowMenu = cssRuleBody(".conversation-status-overflow-menu");
+    const overflowItem = cssRuleBody(".conversation-status-capsule.is-overflow-item");
+
+    expect(overflowMenu).not.toMatch(/(?:padding|border|background|box-shadow)\s*:/);
+    expect(overflowItem).not.toMatch(/box-shadow:\s*none;/);
+  });
+
   it("re-centers the fixed readable flow instead of widening it on wide screens", () => {
     expect(cssRuleBody(".conversation-pane")).toMatch(
       /--environment-panel-content-inset:\s*clamp\([\s\S]*?var\(--session-composer-width\)[\s\S]*?-\s*100vw\s*\+\s*var\(--sidebar-width,\s*0px\)[\s\S]*?var\(--environment-panel-reserved-width\)/,
