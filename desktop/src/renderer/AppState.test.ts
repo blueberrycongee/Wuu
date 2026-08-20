@@ -578,6 +578,24 @@ describe("queryTextsForThread", () => {
 });
 
 describe("summarizeThreadsForSidebar", () => {
+  it("overlays aggregate running state onto cached project threads", () => {
+    const idle = {
+      ...threadWithUserTexts(["background project task"]),
+      id: "idle-project-thread",
+      cwd: "/repo/project",
+      status: "idle" as const,
+      turns: [],
+    };
+
+    const [summary] = summarizeThreadsForSidebar(
+      [idle],
+      new Set([idle.id]),
+    );
+
+    expect(summary.status).toBe("in_progress");
+    expect(isThreadRunning(summary)).toBe(true);
+  });
+
   it("keeps project sidebar summaries limited to root sessions", () => {
     const summaries = summarizeThreadsForSidebar([
       {

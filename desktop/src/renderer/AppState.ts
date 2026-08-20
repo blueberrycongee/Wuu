@@ -1563,7 +1563,10 @@ function summarizeTurnForSidebar(turn: Turn): ThreadTurnSummary {
   };
 }
 
-function summarizeThreadForSidebar(thread: Thread): ThreadSummary {
+function summarizeThreadForSidebar(
+  thread: Thread,
+  runningThreadIDs?: ReadonlySet<string>,
+): ThreadSummary {
   return {
     id: thread.id,
     parent_id: thread.parent_id,
@@ -1575,7 +1578,7 @@ function summarizeThreadForSidebar(thread: Thread): ThreadSummary {
     cwd: thread.cwd,
     workspace_id: thread.workspace_id,
     workspace_kind: thread.workspace_kind,
-    status: thread.status,
+    status: runningThreadIDs?.has(thread.id) ? "in_progress" : thread.status,
     read_only: thread.read_only,
     pinned: thread.pinned,
     folder_id: thread.folder_id,
@@ -1593,12 +1596,20 @@ function summarizeThreadForSidebar(thread: Thread): ThreadSummary {
   };
 }
 
-function summarizeThreadsForSidebar(threads: Thread[]): ThreadSummary[] {
+function summarizeThreadsForSidebar(
+  threads: Thread[],
+  runningThreadIDs?: ReadonlySet<string>,
+): ThreadSummary[] {
   // Apply sidebar visibility at the shared Thread -> ThreadSummary boundary.
   // Project buckets consume these summaries directly, so leaving filtering to
   // their downstream sort path lets live subagent thread updates leak into the
   // left rail even though pinned and scratch sections hide them correctly.
-  return sortThreadSummaries(threads.map(summarizeThreadForSidebar));
+  // Cross-workdir running state belongs at the same boundary: every sidebar
+  // bucket must see it, including ordinary project sections whose cached thread
+  // snapshots do not receive the active renderer's turn lifecycle updates.
+  return sortThreadSummaries(
+    threads.map((thread) => summarizeThreadForSidebar(thread, runningThreadIDs)),
+  );
 }
 
 function sortThreadSummaries(threads: ThreadSummary[]): ThreadSummary[] {

@@ -2238,34 +2238,21 @@ export function App(): JSX.Element {
   });
   const sidebarProjectThreadsByProjectID = projectThreadsByProjectID;
   const sidebarThreads = useMemo(() => {
-    // Cross-workdir running state from the main process aggregate. While a
-    // non-active workspace's turn events are filtered out of state, the host
-    // still tracks which of its sessions are turning; overlay that here so the
-    // sidebar shows an accurate spinner for every workspace, not just the
-    // active one. The overlay only ever flips a thread to running — it never
-    // clears a running flag the local event flow already established.
-    const overlay = (thread: Thread): Thread =>
-      crossWorkdirRunningThreadIDs.has(thread.id) &&
-      !isThreadRunning(thread) &&
-      !isThreadExecuting(thread)
-        ? { ...thread, status: "in_progress" }
-        : thread;
     const byID = new Map<string, Thread>();
     for (const thread of cachedScratchThreads) {
-      byID.set(thread.id, overlay(thread));
+      byID.set(thread.id, thread);
     }
     for (const threads of Object.values(sidebarProjectThreadsByProjectID)) {
       for (const thread of threads) {
-        byID.set(thread.id, overlay(thread));
+        byID.set(thread.id, thread);
       }
     }
     for (const thread of state.threads) {
-      byID.set(thread.id, overlay(thread));
+      byID.set(thread.id, thread);
     }
     return sortThreads([...byID.values()]);
   }, [
     cachedScratchThreads,
-    crossWorkdirRunningThreadIDs,
     sidebarProjectThreadsByProjectID,
     state.threads,
   ]);
@@ -2274,13 +2261,16 @@ export function App(): JSX.Element {
     for (const [projectID, threads] of Object.entries(
       sidebarProjectThreadsByProjectID,
     )) {
-      next[projectID] = summarizeThreadsForSidebar(threads);
+      next[projectID] = summarizeThreadsForSidebar(
+        threads,
+        crossWorkdirRunningThreadIDs,
+      );
     }
     return next;
-  }, [sidebarProjectThreadsByProjectID]);
+  }, [crossWorkdirRunningThreadIDs, sidebarProjectThreadsByProjectID]);
   const sidebarThreadSummaries = useMemo(
-    () => summarizeThreadsForSidebar(sidebarThreads),
-    [sidebarThreads],
+    () => summarizeThreadsForSidebar(sidebarThreads, crossWorkdirRunningThreadIDs),
+    [crossWorkdirRunningThreadIDs, sidebarThreads],
   );
   const sidebarPinnedThreads = useMemo(
     () => pinnedThreadSummaries(sidebarThreadSummaries),
