@@ -207,7 +207,7 @@
 :root {
   /* Component color tokens for composer.css.
      Light-theme values; the dark theme overrides these in base.css theme blocks. */
-  --composer-frame-shadow: 0 2px 8px rgba(20, 24, 28, 0.08), 0 10px 28px rgba(20, 24, 28, 0.06);
+  --composer-frame-shadow: 0 2px 8px rgba(20, 24, 28, 0.1), 0 10px 28px rgba(20, 24, 28, 0.06);
   --composer-image-attachment-button-shadow: 0 2px 8px rgba(20, 24, 28, 0.12);
   --composer-file-attachment-button-hover-bg: #eceee9;
   --composer-textarea-placeholder: var(--wuu-color-text-muted, #a0a3a5);
