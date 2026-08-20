@@ -1483,6 +1483,20 @@ export type WorktreeInfo = {
   changed_files?: string[];
 };
 
+export type SessionOrganizationGroup = {
+  id: string;
+  name: string;
+  sort_order: number;
+  default?: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SessionOrganization = {
+  folders: SessionOrganizationGroup[];
+  pin_groups: SessionOrganizationGroup[];
+};
+
 export type Thread = {
   id: string;
   parent_id?: string;
@@ -1496,6 +1510,7 @@ export type Thread = {
   model_effort?: string;
   permission_mode?: string;
   cwd: string;
+  workspace_id?: string;
   // workspace_kind tags the thread with the workspace it was created in.
   workspace_kind?: "project" | "scratch";
   status: ThreadStatus;
@@ -1505,6 +1520,8 @@ export type Thread = {
   // appear in user-facing thread or session history.
   ephemeral?: boolean;
   pinned?: boolean;
+  folder_id?: string;
+  pin_group_id?: string;
   archived?: boolean;
   forked_from_id?: string;
   forked_from_turn_id?: string;
@@ -2585,6 +2602,7 @@ export type WuuDesktopApi = {
   ) => () => void;
   polishText: (text: string) => Promise<TextPolishResult>;
   listThreads: (cwd?: string) => Promise<{ threads: Thread[] }>;
+  listAllThreads: () => Promise<{ threads: Thread[] }>;
   // Settings → Archive panel uses this to surface archived sessions across
   // every cwd after a restart; the active list above stays non-archived.
   listArchivedThreads: () => Promise<{ threads: Thread[] }>;
@@ -2593,7 +2611,19 @@ export type WuuDesktopApi = {
     threadId: string,
     limit?: number
   ) => Promise<ThreadPreviewResult>;
-  pinThread: (threadId: string, pinned: boolean) => Promise<{ thread: Thread }>;
+  pinThread: (threadId: string, pinned: boolean, pinGroupId?: string) => Promise<{ thread: Thread }>;
+  getSessionOrganization: () => Promise<{ organization: SessionOrganization }>;
+  createSessionFolder: (name: string) => Promise<{ group: SessionOrganizationGroup }>;
+  renameSessionFolder: (id: string, name: string) => Promise<{ group: SessionOrganizationGroup }>;
+  deleteSessionFolder: (id: string) => Promise<{ ok: boolean }>;
+  createPinGroup: (name: string) => Promise<{ group: SessionOrganizationGroup }>;
+  renamePinGroup: (id: string, name: string) => Promise<{ group: SessionOrganizationGroup }>;
+  deletePinGroup: (id: string) => Promise<{ ok: boolean }>;
+  updateThreadOrganization: (
+    threadId: string,
+    folderId?: string,
+    pinGroupId?: string,
+  ) => Promise<{ thread: Thread }>;
   archiveThread: (
     threadId: string,
     archived: boolean,

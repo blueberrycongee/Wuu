@@ -446,6 +446,7 @@ const api: WuuDesktopApi = {
   setMessageFlowFontSize: (fontSize: MessageFlowFontSize) =>
     ipcRenderer.invoke("wuu:message-flow-font-size-set", fontSize),
   listThreads: (cwd?: string) => ipcRenderer.invoke("wuu:thread-list", cwd),
+  listAllThreads: () => ipcRenderer.invoke("wuu:thread-list-all"),
   listArchivedThreads: () =>
     ipcRenderer.invoke("wuu:thread-list-archived"),
   searchThreads: (query: string, limit?: number) =>
@@ -455,8 +456,17 @@ const api: WuuDesktopApi = {
     limit?: number,
   ): Promise<import("../shared/protocol").ThreadPreviewResult> =>
     ipcRenderer.invoke("wuu:thread-preview", threadId, limit),
-  pinThread: (threadId: string, pinned: boolean) =>
-    ipcRenderer.invoke("wuu:thread-pin", threadId, pinned),
+  pinThread: (threadId: string, pinned: boolean, pinGroupId?: string) =>
+    ipcRenderer.invoke("wuu:thread-pin", threadId, pinned, pinGroupId),
+  getSessionOrganization: () => ipcRenderer.invoke("wuu:session-organization-list"),
+  createSessionFolder: (name: string) => ipcRenderer.invoke("wuu:session-folder-create", name),
+  renameSessionFolder: (id: string, name: string) => ipcRenderer.invoke("wuu:session-folder-update", id, name),
+  deleteSessionFolder: (id: string) => ipcRenderer.invoke("wuu:session-folder-delete", id),
+  createPinGroup: (name: string) => ipcRenderer.invoke("wuu:pin-group-create", name),
+  renamePinGroup: (id: string, name: string) => ipcRenderer.invoke("wuu:pin-group-update", id, name),
+  deletePinGroup: (id: string) => ipcRenderer.invoke("wuu:pin-group-delete", id),
+  updateThreadOrganization: (threadId: string, folderId?: string, pinGroupId?: string) =>
+    ipcRenderer.invoke("wuu:thread-organization-update", threadId, folderId, pinGroupId),
   archiveThread: (threadId: string, archived: boolean, force?: boolean) =>
     ipcRenderer.invoke("wuu:thread-archive", threadId, archived, force),
   deleteThread: (threadId: string) =>

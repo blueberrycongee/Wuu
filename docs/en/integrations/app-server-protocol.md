@@ -78,9 +78,11 @@ the `Method*` block at the top of that file is a valid JSON-RPC method, with
 siblings like `config/read`, `config/model/update`, `config/general/update`,
 `config/advanced/update`, `config/codex/models`, `config/provider/remove`,
 `skill/list`, the rest of the
-`thread/*` methods (`thread/list`, `thread/search`, `thread/pin`,
+`thread/*` methods (`thread/list`, `thread/listAll`, `thread/search`, `thread/pin`,
 `thread/archive`, `thread/edit-message`, `thread/context-composition`,
-`thread/regenerate-title`, `thread/rename`), all the `turn/*` methods
+`thread/organization/update`, `thread/regenerate-title`, `thread/rename`),
+session organization methods (`sessionOrganization/list`,
+`sessionFolder/create|update|delete`, `pinGroup/create|update|delete`), all the `turn/*` methods
 (`turn/queue`, `turn/update-queued`, `turn/dequeue`, `turn/steer`,
 `turn/unsteer`), `process/list`, `process/stop`, the `mcp/*` methods
 (`mcp/list`, `mcp/connect`, `mcp/disconnect`, `mcp/refresh`), and

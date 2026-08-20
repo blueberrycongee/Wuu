@@ -592,7 +592,12 @@ export function App(): JSX.Element {
   // Poll the room list so the sidebar 协作 section always shows current
   // unread counts, independent of whether the channel canvas is open.
   useEffect(() => {
-    if (!ENABLE_GROUP_CHAT || !window.wuu || !state.initialized) {
+    if (
+      !ENABLE_GROUP_CHAT ||
+      !window.wuu ||
+      typeof window.wuu.listChannelRooms !== "function" ||
+      !state.initialized
+    ) {
       setChannelRooms([]);
       setNamedAgents([]);
       return;

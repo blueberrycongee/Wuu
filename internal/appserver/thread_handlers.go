@@ -747,6 +747,13 @@ func (s *Server) handleThreadList(req Request) error {
 			delete(entries, thread.ID)
 			continue
 		}
+		if persisted, ok := entries[thread.ID]; ok {
+			entry.thread.Pinned = persisted.thread.Pinned
+			entry.thread.FolderID = persisted.thread.FolderID
+			entry.thread.PinGroupID = persisted.thread.PinGroupID
+			entry.pinnedAt = persisted.pinnedAt
+			thread = entry.thread
+		}
 		if sameThreadListCWD(thread.CWD, targetCWD) || sameThreadListCWD(worktreeBaseRepo(thread.Worktree), targetCWD) {
 			entries[thread.ID] = entry
 		}
@@ -760,6 +767,84 @@ func (s *Server) handleThreadList(req Request) error {
 	sortThreadListEntries(threads)
 	result := make([]Thread, 0, len(threads))
 	for _, entry := range threads {
+		thread, err := s.threadWithChildAgents(entry.thread)
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+		result = append(result, thread)
+	}
+	return s.writeResponse(req.ID, ThreadListResult{Threads: result}, nil)
+}
+
+// handleThreadListAll returns active root conversations across every workspace.
+// Global folders must not depend on a project section having been expanded.
+func (s *Server) handleThreadListAll(req Request) error {
+	sessions, err := session.List(s.rt.SessionDir, 0)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	agentThreadIDs := make(map[string]struct{})
+	rootIDs, err := s.rootThreadIDs()
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	for _, rootID := range rootIDs {
+		store := s.agentThreadStore(rootID)
+		if store == nil {
+			continue
+		}
+		threads, err := store.ListThreads()
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+		for _, meta := range threads {
+			if meta.Source.Kind == agentthread.SourceThreadSpawn {
+				agentThreadIDs[meta.ID] = struct{}{}
+			}
+		}
+	}
+	entries := make(map[string]threadListEntry, len(sessions))
+	for _, sess := range sessions {
+		if sess.Visibility == pluginhost.SessionVisibilityPlugin || sess.ArchivedAt != nil || isNamedAgentSessionSource(sess.Source) {
+			continue
+		}
+		if _, isAgentThread := agentThreadIDs[sess.ID]; isAgentThread {
+			continue
+		}
+		entries[sess.ID] = threadEntryFromSession(sess, s.rt.ProviderName, s.rt.Model)
+	}
+	s.mu.Lock()
+	for _, th := range s.threads {
+		th.mu.Lock()
+		thread := th.snapshotLocked()
+		visibility := th.Visibility
+		entry := threadListEntry{thread: thread, pinnedAt: th.PinnedAt}
+		th.mu.Unlock()
+		if persisted, ok := entries[thread.ID]; ok {
+			entry.thread.Pinned = persisted.thread.Pinned
+			entry.thread.FolderID = persisted.thread.FolderID
+			entry.thread.PinGroupID = persisted.thread.PinGroupID
+			entry.pinnedAt = persisted.pinnedAt
+			thread = entry.thread
+		}
+		if visibility == pluginhost.SessionVisibilityPlugin || thread.Ephemeral || thread.ReadOnly || thread.Archived || isNamedAgentSessionSource(thread.Source) {
+			delete(entries, thread.ID)
+			continue
+		}
+		if _, isAgentThread := agentThreadIDs[thread.ID]; isAgentThread {
+			delete(entries, thread.ID)
+			continue
+		}
+		entries[thread.ID] = entry
+	}
+	s.mu.Unlock()
+	ordered := make([]threadListEntry, 0, len(entries))
+	for _, entry := range entries {
+		ordered = append(ordered, entry)
+	}
+	sortThreadListEntries(ordered)
+	result := make([]Thread, 0, len(ordered))
+	for _, entry := range ordered {
 		thread, err := s.threadWithChildAgents(entry.thread)
 		if err != nil {
 			return s.writeResponse(req.ID, nil, err)
@@ -868,7 +953,7 @@ func (s *Server) handleThreadPin(req Request) error {
 	if id == "" {
 		return s.writeResponse(req.ID, nil, errors.New("thread_id is required"))
 	}
-	metadata, err := session.UpdatePinned(s.rt.SessionDir, id, params.Pinned)
+	metadata, err := session.UpdatePinnedInGroup(s.rt.SessionDir, id, params.Pinned, params.PinGroupID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -876,7 +961,10 @@ func (s *Server) handleThreadPin(req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	return s.writeResponse(req.ID, ThreadPinResult{Thread: thread}, nil)
+	if err := s.writeResponse(req.ID, ThreadPinResult{Thread: thread}, nil); err != nil {
+		return err
+	}
+	return s.notifyThreadUpdated(thread)
 }
 
 func (s *Server) handleThreadArchive(req Request) error {
@@ -1040,6 +1128,8 @@ func applySessionMetadata(th *threadState, metadata session.Session) {
 	th.WorktreeBaseRepo = metadata.WorktreeBaseRepo
 	th.WorkspaceID = metadata.WorkspaceID
 	th.PinnedAt = metadata.PinnedAt
+	th.FolderID = metadata.FolderID
+	th.PinGroupID = metadata.PinGroupID
 	th.ArchivedAt = metadata.ArchivedAt
 }
 
@@ -1092,8 +1182,11 @@ func threadEntryFromSession(sess session.Session, provider, model string) thread
 			ModelEffort:      selection.Effort,
 			PermissionMode:   permissionMode,
 			CWD:              sess.CWD,
+			WorkspaceID:      sess.WorkspaceID,
 			Status:           ThreadStatusIdle,
 			Pinned:           sess.PinnedAt != nil,
+			FolderID:         sess.FolderID,
+			PinGroupID:       sess.PinGroupID,
 			Archived:         sess.ArchivedAt != nil,
 			ForkedFromID:     sess.ForkedFromID,
 			ForkedFromTurnID: sess.ForkedFromTurnID,

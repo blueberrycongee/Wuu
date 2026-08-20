@@ -1573,10 +1573,13 @@ function summarizeThreadForSidebar(thread: Thread): ThreadSummary {
     model_provider: thread.model_provider,
     model: thread.model,
     cwd: thread.cwd,
+    workspace_id: thread.workspace_id,
     workspace_kind: thread.workspace_kind,
     status: thread.status,
     read_only: thread.read_only,
     pinned: thread.pinned,
+    folder_id: thread.folder_id,
+    pin_group_id: thread.pin_group_id,
     archived: thread.archived,
     forked_from_id: thread.forked_from_id,
     forked_from_turn_id: thread.forked_from_turn_id,
@@ -1787,15 +1790,18 @@ export function threadProjectPath(
 }
 
 export function threadBelongsToProject(
-  thread: Pick<Thread, "cwd" | "worktree">,
-  project: Pick<DesktopProject, "path">,
+  thread: Pick<Thread, "cwd" | "workspace_id" | "worktree">,
+  project: Pick<DesktopProject, "id" | "path">,
 ): boolean {
+  if (thread.workspace_id?.trim()) {
+    return thread.workspace_id === project.id;
+  }
   return sameDesktopPath(threadProjectPath(thread), project.path);
 }
 
 function threadBelongsToAnyProject(
-  thread: Pick<Thread, "cwd" | "worktree">,
-  projects: Pick<DesktopProject, "path">[],
+  thread: Pick<Thread, "cwd" | "workspace_id" | "worktree">,
+  projects: Pick<DesktopProject, "id" | "path">[],
 ): boolean {
   return projects.some((project) => threadBelongsToProject(thread, project));
 }

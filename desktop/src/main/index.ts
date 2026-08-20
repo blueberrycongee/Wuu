@@ -2001,6 +2001,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("wuu:thread-list-archived", (event) =>
     appServerRequest<{ threads: Thread[] }>(event, "thread/listArchived"),
   );
+  ipcMain.handle("wuu:thread-list-all", (event) =>
+    appServerRequest<{ threads: Thread[] }>(event, "thread/listAll"),
+  );
   ipcMain.handle("wuu:thread-search", (event, query: string, limit?: number) =>
     appServerRequest(event, "thread/search", {
       query: query ?? "",
@@ -2017,10 +2020,41 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(
     "wuu:thread-pin",
-    (event, threadId: string, pinned: boolean) =>
+    (event, threadId: string, pinned: boolean, pinGroupId?: string) =>
       appServerRequest<{ thread: Thread }>(event, "thread/pin", {
         thread_id: threadId,
         pinned,
+        pin_group_id: pinGroupId,
+      }),
+  );
+  ipcMain.handle("wuu:session-organization-list", (event) =>
+    appServerRequest(event, "sessionOrganization/list"),
+  );
+  ipcMain.handle("wuu:session-folder-create", (event, name: string) =>
+    appServerRequest(event, "sessionFolder/create", { name }),
+  );
+  ipcMain.handle("wuu:session-folder-update", (event, id: string, name: string) =>
+    appServerRequest(event, "sessionFolder/update", { id, name }),
+  );
+  ipcMain.handle("wuu:session-folder-delete", (event, id: string) =>
+    appServerRequest(event, "sessionFolder/delete", { id }),
+  );
+  ipcMain.handle("wuu:pin-group-create", (event, name: string) =>
+    appServerRequest(event, "pinGroup/create", { name }),
+  );
+  ipcMain.handle("wuu:pin-group-update", (event, id: string, name: string) =>
+    appServerRequest(event, "pinGroup/update", { id, name }),
+  );
+  ipcMain.handle("wuu:pin-group-delete", (event, id: string) =>
+    appServerRequest(event, "pinGroup/delete", { id }),
+  );
+  ipcMain.handle(
+    "wuu:thread-organization-update",
+    (event, threadId: string, folderId?: string, pinGroupId?: string) =>
+      appServerRequest<{ thread: Thread }>(event, "thread/organization/update", {
+        thread_id: threadId,
+        ...(folderId !== undefined ? { folder_id: folderId } : {}),
+        ...(pinGroupId !== undefined ? { pin_group_id: pinGroupId } : {}),
       }),
   );
   ipcMain.handle(

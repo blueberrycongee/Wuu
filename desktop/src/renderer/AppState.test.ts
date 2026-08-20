@@ -648,6 +648,28 @@ describe("summarizeThreadsForSidebar", () => {
     expect(threadBelongsToProject(summary, project)).toBe(true);
     expect(isScratchThread(summary, [project])).toBe(false);
   });
+
+  it("keeps sessions with a project after its path changes", () => {
+    const project = {
+      id: "project-1",
+      name: "project",
+      path: "/repo/project-moved",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+    const [summary] = summarizeThreadsForSidebar([
+      {
+        ...threadWithUserTexts(["before the move"]),
+        cwd: "/repo/project-old",
+        workspace_id: project.id,
+        workspace_kind: "project",
+      },
+    ]);
+
+    expect(summary.workspace_id).toBe(project.id);
+    expect(threadBelongsToProject(summary, project)).toBe(true);
+    expect(isScratchThread(summary, [project])).toBe(false);
+  });
 });
 
 describe("resolveThreadRuntimeContext", () => {

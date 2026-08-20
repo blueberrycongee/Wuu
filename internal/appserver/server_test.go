@@ -7102,7 +7102,7 @@ func TestServerThreadPinAndArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || pinned.PinnedAt == nil {
+	if !ok || pinned.PinnedAt == nil || pinned.PinGroupID != session.DefaultPinGroupID {
 		t.Fatalf("pin not persisted: ok=%v session=%+v", ok, pinned)
 	}
 
@@ -7121,6 +7121,13 @@ func TestServerThreadPinAndArchive(t *testing.T) {
 	if archiveResult.Thread.ID != threadID || !archiveResult.Thread.Archived || archiveResult.Thread.Pinned {
 		t.Fatalf("unexpected archive result: %+v", archiveResult)
 	}
+	archived, ok, err := session.Find(rt.SessionDir, threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || archived.PinGroupID != "" {
+		t.Fatalf("archive should clear pin group: ok=%v session=%+v", ok, archived)
+	}
 
 	if err := srv.handleLine(context.Background(), []byte(`{"id":"4","method":"thread/list"}`)); err != nil {
 		t.Fatalf("thread/list: %v", err)
@@ -7128,6 +7135,74 @@ func TestServerThreadPinAndArchive(t *testing.T) {
 	listResult := remarshal[ThreadListResult](t, responseByID(t, parseOutput(t, out.String()), "4")["result"])
 	if len(listResult.Threads) != 0 {
 		t.Fatalf("archived thread should be hidden, got %+v", listResult.Threads)
+	}
+}
+
+func TestServerThreadOrganizationUpdatesAreIndependentAndListsUsePersistedMetadata(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.WorkspaceID = "workspace-stable"
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread.ID
+	folder, err := session.CreateFolder(rt.SessionDir, "Topic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinGroup, err := session.CreatePinGroup(rt.SessionDir, "Now")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	update := func(requestID string, params map[string]any) Thread {
+		t.Helper()
+		params["thread_id"] = threadID
+		payload, marshalErr := json.Marshal(map[string]any{
+			"id": requestID, "method": MethodThreadOrganizationUpdate, "params": params,
+		})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		if handleErr := srv.handleLine(context.Background(), payload); handleErr != nil {
+			t.Fatalf("thread/organization/update: %v", handleErr)
+		}
+		return remarshal[ThreadOrganizationUpdateResult](t, responseByID(t, parseOutput(t, out.String()), requestID)["result"]).Thread
+	}
+
+	updated := update("2", map[string]any{"folder_id": folder.ID, "pin_group_id": pinGroup.ID})
+	if updated.FolderID != folder.ID || updated.PinGroupID != pinGroup.ID {
+		t.Fatalf("unexpected organization update: %+v", updated)
+	}
+	updated = update("3", map[string]any{"folder_id": ""})
+	if updated.FolderID != "" || updated.PinGroupID != pinGroup.ID {
+		t.Fatalf("folder-only update changed pin group: %+v", updated)
+	}
+
+	// Change the database without touching this server's loaded thread. Global
+	// listing must still treat persisted organization metadata as authoritative.
+	if _, err := session.UpdateOrganization(rt.SessionDir, threadID, &folder.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.notifyThreadUpdated(updated); err != nil {
+		t.Fatal(err)
+	}
+	notifications := notificationsByMethod(parseOutput(t, out.String()), NotificationThreadUpdated)
+	notified := remarshal[ThreadUpdatedNotification](t, notifications[len(notifications)-1]["params"])
+	if notified.Thread.FolderID != folder.ID || notified.Thread.PinGroupID != pinGroup.ID {
+		t.Fatalf("thread update emitted stale organization metadata: %+v", notified.Thread)
+	}
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"4","method":"thread/listAll"}`)); err != nil {
+		t.Fatalf("thread/listAll: %v", err)
+	}
+	list := remarshal[ThreadListResult](t, responseByID(t, parseOutput(t, out.String()), "4")["result"])
+	if len(list.Threads) != 1 || list.Threads[0].FolderID != folder.ID || list.Threads[0].PinGroupID != pinGroup.ID {
+		t.Fatalf("listAll did not use persisted organization metadata: %+v", list.Threads)
+	}
+	if list.Threads[0].WorkspaceID != rt.WorkspaceID {
+		t.Fatalf("listAll lost stable workspace id: %+v", list.Threads[0])
 	}
 }
 

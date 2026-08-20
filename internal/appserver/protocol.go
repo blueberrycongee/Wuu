@@ -15,6 +15,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/participant"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/runtime"
+	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
 
@@ -80,10 +81,19 @@ const (
 	MethodSideThreadInterrupt             = "sideThread/interrupt"
 	MethodSideThreadReset                 = "sideThread/reset"
 	MethodThreadList                      = "thread/list"
+	MethodThreadListAll                   = "thread/listAll"
 	MethodThreadListArchived              = "thread/listArchived"
 	MethodThreadSearch                    = "thread/search"
 	MethodThreadPreview                   = "thread/preview"
 	MethodThreadPin                       = "thread/pin"
+	MethodThreadOrganizationUpdate        = "thread/organization/update"
+	MethodSessionOrganizationList         = "sessionOrganization/list"
+	MethodSessionFolderCreate             = "sessionFolder/create"
+	MethodSessionFolderUpdate             = "sessionFolder/update"
+	MethodSessionFolderDelete             = "sessionFolder/delete"
+	MethodPinGroupCreate                  = "pinGroup/create"
+	MethodPinGroupUpdate                  = "pinGroup/update"
+	MethodPinGroupDelete                  = "pinGroup/delete"
 	MethodThreadArchive                   = "thread/archive"
 	MethodThreadCompactStart              = "thread/compact/start"
 	MethodThreadRegenerateTitle           = "thread/regenerate-title"
@@ -1460,11 +1470,43 @@ type ThreadPreviewResult struct {
 }
 
 type ThreadPinParams struct {
-	ThreadID string `json:"thread_id"`
-	Pinned   bool   `json:"pinned"`
+	ThreadID   string `json:"thread_id"`
+	Pinned     bool   `json:"pinned"`
+	PinGroupID string `json:"pin_group_id,omitempty"`
 }
 
 type ThreadPinResult struct {
+	Thread Thread `json:"thread"`
+}
+
+type SessionOrganizationListResult struct {
+	Organization session.SessionOrganization `json:"organization"`
+}
+
+type OrganizationGroupCreateParams struct {
+	Name string `json:"name"`
+}
+
+type OrganizationGroupUpdateParams struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type OrganizationGroupDeleteParams struct {
+	ID string `json:"id"`
+}
+
+type OrganizationGroupResult struct {
+	Group session.OrganizationGroup `json:"group"`
+}
+
+type ThreadOrganizationUpdateParams struct {
+	ThreadID   string  `json:"thread_id"`
+	FolderID   *string `json:"folder_id,omitempty"`
+	PinGroupID *string `json:"pin_group_id,omitempty"`
+}
+
+type ThreadOrganizationUpdateResult struct {
 	Thread Thread `json:"thread"`
 }
 
@@ -1923,12 +1965,15 @@ type Thread struct {
 	ModelEffort      string        `json:"model_effort"`
 	PermissionMode   string        `json:"permission_mode"`
 	CWD              string        `json:"cwd"`
+	WorkspaceID      string        `json:"workspace_id,omitempty"`
 	WorkspaceKind    WorkspaceKind `json:"workspace_kind,omitempty"`
 	Status           ThreadStatus  `json:"status"`
 	TreeInterrupted  bool          `json:"orchestration_interrupted,omitempty"`
 	ReadOnly         bool          `json:"read_only,omitempty"`
 	Ephemeral        bool          `json:"ephemeral,omitempty"`
 	Pinned           bool          `json:"pinned,omitempty"`
+	FolderID         string        `json:"folder_id,omitempty"`
+	PinGroupID       string        `json:"pin_group_id,omitempty"`
 	Archived         bool          `json:"archived,omitempty"`
 	ForkedFromID     string        `json:"forked_from_id,omitempty"`
 	ForkedFromTurnID string        `json:"forked_from_turn_id,omitempty"`

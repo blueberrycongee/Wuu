@@ -25,8 +25,13 @@ import {
 } from "react";
 import { SidebarNameDialog } from "./SidebarNameDialog";
 import type { DesktopProject } from "../shared/protocol";
-import { copyToClipboard, ThreadContextMenu } from "./ThreadContextMenu";
+import {
+  copyToClipboard,
+  ThreadContextMenu,
+  type ThreadContextMenuItem,
+} from "./ThreadContextMenu";
 import { SidebarSection } from "./SidebarSection";
+import { useSessionOrganizationActions } from "./SessionOrganization";
 import { baseThreadTitle, threadShowsForkMarker } from "./ThreadTitles";
 import { revealInFileManagerLabel } from "./platform";
 import {
@@ -668,6 +673,7 @@ function ThreadRows({
   onReorder?: (activeThreadID: string, overThreadID: string) => void;
 }): JSX.Element {
   const { t } = useI18n();
+  const organization = useSessionOrganizationActions();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: ThreadSummary } | null>(null);
   const [renameDialog, setRenameDialog] = useState<{
     thread: ThreadSummary;
@@ -691,6 +697,53 @@ function ThreadRows({
   ): void {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, thread: targetThread });
+  }
+
+  function togglePinned(thread: ThreadSummary): void {
+    if (organization) {
+      organization.togglePinned(thread, onTogglePinned);
+    } else {
+      onTogglePinned(thread);
+    }
+  }
+
+  function organizationMenuItems(thread: ThreadSummary): ThreadContextMenuItem[] {
+    if (!organization) return [];
+    const items: ThreadContextMenuItem[] = [];
+    if (thread.pinned) {
+      items.push({
+        label: t("threadSidebar.moveToDefaultPinnedGroup"),
+        onSelect: () => organization.pinToGroup(thread),
+      });
+    }
+    for (const group of organization.pinGroups) {
+      items.push({
+        label: t(thread.pinned ? "threadSidebar.moveToPinnedGroup" : "threadSidebar.pinToGroup", { name: group.name }),
+        onSelect: () => organization.pinToGroup(thread, group.id),
+      });
+    }
+    items.push({
+      label: t("threadSidebar.newPinnedGroup"),
+      onSelect: () => organization.createPinGroupForThread(thread),
+    });
+    items.push({ separator: true });
+    if (organization.folderByThreadID[thread.id]) {
+      items.push({
+        label: t("threadSidebar.removeFromFolder"),
+        onSelect: () => organization.moveToFolder(thread),
+      });
+    }
+    for (const folder of organization.folders) {
+      items.push({
+        label: t("threadSidebar.moveToFolder", { name: folder.name }),
+        onSelect: () => organization.moveToFolder(thread, folder.id),
+      });
+    }
+    items.push({
+      label: t("threadSidebar.newFolder"),
+      onSelect: () => organization.createFolderForThread(thread),
+    });
+    return items;
   }
 
   function editableThreadTitle(thread: ThreadSummary): string {
@@ -796,7 +849,7 @@ function ThreadRows({
                   type="button"
                   aria-label={t(thread.pinned ? "sidebar.unpin" : "sidebar.pin")}
                   title={t(thread.pinned ? "sidebar.unpin" : "sidebar.pin")}
-                  onClick={() => onTogglePinned(thread)}
+                  onClick={() => togglePinned(thread)}
                 >
                   <Pin className="icon-sm" />
                 </button>
@@ -821,8 +874,10 @@ function ThreadRows({
           items={[
             {
               label: t(contextMenu.thread.pinned ? "sidebar.unpin" : "sidebar.pin"),
-              onSelect: () => onTogglePinned(contextMenu.thread),
+              onSelect: () => togglePinned(contextMenu.thread),
             },
+            ...organizationMenuItems(contextMenu.thread),
+            { separator: true },
             {
               label: t("threadSidebar.rename"),
               disabled: !onRename,
@@ -973,6 +1028,44 @@ export function PinnedThreadList({
         onDelete={onDelete}
         onRename={onRename}
         onReorder={reorderPinnedThreads}
+      />
+    </div>
+  );
+}
+
+export function OrganizationThreadList({
+  threads,
+  activeID,
+  pendingThreadID,
+  lastViewedTurnByThreadID,
+  onSelect,
+  onTogglePinned,
+  onArchive,
+  onDelete,
+  onRename,
+}: {
+  threads: ThreadSummary[];
+  activeID?: string;
+  pendingThreadID?: string;
+  lastViewedTurnByThreadID: Record<string, string>;
+  onSelect: (id: string) => void;
+  onTogglePinned: (thread: ThreadSummary) => void;
+  onArchive: (thread: ThreadSummary) => void;
+  onDelete: (thread: ThreadSummary) => void;
+  onRename?: (thread: ThreadSummary, title: string) => void;
+}): JSX.Element {
+  return (
+    <div className="pinned-thread-list">
+      <ThreadRows
+        threads={threads}
+        activeID={activeID}
+        pendingThreadID={pendingThreadID}
+        lastViewedTurnByThreadID={lastViewedTurnByThreadID}
+        onSelect={onSelect}
+        onTogglePinned={onTogglePinned}
+        onArchive={onArchive}
+        onDelete={onDelete}
+        onRename={onRename}
       />
     </div>
   );

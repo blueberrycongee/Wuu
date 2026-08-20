@@ -405,6 +405,19 @@ export function useSidebarProjectState({
   }, [activeContext?.kind, projects, threads]);
 
   useEffect(() => {
+    if (!window.wuu?.listAllThreads) return;
+    let cancelled = false;
+    void window.wuu.listAllThreads().then((listed) => {
+      if (!cancelled) cacheSidebarThreads(listed.threads);
+    }).catch((error) => {
+      if (!cancelled) {
+        setStatus(desktopApiErrorMessage(error, translateCurrent("project.threadsLoadFailed")));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [projects]);
+
+  useEffect(() => {
     for (const project of projects) {
       if (!sessionTreeSectionExpanded(project.id, expandedSidebarSectionIDs)) {
         continue;

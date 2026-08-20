@@ -1186,6 +1186,28 @@
   padding: var(--sidebar-list-pad-y) 0;
 }
 
+.session-organization-group + .session-organization-group,
+.session-folder-list .project-section + .project-section {
+  margin-top: 4px;
+}
+
+.session-organization-group-heading {
+  overflow: hidden;
+  padding: 4px calc(var(--sidebar-row-pad-x) + 26px) 1px;
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-organization-empty {
+  padding: 4px var(--sidebar-row-pad-x) 8px;
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+  line-height: 1.4;
+}
+
 .project-add-menu {
   position: absolute;
   top: calc(100% + 4px);

@@ -48,8 +48,17 @@ import {
 } from "./AppState";
 import type { ConversationFixtureKind } from "./ConversationFixtures";
 import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
-import { PinnedThreadList, ProjectGroup } from "./ThreadSidebar";
+import {
+  OrganizationThreadList,
+  ProjectGroup,
+} from "./ThreadSidebar";
 import { SidebarSection } from "./SidebarSection";
+import { ThreadContextMenu } from "./ThreadContextMenu";
+import {
+  SessionOrganizationProvider,
+  useSessionOrganization,
+  type SessionGroup,
+} from "./SessionOrganization";
 import {
   SidebarSectionDragPreview,
   SortableSidebarSection,
@@ -287,6 +296,22 @@ export function AppSidebar({
   workbenchController?: WorkbenchController;
 }): JSX.Element {
   const { t } = useI18n();
+  const organizationSourceThreads = useMemo(() => {
+    const byID = new Map<string, ThreadSummary>();
+    for (const threads of Object.values(projectThreadsByProjectID)) {
+      for (const thread of threads) byID.set(thread.id, thread);
+    }
+    for (const thread of pinnedThreads) byID.set(thread.id, thread);
+    return [...byID.values()];
+  }, [pinnedThreads, projectThreadsByProjectID]);
+  const organization = useSessionOrganization(organizationSourceThreads);
+  const [collapsedFolderIDs, setCollapsedFolderIDs] = useState<Set<string>>(() => new Set());
+  const [groupContextMenu, setGroupContextMenu] = useState<{
+    kind: "folder" | "pin";
+    group: SessionGroup;
+    x: number;
+    y: number;
+  } | null>(null);
   const hasRuntimeContext = Boolean(state.activeContext);
   const fixturesEnabled = hasRuntimeContext && Boolean(state.initialized);
   // The scratch pseudo project is "active" when the runtime context is in
@@ -363,6 +388,73 @@ export function AppSidebar({
     : undefined;
   const pinnedRows = pinnedThreads;
   const hasPinnedRows = pinnedRows.length > 0;
+  const allSidebarThreads = useMemo(() => {
+    const byID = new Map<string, ThreadSummary>();
+    for (const threads of Object.values(projectThreadsByProjectID)) {
+      for (const thread of threads) byID.set(thread.id, thread);
+    }
+    for (const thread of pinnedRows) byID.set(thread.id, thread);
+    return [...byID.values()];
+  }, [pinnedRows, projectThreadsByProjectID]);
+  const visibleProjectThreadsByProjectID = useMemo(() => {
+    const next: Record<string, ThreadSummary[]> = {};
+    for (const [projectID, threads] of Object.entries(projectThreadsByProjectID)) {
+      next[projectID] = threads.filter((thread) => !organization.folderByThreadID[thread.id]);
+    }
+    return next;
+  }, [organization.folderByThreadID, projectThreadsByProjectID]);
+  const folderThreadsByID = useMemo(() => {
+    const next: Record<string, ThreadSummary[]> = {};
+    for (const folder of organization.folders) next[folder.id] = [];
+    for (const thread of allSidebarThreads) {
+      const folderID = organization.folderByThreadID[thread.id];
+      if (folderID && next[folderID] && !thread.pinned && !thread.archived) {
+        next[folderID].push(thread);
+      }
+    }
+    return next;
+  }, [allSidebarThreads, organization.folderByThreadID, organization.folders]);
+  const pinnedGroups = useMemo(() => [
+    {
+      id: "",
+      name: t("sidebar.defaultPinnedGroup"),
+      threads: pinnedRows.filter((thread) => !organization.pinGroupByThreadID[thread.id]),
+    },
+    ...organization.pinGroups.map((group) => ({
+      ...group,
+      threads: pinnedRows.filter((thread) => organization.pinGroupByThreadID[thread.id] === group.id),
+    })),
+  ], [organization.pinGroupByThreadID, organization.pinGroups, pinnedRows, t]);
+
+  function requestedName(message: string, initial = ""): string | undefined {
+    return window.prompt(message, initial)?.trim() || undefined;
+  }
+
+  function createFolder(thread?: ThreadSummary): void {
+    const name = requestedName(t("sidebar.folderNamePrompt"));
+    if (name) organization.createFolder(name, thread?.id);
+  }
+
+  function createPinGroup(thread?: ThreadSummary): void {
+    const name = requestedName(t("sidebar.pinGroupNamePrompt"));
+    if (!name) return;
+    organization.createPinGroup(name, thread?.id);
+  }
+
+  const organizationActions = {
+    ...organization,
+    togglePinned: (thread: ThreadSummary, fallback: (thread: ThreadSummary) => void) => {
+      fallback(thread);
+    },
+    pinToGroup: (thread: ThreadSummary, pinGroupID?: string) => {
+      organization.moveThreadToPinGroup(thread.id, pinGroupID || "default");
+    },
+    moveToFolder: (thread: ThreadSummary, folderID?: string) => {
+      organization.moveThreadToFolder(thread.id, folderID);
+    },
+    createFolderForThread: (thread: ThreadSummary) => createFolder(thread),
+    createPinGroupForThread: (thread: ThreadSummary) => createPinGroup(thread),
+  };
   const pinnedCollapsed = collapsedSidebarSectionIDs.has(
     SIDEBAR_SECTION_PINNED,
   );
@@ -427,15 +519,48 @@ export function AppSidebar({
         icon: "pin",
         depth: 0,
       });
-      for (const thread of pinnedRows) {
-        nodes.push(threadNavigationNode(
-          thread,
-          "section:pinned",
-          activeThreadID,
-          state.lastViewedTurnByThreadID,
-          () => onSelectThread(thread.id),
-          () => onTogglePinned(thread),
-        ));
+      for (const group of pinnedGroups) {
+        const parentID = organization.pinGroups.length > 0
+          ? `pin-group:${group.id || "default"}`
+          : "section:pinned";
+        if (organization.pinGroups.length > 0) {
+          nodes.push({
+            id: parentID,
+            kind: "section",
+            label: group.name,
+            parentId: "section:pinned",
+            depth: 1,
+            icon: "pin",
+          });
+        }
+        for (const thread of group.threads) {
+          nodes.push(threadNavigationNode(
+            thread,
+            parentID,
+            activeThreadID,
+            state.lastViewedTurnByThreadID,
+            () => onSelectThread(thread.id),
+            () => onTogglePinned(thread),
+          ));
+        }
+      }
+    }
+
+    if (organization.folders.length > 0) {
+      nodes.push({ id: "section:folders", kind: "section", label: t("sidebar.folders"), icon: "folder", depth: 0 });
+      for (const folder of organization.folders) {
+        const parentID = `folder:${folder.id}`;
+        nodes.push({ id: parentID, kind: "project", label: folder.name, parentId: "section:folders", depth: 1, icon: "folder" });
+        for (const thread of folderThreadsByID[folder.id] ?? []) {
+          nodes.push(threadNavigationNode(
+            thread,
+            parentID,
+            activeThreadID,
+            state.lastViewedTurnByThreadID,
+            () => onSelectThread(thread.id),
+            () => onTogglePinned(thread),
+          ));
+        }
       }
     }
 
@@ -449,7 +574,7 @@ export function AppSidebar({
       for (const projectID of sectionOrder) {
         const project = sidebarProjects.find((candidate) => candidate.id === projectID);
         if (!project) continue;
-        const threads = (projectThreadsByProjectID[projectID] ?? []).filter(
+        const threads = (visibleProjectThreadsByProjectID[projectID] ?? []).filter(
           (thread) => !thread.pinned,
         );
         const isScratch = projectID === SCRATCH_PSEUDO_PROJECT_ID;
@@ -525,7 +650,8 @@ export function AppSidebar({
     onSeedConversationFixture,
     onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
     onStartNewThread, onToggleConversationSearch,
-    onTogglePinned, pinnedRows, projectThreadsByProjectID,
+    onTogglePinned, pinnedGroups, pinnedRows, visibleProjectThreadsByProjectID,
+    folderThreadsByID, organization.folders, organization.pinGroups,
     searchOpen, sectionOrder, sidebarProjects, sidebarScratchPseudoActive,
     activePluginMainView, openPluginNavigation, pluginNavigationEntries,
     state.activeProjectId, state.initialized, state.lastViewedTurnByThreadID, t,
@@ -652,43 +778,125 @@ export function AppSidebar({
               </div>
             </section>
           ) : null}
-          {hasPinnedRows ? (
-            <section
-              className="sidebar-functional-group pinned-functional-group"
-              aria-label={t("sidebar.pinned")}
-            >
-              <div className="sidebar-functional-group-body">
-                <div className="pinned-thread-section">
-                  <SidebarSection
-                    expanded={!pinnedCollapsed}
-                    iconKind="pinned"
-                    CollapsedIcon={Pin}
-                    ExpandedIcon={Pin}
-                    label={t("sidebar.pinned")}
-                    ariaLabel={t(pinnedCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.pinned") })}
-                    title={t(pinnedCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.pinned") })}
-                    onToggle={() =>
-                      onToggleSidebarSectionCollapsed(SIDEBAR_SECTION_PINNED)
-                    }
-                  >
-                    <PinnedThreadList
-                      threads={pinnedRows}
-                      activeID={activeThreadID}
-                      pendingThreadID={pendingThreadID}
-                      
-                      lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
-                      onSelect={onSelectThread}
-                      onTogglePinned={onTogglePinned}
-                      onArchive={onArchiveThread}
-                      onDelete={onDeleteThread}
-                      onRename={onRenameThread}
-                      
-                    />
-                  </SidebarSection>
-                </div>
+          <section
+            className="sidebar-functional-group pinned-functional-group"
+            aria-label={t("sidebar.pinned")}
+          >
+            <div className="sidebar-functional-group-body">
+              <div className="pinned-thread-section">
+                <SidebarSection
+                  expanded={!pinnedCollapsed}
+                  iconKind="pinned"
+                  CollapsedIcon={Pin}
+                  ExpandedIcon={Pin}
+                  label={t("sidebar.pinned")}
+                  ariaLabel={t(pinnedCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.pinned") })}
+                  title={t(pinnedCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.pinned") })}
+                  actions={
+                    <button
+                      className="sidebar-functional-action sidebar-section-add-action"
+                      type="button"
+                      aria-label={t("sidebar.newPinnedGroup")}
+                      title={t("sidebar.newPinnedGroup")}
+                      onClick={() => createPinGroup()}
+                    >
+                      <Plus aria-hidden="true" />
+                    </button>
+                  }
+                  onToggle={() => onToggleSidebarSectionCollapsed(SIDEBAR_SECTION_PINNED)}
+                  emptyNote={t("sidebar.noPinnedConversations")}
+                >
+                  {pinnedGroups.map((group) => (
+                    <div className="session-organization-group" key={group.id || "default"}>
+                      {(organization.pinGroups.length > 0 || group.id) ? (
+                        <div
+                          className="session-organization-group-heading"
+                          onContextMenu={group.id ? (event) => {
+                            event.preventDefault();
+                            setGroupContextMenu({ kind: "pin", group, x: event.clientX, y: event.clientY });
+                          } : undefined}
+                        >
+                          {group.name}
+                        </div>
+                      ) : null}
+                      <OrganizationThreadList
+                        threads={group.threads}
+                        activeID={activeThreadID}
+                        pendingThreadID={pendingThreadID}
+                        lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
+                        onSelect={onSelectThread}
+                        onTogglePinned={onTogglePinned}
+                        onArchive={onArchiveThread}
+                        onDelete={onDeleteThread}
+                        onRename={onRenameThread}
+                      />
+                    </div>
+                  ))}
+                  {!hasPinnedRows && organization.pinGroups.length === 0 ? (
+                    <div className="session-organization-empty">{t("sidebar.noPinnedConversations")}</div>
+                  ) : null}
+                </SidebarSection>
               </div>
-            </section>
-          ) : null}
+            </div>
+          </section>
+          <section className="sidebar-functional-group" aria-label={t("sidebar.folders")}>
+            <div className="sidebar-functional-heading">
+              <span className="sidebar-functional-heading-label">{t("sidebar.folders")}</span>
+              <button
+                className="sidebar-functional-action"
+                type="button"
+                aria-label={t("sidebar.newFolder")}
+                title={t("sidebar.newFolder")}
+                onClick={() => createFolder()}
+              >
+                <Plus aria-hidden="true" />
+              </button>
+            </div>
+            <div className="sidebar-functional-group-body session-folder-list">
+              {organization.folders.length === 0 ? (
+                <div className="session-organization-empty">{t("sidebar.noFolders")}</div>
+              ) : organization.folders.map((folder) => {
+                const collapsed = collapsedFolderIDs.has(folder.id);
+                return (
+                  <div className="project-section" key={folder.id}>
+                    <SidebarSection
+                      expanded={!collapsed}
+                      iconKind="project"
+                      CollapsedIcon={Folder}
+                      ExpandedIcon={FolderOpen}
+                      label={folder.name}
+                      ariaLabel={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
+                      title={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
+                      onToggle={() => setCollapsedFolderIDs((current) => {
+                        const next = new Set(current);
+                        if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id);
+                        return next;
+                      })}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setGroupContextMenu({ kind: "folder", group: folder, x: event.clientX, y: event.clientY });
+                      }}
+                      emptyNote={t("sidebar.emptyFolder")}
+                    >
+                      {(folderThreadsByID[folder.id]?.length ?? 0) > 0 ? (
+                        <OrganizationThreadList
+                          threads={folderThreadsByID[folder.id]}
+                          activeID={activeThreadID}
+                          pendingThreadID={pendingThreadID}
+                          lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
+                          onSelect={onSelectThread}
+                          onTogglePinned={onTogglePinned}
+                          onArchive={onArchiveThread}
+                          onDelete={onDeleteThread}
+                          onRename={onRenameThread}
+                        />
+                      ) : null}
+                    </SidebarSection>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
           {sectionOrder.length > 0 ? (
             <DndContext
               sensors={sensors}
@@ -781,7 +989,7 @@ export function AppSidebar({
                   pendingProjectID={pendingProjectID}
                   expandedSidebarSectionIDs={expandedSidebarSectionIDs}
                   loadingProjectThreadIDs={loadingProjectThreadIDs}
-                  threadsByProjectID={projectThreadsByProjectID}
+                  threadsByProjectID={visibleProjectThreadsByProjectID}
                   activeThreadID={activeThreadID}
                   pendingThreadID={pendingThreadID}
                   
@@ -847,11 +1055,49 @@ export function AppSidebar({
             <span>{t("sidebar.settings")}</span>
           </button>
         </div>
+        {groupContextMenu ? (
+          <ThreadContextMenu
+            x={groupContextMenu.x}
+            y={groupContextMenu.y}
+            items={[
+              {
+                label: t("sidebar.renameGroup"),
+                onSelect: () => {
+                  const name = requestedName(t("sidebar.renameGroupPrompt"), groupContextMenu.group.name);
+                  if (!name) return;
+                  if (groupContextMenu.kind === "folder") {
+                    organization.renameFolder(groupContextMenu.group.id, name);
+                  } else {
+                    organization.renamePinGroup(groupContextMenu.group.id, name);
+                  }
+                },
+              },
+              { separator: true },
+              {
+                label: t("sidebar.deleteGroup"),
+                onSelect: () => {
+                  if (!window.confirm(t("sidebar.deleteGroupConfirmation"))) return;
+                  if (groupContextMenu.kind === "folder") {
+                    organization.deleteFolder(groupContextMenu.group.id);
+                  } else {
+                    organization.deletePinGroup(groupContextMenu.group.id);
+                  }
+                },
+              },
+            ]}
+            onClose={() => setGroupContextMenu(null)}
+          />
+        ) : null}
       </div>
     </aside>
   );
+  const organizedSidebar = (
+    <SessionOrganizationProvider value={organizationActions}>
+      {nativeSidebar}
+    </SessionOrganizationProvider>
+  );
   return (
-    <NavigationPresentation nodes={navigationNodes} fallback={nativeSidebar} />
+    <NavigationPresentation nodes={navigationNodes} fallback={organizedSidebar} />
   );
 }
 
