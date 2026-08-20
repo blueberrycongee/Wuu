@@ -979,7 +979,9 @@ function readableCommandLabel(
   if (/(?:^|[;&|]\s*)sqlite3\b|(?:import|from)\s+sqlite3\b/.test(command)) {
     return t("toolActivity.useLocalDatabase");
   }
-  return t("toolActivity.runCommand");
+  return command
+    ? t("toolActivity.runTarget", { target: truncateText(command, 100) })
+    : t("toolActivity.runCommand");
 }
 
 function readableBackgroundCommandLabel(action: string, command: string): string {

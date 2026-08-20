@@ -395,6 +395,19 @@ describe("buildToolActivityProcessSegments", () => {
       text: "操作本地数据库",
     });
   });
+
+  it("shows the raw command when no purpose bucket matches", () => {
+    const [segment] = buildToolActivityProcessSegments([
+      {
+        id: "cmd-raw-fallback",
+        type: "tool_call",
+        name: "bash",
+        status: "completed",
+        arguments: JSON.stringify({ command: "bun run codegen" }),
+      },
+    ] satisfies ThreadItem[]);
+    expect(segment).toMatchObject({ kind: "command", text: "运行 bun run codegen" });
+  });
 });
 
 
