@@ -181,6 +181,76 @@ func DeletePinGroup(sessDir, id string) error {
 	return deleteOrganizationGroup(sessDir, groupKindPin, id)
 }
 
+func ReorderFolders(sessDir string, ids []string) error {
+	return reorderOrganizationGroups(sessDir, groupKindFolder, ids)
+}
+
+func ReorderPinGroups(sessDir string, ids []string) error {
+	return reorderOrganizationGroups(sessDir, groupKindPin, ids)
+}
+
+func reorderOrganizationGroups(sessDir string, kind organizationGroupKind, ids []string) error {
+	table, err := groupTable(kind)
+	if err != nil {
+		return err
+	}
+	db, err := openStore(sessDir)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	storeWriteMu.Lock()
+	defer storeWriteMu.Unlock()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	query := fmt.Sprintf(`SELECT id FROM %s`, table)
+	if kind == groupKindPin {
+		query += ` WHERE id <> '` + DefaultPinGroupID + `'`
+	}
+	rows, err := tx.Query(query)
+	if err != nil {
+		return err
+	}
+	existing := make(map[string]struct{})
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		existing[id] = struct{}{}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if len(ids) != len(existing) {
+		return errors.New("reorder must include every group exactly once")
+	}
+	now := time.Now().UTC()
+	base := 0
+	if kind == groupKindPin {
+		base = 1
+	}
+	seen := make(map[string]struct{}, len(ids))
+	for index, rawID := range ids {
+		id := strings.TrimSpace(rawID)
+		if _, ok := existing[id]; !ok {
+			return fmt.Errorf("%s group not found: %q", kind, id)
+		}
+		if _, duplicate := seen[id]; duplicate {
+			return fmt.Errorf("duplicate %s group: %q", kind, id)
+		}
+		seen[id] = struct{}{}
+		if _, err := tx.Exec(fmt.Sprintf(`UPDATE %s SET sort_order = ?, updated_at = ? WHERE id = ?`, table), base+index, timeText(now), id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func deleteOrganizationGroup(sessDir string, kind organizationGroupKind, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {

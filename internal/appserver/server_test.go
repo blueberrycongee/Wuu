@@ -7147,7 +7147,16 @@ func TestServerThreadOrganizationUpdatesAreIndependentAndListsUsePersistedMetada
 	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
 		t.Fatalf("thread/start: %v", err)
 	}
-	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread.ID
+	startMessages := parseOutput(t, out.String())
+	startedThread := remarshal[ThreadStartResult](t, responseByID(t, startMessages, "1")["result"]).Thread
+	threadID := startedThread.ID
+	if startedThread.WorkspaceID != rt.WorkspaceID {
+		t.Fatalf("thread/start lost stable workspace id: %+v", startedThread)
+	}
+	startedNotification := remarshal[ThreadStartedNotification](t, notificationByMethod(t, startMessages, NotificationThreadStarted)["params"])
+	if startedNotification.Thread.WorkspaceID != rt.WorkspaceID {
+		t.Fatalf("thread/started lost stable workspace id: %+v", startedNotification.Thread)
+	}
 	folder, err := session.CreateFolder(rt.SessionDir, "Topic")
 	if err != nil {
 		t.Fatal(err)
@@ -7191,8 +7200,19 @@ func TestServerThreadOrganizationUpdatesAreIndependentAndListsUsePersistedMetada
 	}
 	notifications := notificationsByMethod(parseOutput(t, out.String()), NotificationThreadUpdated)
 	notified := remarshal[ThreadUpdatedNotification](t, notifications[len(notifications)-1]["params"])
-	if notified.Thread.FolderID != folder.ID || notified.Thread.PinGroupID != pinGroup.ID {
+	if notified.Thread.FolderID != folder.ID || notified.Thread.PinGroupID != pinGroup.ID || notified.Thread.WorkspaceID != rt.WorkspaceID {
 		t.Fatalf("thread update emitted stale organization metadata: %+v", notified.Thread)
+	}
+	// A registered project's path may change while a thread remains loaded.
+	// Scoped listing must use the persisted stable workspace id rather than the
+	// in-memory thread's original cwd.
+	rt.RootDir = t.TempDir()
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"5","method":"thread/list"}`)); err != nil {
+		t.Fatalf("thread/list after project move: %v", err)
+	}
+	scoped := remarshal[ThreadListResult](t, responseByID(t, parseOutput(t, out.String()), "5")["result"])
+	if len(scoped.Threads) != 1 || scoped.Threads[0].ID != threadID || scoped.Threads[0].WorkspaceID != rt.WorkspaceID {
+		t.Fatalf("thread/list lost loaded thread after project move: %+v", scoped.Threads)
 	}
 	if err := srv.handleLine(context.Background(), []byte(`{"id":"4","method":"thread/listAll"}`)); err != nil {
 		t.Fatalf("thread/listAll: %v", err)
@@ -7203,6 +7223,24 @@ func TestServerThreadOrganizationUpdatesAreIndependentAndListsUsePersistedMetada
 	}
 	if list.Threads[0].WorkspaceID != rt.WorkspaceID {
 		t.Fatalf("listAll lost stable workspace id: %+v", list.Threads[0])
+	}
+	secondFolder, err := session.CreateFolder(rt.SessionDir, "Second topic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reorderPayload, err := json.Marshal(map[string]any{
+		"id": "6", "method": MethodSessionFolderReorder,
+		"params": OrganizationGroupReorderParams{IDs: []string{secondFolder.ID, folder.ID}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.handleLine(context.Background(), reorderPayload); err != nil {
+		t.Fatalf("sessionFolder/reorder: %v", err)
+	}
+	reordered := remarshal[SessionOrganizationListResult](t, responseByID(t, parseOutput(t, out.String()), "6")["result"])
+	if len(reordered.Organization.Folders) != 2 || reordered.Organization.Folders[0].ID != secondFolder.ID || reordered.Organization.Folders[1].ID != folder.ID {
+		t.Fatalf("unexpected folder reorder result: %+v", reordered.Organization.Folders)
 	}
 }
 

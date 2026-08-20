@@ -2036,6 +2036,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("wuu:session-folder-update", (event, id: string, name: string) =>
     appServerRequest(event, "sessionFolder/update", { id, name }),
   );
+  ipcMain.handle("wuu:session-folder-reorder", (event, ids: string[]) =>
+    appServerRequest(event, "sessionFolder/reorder", { ids }),
+  );
   ipcMain.handle("wuu:session-folder-delete", (event, id: string) =>
     appServerRequest(event, "sessionFolder/delete", { id }),
   );
@@ -2044,6 +2047,9 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle("wuu:pin-group-update", (event, id: string, name: string) =>
     appServerRequest(event, "pinGroup/update", { id, name }),
+  );
+  ipcMain.handle("wuu:pin-group-reorder", (event, ids: string[]) =>
+    appServerRequest(event, "pinGroup/reorder", { ids }),
   );
   ipcMain.handle("wuu:pin-group-delete", (event, id: string) =>
     appServerRequest(event, "pinGroup/delete", { id }),

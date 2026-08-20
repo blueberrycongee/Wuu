@@ -105,3 +105,30 @@ func TestBooleanPinUsesDefaultGroupAndArchiveClearsIt(t *testing.T) {
 		t.Fatalf("archive retained pin group: %+v", archived)
 	}
 }
+
+func TestOrganizationGroupsCanBeReordered(t *testing.T) {
+	dir := t.TempDir()
+	firstFolder, _ := CreateFolder(dir, "First")
+	secondFolder, _ := CreateFolder(dir, "Second")
+	firstPin, _ := CreatePinGroup(dir, "First pin")
+	secondPin, _ := CreatePinGroup(dir, "Second pin")
+	if err := ReorderFolders(dir, []string{secondFolder.ID, firstFolder.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReorderPinGroups(dir, []string{secondPin.ID, firstPin.ID}); err != nil {
+		t.Fatal(err)
+	}
+	organization, err := ListOrganization(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(organization.Folders) != 2 || organization.Folders[0].ID != secondFolder.ID || organization.Folders[1].ID != firstFolder.ID {
+		t.Fatalf("folders were not reordered: %+v", organization.Folders)
+	}
+	if len(organization.PinGroups) != 3 || organization.PinGroups[0].ID != DefaultPinGroupID || organization.PinGroups[1].ID != secondPin.ID || organization.PinGroups[2].ID != firstPin.ID {
+		t.Fatalf("pin groups were not reordered: %+v", organization.PinGroups)
+	}
+	if err := ReorderFolders(dir, []string{firstFolder.ID}); err == nil {
+		t.Fatal("expected incomplete reorder to fail")
+	}
+}

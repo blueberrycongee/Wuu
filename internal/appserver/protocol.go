@@ -90,9 +90,11 @@ const (
 	MethodSessionOrganizationList         = "sessionOrganization/list"
 	MethodSessionFolderCreate             = "sessionFolder/create"
 	MethodSessionFolderUpdate             = "sessionFolder/update"
+	MethodSessionFolderReorder            = "sessionFolder/reorder"
 	MethodSessionFolderDelete             = "sessionFolder/delete"
 	MethodPinGroupCreate                  = "pinGroup/create"
 	MethodPinGroupUpdate                  = "pinGroup/update"
+	MethodPinGroupReorder                 = "pinGroup/reorder"
 	MethodPinGroupDelete                  = "pinGroup/delete"
 	MethodThreadArchive                   = "thread/archive"
 	MethodThreadCompactStart              = "thread/compact/start"
@@ -1494,6 +1496,10 @@ type OrganizationGroupUpdateParams struct {
 
 type OrganizationGroupDeleteParams struct {
 	ID string `json:"id"`
+}
+
+type OrganizationGroupReorderParams struct {
+	IDs []string `json:"ids"`
 }
 
 type OrganizationGroupResult struct {

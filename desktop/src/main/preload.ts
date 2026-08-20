@@ -461,9 +461,11 @@ const api: WuuDesktopApi = {
   getSessionOrganization: () => ipcRenderer.invoke("wuu:session-organization-list"),
   createSessionFolder: (name: string) => ipcRenderer.invoke("wuu:session-folder-create", name),
   renameSessionFolder: (id: string, name: string) => ipcRenderer.invoke("wuu:session-folder-update", id, name),
+  reorderSessionFolders: (ids: string[]) => ipcRenderer.invoke("wuu:session-folder-reorder", ids),
   deleteSessionFolder: (id: string) => ipcRenderer.invoke("wuu:session-folder-delete", id),
   createPinGroup: (name: string) => ipcRenderer.invoke("wuu:pin-group-create", name),
   renamePinGroup: (id: string, name: string) => ipcRenderer.invoke("wuu:pin-group-update", id, name),
+  reorderPinGroups: (ids: string[]) => ipcRenderer.invoke("wuu:pin-group-reorder", ids),
   deletePinGroup: (id: string) => ipcRenderer.invoke("wuu:pin-group-delete", id),
   updateThreadOrganization: (threadId: string, folderId?: string, pinGroupId?: string) =>
     ipcRenderer.invoke("wuu:thread-organization-update", threadId, folderId, pinGroupId),

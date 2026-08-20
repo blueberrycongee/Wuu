@@ -3,6 +3,7 @@ import {
   clearOptimisticAssignment,
   clearReconciledAssignments,
   emptySessionOrganization,
+  moveOrganizationGroup,
   parseSessionOrganization,
 } from "./SessionOrganization";
 import type { ThreadSummary } from "./AppState";
@@ -49,5 +50,17 @@ describe("optimistic organization assignments", () => {
 
     expect(clearReconciledAssignments({ thread: "folder-1" }, threads, "folder_id")).toEqual({});
     expect(clearReconciledAssignments({ thread: "folder-2" }, threads, "folder_id")).toEqual({ thread: "folder-2" });
+  });
+});
+
+describe("moveOrganizationGroup", () => {
+  const groups = [{ id: "one", name: "One" }, { id: "two", name: "Two" }];
+
+  it("moves a group within bounds", () => {
+    expect(moveOrganizationGroup(groups, "two", -1).map((group) => group.id)).toEqual(["two", "one"]);
+  });
+
+  it("keeps the same list at a boundary", () => {
+    expect(moveOrganizationGroup(groups, "one", -1)).toBe(groups);
   });
 });

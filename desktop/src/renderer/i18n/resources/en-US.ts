@@ -230,6 +230,8 @@ export const enUS = {
   "sidebar.noFolders": "Create a folder to organize conversations across workspaces.",
   "sidebar.emptyFolder": "No conversations in this folder",
   "sidebar.renameGroup": "Rename",
+  "sidebar.moveGroupUp": "Move up",
+  "sidebar.moveGroupDown": "Move down",
   "sidebar.renameGroupPrompt": "New name",
   "sidebar.deleteGroup": "Delete group",
   "sidebar.deleteGroupConfirmation": "Delete this group? Conversations will not be deleted.",

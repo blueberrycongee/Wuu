@@ -312,6 +312,10 @@ export function AppSidebar({
     x: number;
     y: number;
   } | null>(null);
+  const contextGroupList = groupContextMenu?.kind === "folder" ? organization.folders : organization.pinGroups;
+  const contextGroupIndex = groupContextMenu
+    ? contextGroupList.findIndex((group) => group.id === groupContextMenu.group.id)
+    : -1;
   const hasRuntimeContext = Boolean(state.activeContext);
   const fixturesEnabled = hasRuntimeContext && Boolean(state.initialized);
   // The scratch pseudo project is "active" when the runtime context is in
@@ -1060,6 +1064,29 @@ export function AppSidebar({
             x={groupContextMenu.x}
             y={groupContextMenu.y}
             items={[
+              {
+                label: t("sidebar.moveGroupUp"),
+                disabled: contextGroupIndex <= 0,
+                onSelect: () => {
+                  if (groupContextMenu.kind === "folder") {
+                    organization.reorderFolder(groupContextMenu.group.id, -1);
+                  } else {
+                    organization.reorderPinGroup(groupContextMenu.group.id, -1);
+                  }
+                },
+              },
+              {
+                label: t("sidebar.moveGroupDown"),
+                disabled: contextGroupIndex < 0 || contextGroupIndex >= contextGroupList.length - 1,
+                onSelect: () => {
+                  if (groupContextMenu.kind === "folder") {
+                    organization.reorderFolder(groupContextMenu.group.id, 1);
+                  } else {
+                    organization.reorderPinGroup(groupContextMenu.group.id, 1);
+                  }
+                },
+              },
+              { separator: true },
               {
                 label: t("sidebar.renameGroup"),
                 onSelect: () => {

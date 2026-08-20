@@ -2615,9 +2615,11 @@ export type WuuDesktopApi = {
   getSessionOrganization: () => Promise<{ organization: SessionOrganization }>;
   createSessionFolder: (name: string) => Promise<{ group: SessionOrganizationGroup }>;
   renameSessionFolder: (id: string, name: string) => Promise<{ group: SessionOrganizationGroup }>;
+  reorderSessionFolders: (ids: string[]) => Promise<{ organization: SessionOrganization }>;
   deleteSessionFolder: (id: string) => Promise<{ ok: boolean }>;
   createPinGroup: (name: string) => Promise<{ group: SessionOrganizationGroup }>;
   renamePinGroup: (id: string, name: string) => Promise<{ group: SessionOrganizationGroup }>;
+  reorderPinGroups: (ids: string[]) => Promise<{ organization: SessionOrganization }>;
   deletePinGroup: (id: string) => Promise<{ ok: boolean }>;
   updateThreadOrganization: (
     threadId: string,

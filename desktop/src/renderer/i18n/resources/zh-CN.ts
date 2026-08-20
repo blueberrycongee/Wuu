@@ -228,6 +228,8 @@ export const zhCN = {
   "sidebar.noFolders": "新建文件夹，跨工作区整理会话。",
   "sidebar.emptyFolder": "这个文件夹里还没有会话",
   "sidebar.renameGroup": "重命名",
+  "sidebar.moveGroupUp": "上移",
+  "sidebar.moveGroupDown": "下移",
   "sidebar.renameGroupPrompt": "新名称",
   "sidebar.deleteGroup": "删除分组",
   "sidebar.deleteGroupConfirmation": "删除这个分组？其中的会话不会被删除。",

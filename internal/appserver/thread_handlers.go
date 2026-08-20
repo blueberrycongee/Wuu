@@ -93,6 +93,7 @@ func (s *Server) handleThreadStart(req Request) error {
 	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, persistHistory, time.Now().UTC())
 	th.Source = threadSource
 	applyThreadRuntimeSelection(th, s.currentSessionRuntimeSelection())
+	th.WorkspaceID = workspaceID
 	th.WorkspaceKind = workspaceKind
 	th.Ephemeral = params.Ephemeral
 
@@ -751,8 +752,10 @@ func (s *Server) handleThreadList(req Request) error {
 			entry.thread.Pinned = persisted.thread.Pinned
 			entry.thread.FolderID = persisted.thread.FolderID
 			entry.thread.PinGroupID = persisted.thread.PinGroupID
+			entry.thread.WorkspaceID = persisted.thread.WorkspaceID
 			entry.pinnedAt = persisted.pinnedAt
-			thread = entry.thread
+			entries[thread.ID] = entry
+			continue
 		}
 		if sameThreadListCWD(thread.CWD, targetCWD) || sameThreadListCWD(worktreeBaseRepo(thread.Worktree), targetCWD) {
 			entries[thread.ID] = entry
@@ -824,6 +827,7 @@ func (s *Server) handleThreadListAll(req Request) error {
 			entry.thread.Pinned = persisted.thread.Pinned
 			entry.thread.FolderID = persisted.thread.FolderID
 			entry.thread.PinGroupID = persisted.thread.PinGroupID
+			entry.thread.WorkspaceID = persisted.thread.WorkspaceID
 			entry.pinnedAt = persisted.pinnedAt
 			thread = entry.thread
 		}

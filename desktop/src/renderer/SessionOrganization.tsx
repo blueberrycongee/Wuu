@@ -39,6 +39,8 @@ export type SessionOrganizationController = SessionOrganization & {
   createPinGroup: (name: string, threadID?: string) => void;
   renameFolder: (id: string, name: string) => void;
   renamePinGroup: (id: string, name: string) => void;
+  reorderFolder: (id: string, direction: -1 | 1) => void;
+  reorderPinGroup: (id: string, direction: -1 | 1) => void;
   deleteFolder: (id: string) => void;
   deletePinGroup: (id: string) => void;
   moveThreadToFolder: (threadID: string, folderID?: string) => void;
@@ -109,6 +111,22 @@ export function useSessionOrganization(threads: ThreadSummary[]): SessionOrganiz
     renamePinGroup: (id, name) => { void window.wuu.renamePinGroup(id, name).then(({ group }) => {
       setGroups((current) => ({ ...current, pinGroups: current.pinGroups.map((item) => item.id === id ? group : item) }));
     }); },
+    reorderFolder: (id, direction) => {
+      const reordered = moveOrganizationGroup(groups.folders, id, direction);
+      if (reordered === groups.folders) return;
+      void window.wuu.reorderSessionFolders(reordered.map((group) => group.id)).then(({ organization }) => {
+        const parsed = parseSessionOrganization(organization);
+        setGroups((current) => ({ ...current, folders: parsed.folders }));
+      });
+    },
+    reorderPinGroup: (id, direction) => {
+      const reordered = moveOrganizationGroup(groups.pinGroups, id, direction);
+      if (reordered === groups.pinGroups) return;
+      void window.wuu.reorderPinGroups(reordered.map((group) => group.id)).then(({ organization }) => {
+        const parsed = parseSessionOrganization(organization);
+        setGroups((current) => ({ ...current, pinGroups: parsed.pinGroups.filter((group) => group.id !== "default") }));
+      });
+    },
     deleteFolder: (id) => { void window.wuu.deleteSessionFolder(id).then(() => {
       setGroups((current) => ({ ...current, folders: current.folders.filter((item) => item.id !== id) }));
       setOptimisticFolders((current) => {
@@ -128,6 +146,15 @@ export function useSessionOrganization(threads: ThreadSummary[]): SessionOrganiz
     moveThreadToFolder: (id, folderID) => moveThread(id, "folder", folderID),
     moveThreadToPinGroup: (id, pinGroupID) => moveThread(id, "pin", pinGroupID),
   };
+}
+
+export function moveOrganizationGroup(groups: SessionGroup[], id: string, direction: -1 | 1): SessionGroup[] {
+  const index = groups.findIndex((group) => group.id === id);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= groups.length) return groups;
+  const next = [...groups];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
 }
 
 export function clearOptimisticAssignment(

@@ -81,6 +81,24 @@ func (s *Server) handleOrganizationGroupDelete(req Request, pin bool) error {
 	return nil
 }
 
+func (s *Server) handleOrganizationGroupReorder(req Request, pin bool) error {
+	var params OrganizationGroupReorderParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	var err error
+	if pin {
+		err = session.ReorderPinGroups(s.rt.SessionDir, params.IDs)
+	} else {
+		err = session.ReorderFolders(s.rt.SessionDir, params.IDs)
+	}
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	organization, err := session.ListOrganization(s.rt.SessionDir)
+	return s.writeResponse(req.ID, SessionOrganizationListResult{Organization: organization}, err)
+}
+
 func (s *Server) handleThreadOrganizationUpdate(req Request) error {
 	var params ThreadOrganizationUpdateParams
 	if err := decodeParams(req.Params, &params); err != nil {
