@@ -117,28 +117,16 @@
 }
 
 .context-compaction-black-hole {
-  --wuu-compact-hole-core: #000;
-  --wuu-compact-hole-inner: #111;
-  --wuu-compact-hole-edge: #4c4c56;
-  --wuu-compact-hole-ring-dark: #17171c;
-  --wuu-compact-hole-ring-mid: #25252d;
+  --wuu-compact-hole-core: #111;
   --wuu-compact-hole-head: var(--mo-head, #df8a6f);
-  --wuu-compact-hole-eye: var(--mo-eye, #111);
   --wuu-compact-hole-highlight: white;
   position: absolute;
   inset: 5px;
   border-radius: 50%;
   opacity: 0;
-  background: radial-gradient(
-    circle at center,
-    var(--wuu-compact-hole-core) 0 43%,
-    var(--wuu-compact-hole-inner) 55%,
-    var(--wuu-compact-hole-edge) 69%,
-    transparent 72%
-  );
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--wuu-compact-hole-eye) 35%, transparent),
-    0 0 8px color-mix(in srgb, var(--wuu-compact-hole-eye) 26%, transparent);
+  /* Flat mascot-style ink disk: solid fill with a crisp edge. The old soft
+   * radial gradient read as a fuzzy smudge next to the mascot's line art. */
+  background: var(--wuu-compact-hole-core);
   pointer-events: none;
 }
 
@@ -148,26 +136,33 @@
    * ring inside the padded 32px slot instead of hard-cutting its outer edge. */
   inset: -3px;
   border-radius: inherit;
+  /* Two flat coral accretion arcs — one bright sweep plus a dimmer echo on
+   * the far side — whose spin carries the "hole at work" cue. */
   background: conic-gradient(
     from 0deg,
-    transparent 0 12%,
-    color-mix(in srgb, var(--wuu-compact-hole-head) 70%, var(--wuu-compact-hole-highlight)) 28%,
-    var(--wuu-compact-hole-ring-dark) 46%,
-    transparent 62% 78%,
-    color-mix(in srgb, var(--wuu-compact-hole-head) 45%, var(--wuu-compact-hole-ring-mid)) 92%
+    transparent 0 4%,
+    var(--wuu-compact-hole-head) 10% 24%,
+    transparent 32% 54%,
+    color-mix(in srgb, var(--wuu-compact-hole-head) 55%, var(--wuu-compact-hole-highlight)) 62% 72%,
+    transparent 80%
   );
   content: "";
   mask: radial-gradient(
     circle,
-    transparent 0 48%,
-    var(--wuu-compact-hole-core) 54% 68%,
-    transparent 74%
+    transparent 0 52%,
+    var(--wuu-compact-hole-core) 58% 66%,
+    transparent 71%
   );
 }
 
 .context-compaction-notice.in_progress .context-compaction-black-hole {
   animation: wuu-mascot-black-hole var(--wuu-compact-cycle) ease-in-out infinite;
   will-change: opacity, transform;
+}
+
+.context-compaction-notice.in_progress .context-compaction-black-hole::before {
+  animation: wuu-mascot-black-hole-spin 720ms linear infinite;
+  will-change: transform;
 }
 
 .context-compaction-notice.in_progress .context-compaction-copy {
@@ -333,6 +328,12 @@
   87% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes wuu-mascot-black-hole-spin {
+  to {
+    transform: rotate(1turn);
   }
 }
 
