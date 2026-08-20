@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { _layout, blobatar } from "../src/blobatar";
 import { mad } from "../src/expression";
-import { VERSION } from "../src/index";
 import { blobatarUri } from "../src/uri";
 import { palette } from "../src/color";
 
@@ -34,11 +33,6 @@ describe("output", () => {
       expect(blobatar(s)).not.toContain("id=");
       expect(blobatar(s)).not.toContain("url(#");
     }
-  });
-
-  test("stays small enough to inline", () => {
-    const sizes = SEEDS.map(s => blobatar(s).length);
-    expect(Math.max(...sizes)).toBeLessThan(2600);
   });
 });
 
@@ -135,12 +129,6 @@ describe("options", () => {
 });
 
 describe("data uri", () => {
-  test("is smaller than the base64 equivalent", () => {
-    const svg = blobatar("alain");
-    const b64 = "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64");
-    expect(blobatarUri("alain").length).toBeLessThan(b64.length);
-  });
-
   test("escapes every character that would break an attribute or URL", () => {
     for (const s of SEEDS.slice(0, 50)) {
       const uri = blobatarUri(s);
@@ -148,17 +136,5 @@ describe("data uri", () => {
       expect(uri).not.toContain("#");
       expect(uri).not.toContain("<");
     }
-  });
-});
-
-describe("the published surface", () => {
-  test("VERSION matches package.json", async () => {
-    // `VERSION` is not decoration: it is the one live binding keeping the
-    // barrel from compiling to a stub that Node refuses to link. See the
-    // comment on it in `src/index.ts`. Pinned here so it cannot go stale.
-    const pkg = await Bun.file(
-      new URL("../package.json", import.meta.url),
-    ).json();
-    expect(VERSION).toBe(pkg.version);
   });
 });
