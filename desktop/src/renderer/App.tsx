@@ -4959,7 +4959,17 @@ export function App(): JSX.Element {
                     />
                   </div>
                 ) : emptyConversation ? (
-              <EmptyConversationHome title={emptyThreadTitle}>
+              <EmptyConversationHome
+                title={emptyThreadTitle}
+                // A non-empty draft (text or attachments) lifts the mascot's
+                // head from the composer to face the user; clearing it settles
+                // the gaze back down.
+                activity={
+                  prompt.trim().length > 0 || composerImages.length > 0 || composerFiles.length > 0
+                    ? "compose"
+                    : "idle"
+                }
+              >
                 {rightPanelGlobalized && activeWorkspaceFileTabID
                   ? <div />
                   : renderComposer("hero")}

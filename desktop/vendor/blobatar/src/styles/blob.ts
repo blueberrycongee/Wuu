@@ -1,6 +1,6 @@
 import type { Palette } from "../color";
 import type { FacePerspective } from "../render";
-import { blobPath, blobSegs, segsBounds, segsPath, superellipse, superellipseSegs, type Seg } from "../shape";
+import { blobPath, blobSegs, segsBounds, superellipse, superellipseSegs } from "../shape";
 import type { Traits } from "../traits";
 
 /**
@@ -55,15 +55,12 @@ const clamp = (value: number, min: number, max: number) =>
 const radians = (degrees: number) => (degrees * Math.PI) / 180;
 
 /**
- * How much the warp residual is amplified, and its ceiling in viewBox units.
- * The true sphere field's own curvature over an eye is sub-pixel at avatar
- * sizes — the same problem `surfaceRot` already solves by amplification — so
- * the residual is scaled by BEND and capped at BEND_MAX of displacement:
- * a cue, not a crescent.
+ * The sphere turn is carried by where the eyes land — and nothing else. The
+ * capsules are small by design, and at these sizes a foreshortened capsule
+ * reads as a *smaller eye*, not as a turned surface; the pair sliding across
+ * the face is the whole cue. What leaves this function is always the authored
+ * capsule: its own seeded lean, its own size, only translated.
  */
-const BEND = 3;
-const BEND_MAX = 3;
-
 function projectEyes<
   E extends {
     cx: number;
@@ -74,11 +71,7 @@ function projectEyes<
     rot: number;
   },
   B extends { cx: number; cy: number; rx: number; ry: number },
->(
-  eyes: E[],
-  body: B,
-  perspective?: FacePerspective,
-): Array<E & { surfaceRot?: number; segs?: Seg[]; bend?: number }> {
+>(eyes: E[], body: B, perspective?: FacePerspective): E[] {
   const strength = clamp(perspective?.strength ?? 0, 0, 1);
   if (strength === 0) return eyes;
 
@@ -95,124 +88,19 @@ function projectEyes<
   };
   const mix = (from: number, to: number) => from + (to - from) * strength;
 
-  // The warp field, in body-normalized coordinates: lift the disc point onto
-  // the unit sphere, turn it, project back orthographically, and blend toward
-  // flat by strength. A point past the silhouette is pulled back onto it,
-  // which *is* the limb compression rather than a failure to clamp.
-  const field = (nx: number, ny: number): [number, number] => {
-    const rim = Math.hypot(nx, ny);
-    const shrink = rim > 0.9 ? 0.9 / rim : 1;
-    const x = nx * shrink;
-    const y = ny * shrink;
-    const z = Math.sqrt(Math.max(0.08, 1 - x * x - y * y));
-    const point = rotate([x, y, z]);
-    return [mix(x, point[0]), mix(y, point[1])];
-  };
-
   return eyes.map((eye) => {
+    // Lift the eye's home onto the unit sphere, turn it, project back
+    // orthographically. The clamp is the limb: a gaze aimed past the
+    // silhouette settles onto it instead of leaving the face.
     const x = clamp((eye.cx - body.cx) / body.rx, -0.82, 0.82);
     const y = clamp((eye.cy - body.cy) / body.ry, -0.82, 0.82);
     const z = Math.sqrt(Math.max(0.08, 1 - x * x - y * y));
     const point = rotate([x, y, z]);
-    const tx0 = [1, 0, -x / z] as const;
-    const ty0 = [0, 1, -y / z] as const;
-    const txLength = Math.hypot(...tx0);
-    const tyLength = Math.hypot(...ty0);
-    const tx = tx0.map((value) => value / txLength) as [number, number, number];
-    const ty = ty0.map((value) => value / tyLength) as [number, number, number];
-    const angle = radians(eye.rot);
-    const horizontal = rotate([
-      tx[0] * Math.cos(angle) + ty[0] * Math.sin(angle),
-      tx[1] * Math.cos(angle) + ty[1] * Math.sin(angle),
-      tx[2] * Math.cos(angle) + ty[2] * Math.sin(angle),
-    ]);
-    const vertical = rotate([
-      -tx[0] * Math.sin(angle) + ty[0] * Math.cos(angle),
-      -tx[1] * Math.sin(angle) + ty[1] * Math.cos(angle),
-      -tx[2] * Math.sin(angle) + ty[2] * Math.cos(angle),
-    ]);
-    const horizontalScale = clamp(Math.hypot(horizontal[0], horizontal[1]), 0.78, 1);
-    const verticalScale = Math.hypot(vertical[0], vertical[1]);
-    const projectedRotation = (Math.atan2(-vertical[0], vertical[1]) * 180) / Math.PI;
-
-    const ex = mix(eye.cx, body.cx + point[0] * body.rx);
-    const ey = mix(eye.cy, body.cy + point[1] * body.ry);
-    const hs = mix(1, horizontalScale);
-    const vs = mix(1, verticalScale);
-    // Perspective cues below a pixel need optical exaggeration at avatar
-    // sizes. Keep the geometry spherical, but amplify its tangent rotation so
-    // the two surface angles remain legible at 24–32 px.
-    const surfaceRot = mix(0, clamp((projectedRotation - eye.rot) * 3, -18, 18));
-
-    // The bent path. Each capsule point rides the same field as the center;
-    // what the path keeps of it is only what the true linearization cannot
-    // express — the curvature, amplified like surfaceRot and for the same
-    // reason. Measuring against the *true* linearization rather than the
-    // drawn baseline matters: the baseline's wrapper rotation is itself
-    // amplified, and against it the residual would mostly be the capsule ends
-    // fighting that amplification instead of bending with the sphere. The
-    // segments are stored relative to the eye's center in the wrapper's
-    // frame, so a baked pose transforms them exactly as it transforms the
-    // capsule parameters.
-    const lean = radians(eye.rot);
-    const cosL = Math.cos(lean);
-    const sinL = Math.sin(lean);
-    const wrapA = radians(surfaceRot);
-    const cosW = Math.cos(wrapA);
-    const sinW = Math.sin(wrapA);
-    const flat = superellipseSegs(eye);
-    const residual: [number, number][][] = [];
-    let maxRes = 0;
-    const segs = flat.map((seg) => {
-      const row: [number, number][] = [];
-      const out = seg.map(([px, py]): [number, number] => {
-        const dx = px - eye.cx;
-        const dy = py - eye.cy;
-        const lx = dx * cosL + dy * sinL;
-        const ly = -dx * sinL + dy * cosL;
-        // The drawn baseline: scaled capsule, leaned, then turned by the wrapper.
-        const rx2 = lx * hs * cosL - ly * vs * sinL;
-        const ry2 = lx * hs * sinL + ly * vs * cosL;
-        // The field's own linearization: identity plus the projected tangents,
-        // blended by strength exactly as the field itself is.
-        const nx = (px - body.cx) / body.rx;
-        const ny = (py - body.cy) / body.ry;
-        const dxn = nx - x;
-        const dyn = ny - y;
-        const u = dxn * cosL + dyn * sinL;
-        const w = -dxn * sinL + dyn * cosL;
-        const fw = field(nx, ny);
-        const res: [number, number] = [
-          (fw[0] - (x + dxn + strength * (point[0] + horizontal[0] * u + vertical[0] * w - x - dxn))) * body.rx,
-          (fw[1] - (y + dyn + strength * (point[1] + horizontal[1] * u + vertical[1] * w - y - dyn))) * body.ry,
-        ];
-        maxRes = Math.max(maxRes, Math.hypot(res[0], res[1]));
-        row.push(res);
-        return [rx2, ry2];
-      });
-      residual.push(row);
-      return out;
-    });
-    // One gain per eye rather than per point, so the cap cannot kink the path.
-    const gain = maxRes > 0 ? BEND * Math.min(1, BEND_MAX / (BEND * maxRes)) : 0;
-    if (gain)
-      for (const [si, seg] of segs.entries())
-        for (const [pi, pt] of seg.entries()) {
-          // The residual enters the wrapper's frame, so it turns with the path.
-          const res = residual[si]![pi]!;
-          pt[0] += gain * (res[0] * cosW + res[1] * sinW);
-          pt[1] += gain * (-res[0] * sinW + res[1] * cosW);
-        }
 
     return {
       ...eye,
-      cx: ex,
-      cy: ey,
-      rx: eye.rx * hs,
-      ry: eye.ry * vs,
-      surfaceRot,
-      segs,
-      bend: gain * maxRes,
+      cx: mix(eye.cx, body.cx + point[0] * body.rx),
+      cy: mix(eye.cy, body.cy + point[1] * body.ry),
     };
   });
 }
@@ -306,11 +194,12 @@ export function layout(t: Traits, perspective?: FacePerspective) {
   const gx = t.jitter("gaze.x", 0.09) * rx;
   const gy = t.num("gaze.y", -0.2, 0.08) * ry;
 
-  // Compact product surfaces are the primary use case for this fork. Give the
-  // eye pair enough visual weight to survive at 24–32 px while preserving the
-  // seeded differences in shape, spacing, and expression.
-  const er0 = t.num("eye.rx", 0.095, 0.13) * rx;
-  const eyeRatio = t.num("eye.ratio", 1.9, 3.2);
+  // Compact product surfaces are the primary use case for this fork. The eyes
+  // stay small capsule pills — a crisp narrow pair reads at 24–32 px better
+  // than a tall soft one, because contrast and parallel edges do the work that
+  // area used to. Seeded differences in shape, spacing, and expression remain.
+  const er0 = t.num("eye.rx", 0.075, 0.11) * rx;
+  const eyeRatio = t.num("eye.ratio", 1.9, 2.8);
   // The second eye differs from the first in both overall size and in how tall
   // it is for that size, drawn separately so a pair can read as big-and-round
   // next to small-and-narrow rather than as one capsule scaled twice.
@@ -467,20 +356,11 @@ export function render(l: Layout, p: Palette, mo?: boolean): string {
   // declarations and the shape underneath keeps the loops. ~8 B per eye; see
   // `.mo-eye` in `motion.css` for the measurement.
   const eye = (e: Layout["eyes"][number], i: number) => {
-    // The warped path is stored relative to the eye's own center, so the
-    // surfaceRot wrapper and every transform-origin below stay as they were.
-    const d = e.segs
-      ? segsPath(e.segs.map((seg) => seg.map(([x, y]) => [x + e.cx, y + e.cy] as [number, number])))
-      : superellipse(e);
-    const path = `<path d="${d}"/>`;
-    const projected = e.surfaceRot
-      ? `<g transform="rotate(${r2(e.surfaceRot)} ${r2(e.cx)} ${r2(e.cy)})">${path}</g>`
-      : path;
-    if (!mo) return projected;
-    const animated = `<g class="mo-eye" style="--mo-wrap:${i ? 1 : -1};--mo-lean:${r2(e.rot)};transform-origin:${r2(e.cx)}px ${r2(e.cy)}px">${path}</g>`;
-    return e.surfaceRot
-      ? `<g transform="rotate(${r2(e.surfaceRot)} ${r2(e.cx)} ${r2(e.cy)})">${animated}</g>`
-      : animated;
+    // Eyes are always plain capsules here: the sphere projection moves them
+    // in `layout`, and the path needs no wrapper of its own.
+    const path = `<path d="${superellipse(e)}"/>`;
+    if (!mo) return path;
+    return `<g class="mo-eye" style="--mo-wrap:${i ? 1 : -1};--mo-lean:${r2(e.rot)};transform-origin:${r2(e.cx)}px ${r2(e.cy)}px">${path}</g>`;
   };
 
   const body =

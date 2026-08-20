@@ -43,42 +43,32 @@ describe("options", () => {
     );
   });
 
-  test("sphere projection compresses and turns the eye nearest the limb", () => {
+  test("sphere projection shifts the eye pair toward the turn, unchanged", () => {
     const traits = { shape: 0.2, "body.ratio": 0.5 };
     const flat = _layout("wuu", { traits });
     const turnedLeft = _layout("wuu", {
       traits,
       perspective: { yaw: -20, pitch: 8, strength: 1 },
     });
-    const turnedRight = _layout("wuu", {
-      traits,
-      perspective: { yaw: 20, pitch: 8, strength: 1 },
-    });
 
     expect(turnedLeft.eyes[0]!.cx).toBeLessThan(flat.eyes[0]!.cx);
-    expect(turnedLeft.eyes[0]!.rx / flat.eyes[0]!.rx).toBeLessThan(
-      turnedLeft.eyes[1]!.rx / flat.eyes[1]!.rx,
+    // The capsules ride the turn exactly as authored: at these sizes a shrunk
+    // capsule reads as a smaller eye, not as a turned surface, so nothing
+    // scales, rotates, or warps them — only the pair's position moves.
+    expect(turnedLeft.eyes.map((e) => [e.rx, e.ry, e.rot])).toEqual(
+      flat.eyes.map((e) => [e.rx, e.ry, e.rot]),
     );
-    expect(turnedRight.eyes[1]!.rx / flat.eyes[1]!.rx).toBeLessThan(
-      turnedRight.eyes[0]!.rx / flat.eyes[0]!.rx,
-    );
-    expect(Math.abs(turnedLeft.eyes[1]!.surfaceRot ?? 0)).toBeGreaterThan(
-      Math.abs(turnedLeft.eyes[0]!.surfaceRot ?? 0),
-    );
-    // The warp bends the drawn path itself, and the limb-side eye bends harder.
-    expect(turnedLeft.eyes[0]!.bend ?? 0).toBeGreaterThan(0);
-    expect(turnedLeft.eyes[0]!.segs).toBeDefined();
-    expect(turnedLeft.eyes[0]!.bend!).toBeGreaterThan(turnedRight.eyes[0]!.bend!);
+    expect(
+      blobatar("wuu", { traits, perspective: { yaw: -20, pitch: 8, strength: 1 } }),
+    ).not.toContain("rotate(");
   });
 
-  test("a baked pose keeps the warped path", () => {
+  test("a baked pose still moves the projected eyes", () => {
     const posed = _layout("wuu", {
       traits: { shape: 0.2, "body.ratio": 0.5 },
       perspective: { yaw: -20, pitch: 8, strength: 1 },
       expression: mad,
     });
-    expect(posed.eyes[0]!.segs).toBeDefined();
-    // Translation is free on center-relative segments: the bake moves cx only.
     expect(posed.eyes[0]!.cx).not.toBe(
       _layout("wuu", {
         traits: { shape: 0.2, "body.ratio": 0.5 },

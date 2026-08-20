@@ -55,10 +55,13 @@ describe("the frame", () => {
 describe("blob", () => {
   const layouts = SEEDS.map(s => blob.layout(traits(s)));
 
-  test("compact Wuu eyes keep a prominent footprint", () => {
+  test("compact Wuu eyes keep their crisp capsule footprint", () => {
     const l = _layout("wuu", { traits: { shape: 0.2, "body.ratio": 0.5 } });
     for (const eye of l.eyes) {
-      expect(eye.rx / l.body.rx).toBeGreaterThan(0.095);
+      expect(eye.rx / l.body.rx).toBeGreaterThan(0.07);
+      expect(eye.rx / l.body.rx).toBeLessThan(0.115);
+      expect(eye.ry / eye.rx).toBeGreaterThanOrEqual(1.9);
+      expect(eye.ry / eye.rx).toBeLessThanOrEqual(2.9);
     }
   });
 

@@ -16,10 +16,13 @@ import { createPortal } from "react-dom";
 import { AVATAR_HUES } from "./DefaultAvatar";
 import "./styles/wuu-mascot.css";
 
-const WUU_MASCOT_NAME = "wuu";
-const WUU_MASCOT_DEFAULT_HUE = 14;
-const WUU_MASCOT_TRAITS = { shape: 0.2, "body.ratio": 0.5 } as const;
-const WUU_MASCOT_PERSPECTIVE = { yaw: -32, pitch: 16, strength: 1 } as const;
+import {
+  WUU_MASCOT_ACTIVITY_PERSPECTIVES,
+  WUU_MASCOT_DEFAULT_HUE,
+  WUU_MASCOT_NAME,
+  WUU_MASCOT_TRAITS,
+} from "./wuu-mascot-spec";
+
 const WUU_MASCOT_LAYOUT = _layout(WUU_MASCOT_NAME, {
   traits: WUU_MASCOT_TRAITS,
 });
@@ -49,20 +52,16 @@ export type WuuMascotAccessory =
   | "ribbon"
   | "necktie";
 
-export type WuuMascotActivity =
-  | "idle"
-  | "thinking"
-  | "compact"
-  | "search"
-  | "edit"
-  | "command"
-  | "read"
-  | "tool";
+export type { WuuMascotActivity } from "./wuu-mascot-spec";
+import type { WuuMascotActivity } from "./wuu-mascot-spec";
 
 const WUU_MASCOT_ACTIVITY_EXPRESSIONS: Readonly<
   Record<WuuMascotActivity, Expression | undefined>
 > = {
   idle: undefined,
+  // A draft existing at all is the good news of the empty-session screen, so
+  // composing gets the pleased eyes while the head lifts to face the user.
+  compose: happy,
   // A quiet head-cocked pose reads as concentration without relying on the
   // explicit activity prop below alone. Eye geometry still morphs in place.
   thinking: smug,
@@ -216,7 +215,7 @@ export function WuuMascot({
         hue={WUU_MASCOT_DEFAULT_HUE}
         background={false}
         traits={WUU_MASCOT_TRAITS}
-        perspective={activity === "read" ? WUU_MASCOT_PERSPECTIVE : undefined}
+        perspective={WUU_MASCOT_ACTIVITY_PERSPECTIVES[activity]}
         animate="always"
         expression={WUU_MASCOT_ACTIVITY_EXPRESSIONS[activity]}
         focusable={false}

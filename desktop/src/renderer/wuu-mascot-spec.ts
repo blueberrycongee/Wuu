@@ -1,0 +1,45 @@
+/**
+ * The mascot's blobatar identity, shared between the component and its test so
+ * the render contract can never drift from what the UI actually draws.
+ */
+export const WUU_MASCOT_NAME = "wuu";
+export const WUU_MASCOT_DEFAULT_HUE = 14;
+export const WUU_MASCOT_TRAITS = { shape: 0.2, "body.ratio": 0.5 } as const;
+
+export type WuuMascotActivity =
+  | "idle"
+  | "compose"
+  | "thinking"
+  | "compact"
+  | "search"
+  | "edit"
+  | "command"
+  | "read"
+  | "tool";
+
+/**
+ * Where the mascot looks in each activity, layered on top of the expression.
+ * The turn is carried by the eye pair's position and foreshortening only —
+ * the capsules stay parallel — so even the 28px process-row ball reads the
+ * glance. Yaw looks left/right, pitch up/down; undefined is straight ahead.
+ *
+ * - idle greets with its gaze lowered toward the composer (or the status text
+ *   under the launch view): an invitation, not a stare.
+ * - compose lifts its head to face the user the moment a draft exists.
+ * - thinking glances up and aside; compact watches the hole descend overhead.
+ * - search/edit/command/tool look down into the work unfolding below the row.
+ * - read keeps its long-established look back up at the conversation.
+ */
+export const WUU_MASCOT_ACTIVITY_PERSPECTIVES: Readonly<
+  Record<WuuMascotActivity, { yaw: number; pitch: number; strength: number } | undefined>
+> = {
+  idle: { yaw: 8, pitch: -16, strength: 1 },
+  compose: { yaw: 0, pitch: 2, strength: 1 },
+  thinking: { yaw: 22, pitch: 14, strength: 1 },
+  compact: { yaw: -12, pitch: 12, strength: 1 },
+  search: { yaw: -16, pitch: -10, strength: 1 },
+  edit: { yaw: 14, pitch: -16, strength: 1 },
+  command: { yaw: -10, pitch: -12, strength: 1 },
+  read: { yaw: -32, pitch: 16, strength: 1 },
+  tool: { yaw: 12, pitch: -10, strength: 1 },
+};

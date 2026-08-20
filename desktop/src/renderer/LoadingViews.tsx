@@ -1,5 +1,5 @@
 import { useI18n } from "./i18n";
-import { WuuMascot } from "./WuuMascot";
+import { WuuMascot, type WuuMascotActivity } from "./WuuMascot";
 
 export function RuntimeLoading({
   status,
@@ -54,6 +54,9 @@ export function ViewSwitchLoading(): JSX.Element {
 export function EmptyConversationHome({
   title,
   belowTitle,
+  // Defaults to idle; the caller passes "compose" once a draft exists so the
+  // mascot lifts its head from the composer to face the user.
+  activity = "idle",
   children
 }: {
   title: string;
@@ -61,20 +64,24 @@ export function EmptyConversationHome({
   // grid cell so it can sit a few pixels below the greeting without
   // inheriting the very large row-gap reserved for the hero composer.
   belowTitle?: JSX.Element;
+  activity?: WuuMascotActivity;
   children: JSX.Element;
 }): JSX.Element {
   return (
     <section className="empty-home" data-wuu-component="empty-session">
       <div className="empty-home-inner session-flow">
         <div className="empty-home-header">
-          {/* The wuu blobatar greeting, always idling; see .empty-home-mascot
-              in turns.css. Hue is pinned the same way default avatars are, so
-              the mark matches the pairing hero on the phone companion. Shape
-              is pinned to "round" (the first silhouette, shape < 0.28) with
-              the aspect ratio locked to 1, and the plate is off (none), so
-              the mascot is a pure round ball floating on the paper. */}
+          {/* The wuu blobatar greeting, idling with its gaze lowered toward
+              the composer below and lifting its head (activity "compose") as
+              soon as a draft exists; see .empty-home-mascot in turns.css. Hue
+              is pinned the same way default avatars are, so the mark matches
+              the pairing hero on the phone companion. Shape is pinned to
+              "round" (the first silhouette, shape < 0.28) with the aspect
+              ratio locked to 1, and the plate is off (none), so the mascot is
+              a pure round ball floating on the paper. */}
           <WuuMascot
             className="empty-home-mascot"
+            activity={activity}
             aria-hidden="true"
           />
           <h2>{title}</h2>

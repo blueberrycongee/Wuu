@@ -159,8 +159,6 @@ export interface Posable {
     rx: number;
     ry: number;
     rot: number;
-    /** A warped path relative to the eye's center, when the sphere projection drew one. */
-    segs?: [number, number][][];
   }[];
 }
 
@@ -302,25 +300,6 @@ export function bakePose<L extends Posable>(
         // own centre; `probe-compose.ts` check A measures that they agree.
         const rot =
           e.rot * (1 - p.lock) + (p.tilt + (i ? p.tilt2 : 0)) * (i ? 1 : -1);
-        // A warped eye's path is geometry rather than parameters, so the pose
-        // reaches it point by point: counter-rotate the seeded lean, scale,
-        // re-rotate to the pose's tilt — the same composition `.mo-eye` runs
-        // in CSS, so the baked and animated paths keep agreeing. The offsets
-        // never touch it: the segments are relative to the eye's own centre.
-        const a0 = (e.rot * Math.PI) / 180;
-        const a1 = (rot * Math.PI) / 180;
-        const segs = e.segs?.map((seg) =>
-          seg.map(([px, py]) => {
-            const lx = px * Math.cos(a0) + py * Math.sin(a0);
-            const ly = -px * Math.sin(a0) + py * Math.cos(a0);
-            const qx = lx * sx;
-            const qy = ly * sy;
-            return [
-              qx * Math.cos(a1) - qy * Math.sin(a1),
-              qx * Math.sin(a1) + qy * Math.cos(a1),
-            ] as [number, number];
-          }),
-        );
         return {
           ...e,
           // `--mo-wrap`'s sign, spelled out: -1 on the left eye, +1 on the right,
@@ -331,7 +310,6 @@ export function bakePose<L extends Posable>(
           rx: e.rx * sx,
           ry: e.ry * sy,
           rot,
-          ...(segs ? { segs } : {}),
         };
       }),
     },
