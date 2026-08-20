@@ -376,7 +376,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--surface-raised);
+  background: transparent;
   color: var(--text-secondary);
   outline: none;
 }

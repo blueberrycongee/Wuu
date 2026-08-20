@@ -51,7 +51,7 @@ export function AgentAvatarMark({ seed, avatarKey, avatarImage, status = "idle" 
   if (status === "idle") {
     return (
       <span className="agent-avatar-mark" aria-hidden="true">
-        <Blobatar name={name} hue={hue} background="circle" alt="" draggable={false} />
+        <Blobatar name={name} hue={hue} background={false} alt="" draggable={false} />
       </span>
     );
   }
@@ -61,7 +61,7 @@ export function AgentAvatarMark({ seed, avatarKey, avatarImage, status = "idle" 
       <Blobatar
         name={name}
         hue={hue}
-        background="circle"
+        background={false}
         animate="always"
         expression={status === "sending" ? happy : undefined}
         focusable={false}

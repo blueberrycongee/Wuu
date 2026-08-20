@@ -22,7 +22,7 @@
   fill: var(--ink-tertiary);
 }
 
-/* Agent blobatars and uploaded overrides share one circular frame. */
+/* The wrapper sizes agent marks without painting over a blobatar's silhouette. */
 .agent-avatar-mark {
   display: block;
   width: 100%;
