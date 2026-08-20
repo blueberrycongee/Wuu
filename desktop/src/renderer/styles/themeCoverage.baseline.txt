@@ -66,7 +66,6 @@ composer.css .user-question-card border --ink-overlay-8
 composer.css .user-question-custom border --ink-overlay-8
 composer.css .user-question-field + .user-question-field border-top --ink-overlay-6
 composer.css .user-question-option:hover background --ink-overlay-6
-conversation-shell.css .conversation-status-overflow-menu box-shadow --shell-jump-pill-shadow
 conversation-shell.css .conversation-status-todo-card background --shell-todo-card-bg
 conversation-shell.css .conversation-status-todo-card border --shell-todo-card-border
 conversation-shell.css .conversation-status-todo-card box-shadow --shell-todo-card-shadow
@@ -437,6 +436,14 @@ workspace.css .workspace-tree-context-menu border --ink-overlay-12
 workspace.css .workspace-tree-context-menu box-shadow --ink-overlay-6
 workspace.css .workspace-tree-context-menu box-shadow --ink-overlay-8
 workspace.css .workspace-tree-context-menu-item:hover, .workspace-tree-context-menu-item:focus-visible background --ink-overlay-4
+wuu-mascot.css .context-compaction-black-hole background --wuu-compact-hole-core
+wuu-mascot.css .context-compaction-black-hole background --wuu-compact-hole-edge
+wuu-mascot.css .context-compaction-black-hole box-shadow --wuu-compact-hole-eye
+wuu-mascot.css .context-compaction-black-hole background --wuu-compact-hole-inner
+wuu-mascot.css .context-compaction-black-hole::before background --wuu-compact-hole-head
+wuu-mascot.css .context-compaction-black-hole::before background --wuu-compact-hole-highlight
+wuu-mascot.css .context-compaction-black-hole::before background --wuu-compact-hole-ring-dark
+wuu-mascot.css .context-compaction-black-hole::before background --wuu-compact-hole-ring-mid
 wuu-mascot.css .wuu-mascot-activity-fill fill --wuu-mascot-mix-white
 wuu-mascot.css .wuu-mascot-fill fill --wuu-mascot-mix-white
 wuu-mascot.css .wuu-mascot-halo stroke --wuu-mascot-mix-white

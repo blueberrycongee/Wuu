@@ -326,7 +326,7 @@ export function AppSidebar({
   const [groupNamePending, setGroupNamePending] = useState(false);
   const [folderDragThreadID, setFolderDragThreadID] = useState<string>();
   const [folderDropTargetID, setFolderDropTargetID] = useState<string>();
-  const folderDropTargetIDRef = useRef<string>();
+  const folderDropTargetIDRef = useRef<string | undefined>(undefined);
   const folderDragCanRemove = Boolean(
     folderDragThreadID && organization.folderByThreadID[folderDragThreadID],
   );
