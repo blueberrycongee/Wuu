@@ -749,8 +749,19 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
         })),
       });
     }
+    // An agent's override can outlive the provider entry it points at (the
+    // provider was renamed or removed from config). Surface the stored value
+    // as its own group so the trigger reflects reality instead of rendering
+    // an empty placeholder.
+    if (agentModel && !groups.some((group) => group.options.some((option) => option.value === agentModel))) {
+      const [providerName, modelID] = agentModel.split("\u0000");
+      groups.push({
+        label: providerName || undefined,
+        options: [{ value: agentModel, label: modelID || agentModel, hint: t("channels.providerMissing") }],
+      });
+    }
     return groups;
-  }, [initialized, t]);
+  }, [initialized, agentModel, t]);
   const [agentProviderName, agentModelID] = agentModel.split("\u0000");
   const agentProvider = initialized?.providers?.find((provider) => provider.name === agentProviderName);
   const agentEffortOptions = providerModelEffortOptions(agentProvider, agentModelID ?? "", agentEffort);
@@ -1781,68 +1792,69 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 {agentAvatarError ? <div className="channel-agent-detail-notice channel-error" role="alert">{agentAvatarError}</div> : null}
                 {agentResetStatus ? <div className="channel-agent-detail-notice channel-agent-reset-status" role="status">{agentResetStatus}</div> : null}
                 <div className="channel-agent-detail-grid">
-                  <section>
-                    <h3>{t("channels.agentRuntime")}</h3>
-                    <div className="channel-agent-detail-form">
-                      <label className="channel-form-field">
-                        <span>{t("channels.name")}</span>
-                        <input value={agentName} onChange={(event) => setAgentName(event.currentTarget.value)} />
-                      </label>
-                      <label className="channel-form-field">
-                        <span>{t("channels.model")}</span>
-                        <SelectMenu value={agentModel} onChange={selectAgentModel} groups={modelGroups} ariaLabel={t("channels.model")} />
-                      </label>
-                      {agentModel && agentEffortOptions.length > 1 ? (
-                        <div className="channel-form-field">
-                          <span id="channel-agent-detail-effort-label">{t("channels.effort")}</span>
-                          <div className="channel-effort-picker" role="radiogroup" aria-labelledby="channel-agent-detail-effort-label">
-                            {agentEffortOptions.map((effort) => (
-                              <button className="channel-effort-chip" type="button" role="radio" key={effort} aria-checked={agentEffort === effort} aria-pressed={agentEffort === effort} onClick={() => setAgentEffort(effort)}>
-                                {effortLabel(effort)}
-                              </button>
-                            ))}
+                  <div className="channel-agent-detail-main">
+                    <section>
+                      <h3>{t("channels.agentRuntime")}</h3>
+                      <div className="channel-agent-detail-form">
+                        <label className="channel-form-field">
+                          <span>{t("channels.name")}</span>
+                          <input value={agentName} onChange={(event) => setAgentName(event.currentTarget.value)} />
+                        </label>
+                        <label className="channel-form-field">
+                          <span>{t("channels.model")}</span>
+                          <SelectMenu value={agentModel} onChange={selectAgentModel} groups={modelGroups} ariaLabel={t("channels.model")} />
+                        </label>
+                        {agentModel && agentEffortOptions.length > 1 ? (
+                          <div className="channel-form-field">
+                            <span id="channel-agent-detail-effort-label">{t("channels.effort")}</span>
+                            <div className="channel-effort-picker" role="radiogroup" aria-labelledby="channel-agent-detail-effort-label">
+                              {agentEffortOptions.map((effort) => (
+                                <button className="channel-effort-chip" type="button" role="radio" key={effort} aria-checked={agentEffort === effort} aria-pressed={agentEffort === effort} onClick={() => setAgentEffort(effort)}>
+                                  {effortLabel(effort)}
+                                </button>
+                              ))}
+                            </div>
                           </div>
+                        ) : null}
+                      </div>
+                    </section>
+                  </div>
+                  <div className="channel-agent-detail-side">
+                    <section>
+                      <h3>{t("channels.agentChannels")}</h3>
+                      {selectedAgentRooms.length ? (
+                        <div className="channel-agent-detail-rooms">
+                          {selectedAgentRooms.map((room) => <span key={room.id}># {room.name}</span>)}
                         </div>
-                      ) : null}
-                      <div className="channel-agent-detail-readonly">
-                        <span>{t("channels.agentAutostart")}</span>
-                        <strong>{selectedAgent.autostart ? t("channels.enabled") : t("channels.disabled")}</strong>
-                      </div>
-                    </div>
-                  </section>
-                  <section>
-                    <h3>{t("channels.agentChannels")}</h3>
-                    {selectedAgentRooms.length ? (
-                      <div className="channel-agent-detail-rooms">
-                        {selectedAgentRooms.map((room) => <span key={room.id}># {room.name}</span>)}
-                      </div>
-                    ) : <p className="channel-agent-detail-empty">{t("channels.agentNoChannels")}</p>}
-                  </section>
-                  <section className="channel-agent-detail-wide">
-                    <h3>{t("channels.agentStorage")}</h3>
-                    <dl>
-                      <div>
-                        <dt>{t("channels.agentMemoryDirectory")}</dt>
-                        <dd>
-                          <button
-                            className="channel-agent-memory-link"
-                            type="button"
-                            title={selectedAgent.memory_dir}
-                            onClick={() => {
-                              if (onOpenMemoryDirectory) {
-                                onOpenMemoryDirectory(selectedAgent.memory_dir);
-                                return;
-                              }
-                              void window.wuu?.revealWorkspaceItem(selectedAgent.memory_dir);
-                            }}
-                          >
-                            <code>./memory</code>
-                          </button>
-                        </dd>
-                      </div>
-                      <div><dt>{t("channels.agentCreatedAt")}</dt><dd>{formatDate(selectedAgent.created_at)}</dd></div>
-                    </dl>
-                  </section>
+                      ) : <p className="channel-agent-detail-empty">{t("channels.agentNoChannels")}</p>}
+                    </section>
+                    <section>
+                      <h3>{t("channels.agentInfo")}</h3>
+                      <dl>
+                        <div><dt>{t("channels.agentAutostart")}</dt><dd>{selectedAgent.autostart ? t("channels.enabled") : t("channels.disabled")}</dd></div>
+                        <div>
+                          <dt>{t("channels.agentMemoryDirectory")}</dt>
+                          <dd>
+                            <button
+                              className="channel-agent-memory-link"
+                              type="button"
+                              title={selectedAgent.memory_dir}
+                              onClick={() => {
+                                if (onOpenMemoryDirectory) {
+                                  onOpenMemoryDirectory(selectedAgent.memory_dir);
+                                  return;
+                                }
+                                void window.wuu?.revealWorkspaceItem(selectedAgent.memory_dir);
+                              }}
+                            >
+                              <code>./memory</code>
+                            </button>
+                          </dd>
+                        </div>
+                        <div><dt>{t("channels.agentCreatedAt")}</dt><dd>{formatDate(selectedAgent.created_at)}</dd></div>
+                      </dl>
+                    </section>
+                  </div>
                 </div>
               </article>
             ) : (

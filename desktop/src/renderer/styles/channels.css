@@ -1352,12 +1352,20 @@
 .channel-agent-detail-grid {
   max-width: 920px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
   gap: 16px;
   margin: 0 auto;
 }
 
-.channel-agent-detail-grid > section {
+.channel-agent-detail-main,
+.channel-agent-detail-side {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.channel-agent-detail-grid section {
   min-width: 0;
   padding: 20px;
   border: 1px solid var(--border-subtle);
@@ -1374,21 +1382,6 @@
 .channel-agent-detail-form {
   display: grid;
   gap: 16px;
-}
-
-.channel-agent-detail-readonly {
-  min-height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.channel-agent-detail-readonly strong {
-  color: var(--text-primary);
-  font-weight: 550;
 }
 
 .channel-agent-detail-grid dl {
@@ -1445,10 +1438,6 @@
   color: inherit;
 }
 
-.channel-agent-detail-wide {
-  grid-column: 1 / -1;
-}
-
 .channel-agent-detail-rooms {
   display: flex;
   flex-wrap: wrap;
@@ -1467,6 +1456,12 @@
   margin: 0;
   color: var(--text-tertiary);
   font-size: 13px;
+}
+
+@media (max-width: 1180px) {
+  .channel-agent-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .channel-agent-graph-shell {

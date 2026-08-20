@@ -1201,6 +1201,37 @@ describe("ChannelView", () => {
     expect(channelList?.textContent).not.toContain("# general");
   });
 
+  it("keeps an agent's stored model override visible when its provider is no longer configured", async () => {
+    const staleAgents = [
+      { ...agents[0], provider_override: "tokenhub", model_override: "gpt-5.6-sol", effort_override: "high" },
+    ];
+    const api = createApi();
+    api.bootstrapChannels = vi.fn(async () => ({ agents: staleAgents, rooms }));
+    api.listNamedAgents = vi.fn(async () => ({ agents: staleAgents }));
+    Object.defineProperty(window, "wuu", { configurable: true, value: api });
+    const initialized = {
+      protocol_version: "1",
+      provider: "openai",
+      model: "gpt-default",
+      workspace_root: "/workspace",
+      providers: [{
+        name: "openai",
+        type: "openai",
+        model: "gpt-reasoner",
+        models: [{ id: "gpt-reasoner", display_name: "GPT Reasoner" }],
+      }],
+    } as InitializeResult;
+
+    root = createRoot(container);
+    act(() => root?.render(<ChannelView section="agents" initialized={initialized} />));
+    await settle();
+
+    act(() => container.querySelector<HTMLButtonElement>("button.channel-directory-avatar")?.click());
+    const trigger = container.querySelector<HTMLButtonElement>('.channel-agent-detail-form button[aria-label="模型"]');
+    expect(trigger?.textContent).toContain("gpt-5.6-sol");
+    expect(trigger?.textContent).not.toContain("请选择");
+  });
+
   it("shows agent save failures in the global toast without an inline detail error", async () => {
     const api = createApi();
     api.updateNamedAgent = vi.fn(async () => {
