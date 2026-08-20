@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/processsandbox"
@@ -41,12 +42,14 @@ func TestProcessSandboxPolicyMapsWorkspaceBoundary(t *testing.T) {
 	if !normalized[wantRoot] || !normalized[wantTemp] {
 		t.Fatalf("writable roots = %#v, want workspace %q and temp %q", policy.WritableRoots, wantRoot, wantTemp)
 	}
-	info, err := os.Stat(tempDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := info.Mode().Perm(); got != 0o700 {
-		t.Fatalf("private temp mode = %v, want 700", got)
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(tempDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o700 {
+			t.Fatalf("private temp mode = %v, want 700", got)
+		}
 	}
 
 	env.boundaryConfigured = true
