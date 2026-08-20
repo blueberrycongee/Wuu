@@ -50,6 +50,7 @@ export type WuuMascotAccessory =
 export type WuuMascotActivity =
   | "idle"
   | "thinking"
+  | "compact"
   | "search"
   | "edit"
   | "command"
@@ -63,6 +64,7 @@ const WUU_MASCOT_ACTIVITY_EXPRESSIONS: Readonly<
   // A quiet head-cocked pose reads as concentration without relying on the
   // explicit activity prop below alone. Eye geometry still morphs in place.
   thinking: smug,
+  compact: smug,
   search: surprised,
   edit: happy,
   command: happy,
@@ -220,7 +222,7 @@ export function WuuMascot({
             bodyLayer,
           )
         : null}
-      {bodyLayer && activity !== "idle"
+      {bodyLayer && activity !== "idle" && activity !== "compact"
         ? createPortal(
             <MascotActivityProp key={activity} activity={activity} />,
             bodyLayer,

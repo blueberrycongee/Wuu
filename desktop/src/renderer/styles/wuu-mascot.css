@@ -59,6 +59,10 @@
   --mo-rate: 1.12;
 }
 
+[data-wuu-mascot-activity="compact"] {
+  --mo-rate: 0.82;
+}
+
 [data-wuu-mascot-activity="search"] {
   --mo-rate: 0.86;
 }
@@ -83,6 +87,15 @@
     [data-wuu-mascot-activity="idle"]
   ) {
   overflow: visible;
+}
+
+/* Compaction squeezes the complete mascot toward its center, then lets it
+ * softly rebound. This sits below Blobatar's bob layer, so its normal breathing
+ * remains intact instead of being replaced. */
+.process-surface-blobatar[data-wuu-mascot-activity="compact"] .mo-bob > g {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: wuu-mascot-compact 1.15s cubic-bezier(0.45, 0, 0.2, 1) infinite;
 }
 
 .wuu-mascot-activity-prop {
@@ -173,6 +186,19 @@
   }
 }
 
+@keyframes wuu-mascot-compact {
+  0%,
+  100% {
+    scale: 1 1;
+  }
+  42% {
+    scale: 0.72 1.08;
+  }
+  62% {
+    scale: 1.04 0.97;
+  }
+}
+
 @keyframes wuu-mascot-accessory-arrive {
   from {
     opacity: 0;
@@ -183,7 +209,8 @@
 @media (prefers-reduced-motion: reduce) {
   .wuu-mascot-accessory,
   .wuu-mascot-activity-prop,
-  .wuu-mascot-activity-motion {
+  .wuu-mascot-activity-motion,
+  .process-surface-blobatar[data-wuu-mascot-activity="compact"] .mo-bob > g {
     animation: none;
   }
 }

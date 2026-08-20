@@ -90,6 +90,9 @@ describe("ContextCompactionNotice", () => {
     expect(label).not.toBeNull();
     expect(label?.textContent).toBe("正在自动压缩上下文");
     expect(host.querySelector(".process-surface-row.is-live-gray")).not.toBeNull();
+    expect(
+      host.querySelector(".process-surface-blobatar")?.getAttribute("data-wuu-mascot-activity"),
+    ).toBe("compact");
     expect(host.querySelector(".process-surface-summary-line")?.getAttribute("aria-label")).toBe(
       "正在自动压缩上下文",
     );

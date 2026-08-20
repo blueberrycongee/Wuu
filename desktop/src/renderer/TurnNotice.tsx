@@ -150,7 +150,7 @@ export function ContextCompactionNotice({
             className="process-surface-summary-line"
             aria-label={description}
           >
-            <ProcessSurfaceMascot active={inProgress} />
+            <ProcessSurfaceMascot active={inProgress} activity="compact" />
             <span
               ref={waveRef}
               className={`process-surface-summary-text${inProgress ? " wuu-live-text-wave" : ""}`}
