@@ -1225,6 +1225,10 @@ export function App(): JSX.Element {
     () => runtimeViewForSession(state.initialized, activeThread),
     [state.initialized, activeThread],
   );
+  const mascotProviderNames = useMemo(
+    () => state.initialized?.providers?.map((provider) => provider.name),
+    [state.initialized?.providers],
+  );
   const [mascotRuntimePreview, setMascotRuntimePreview] = useState<{
     provider: string;
     model: string;
@@ -4411,6 +4415,7 @@ export function App(): JSX.Element {
   return (
     <WuuMascotRuntimeProvider
       provider={mascotRuntimePreview?.provider ?? sessionRuntime?.provider}
+      providers={mascotProviderNames}
       model={mascotRuntimePreview?.model ?? sessionRuntime?.model}
     >
       {archiveTipNode}

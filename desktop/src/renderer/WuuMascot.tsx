@@ -13,6 +13,7 @@ import {
   type SVGProps,
 } from "react";
 import { createPortal } from "react-dom";
+import { AVATAR_HUES } from "./DefaultAvatar";
 import "./styles/wuu-mascot.css";
 
 const WUU_MASCOT_NAME = "wuu";
@@ -74,19 +75,17 @@ const WUU_MASCOT_ACTIVITY_EXPRESSIONS: Readonly<
 
 type WuuMascotRuntime = {
   provider?: string;
+  providers?: readonly string[];
   model?: string;
 };
 
 const WuuMascotRuntimeContext = createContext<WuuMascotRuntime>({});
 
-// These are fixed buckets rather than a list that grows with every preset. New
-// ranges first mirror the previous range, then selected mirrors are replaced.
-// This lets the wardrobe grow without reshuffling existing base buckets.
-// Collisions remain intentional: this is not a unique logo registry.
-const PROVIDER_HUE_BUCKETS = [
-  14, 202, 150, 288, 52, 182, 96, 322,
-  14, 202, 150, 288, 52, 182, 96, 322,
-] as const;
+// Spread early assignments across the colour wheel, then use the remaining
+// shared avatar hues before any provider colour is reused.
+const PROVIDER_HUES = [
+  14, 202, 96, 288, 52, 222, 150, 322, 33, 250, 182, 350,
+] as const satisfies readonly (typeof AVATAR_HUES[number])[];
 
 const MODEL_ACCESSORY_BUCKETS: readonly WuuMascotAccessory[] = [
   "sprout",
@@ -125,10 +124,11 @@ const MODEL_ACCESSORY_BUCKETS: readonly WuuMascotAccessory[] = [
 
 export function WuuMascotRuntimeProvider({
   provider,
+  providers,
   model,
   children,
 }: WuuMascotRuntime & { children: ReactNode }): JSX.Element {
-  const value = useMemo(() => ({ provider, model }), [provider, model]);
+  const value = useMemo(() => ({ provider, providers, model }), [provider, providers, model]);
   return (
     <WuuMascotRuntimeContext.Provider value={value}>
       {children}
@@ -136,10 +136,25 @@ export function WuuMascotRuntimeProvider({
   );
 }
 
-export function providerMascotHue(provider: string | undefined): number {
-  const identity = provider?.trim().toLocaleLowerCase();
+function normalizedProviderIdentity(provider: string | undefined): string {
+  return provider?.trim().toLocaleLowerCase() ?? "";
+}
+
+export function providerMascotHue(
+  provider: string | undefined,
+  providers?: readonly string[],
+): number {
+  const identity = normalizedProviderIdentity(provider);
   if (!identity) return WUU_MASCOT_DEFAULT_HUE;
-  return PROVIDER_HUE_BUCKETS[stableHash(identity) % PROVIDER_HUE_BUCKETS.length];
+
+  if (providers) {
+    const identities = [...new Set(providers.map(normalizedProviderIdentity).filter(Boolean))];
+    const index = identities.indexOf(identity);
+    const allocationIndex = index >= 0 ? index : identities.length;
+    return PROVIDER_HUES[allocationIndex % PROVIDER_HUES.length];
+  }
+
+  return PROVIDER_HUES[stableHash(identity) % PROVIDER_HUES.length];
 }
 
 export function modelMascotAccessory(model: string | undefined): WuuMascotAccessory {
@@ -170,7 +185,7 @@ export function WuuMascot({
   const runtime = useContext(WuuMascotRuntimeContext);
   const effectiveProvider = provider ?? runtime.provider;
   const effectiveModel = model ?? runtime.model;
-  const hue = providerMascotHue(effectiveProvider);
+  const hue = providerMascotHue(effectiveProvider, runtime.providers);
   const colors = palette(hue);
   const selectedAccessory = accessory ?? modelMascotAccessory(effectiveModel);
   const [svg, setSVG] = useState<SVGSVGElement | null>(null);
