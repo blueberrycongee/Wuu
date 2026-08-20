@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ProviderModelSummary, ProviderSummary } from "../shared/protocol";
 import {
   codexEffortLabel,
+  providerModelContextWindow,
   pullRequestUnavailableReason,
   providerModelReasoningMode,
   providerModelVariantOptions
@@ -38,6 +39,78 @@ describe("codexEffortLabel", () => {
     setActiveLocale("en-US");
 
     expect(pullRequestUnavailableReason()).toBe("Not a Git repository");
+  });
+});
+
+describe("providerModelContextWindow", () => {
+  it("resolves the exact model instead of reusing another model's ceiling", () => {
+    const initialized = {
+      providers: [
+        {
+          name: "kimi-for-coding",
+          type: "anthropic",
+          model: "k3",
+          models: [
+            {
+              id: "k3",
+              capabilities: {
+                context_window: 1_048_576,
+                chat: true,
+                tools: true,
+                structured_output: true,
+                streaming: true,
+                system_role: true,
+                reasoning: true,
+              },
+            },
+            {
+              id: "k3-256k",
+              capabilities: {
+                context_window: 262_144,
+                chat: true,
+                tools: true,
+                structured_output: true,
+                streaming: true,
+                system_role: true,
+                reasoning: true,
+              },
+            },
+          ],
+        },
+      ],
+    } as Parameters<typeof providerModelContextWindow>[0];
+
+    expect(
+      providerModelContextWindow(initialized, "kimi-for-coding", "k3"),
+    ).toBe(1_048_576);
+    expect(
+      providerModelContextWindow(initialized, "kimi-for-coding", "k3-256k"),
+    ).toBe(262_144);
+  });
+
+  it("uses the smaller model input limit when one is published", () => {
+    const initialized = {
+      providers: [
+        {
+          name: "provider",
+          type: "openai-compatible",
+          model: "model",
+          models: [
+            {
+              id: "model",
+              capabilities: {
+                context_window: 1_048_576,
+                input_limit: 272_000,
+              },
+            },
+          ],
+        },
+      ],
+    } as Parameters<typeof providerModelContextWindow>[0];
+
+    expect(providerModelContextWindow(initialized, "provider", "model")).toBe(
+      272_000,
+    );
   });
 });
 

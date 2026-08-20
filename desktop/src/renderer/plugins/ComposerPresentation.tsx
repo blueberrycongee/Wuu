@@ -73,7 +73,7 @@ export function buildComposerSnapshot(input: SnapshotInput): ComposerSnapshotV1 
   const permissionMode = permissionModeFromSummary(input.initialized?.permissions);
   const permission = input.initialized?.permissions === undefined ? undefined : permissionModeOption(permissionMode);
   const runtimeHost = input.initialized?.runtime_host;
-  const contextWindowTokens = input.initialized?.advanced_settings?.context_window_tokens;
+  const contextWindowTokens = input.contextUsage?.window ?? input.initialized?.advanced_settings?.context_window_tokens;
   return Object.freeze({
     contractVersion: 1, draftText: input.draftText,
     attachments: Object.freeze([

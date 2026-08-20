@@ -79,6 +79,37 @@ func TestResolveProviderOverrideWins(t *testing.T) {
 	}
 }
 
+func TestResolveModelLimitWinsOverProviderFallback(t *testing.T) {
+	budget := Resolve("k3", config.ProviderConfig{
+		Type:          "anthropic",
+		ContextWindow: 272_000,
+		Models: map[string]config.ProviderModelConfig{
+			"k3": {
+				Limit: &config.ProviderModelLimitConfig{Context: 1_048_576},
+			},
+			"k3-256k": {
+				Limit: &config.ProviderModelLimitConfig{Context: 262_144},
+			},
+		},
+	}, 0)
+	if budget.ContextWindowTokens != 1_048_576 || budget.ContextWindowSource != SourceProviderModelLimit {
+		t.Fatalf("K3 should use its model limit, not provider fallback: %+v", budget)
+	}
+
+	budget = Resolve("k3-256k", config.ProviderConfig{
+		Type:          "anthropic",
+		ContextWindow: 272_000,
+		Models: map[string]config.ProviderModelConfig{
+			"k3-256k": {
+				Limit: &config.ProviderModelLimitConfig{Context: 262_144},
+			},
+		},
+	}, 0)
+	if budget.ContextWindowTokens != 262_144 || budget.ContextWindowSource != SourceProviderModelLimit {
+		t.Fatalf("K3-256k should use its own model limit: %+v", budget)
+	}
+}
+
 func TestResolveAliasDoesNotUseAPIModelRegistry(t *testing.T) {
 	provider := config.ProviderConfig{
 		Type: "anthropic",

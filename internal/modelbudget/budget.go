@@ -109,11 +109,15 @@ func (b Budget) EffectiveContextWindow() (int, Source) {
 }
 
 func resolveContextWindow(model, apiModel string, provider config.ProviderConfig, agentOverride int) (int, Source) {
-	if provider.ContextWindow > 0 {
-		return provider.ContextWindow, SourceProviderContextWindow
-	}
 	if limit := configuredModelContextLimit(model, provider); limit > 0 {
 		return limit, SourceProviderModelLimit
+	}
+	// A model-specific limit is more precise than the provider fallback. This
+	// matters when one provider exposes models with different windows (for
+	// example K3 and K3-256k) while the provider-level value is set for a
+	// smaller/default model.
+	if provider.ContextWindow > 0 {
+		return provider.ContextWindow, SourceProviderContextWindow
 	}
 	if agentOverride > 0 {
 		return agentOverride, SourceAgentOverride

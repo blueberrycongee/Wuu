@@ -183,7 +183,10 @@ import {
 } from "./LoadingViews";
 import { WuuMascotRuntimeProvider } from "./WuuMascot";
 import { deriveActiveSessionHints } from "./activeSessionHint";
-import { pullRequestUnavailableReason } from "./RuntimeHelpers";
+import {
+  providerModelContextWindow,
+  pullRequestUnavailableReason,
+} from "./RuntimeHelpers";
 import type { SettingsPage } from "./SettingsView";
 import {
   ENABLE_EMBEDDED_BROWSER,
@@ -2597,11 +2600,28 @@ export function App(): JSX.Element {
     // Drives the composer context meter. Existing threads use the latest
     // known usage; a brand-new session falls back to the current runtime
     // window so the meter can render at 0% before the first turn.
-    const contextUsage = latestContextUsageForThread(state, activeThread, {
-      model: state.initialized?.model,
-      contextWindowTokens:
-        state.initialized?.advanced_settings?.context_window_tokens,
+    const conversationRuntime = visibleConversationRuntime;
+    const modelContextWindow = providerModelContextWindow(
+      state.initialized,
+      conversationRuntime?.provider,
+      conversationRuntime?.model,
+    );
+    const fallbackContextWindow =
+      modelContextWindow ??
+      (!activeThread
+        ? state.initialized?.advanced_settings?.context_window_tokens
+        : undefined);
+    const rawContextUsage = latestContextUsageForThread(state, activeThread, {
+      model: conversationRuntime?.model,
+      contextWindowTokens: fallbackContextWindow,
     });
+    // Live telemetry can still carry a ceiling from the previous workspace
+    // runtime. Once the exact conversation model is known, its catalog/config
+    // metadata is authoritative for the display denominator.
+    const contextUsage =
+      rawContextUsage && modelContextWindow
+        ? { ...rawContextUsage, window: modelContextWindow }
+        : rawContextUsage;
     const streamStatus = activeThreadStreamStatus;
     return (
       <>

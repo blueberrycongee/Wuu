@@ -56,6 +56,35 @@ export function providerModelDisplayName(model?: ProviderModelSummary): string {
   return model?.display_name || model?.id || "model";
 }
 
+// Resolve the ceiling for the exact provider/model shown in a conversation.
+// Workspace advanced settings describe the default runtime and can belong to a
+// different model after a conversation switch. Keep this calculation aligned
+// with the backend: a published input limit clamps the model context window.
+export function providerModelContextWindow(
+  initialized: InitializeResult | undefined,
+  providerName: string | undefined,
+  modelID: string | undefined,
+): number | undefined {
+  const providerKey = providerName?.trim().toLowerCase();
+  const modelKey = modelID?.trim().toLowerCase();
+  if (!providerKey || !modelKey) {
+    return undefined;
+  }
+  const provider = initialized?.providers?.find(
+    (item) => item.name.trim().toLowerCase() === providerKey,
+  );
+  const model = provider?.models?.find(
+    (item) => item.id.trim().toLowerCase() === modelKey,
+  );
+  const contextWindow = model?.capabilities?.context_window ?? 0;
+  const inputLimit = model?.capabilities?.input_limit ?? 0;
+  const effectiveWindow =
+    inputLimit > 0 && (contextWindow <= 0 || inputLimit < contextWindow)
+      ? inputLimit
+      : contextWindow;
+  return effectiveWindow > 0 ? effectiveWindow : undefined;
+}
+
 export function providerModelVariantOptions(
   provider: ProviderSummary | undefined,
   modelID: string,

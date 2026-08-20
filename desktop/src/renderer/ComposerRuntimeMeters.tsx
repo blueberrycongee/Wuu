@@ -31,6 +31,9 @@ export function ComposerRuntimeMeters({
   const contextUsage = telemetry.contextUsage
     ? {
         ...telemetry.contextUsage,
+        ...(fallbackContextUsage?.window
+          ? { window: fallbackContextUsage.window }
+          : {}),
         requestContext: fallbackContextUsage?.requestContext,
       }
     : fallbackContextUsage ?? undefined;
