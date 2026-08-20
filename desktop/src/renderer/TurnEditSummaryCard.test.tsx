@@ -197,7 +197,7 @@ describe("TurnEditSummaryCard", () => {
     expect(container?.textContent).toContain("+3");
   });
 
-  it("shows a hover diff preview for file rows with diff data", () => {
+  it("shows added apply_patch contents in the hover diff preview", () => {
     vi.useFakeTimers();
     const turn: Turn = {
       id: "turn-1",
@@ -208,14 +208,18 @@ describe("TurnEditSummaryCard", () => {
 
     mount(<TurnEditSummaryCard turn={turn} />);
 
-    const row = container?.querySelector<HTMLElement>(".turn-edit-summary-row");
+    const row = container?.querySelectorAll<HTMLElement>(".turn-edit-summary-row")[1];
     expect(row).toBeTruthy();
     act(() => {
       row!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       vi.advanceTimersByTime(300);
     });
 
-    expect(document.body.querySelector(".tool-diff-preview-card")).toBeTruthy();
+    const preview = document.body.querySelector<HTMLElement>(".tool-diff-preview-card");
+    expect(preview?.textContent).toContain("first");
+    expect(preview?.textContent).toContain("second");
+    expect(preview?.textContent).toContain("third");
+    expect(preview?.querySelectorAll(".tool-diff-line-insert")).toHaveLength(3);
   });
 
   it("opens the selected file diff when a file row is clicked", () => {
@@ -347,6 +351,42 @@ describe("TurnEditSummaryCard", () => {
         afterSha: "sha256:abc123",
       }),
     );
+  });
+
+  it("shows newly-created file contents as additions in the hover preview", () => {
+    vi.useFakeTimers();
+    const writeFileItem: ThreadItem = {
+      id: "item-new",
+      type: "tool_call",
+      name: "write_file",
+      status: "completed",
+      arguments: JSON.stringify({
+        path: "/tmp/new.txt",
+        content: "first line\nsecond line\n",
+      }),
+      result: JSON.stringify({
+        path: "/tmp/new.txt",
+        diff: { new_file: true, lines: 2 },
+      }),
+    };
+    const turn: Turn = {
+      id: "turn-1",
+      status: "completed",
+      items_view: "full",
+      items: [writeFileItem],
+    };
+    mount(<TurnEditSummaryCard turn={turn} />);
+
+    const row = container?.querySelector<HTMLElement>(".turn-edit-summary-row");
+    act(() => {
+      row!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      vi.advanceTimersByTime(300);
+    });
+
+    const preview = document.body.querySelector<HTMLElement>(".tool-diff-preview-card");
+    expect(preview?.textContent).toContain("first line");
+    expect(preview?.textContent).toContain("second line");
+    expect(preview?.querySelectorAll(".tool-diff-line-insert")).toHaveLength(2);
   });
 
   it("hides files beyond the visible limit", () => {

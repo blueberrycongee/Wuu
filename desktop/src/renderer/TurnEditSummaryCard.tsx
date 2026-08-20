@@ -179,6 +179,30 @@ function artifactSnapshotText(item: ThreadItem, path: string): string | undefine
   return undefined;
 }
 
+function addedFileDiff(
+  diff: ToolDiffPreviewFileDiff | undefined,
+  path: string,
+  snapshotText: string | undefined,
+): ToolDiffPreviewFileDiff | undefined {
+  if (snapshotText === undefined || (diff?.hunks.length ?? 0) > 0) return diff;
+
+  const contentLines = snapshotText.replace(/\r\n?/g, "\n").split("\n");
+  if (contentLines.at(-1) === "") contentLines.pop();
+  return {
+    ...diff,
+    path,
+    newFile: true,
+    lines: diff?.lines ?? contentLines.length,
+    hunks: contentLines.length > 0
+      ? [{
+          oldStart: 1,
+          newStart: 1,
+          lines: contentLines.map((content) => ({ op: "insert" as const, content })),
+        }]
+      : [],
+  };
+}
+
 function extractPatchFileEdits(
   item: ThreadItem,
   result: Record<string, unknown>,
@@ -194,15 +218,16 @@ function extractPatchFileEdits(
       : undefined;
     const stats = diffRecord ? summarizeDiff(diffRecord) : { additions: 0, deletions: 0 };
     const newFile = diffRecord?.new_file === true || file.action === "add";
+    const snapshotText = newFile ? artifactSnapshotText(item, path) : undefined;
     edits.push({
       path,
       item,
-      diff,
+      diff: newFile ? addedFileDiff(diff, path, snapshotText) : diff,
       additions: stats.additions,
       deletions: stats.deletions,
       newFile,
       action: artifactAction(stringValue(file, "action"), newFile),
-      snapshotText: newFile ? artifactSnapshotText(item, path) : undefined,
+      snapshotText,
       afterSha: stringValue(file, "new_file_sha"),
     });
   }
@@ -241,15 +266,17 @@ function extractFileEdits(item: ThreadItem): FileEdit[] {
   // For newly-created files the backend returns { new_file: true, lines: N }
   // instead of hunks. Treat those as additions so the card still surfaces them.
   if (newFile && newFileLines > 0) {
+    const snapshotText = artifactSnapshotText(item, path);
+    const diff = diffRecord ? extractToolDiffPreview(diffRecord, path) : undefined;
     return [{
       path,
       item,
-      diff: diffRecord ? extractToolDiffPreview(diffRecord, path) : undefined,
+      diff: addedFileDiff(diff, path, snapshotText),
       additions: newFileLines,
       deletions: 0,
       newFile,
       action: "create",
-      snapshotText: artifactSnapshotText(item, path),
+      snapshotText,
       afterSha: stringValue(result, "new_file_sha"),
     }];
   }
