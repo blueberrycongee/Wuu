@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { TodoUpdate } from "../shared/protocol";
 import type {
   ComposerStatusContext,
@@ -35,6 +35,7 @@ export function ConversationStatusCluster({
   onOpenSession,
 }: ConversationStatusClusterProps) {
   const { t, formatNumber } = useI18n();
+  const overflowRef = useRef<HTMLDetailsElement>(null);
   const sources = useSyncExternalStore(
     (listener) => host.subscribeComposerStatusSources(listener),
     () => host.getComposerStatusSources(),
@@ -52,6 +53,18 @@ export function ConversationStatusCluster({
       && todoUpdate.todos.some((item) => item.status !== "completed"),
   );
 
+  useEffect(() => {
+    const dismissOverflow = (event: PointerEvent): void => {
+      const overflow = overflowRef.current;
+      const target = event.target;
+      if (overflow?.open && target instanceof Node && !overflow.contains(target)) {
+        overflow.open = false;
+      }
+    };
+    document.addEventListener("pointerdown", dismissOverflow);
+    return () => document.removeEventListener("pointerdown", dismissOverflow);
+  }, []);
+
   if (!visible || (!todoVisible && items.length === 0)) return null;
 
   const visibleItemLimit = MAX_VISIBLE_ITEMS - (todoVisible ? 1 : 0);
@@ -67,7 +80,7 @@ export function ConversationStatusCluster({
         <ComposerStatusCapsule key={item.key} item={item} onOpenSession={onOpenSession} />
       ))}
       {hiddenItems.length > 0 ? (
-        <details className="conversation-status-overflow">
+        <details ref={overflowRef} className="conversation-status-overflow">
           <summary
             className="conversation-status-capsule conversation-status-overflow-trigger"
             aria-label={t("common.showMore")}
