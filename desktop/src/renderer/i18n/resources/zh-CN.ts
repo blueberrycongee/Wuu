@@ -228,7 +228,6 @@ export const zhCN = {
   "sidebar.newFolder": "新建文件夹",
   "sidebar.folderNamePrompt": "文件夹名称",
   "sidebar.noFolders": "新建文件夹，跨工作区整理会话。",
-  "sidebar.emptyFolder": "还没有会话。拖动会话左侧的文件夹图标到这里，或右键选择移动。",
   "sidebar.renameGroup": "重命名",
   "sidebar.renameFolder": "重命名文件夹",
   "sidebar.renamePinnedGroup": "重命名置顶分组",

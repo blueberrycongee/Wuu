@@ -230,7 +230,6 @@ export const enUS = {
   "sidebar.newFolder": "New folder",
   "sidebar.folderNamePrompt": "Folder name",
   "sidebar.noFolders": "Create a folder to organize conversations across workspaces.",
-  "sidebar.emptyFolder": "No conversations yet. Drag a conversation's folder icon here, or right-click to move it.",
   "sidebar.renameGroup": "Rename",
   "sidebar.renameFolder": "Rename folder",
   "sidebar.renamePinnedGroup": "Rename pinned group",

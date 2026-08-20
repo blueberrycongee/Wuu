@@ -1021,7 +1021,6 @@ export function AppSidebar({
                         event.preventDefault();
                         setGroupContextMenu({ kind: "folder", group: folder, x: event.clientX, y: event.clientY });
                       }}
-                      emptyNote={t("sidebar.emptyFolder")}
                     >
                       {(folderThreadsByID[folder.id]?.length ?? 0) > 0 ? (
                         <OrganizationThreadList
