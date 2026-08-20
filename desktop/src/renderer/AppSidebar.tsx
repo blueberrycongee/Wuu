@@ -97,6 +97,7 @@ import { PluginSlot } from "./plugins/PluginSlot";
  */
 export const SIDEBAR_SECTION_PINNED = "__wuu_pinned__";
 const FOLDER_REMOVE_DROP_TARGET = "__wuu_remove_from_folder__";
+const FOLDER_SORTABLE_PREFIX = "__wuu_folder_sort__:";
 
 /**
  * Fixed-position 协作 (group chat) section. Like the pinned section it is
@@ -330,9 +331,8 @@ export function AppSidebar({
   const folderDragCanRemove = Boolean(
     folderDragThreadID && organization.folderByThreadID[folderDragThreadID],
   );
-  const contextGroupList = groupContextMenu?.kind === "folder" ? organization.folders : organization.pinGroups;
-  const contextGroupIndex = groupContextMenu
-    ? contextGroupList.findIndex((group) => group.id === groupContextMenu.group.id)
+  const contextGroupIndex = groupContextMenu?.kind === "pin"
+    ? organization.pinGroups.findIndex((group) => group.id === groupContextMenu.group.id)
     : -1;
   const hasRuntimeContext = Boolean(state.activeContext);
   const fixturesEnabled = hasRuntimeContext && Boolean(state.initialized);
@@ -408,6 +408,26 @@ export function AppSidebar({
   const draggingSectionInfo = draggingSectionID
     ? sectionHeaderInfoByIDRef.current.get(draggingSectionID)
     : undefined;
+  const folderSortableIDs = organization.folders.map((folder) => `${FOLDER_SORTABLE_PREFIX}${folder.id}`);
+  const [draggingFolderID, setDraggingFolderID] = useState<string | undefined>();
+  const draggingFolderInfo = draggingFolderID
+    ? sectionHeaderInfoByIDRef.current.get(draggingFolderID)
+    : undefined;
+  function handleFolderDragStart(event: DragStartEvent): void {
+    setDraggingFolderID(String(event.active.id));
+  }
+  function handleFolderDragEnd(event: DragEndEvent): void {
+    const activeID = String(event.active.id);
+    const overID = event.over ? String(event.over.id) : undefined;
+    const next = reorderSidebarSections(folderSortableIDs, activeID, overID);
+    if (next !== folderSortableIDs) {
+      void organization.reorderFolders(next.map((id) => id.slice(FOLDER_SORTABLE_PREFIX.length)));
+    }
+    setDraggingFolderID(undefined);
+  }
+  function handleFolderDragCancel(): void {
+    setDraggingFolderID(undefined);
+  }
   const pinnedRows = pinnedThreads;
   const hasPinnedRows = pinnedRows.length > 0;
   const allSidebarThreads = useMemo(() => {
@@ -509,19 +529,19 @@ export function AppSidebar({
     setFolderDropTargetID(folderID);
   }
 
-  function dragSessionOverFolder(event: ReactDragEvent<HTMLDivElement>, folderID: string): void {
+  function dragSessionOverFolder(event: ReactDragEvent<HTMLElement>, folderID: string): void {
     if (!acceptsSessionFolderDrag(event)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     updateFolderDropTarget(folderID);
   }
 
-  function leaveSessionFolderTarget(event: ReactDragEvent<HTMLDivElement>, folderID: string): void {
+  function leaveSessionFolderTarget(event: ReactDragEvent<HTMLElement>, folderID: string): void {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
     if (folderDropTargetIDRef.current === folderID) updateFolderDropTarget();
   }
 
-  function dropSessionIntoFolder(event: ReactDragEvent<HTMLDivElement>, folderID: string): void {
+  function dropSessionIntoFolder(event: ReactDragEvent<HTMLElement>, folderID: string): void {
     if (!acceptsSessionFolderDrag(event)) return;
     event.preventDefault();
     const threadID = event.dataTransfer.getData(SESSION_FOLDER_DRAG_MIME) || folderDragThreadID;
@@ -538,14 +558,14 @@ export function AppSidebar({
     }
   }
 
-  function dragSessionOverFolderRemoval(event: ReactDragEvent<HTMLDivElement>): void {
+  function dragSessionOverFolderRemoval(event: ReactDragEvent<HTMLElement>): void {
     if (!folderDragCanRemove || !acceptsSessionFolderDrag(event)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     updateFolderDropTarget(FOLDER_REMOVE_DROP_TARGET);
   }
 
-  function dropSessionOutOfFolder(event: ReactDragEvent<HTMLDivElement>): void {
+  function dropSessionOutOfFolder(event: ReactDragEvent<HTMLElement>): void {
     if (!folderDragCanRemove || !acceptsSessionFolderDrag(event)) return;
     event.preventDefault();
     const threadID = event.dataTransfer.getData(SESSION_FOLDER_DRAG_MIME) || folderDragThreadID;
@@ -990,55 +1010,80 @@ export function AppSidebar({
               className="sidebar-functional-group-body session-folder-list"
               data-folder-dragging={folderDragThreadID !== undefined || undefined}
             >
-              {organization.folders.length === 0 ? (
-                <div className="session-organization-empty">{t("sidebar.noFolders")}</div>
-              ) : organization.folders.map((folder) => {
-                const collapsed = collapsedFolderIDs.has(folder.id);
-                return (
-                  <div
-                    className={`project-section session-folder-drop-target${folderDropTargetID === folder.id ? " drop-active" : ""}`}
-                    key={folder.id}
-                    data-folder-drop-active={folderDropTargetID === folder.id || undefined}
-                    onDragEnter={(event) => dragSessionOverFolder(event, folder.id)}
-                    onDragOver={(event) => dragSessionOverFolder(event, folder.id)}
-                    onDragLeave={(event) => leaveSessionFolderTarget(event, folder.id)}
-                    onDrop={(event) => dropSessionIntoFolder(event, folder.id)}
-                  >
-                    <SidebarSection
-                      expanded={!collapsed}
-                      iconKind="project"
-                      CollapsedIcon={Folder}
-                      ExpandedIcon={FolderOpen}
-                      label={folder.name}
-                      ariaLabel={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
-                      title={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
-                      onToggle={() => setCollapsedFolderIDs((current) => {
-                        const next = new Set(current);
-                        if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id);
-                        return next;
-                      })}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        setGroupContextMenu({ kind: "folder", group: folder, x: event.clientX, y: event.clientY });
-                      }}
-                    >
-                      {(folderThreadsByID[folder.id]?.length ?? 0) > 0 ? (
-                        <OrganizationThreadList
-                          threads={folderThreadsByID[folder.id]}
-                          activeID={activeThreadID}
-                          pendingThreadID={pendingThreadID}
-                          lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
-                          onSelect={onSelectThread}
-                          onTogglePinned={onTogglePinned}
-                          onArchive={onArchiveThread}
-                          onDelete={onDeleteThread}
-                          onRename={onRenameThread}
-                        />
-                      ) : null}
-                    </SidebarSection>
-                  </div>
-                );
-              })}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                modifiers={[restrictToVerticalAxis]}
+                onDragStart={handleFolderDragStart}
+                onDragEnd={handleFolderDragEnd}
+                onDragCancel={handleFolderDragCancel}
+              >
+                <SortableContext items={folderSortableIDs} strategy={verticalListSortingStrategy}>
+                  {organization.folders.length === 0 ? (
+                    <div className="session-organization-empty">{t("sidebar.noFolders")}</div>
+                  ) : organization.folders.map((folder) => {
+                    const collapsed = collapsedFolderIDs.has(folder.id);
+                    const sortableID = `${FOLDER_SORTABLE_PREFIX}${folder.id}`;
+                    return (
+                      <SortableSidebarSection
+                        id={sortableID}
+                        className={`project-section session-folder-drop-target${folderDropTargetID === folder.id ? " drop-active" : ""}`}
+                        key={folder.id}
+                        ariaLabel={folder.name}
+                        headerInfo={{
+                          label: folder.name,
+                          iconKind: "project",
+                          CollapsedIcon: Folder,
+                          ExpandedIcon: FolderOpen,
+                        }}
+                        registerHeaderInfo={registerSectionHeaderInfo}
+                        containerProps={{
+                          onDragEnter: (event) => dragSessionOverFolder(event, folder.id),
+                          onDragOver: (event) => dragSessionOverFolder(event, folder.id),
+                          onDragLeave: (event) => leaveSessionFolderTarget(event, folder.id),
+                          onDrop: (event) => dropSessionIntoFolder(event, folder.id),
+                        }}
+                      >
+                        <SidebarSection
+                          expanded={!collapsed}
+                          iconKind="project"
+                          CollapsedIcon={Folder}
+                          ExpandedIcon={FolderOpen}
+                          label={folder.name}
+                          ariaLabel={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
+                          title={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
+                          onToggle={() => setCollapsedFolderIDs((current) => {
+                            const next = new Set(current);
+                            if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id);
+                            return next;
+                          })}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setGroupContextMenu({ kind: "folder", group: folder, x: event.clientX, y: event.clientY });
+                          }}
+                        >
+                          {(folderThreadsByID[folder.id]?.length ?? 0) > 0 ? (
+                            <OrganizationThreadList
+                              threads={folderThreadsByID[folder.id]}
+                              activeID={activeThreadID}
+                              pendingThreadID={pendingThreadID}
+                              lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
+                              onSelect={onSelectThread}
+                              onTogglePinned={onTogglePinned}
+                              onArchive={onArchiveThread}
+                              onDelete={onDeleteThread}
+                              onRename={onRenameThread}
+                            />
+                          ) : null}
+                        </SidebarSection>
+                      </SortableSidebarSection>
+                    );
+                  })}
+                </SortableContext>
+                <DragOverlay>
+                  {draggingFolderInfo ? <SidebarSectionDragPreview info={draggingFolderInfo} /> : null}
+                </DragOverlay>
+              </DndContext>
             </div>
           </section>
           {sectionOrder.length > 0 ? (
@@ -1204,29 +1249,23 @@ export function AppSidebar({
             x={groupContextMenu.x}
             y={groupContextMenu.y}
             items={[
-              {
-                label: t("sidebar.moveGroupUp"),
-                disabled: contextGroupIndex <= 0,
-                onSelect: () => {
-                  if (groupContextMenu.kind === "folder") {
-                    organization.reorderFolder(groupContextMenu.group.id, -1);
-                  } else {
+              ...(groupContextMenu.kind === "pin" ? [
+                {
+                  label: t("sidebar.moveGroupUp"),
+                  disabled: contextGroupIndex <= 0,
+                  onSelect: () => {
                     organization.reorderPinGroup(groupContextMenu.group.id, -1);
-                  }
+                  },
                 },
-              },
-              {
-                label: t("sidebar.moveGroupDown"),
-                disabled: contextGroupIndex < 0 || contextGroupIndex >= contextGroupList.length - 1,
-                onSelect: () => {
-                  if (groupContextMenu.kind === "folder") {
-                    organization.reorderFolder(groupContextMenu.group.id, 1);
-                  } else {
+                {
+                  label: t("sidebar.moveGroupDown"),
+                  disabled: contextGroupIndex < 0 || contextGroupIndex >= organization.pinGroups.length - 1,
+                  onSelect: () => {
                     organization.reorderPinGroup(groupContextMenu.group.id, 1);
-                  }
+                  },
                 },
-              },
-              { separator: true },
+                { separator: true as const },
+              ] : []),
               {
                 label: t("sidebar.renameGroup"),
                 onSelect: () => {

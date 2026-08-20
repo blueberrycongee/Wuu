@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { SessionOrganizationGroup } from "../shared/protocol";
 import type { ThreadSummary } from "./AppState";
 import { showErrorToast } from "./Toast";
@@ -42,7 +42,7 @@ export type SessionOrganizationController = SessionOrganization & {
   createPinGroup: (name: string, threadID?: string) => Promise<void>;
   renameFolder: (id: string, name: string) => Promise<void>;
   renamePinGroup: (id: string, name: string) => Promise<void>;
-  reorderFolder: (id: string, direction: -1 | 1) => Promise<void>;
+  reorderFolders: (orderedIDs: string[]) => Promise<void>;
   reorderPinGroup: (id: string, direction: -1 | 1) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   deletePinGroup: (id: string) => Promise<void>;
@@ -54,6 +54,8 @@ export function useSessionOrganization(threads: ThreadSummary[]): SessionOrganiz
   const [groups, setGroups] = useState<Pick<SessionOrganization, "folders" | "pinGroups">>({ folders: [], pinGroups: [] });
   const [optimisticFolders, setOptimisticFolders] = useState<Record<string, string>>({});
   const [optimisticPins, setOptimisticPins] = useState<Record<string, string>>({});
+  const folderReorderRevisionRef = useRef(0);
+  const folderReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     if (!window.wuu?.getSessionOrganization) return;
@@ -146,14 +148,29 @@ export function useSessionOrganization(threads: ThreadSummary[]): SessionOrganiz
         throw error;
       }
     },
-    reorderFolder: async (id, direction) => {
-      const reordered = moveOrganizationGroup(groups.folders, id, direction);
+    reorderFolders: async (orderedIDs) => {
+      const reordered = reorderOrganizationGroups(groups.folders, orderedIDs);
       if (reordered === groups.folders) return;
+      const previous = groups.folders;
+      const revision = folderReorderRevisionRef.current + 1;
+      folderReorderRevisionRef.current = revision;
+      setGroups((current) => ({ ...current, folders: reordered }));
+
+      const request = folderReorderQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          const { organization } = await window.wuu.reorderSessionFolders(orderedIDs);
+          if (folderReorderRevisionRef.current !== revision) return;
+          const parsed = parseSessionOrganization(organization);
+          setGroups((current) => ({ ...current, folders: parsed.folders }));
+        });
+      folderReorderQueueRef.current = request;
       try {
-        const { organization } = await window.wuu.reorderSessionFolders(reordered.map((group) => group.id));
-        const parsed = parseSessionOrganization(organization);
-        setGroups((current) => ({ ...current, folders: parsed.folders }));
+        await request;
       } catch (error) {
+        if (folderReorderRevisionRef.current === revision) {
+          setGroups((current) => ({ ...current, folders: previous }));
+        }
         showErrorToast(error, translateCurrent("sessionOrganization.reorderFolderFailed"));
       }
     },
@@ -206,6 +223,17 @@ export function moveOrganizationGroup(groups: SessionGroup[], id: string, direct
   const next = [...groups];
   [next[index], next[target]] = [next[target], next[index]];
   return next;
+}
+
+export function reorderOrganizationGroups(groups: SessionGroup[], orderedIDs: string[]): SessionGroup[] {
+  if (orderedIDs.length !== groups.length || new Set(orderedIDs).size !== groups.length) return groups;
+  const byID = new Map(groups.map((group) => [group.id, group]));
+  const reordered = orderedIDs.flatMap((id) => {
+    const group = byID.get(id);
+    return group ? [group] : [];
+  });
+  if (reordered.length !== groups.length) return groups;
+  return reordered.every((group, index) => group.id === groups[index]?.id) ? groups : reordered;
 }
 
 export function clearOptimisticAssignment(

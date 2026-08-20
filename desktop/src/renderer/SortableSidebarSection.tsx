@@ -59,6 +59,7 @@ export function SortableSidebarSection({
   ariaLabel,
   headerInfo,
   registerHeaderInfo,
+  containerProps,
   children,
 }: {
   id: string;
@@ -66,6 +67,7 @@ export function SortableSidebarSection({
   ariaLabel: string;
   headerInfo: SidebarSectionHeaderInfo;
   registerHeaderInfo: (id: string, info: SidebarSectionHeaderInfo | null) => void;
+  containerProps?: HTMLAttributes<HTMLElement>;
   children: ReactNode;
 }): JSX.Element {
   const {
@@ -91,6 +93,7 @@ export function SortableSidebarSection({
   };
   return (
     <section
+      {...containerProps}
       ref={setNodeRef}
       className={className}
       aria-label={ariaLabel}
