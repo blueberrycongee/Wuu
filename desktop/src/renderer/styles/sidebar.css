@@ -1121,6 +1121,35 @@
   white-space: nowrap;
 }
 
+.sidebar-folder-heading {
+  border-radius: var(--radius-sm);
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+
+.sidebar-folder-heading.remove-drop-available {
+  background: color-mix(in srgb, var(--sidebar-accent) 5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-accent) 20%, transparent);
+}
+
+.sidebar-folder-heading.remove-drop-available.drop-active {
+  background: color-mix(in srgb, var(--sidebar-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-accent) 48%, transparent);
+}
+
+.sidebar-folder-heading-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-folder-heading-label > svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
 .sidebar-functional-action {
   display: grid;
   width: var(--sidebar-row-action-size);
@@ -1189,6 +1218,23 @@
 .session-organization-group + .session-organization-group,
 .session-folder-list .project-section + .project-section {
   margin-top: 4px;
+}
+
+.session-folder-drop-target {
+  border-radius: var(--radius-sm);
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+
+.session-folder-list[data-folder-dragging="true"] .session-folder-drop-target {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-accent) 20%, transparent);
+}
+
+.session-folder-drop-target.drop-active,
+.session-folder-list[data-folder-dragging="true"] .session-folder-drop-target.drop-active {
+  background: color-mix(in srgb, var(--sidebar-accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-accent) 42%, transparent);
 }
 
 .session-organization-group-heading {
@@ -1661,6 +1707,10 @@
   opacity: 0.72;
 }
 
+.sidebar-session-row.folder-dragging {
+  opacity: 0.62;
+}
+
 .thread-row {
   grid-template-columns:
     var(--sidebar-session-status-col)
@@ -1715,6 +1765,46 @@
   border-top-color: var(--sidebar-thread-spinner-notch);
   border-radius: var(--radius-pill);
   animation: wuu-spin var(--session-loading-spin-duration) linear infinite;
+}
+
+.thread-row-folder-drag {
+  position: absolute;
+  top: 50%;
+  /* Mirror the archive action's right inset so both edge controls sit on the
+   * same 8px sidebar axis. The 22px status column plus 10px grid gap still
+   * leaves an 8px clear gap between this 24px button and the title. */
+  left: var(--sidebar-row-pad-x, 8px);
+  z-index: 2;
+  cursor: grab;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.thread-row:hover .thread-row-folder-drag,
+.thread-row-folder-drag:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.thread-row-folder-drag:active {
+  cursor: grabbing;
+  transform: translateY(-50%) scale(0.96);
+}
+
+.thread-row:has(.thread-row-folder-drag):hover::before,
+.thread-row:has(.thread-row-folder-drag:focus-visible)::before {
+  opacity: 0;
+}
+
+.thread-row:has(.thread-row-folder-drag):hover .thread-row-spinner,
+.thread-row:has(.thread-row-folder-drag:focus-visible) .thread-row-spinner {
+  opacity: 0;
 }
 
 .thread-row.has-unread::before {
@@ -2015,6 +2105,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .thread-row-main > .thread-row-title,
+  .thread-row-folder-drag,
   .thread-row-actions {
     transition: none;
   }

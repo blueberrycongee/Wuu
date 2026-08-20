@@ -3,6 +3,7 @@ import {
   Clock,
   FileText,
   Folder,
+  FolderMinus,
   FolderOpen,
   FolderPlus,
   LayoutGrid,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import {
   type PointerEvent as ReactPointerEvent,
+  type DragEvent as ReactDragEvent,
   type RefObject,
   useCallback,
   useMemo,
@@ -53,9 +55,11 @@ import {
   ProjectGroup,
 } from "./ThreadSidebar";
 import { SidebarSection } from "./SidebarSection";
+import { SidebarNameDialog } from "./SidebarNameDialog";
 import { ThreadContextMenu } from "./ThreadContextMenu";
 import {
   SessionOrganizationProvider,
+  SESSION_FOLDER_DRAG_MIME,
   useSessionOrganization,
   type SessionGroup,
 } from "./SessionOrganization";
@@ -92,6 +96,7 @@ import { PluginSlot } from "./plugins/PluginSlot";
  *   can be reordered with real projects.
  */
 export const SIDEBAR_SECTION_PINNED = "__wuu_pinned__";
+const FOLDER_REMOVE_DROP_TARGET = "__wuu_remove_from_folder__";
 
 /**
  * Fixed-position 协作 (group chat) section. Like the pinned section it is
@@ -312,6 +317,19 @@ export function AppSidebar({
     x: number;
     y: number;
   } | null>(null);
+  const [groupNameDialog, setGroupNameDialog] = useState<
+    | { action: "create"; kind: "folder" | "pin"; thread?: ThreadSummary }
+    | { action: "rename"; kind: "folder" | "pin"; group: SessionGroup }
+    | null
+  >(null);
+  const [groupName, setGroupName] = useState("");
+  const [groupNamePending, setGroupNamePending] = useState(false);
+  const [folderDragThreadID, setFolderDragThreadID] = useState<string>();
+  const [folderDropTargetID, setFolderDropTargetID] = useState<string>();
+  const folderDropTargetIDRef = useRef<string>();
+  const folderDragCanRemove = Boolean(
+    folderDragThreadID && organization.folderByThreadID[folderDragThreadID],
+  );
   const contextGroupList = groupContextMenu?.kind === "folder" ? organization.folders : organization.pinGroups;
   const contextGroupIndex = groupContextMenu
     ? contextGroupList.findIndex((group) => group.id === groupContextMenu.group.id)
@@ -412,7 +430,11 @@ export function AppSidebar({
     for (const folder of organization.folders) next[folder.id] = [];
     for (const thread of allSidebarThreads) {
       const folderID = organization.folderByThreadID[thread.id];
-      if (folderID && next[folderID] && !thread.pinned && !thread.archived) {
+      // Folder membership is independent from pinning. A pinned conversation
+      // should remain visible in its folder as well as in the pinned section;
+      // otherwise assigning a pinned item succeeds in storage but appears to
+      // do nothing in the folder UI.
+      if (folderID && next[folderID] && !thread.archived) {
         next[folderID].push(thread);
       }
     }
@@ -430,19 +452,106 @@ export function AppSidebar({
     })),
   ], [organization.pinGroupByThreadID, organization.pinGroups, pinnedRows, t]);
 
-  function requestedName(message: string, initial = ""): string | undefined {
-    return window.prompt(message, initial)?.trim() || undefined;
-  }
-
   function createFolder(thread?: ThreadSummary): void {
-    const name = requestedName(t("sidebar.folderNamePrompt"));
-    if (name) organization.createFolder(name, thread?.id);
+    setGroupName("");
+    setGroupNameDialog({ action: "create", kind: "folder", thread });
   }
 
   function createPinGroup(thread?: ThreadSummary): void {
-    const name = requestedName(t("sidebar.pinGroupNamePrompt"));
+    setGroupName("");
+    setGroupNameDialog({ action: "create", kind: "pin", thread });
+  }
+
+  function renameGroup(kind: "folder" | "pin", group: SessionGroup): void {
+    setGroupName(group.name);
+    setGroupNameDialog({ action: "rename", kind, group });
+  }
+
+  function closeGroupNameDialog(): void {
+    setGroupNameDialog(null);
+    setGroupName("");
+  }
+
+  async function submitGroupNameDialog(): Promise<void> {
+    if (!groupNameDialog || groupNamePending) return;
+    const name = groupName.trim();
     if (!name) return;
-    organization.createPinGroup(name, thread?.id);
+    setGroupNamePending(true);
+    try {
+      if (groupNameDialog.action === "create") {
+        if (groupNameDialog.kind === "folder") {
+          await organization.createFolder(name, groupNameDialog.thread?.id);
+        } else {
+          await organization.createPinGroup(name, groupNameDialog.thread?.id);
+        }
+      } else if (groupNameDialog.kind === "folder") {
+        await organization.renameFolder(groupNameDialog.group.id, name);
+      } else {
+        await organization.renamePinGroup(groupNameDialog.group.id, name);
+      }
+      closeGroupNameDialog();
+    } catch {
+      // The organization controller keeps the dialog open and reports the
+      // concrete failure through the product-wide toast surface.
+    } finally {
+      setGroupNamePending(false);
+    }
+  }
+
+  function acceptsSessionFolderDrag(event: ReactDragEvent<HTMLElement>): boolean {
+    return folderDragThreadID !== undefined
+      || Array.from(event.dataTransfer.types ?? []).includes(SESSION_FOLDER_DRAG_MIME);
+  }
+
+  function updateFolderDropTarget(folderID?: string): void {
+    if (folderDropTargetIDRef.current === folderID) return;
+    folderDropTargetIDRef.current = folderID;
+    setFolderDropTargetID(folderID);
+  }
+
+  function dragSessionOverFolder(event: ReactDragEvent<HTMLDivElement>, folderID: string): void {
+    if (!acceptsSessionFolderDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    updateFolderDropTarget(folderID);
+  }
+
+  function leaveSessionFolderTarget(event: ReactDragEvent<HTMLDivElement>, folderID: string): void {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    if (folderDropTargetIDRef.current === folderID) updateFolderDropTarget();
+  }
+
+  function dropSessionIntoFolder(event: ReactDragEvent<HTMLDivElement>, folderID: string): void {
+    if (!acceptsSessionFolderDrag(event)) return;
+    event.preventDefault();
+    const threadID = event.dataTransfer.getData(SESSION_FOLDER_DRAG_MIME) || folderDragThreadID;
+    updateFolderDropTarget();
+    setFolderDragThreadID(undefined);
+    if (threadID) {
+      setCollapsedFolderIDs((current) => {
+        if (!current.has(folderID)) return current;
+        const next = new Set(current);
+        next.delete(folderID);
+        return next;
+      });
+      void organization.moveThreadToFolder(threadID, folderID);
+    }
+  }
+
+  function dragSessionOverFolderRemoval(event: ReactDragEvent<HTMLDivElement>): void {
+    if (!folderDragCanRemove || !acceptsSessionFolderDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    updateFolderDropTarget(FOLDER_REMOVE_DROP_TARGET);
+  }
+
+  function dropSessionOutOfFolder(event: ReactDragEvent<HTMLDivElement>): void {
+    if (!folderDragCanRemove || !acceptsSessionFolderDrag(event)) return;
+    event.preventDefault();
+    const threadID = event.dataTransfer.getData(SESSION_FOLDER_DRAG_MIME) || folderDragThreadID;
+    updateFolderDropTarget();
+    setFolderDragThreadID(undefined);
+    if (threadID) void organization.moveThreadToFolder(threadID);
   }
 
   const organizationActions = {
@@ -458,6 +567,15 @@ export function AppSidebar({
     },
     createFolderForThread: (thread: ThreadSummary) => createFolder(thread),
     createPinGroupForThread: (thread: ThreadSummary) => createPinGroup(thread),
+    folderDragThreadID,
+    startFolderDrag: (threadID: string) => {
+      setFolderDragThreadID(threadID);
+      updateFolderDropTarget();
+    },
+    endFolderDrag: () => {
+      setFolderDragThreadID(undefined);
+      updateFolderDropTarget();
+    },
   };
   const pinnedCollapsed = collapsedSidebarSectionIDs.has(
     SIDEBAR_SECTION_PINNED,
@@ -844,25 +962,48 @@ export function AppSidebar({
             </div>
           </section>
           <section className="sidebar-functional-group" aria-label={t("sidebar.folders")}>
-            <div className="sidebar-functional-heading">
-              <span className="sidebar-functional-heading-label">{t("sidebar.folders")}</span>
-              <button
-                className="sidebar-functional-action"
-                type="button"
-                aria-label={t("sidebar.newFolder")}
-                title={t("sidebar.newFolder")}
-                onClick={() => createFolder()}
-              >
-                <Plus aria-hidden="true" />
-              </button>
+            <div
+              className={`sidebar-functional-heading sidebar-folder-heading${folderDragCanRemove ? " remove-drop-available" : ""}${folderDropTargetID === FOLDER_REMOVE_DROP_TARGET ? " drop-active" : ""}`}
+              data-folder-remove-drop={folderDragCanRemove || undefined}
+              onDragEnter={dragSessionOverFolderRemoval}
+              onDragOver={dragSessionOverFolderRemoval}
+              onDragLeave={(event) => leaveSessionFolderTarget(event, FOLDER_REMOVE_DROP_TARGET)}
+              onDrop={dropSessionOutOfFolder}
+            >
+              <span className="sidebar-functional-heading-label sidebar-folder-heading-label">
+                {folderDragCanRemove ? <FolderMinus aria-hidden="true" /> : null}
+                {t(folderDragCanRemove ? "sidebar.removeFromFolderDrop" : "sidebar.folders")}
+              </span>
+              {!folderDragCanRemove ? (
+                <button
+                  className="sidebar-functional-action"
+                  type="button"
+                  aria-label={t("sidebar.newFolder")}
+                  title={t("sidebar.newFolder")}
+                  onClick={() => createFolder()}
+                >
+                  <Plus aria-hidden="true" />
+                </button>
+              ) : null}
             </div>
-            <div className="sidebar-functional-group-body session-folder-list">
+            <div
+              className="sidebar-functional-group-body session-folder-list"
+              data-folder-dragging={folderDragThreadID !== undefined || undefined}
+            >
               {organization.folders.length === 0 ? (
                 <div className="session-organization-empty">{t("sidebar.noFolders")}</div>
               ) : organization.folders.map((folder) => {
                 const collapsed = collapsedFolderIDs.has(folder.id);
                 return (
-                  <div className="project-section" key={folder.id}>
+                  <div
+                    className={`project-section session-folder-drop-target${folderDropTargetID === folder.id ? " drop-active" : ""}`}
+                    key={folder.id}
+                    data-folder-drop-active={folderDropTargetID === folder.id || undefined}
+                    onDragEnter={(event) => dragSessionOverFolder(event, folder.id)}
+                    onDragOver={(event) => dragSessionOverFolder(event, folder.id)}
+                    onDragLeave={(event) => leaveSessionFolderTarget(event, folder.id)}
+                    onDrop={(event) => dropSessionIntoFolder(event, folder.id)}
+                  >
                     <SidebarSection
                       expanded={!collapsed}
                       iconKind="project"
@@ -1090,13 +1231,7 @@ export function AppSidebar({
               {
                 label: t("sidebar.renameGroup"),
                 onSelect: () => {
-                  const name = requestedName(t("sidebar.renameGroupPrompt"), groupContextMenu.group.name);
-                  if (!name) return;
-                  if (groupContextMenu.kind === "folder") {
-                    organization.renameFolder(groupContextMenu.group.id, name);
-                  } else {
-                    organization.renamePinGroup(groupContextMenu.group.id, name);
-                  }
+                  renameGroup(groupContextMenu.kind, groupContextMenu.group);
                 },
               },
               { separator: true },
@@ -1115,6 +1250,26 @@ export function AppSidebar({
             onClose={() => setGroupContextMenu(null)}
           />
         ) : null}
+        <SidebarNameDialog
+          open={groupNameDialog !== null}
+          title={groupName}
+          onTitleChange={setGroupName}
+          onSubmit={() => { void submitGroupNameDialog(); }}
+          onClose={closeGroupNameDialog}
+          dialogTitle={groupNameDialog?.action === "rename"
+            ? t(groupNameDialog.kind === "folder" ? "sidebar.renameFolder" : "sidebar.renamePinnedGroup")
+            : t(groupNameDialog?.kind === "pin" ? "sidebar.newPinnedGroup" : "sidebar.newFolder")}
+          dialogTitleId="session-organization-name-title"
+          fieldLabel={t(groupNameDialog?.kind === "pin" ? "sidebar.pinGroupNamePrompt" : "sidebar.folderNamePrompt")}
+          fieldAriaLabel={t(groupNameDialog?.kind === "pin" ? "sidebar.pinGroupNamePrompt" : "sidebar.folderNamePrompt")}
+          placeholder={t(groupNameDialog?.kind === "pin" ? "sidebar.pinGroupNamePrompt" : "sidebar.folderNamePrompt")}
+          icon={groupNameDialog?.kind === "pin" ? Pin : Folder}
+          submitLabel={t(groupNameDialog?.action === "rename" ? "common.save" : "common.create")}
+          cancelLabel={t("common.cancel")}
+          submitDisabled={groupNamePending || groupName.trim().length === 0 || (
+            groupNameDialog?.action === "rename" && groupName.trim() === groupNameDialog.group.name.trim()
+          )}
+        />
       </div>
     </aside>
   );

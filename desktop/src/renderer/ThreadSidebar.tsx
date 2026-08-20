@@ -1,4 +1,4 @@
-import { Archive, Folder, FolderOpen, GitFork, MessageSquare, MessageSquarePlus, MessagesSquare, Pin } from "lucide-react";
+import { Archive, Folder, FolderInput, FolderOpen, GitFork, MessageSquare, MessageSquarePlus, MessagesSquare, Pin } from "lucide-react";
 import {
   closestCenter,
   DndContext,
@@ -17,6 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   type CSSProperties,
+  type DragEvent as ReactDragEvent,
   type HTMLAttributes,
   useEffect,
   useMemo,
@@ -31,7 +32,7 @@ import {
   type ThreadContextMenuItem,
 } from "./ThreadContextMenu";
 import { SidebarSection } from "./SidebarSection";
-import { useSessionOrganizationActions } from "./SessionOrganization";
+import { SESSION_FOLDER_DRAG_MIME, useSessionOrganizationActions } from "./SessionOrganization";
 import { baseThreadTitle, threadShowsForkMarker } from "./ThreadTitles";
 import { revealInFileManagerLabel } from "./platform";
 import {
@@ -674,7 +675,12 @@ function ThreadRows({
 }): JSX.Element {
   const { t } = useI18n();
   const organization = useSessionOrganizationActions();
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: ThreadSummary } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    thread: ThreadSummary;
+    mode: "all" | "folder";
+  } | null>(null);
   const [renameDialog, setRenameDialog] = useState<{
     thread: ThreadSummary;
     initialTitle: string;
@@ -696,7 +702,7 @@ function ThreadRows({
     e: { clientX: number; clientY: number; preventDefault: () => void }
   ): void {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, thread: targetThread });
+    setContextMenu({ x: e.clientX, y: e.clientY, thread: targetThread, mode: "all" });
   }
 
   function togglePinned(thread: ThreadSummary): void {
@@ -705,6 +711,29 @@ function ThreadRows({
     } else {
       onTogglePinned(thread);
     }
+  }
+
+  function folderOrganizationMenuItems(thread: ThreadSummary): ThreadContextMenuItem[] {
+    if (!organization) return [];
+    const items: ThreadContextMenuItem[] = [];
+    if (organization.folderByThreadID[thread.id]) {
+      items.push({
+        label: t("threadSidebar.removeFromFolder"),
+        onSelect: () => organization.moveToFolder(thread),
+      });
+    }
+    for (const folder of organization.folders) {
+      items.push({
+        label: t("threadSidebar.moveToFolder", { name: folder.name }),
+        disabled: organization.folderByThreadID[thread.id] === folder.id,
+        onSelect: () => organization.moveToFolder(thread, folder.id),
+      });
+    }
+    items.push({
+      label: t("threadSidebar.newFolder"),
+      onSelect: () => organization.createFolderForThread(thread),
+    });
+    return items;
   }
 
   function organizationMenuItems(thread: ThreadSummary): ThreadContextMenuItem[] {
@@ -727,23 +756,21 @@ function ThreadRows({
       onSelect: () => organization.createPinGroupForThread(thread),
     });
     items.push({ separator: true });
-    if (organization.folderByThreadID[thread.id]) {
-      items.push({
-        label: t("threadSidebar.removeFromFolder"),
-        onSelect: () => organization.moveToFolder(thread),
-      });
-    }
-    for (const folder of organization.folders) {
-      items.push({
-        label: t("threadSidebar.moveToFolder", { name: folder.name }),
-        onSelect: () => organization.moveToFolder(thread, folder.id),
-      });
-    }
-    items.push({
-      label: t("threadSidebar.newFolder"),
-      onSelect: () => organization.createFolderForThread(thread),
-    });
+    items.push(...folderOrganizationMenuItems(thread));
     return items;
+  }
+
+  function openFolderMenu(thread: ThreadSummary, element: HTMLElement): void {
+    const rect = element.getBoundingClientRect();
+    setContextMenu({ x: rect.left, y: rect.bottom + 4, thread, mode: "folder" });
+  }
+
+  function startFolderDrag(thread: ThreadSummary, event: ReactDragEvent<HTMLButtonElement>): void {
+    const row = event.currentTarget.closest<HTMLElement>(".thread-row");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(SESSION_FOLDER_DRAG_MIME, thread.id);
+    if (row) event.dataTransfer.setDragImage(row, 24, row.offsetHeight / 2);
+    organization?.startFolderDrag(thread.id);
   }
 
   function editableThreadTitle(thread: ThreadSummary): string {
@@ -811,10 +838,27 @@ function ThreadRows({
             disabled={!onReorder}
             className={`thread-row sidebar-session-row ${thread.id === activeID ? "active" : ""}${running ? " running" : ""}${
               pendingSwitch ? " pending-switch" : ""
-            }${unread ? " has-unread" : ""}`}
+            }${unread ? " has-unread" : ""}${organization?.folderDragThreadID === thread.id ? " folder-dragging" : ""}`}
             aria-current={thread.id === activeID ? "page" : undefined}
             onContextMenu={(e) => handleContextMenu(thread, e)}
           >
+              {organization && organization.folders.length > 0 ? (
+                <button
+                  className="sidebar-row-icon-button thread-row-folder-drag"
+                  type="button"
+                  draggable
+                  aria-label={t("threadSidebar.organizeInFolder")}
+                  aria-haspopup="menu"
+                  aria-expanded={contextMenu?.mode === "folder" && contextMenu.thread.id === thread.id}
+                  title={t("threadSidebar.dragToFolder")}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => openFolderMenu(thread, event.currentTarget)}
+                  onDragStart={(event) => startFolderDrag(thread, event)}
+                  onDragEnd={() => organization.endFolderDrag()}
+                >
+                  <FolderInput className="icon-sm" aria-hidden="true" />
+                </button>
+              ) : null}
               {running ? (
                 <span className="thread-row-spinner" aria-hidden="true" />
               ) : null}
@@ -871,7 +915,7 @@ function ThreadRows({
         <ThreadContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={[
+          items={contextMenu.mode === "folder" ? folderOrganizationMenuItems(contextMenu.thread) : [
             {
               label: t(contextMenu.thread.pinned ? "sidebar.unpin" : "sidebar.pin"),
               onSelect: () => togglePinned(contextMenu.thread),
