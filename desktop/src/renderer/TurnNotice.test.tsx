@@ -94,7 +94,7 @@ describe("ContextCompactionNotice", () => {
       host.querySelector(".process-surface-blobatar")?.getAttribute("data-wuu-mascot-activity"),
     ).toBe("compact");
     expect(host.querySelector(".context-compaction-mascot")).not.toBeNull();
-    expect(host.querySelector(".context-compaction-black-hole")).not.toBeNull();
+    expect(host.querySelector(".context-compaction-black-hole")).toBeNull();
     expect(host.querySelector(".context-compaction-copy")).not.toBeNull();
     expect(host.querySelector(".process-surface-summary-line")?.getAttribute("aria-label")).toBe(
       "正在自动压缩上下文",

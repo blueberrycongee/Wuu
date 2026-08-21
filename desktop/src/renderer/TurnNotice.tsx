@@ -153,7 +153,6 @@ export function ContextCompactionNotice({
             {inProgress ? (
               <span className="context-compaction-mascot" aria-hidden="true">
                 <ProcessSurfaceMascot active activity="compact" />
-                <span className="context-compaction-black-hole" />
               </span>
             ) : null}
             <span
