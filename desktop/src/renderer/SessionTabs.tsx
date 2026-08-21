@@ -160,7 +160,7 @@ export function SessionTabStrip({
   for (const tab of state.sessionTabs) {
     if (
       tab.kind === "thread" &&
-      (isThreadRunning(threadForTab(tabState, tab.threadID)) ||
+      (isThreadExecuting(threadForTab(tabState, tab.threadID)) ||
         crossWorkdirRunning(tab))
     ) {
       runningTabIDs.add(tab.id);

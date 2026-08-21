@@ -57,8 +57,10 @@ export function useSidebarSectionDragHandle(): SidebarSectionDragHandle | null {
  *     Pin with a CSS rotate; agents uses UserRound / UsersRound; 对话
  *     uses MessageSquare / MessagesSquare; project uses Folder /
  *     FolderOpen).
- *   - Optional `loading` / `unread` indicators in the right-hand grid
- *     track of the header (only project rows surface these).
+ *   - Optional `loading` / `running` / `unread` indicators in the right-hand
+ *     grid track of the header. Running wins visually over unread so a folded
+ *     section keeps exposing live work without hiding the individual unread
+ *     rows when it is opened.
  *   - Optional `actions` slot, rendered as a sibling of the header
  *     button so they stay OUTSIDE the <button>. The Agents section
  *     uses this to host its ＋ (new agent) and … (overflow) controls
@@ -86,6 +88,7 @@ export function SidebarSection({
   title,
   active,
   pending,
+  running,
   unread,
   loading,
   actions,
@@ -104,6 +107,7 @@ export function SidebarSection({
   title: string;
   active?: boolean;
   pending?: boolean;
+  running?: boolean;
   unread?: boolean;
   loading?: boolean;
   // Rendered as a sibling of the header <button> so it can stay outside
@@ -213,6 +217,7 @@ export function SidebarSection({
     active ? "active" : "",
     expanded ? "expanded" : "",
     pending ? "pending-switch" : "",
+    running ? "running" : "",
     unread ? "has-unread" : "",
     isDragging ? "dragging" : "",
     dragHandleProps ? "can-reorder" : "",
@@ -227,7 +232,7 @@ export function SidebarSection({
           type="button"
           aria-expanded={expanded}
           aria-label={ariaLabel}
-          aria-busy={pending || undefined}
+          aria-busy={pending || running || undefined}
           aria-current={active ? "page" : undefined}
           title={title}
           onClick={onToggle}
@@ -246,10 +251,10 @@ export function SidebarSection({
               aria-hidden="true"
             />
           </span>
-          {loading ? (
+          {loading || running ? (
             <span className="project-row-loading" aria-hidden="true" />
           ) : null}
-          {unread && !loading ? (
+          {unread && !loading && !running ? (
             <span className="project-row-unread" aria-hidden="true" />
           ) : null}
         </button>

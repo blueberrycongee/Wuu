@@ -1,5 +1,6 @@
 import type { SetStateAction } from "react";
 import { arrayMove } from "@dnd-kit/sortable";
+import type { Thread } from "../shared/protocol";
 import {
   activeSessionTab,
   cloneSessionTabDraft,
@@ -9,6 +10,7 @@ import {
   ensureSessionTab,
   isThreadRunning,
   persistActiveSessionTabDraft,
+  reconcileResumedThreadTurns,
   requireThread,
   runtimeContextKey,
   sameRuntimeContext,
@@ -40,6 +42,12 @@ export type SessionTabActionsDeps = {
   restorePrimaryComposerDraft: (draft: ComposerDraftState) => void;
   clearPrimaryComposerDraft: () => void;
   resetSplitComposerDrafts: () => void;
+  // Full conversation snapshots live in the cross-workspace sidebar cache
+  // after a runtime switch removes them from AppState. Reading that cache is
+  // what lets a tab click paint immediately instead of waiting for the target
+  // app-server to resume the thread first.
+  getCrossWorkspaceThreads?: () => readonly Thread[];
+  getRunningThreadIDs?: () => ReadonlySet<string>;
   nextDraftSessionTab: (
     context: NonNullable<AppState["activeContext"]>,
   ) => SessionTab;
@@ -72,6 +80,13 @@ export function createSessionTabActions(
 
   function setStatus(status: string): void {
     showErrorToast(status);
+  }
+
+  function currentThreadSnapshot(thread: Thread | undefined): Thread | undefined {
+    if (!thread || !deps.getRunningThreadIDs?.().has(thread.id) || isThreadRunning(thread)) {
+      return thread;
+    }
+    return { ...thread, status: "in_progress" };
   }
 
   function activateGlobalSessionTab(tab: GlobalSessionTab): void {
@@ -242,11 +257,14 @@ export function createSessionTabActions(
     }
     const outgoingDraft = deps.getPrimaryComposerDraft();
     const targetDraft = cloneSessionTabDraft(tab);
-    const localThread = conversationPaneThreadsByID(
-      currentState.threads,
-      currentState.thread,
-      currentState.secondaryThread,
-    ).get(tab.threadID);
+    const localThread = currentThreadSnapshot(
+      conversationPaneThreadsByID(
+        currentState.threads,
+        currentState.thread,
+        currentState.secondaryThread,
+      ).get(tab.threadID) ??
+        deps.getCrossWorkspaceThreads?.().find((thread) => thread.id === tab.threadID),
+    );
     const canSwitchInstantly = localThread !== undefined && localThread.turns.length > 0;
     const requestID = canSwitchInstantly
       ? deps.beginInstantThreadSwitch()
@@ -284,11 +302,12 @@ export function createSessionTabActions(
     }
     try {
       const projectState = await selectRuntimeContext(tab.context);
-      const loadedState = await loadRuntime(projectState, {
-        resumeLatestThread: false,
-      });
-      const thread = requireThread(
-        await window.wuu.resumeThread(tab.threadID),
+      const [loadedState, resumed] = await Promise.all([
+        loadRuntime(projectState, { resumeLatestThread: false }),
+        window.wuu.resumeThread(tab.threadID),
+      ]);
+      const resumedThread = requireThread(
+        resumed,
         translateCurrent("thread.resumeMissing"),
       );
       if (!deps.finishViewSwitch(requestID)) {
@@ -298,6 +317,13 @@ export function createSessionTabActions(
       deps.resetSplitComposerDrafts();
       deps.setAppState((current) => {
         const withDraft = persistActiveSessionTabDraft(current, outgoingDraft);
+        const cachedThread =
+          conversationPaneThreadsByID(
+            withDraft.threads,
+            withDraft.thread,
+            withDraft.secondaryThread,
+          ).get(resumedThread.id) ?? localThread;
+        const thread = reconcileResumedThreadTurns(resumedThread, cachedThread);
         const next = { ...withDraft, ...loadedState };
         return {
           ...next,

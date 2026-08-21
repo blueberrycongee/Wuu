@@ -43,7 +43,7 @@ import {
 } from "@dnd-kit/sortable";
 import type { ChannelRoom, DesktopProject } from "../shared/protocol";
 import {
-  isThreadRunning,
+  isThreadExecuting,
   isThreadUnread,
   type AppState,
   type ThreadSummary,
@@ -430,6 +430,15 @@ export function AppSidebar({
   }
   const pinnedRows = pinnedThreads;
   const hasPinnedRows = pinnedRows.length > 0;
+  const pinnedHasRunning = pinnedRows.some((thread) => isThreadExecuting(thread));
+  const pinnedHasUnread = pinnedRows.some((thread) =>
+    sidebarThreadUnread(
+      thread,
+      activeThreadID,
+      pendingThreadID,
+      state.lastViewedTurnByThreadID,
+    ),
+  );
   const allSidebarThreads = useMemo(() => {
     const byID = new Map<string, ThreadSummary>();
     for (const threads of Object.values(projectThreadsByProjectID)) {
@@ -660,6 +669,8 @@ export function AppSidebar({
         label: t("sidebar.pinned"),
         icon: "pin",
         depth: 0,
+        running: pinnedHasRunning,
+        unread: pinnedHasUnread,
       });
       for (const group of pinnedGroups) {
         const parentID = organization.pinGroups.length > 0
@@ -692,8 +703,23 @@ export function AppSidebar({
       nodes.push({ id: "section:folders", kind: "section", label: t("sidebar.folders"), icon: "folder", depth: 0 });
       for (const folder of organization.folders) {
         const parentID = `folder:${folder.id}`;
-        nodes.push({ id: parentID, kind: "project", label: folder.name, parentId: "section:folders", depth: 1, icon: "folder" });
-        for (const thread of folderThreadsByID[folder.id] ?? []) {
+        const folderThreads = folderThreadsByID[folder.id] ?? [];
+        nodes.push({
+          id: parentID,
+          kind: "project",
+          label: folder.name,
+          parentId: "section:folders",
+          depth: 1,
+          icon: "folder",
+          running: folderThreads.some((thread) => isThreadExecuting(thread)),
+          unread: folderThreads.some((thread) => sidebarThreadUnread(
+            thread,
+            activeThreadID,
+            pendingThreadID,
+            state.lastViewedTurnByThreadID,
+          )),
+        });
+        for (const thread of folderThreads) {
           nodes.push(threadNavigationNode(
             thread,
             parentID,
@@ -736,7 +762,7 @@ export function AppSidebar({
             thread,
             state.lastViewedTurnByThreadID[thread.id],
           )),
-          running: threads.some((thread) => isThreadRunning(thread)),
+          running: threads.some((thread) => isThreadExecuting(thread)),
           disabled: onSelectProjectWorkspace === undefined,
           onActivate: onSelectProjectWorkspace === undefined
             ? undefined
@@ -792,7 +818,9 @@ export function AppSidebar({
     onSeedConversationFixture,
     onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
     onStartNewThread, onToggleConversationSearch,
-    onTogglePinned, pinnedGroups, pinnedRows, visibleProjectThreadsByProjectID,
+    onTogglePinned, pendingThreadID, pinnedGroups, pinnedHasRunning,
+    pinnedHasUnread, pinnedRows,
+    visibleProjectThreadsByProjectID,
     folderThreadsByID, organization.folders, organization.pinGroups,
     searchOpen, sectionOrder, sidebarProjects, sidebarScratchPseudoActive,
     activePluginMainView, openPluginNavigation, pluginNavigationEntries,
@@ -934,6 +962,8 @@ export function AppSidebar({
                   label={t("sidebar.pinned")}
                   ariaLabel={t(pinnedCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.pinned") })}
                   title={t(pinnedCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.pinned") })}
+                  running={pinnedHasRunning}
+                  unread={pinnedHasUnread}
                   actions={
                     <button
                       className="sidebar-functional-action sidebar-section-add-action"
@@ -1022,6 +1052,18 @@ export function AppSidebar({
                   {organization.folders.map((folder) => {
                     const collapsed = collapsedFolderIDs.has(folder.id);
                     const sortableID = `${FOLDER_SORTABLE_PREFIX}${folder.id}`;
+                    const folderThreads = folderThreadsByID[folder.id] ?? [];
+                    const folderHasRunning = folderThreads.some((thread) =>
+                      isThreadExecuting(thread),
+                    );
+                    const folderHasUnread = folderThreads.some((thread) =>
+                      sidebarThreadUnread(
+                        thread,
+                        activeThreadID,
+                        pendingThreadID,
+                        state.lastViewedTurnByThreadID,
+                      ),
+                    );
                     return (
                       <SortableSidebarSection
                         id={sortableID}
@@ -1050,6 +1092,8 @@ export function AppSidebar({
                           label={folder.name}
                           ariaLabel={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
                           title={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
+                          running={folderHasRunning}
+                          unread={folderHasUnread}
                           onToggle={() => setCollapsedFolderIDs((current) => {
                             const next = new Set(current);
                             if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id);
@@ -1060,9 +1104,9 @@ export function AppSidebar({
                             setGroupContextMenu({ kind: "folder", group: folder, x: event.clientX, y: event.clientY });
                           }}
                         >
-                          {(folderThreadsByID[folder.id]?.length ?? 0) > 0 ? (
+                          {folderThreads.length > 0 ? (
                             <OrganizationThreadList
-                              threads={folderThreadsByID[folder.id]}
+                              threads={folderThreads}
                               activeID={activeThreadID}
                               pendingThreadID={pendingThreadID}
                               lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
@@ -1336,8 +1380,22 @@ function threadNavigationNode(
     active: thread.id === activeThreadID,
     pinned: Boolean(thread.pinned),
     unread: isThreadUnread(thread, lastViewedTurnByThreadID[thread.id]),
-    running: isThreadRunning(thread),
+    running: isThreadExecuting(thread),
     onActivate,
     onTogglePinned,
   };
+}
+
+function sidebarThreadUnread(
+  thread: ThreadSummary,
+  activeThreadID: string | undefined,
+  pendingThreadID: string | undefined,
+  lastViewedTurnByThreadID: Readonly<Record<string, string>>,
+): boolean {
+  return (
+    !isThreadExecuting(thread) &&
+    thread.id !== activeThreadID &&
+    thread.id !== pendingThreadID &&
+    isThreadUnread(thread, lastViewedTurnByThreadID[thread.id])
+  );
 }

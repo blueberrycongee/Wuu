@@ -41,6 +41,7 @@ export type ThreadActivationActionsDeps = {
   getLocalDemoThread: (threadID: string) => Thread | undefined;
   getSidebarThreads: () => Thread[];
   getSidebarProjectThreadsByProjectID: () => SidebarProjectThreads;
+  getRunningThreadIDs?: () => ReadonlySet<string>;
   
   beginViewSwitch: (
     kind: "thread" | "project" | "runtime",
@@ -70,6 +71,13 @@ export function createThreadActivationActions(
 
   function setStatus(status: string): void {
     showErrorToast(status);
+  }
+
+  function currentThreadSnapshot(thread: Thread | undefined): Thread | undefined {
+    if (!thread || !deps.getRunningThreadIDs?.().has(thread.id) || isThreadRunning(thread)) {
+      return thread;
+    }
+    return { ...thread, status: "in_progress" };
   }
 
   async function selectThread(threadID: string): Promise<void> {
@@ -123,7 +131,9 @@ export function createThreadActivationActions(
       return;
     }
     const sourceContext = currentState.activeContext;
-    const localThread = threadForTab(deps.getAppState(), threadID);
+    const localThread = currentThreadSnapshot(
+      threadForTab(deps.getAppState(), threadID),
+    );
     const localThreadContext = localThread
       ? resolveThreadRuntimeContext(localThread, deps.getAppState().projects)
       : undefined;
@@ -281,7 +291,9 @@ export function createThreadActivationActions(
     const currentState = deps.getAppState();
     const outgoingDraft = deps.getPrimaryComposerDraft();
     const targetDraft = sessionTabDraftForThread(currentState, threadID);
-    const localThread = threadForTab(currentState, threadID) ?? findKnownThread(threadID);
+    const localThread = currentThreadSnapshot(
+      threadForTab(currentState, threadID) ?? findKnownThread(threadID),
+    );
     const canSwitchInstantly =
       localThread !== undefined &&
       localThread.turns.length > 0 &&
@@ -320,11 +332,12 @@ export function createThreadActivationActions(
     }
     try {
       const projectState = await selectRuntimeContext(targetContext);
-      const loadedState = await loadRuntime(projectState, {
-        resumeLatestThread: false,
-      });
+      const [loadedState, resumed] = await Promise.all([
+        loadRuntime(projectState, { resumeLatestThread: false }),
+        window.wuu.resumeThread(threadID),
+      ]);
       const thread = requireThread(
-        await window.wuu.resumeThread(threadID),
+        resumed,
         translateCurrent("thread.resumeMissing"),
       );
       if (!deps.finishViewSwitch(requestID)) {
@@ -366,7 +379,9 @@ export function createThreadActivationActions(
   }
 
   function findKnownThread(threadID: string): Thread | undefined {
-    return deps.getSidebarThreads().find((thread) => thread.id === threadID);
+    return currentThreadSnapshot(
+      deps.getSidebarThreads().find((thread) => thread.id === threadID),
+    );
   }
 
   async function selectProjectThread(

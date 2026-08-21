@@ -327,6 +327,9 @@ export function ProjectGroup({
       lastViewedTurnByThreadID,
     ),
   );
+  const projectHasRunning = projectThreads.some((thread) =>
+    isThreadExecuting(thread),
+  );
   const CollapsedIcon = isScratchPseudo ? MessageSquare : Folder;
   const ExpandedIcon = isScratchPseudo ? MessagesSquare : FolderOpen;
   return (
@@ -365,6 +368,7 @@ export function ProjectGroup({
         }
         active={activeProject}
         pending={pendingProject}
+        running={projectHasRunning}
         unread={projectHasUnread}
         loading={pendingProject || loadingProjectThreads}
         onToggle={() =>
@@ -540,6 +544,7 @@ function ThreadList({
     visibleCount,
     activeID,
     pendingThreadID,
+    lastViewedTurnByThreadID,
     stickyVisibleThreadIDs,
   );
   const hiddenCount = visibleThreads.length - limitedThreads.length;
@@ -594,6 +599,7 @@ function limitedProjectThreads(
   visibleCount: number,
   activeID: string | undefined,
   pendingThreadID: string | undefined,
+  lastViewedTurnByThreadID: Record<string, string> = {},
   stickyVisibleThreadIDs: ReadonlySet<string> = new Set(),
 ): ThreadSummary[] {
   const visibleIDs = new Set(threads.slice(0, Math.max(0, visibleCount)).map((thread) => thread.id));
@@ -601,7 +607,13 @@ function limitedProjectThreads(
     if (
       visibleIDs.has(thread.id) ||
       stickyVisibleThreadIDs.has(thread.id) ||
-      importantThreadVisible(thread, activeID, pendingThreadID)
+      importantThreadVisible(thread, activeID, pendingThreadID) ||
+      projectThreadUnread(
+        thread,
+        activeID,
+        pendingThreadID,
+        lastViewedTurnByThreadID,
+      )
     ) {
       return true;
     }
