@@ -2357,3 +2357,57 @@ func TestResponsesWebSocketFallbackPinKeepsStrongestExpiry(t *testing.T) {
 		t.Fatalf("extended pin metadata = %+v", extended)
 	}
 }
+
+func TestResponsesOutputItemReplayInput_MessageOmitsStatus(t *testing.T) {
+	item := responsesOutputItem{
+		ID:      "msg_1",
+		Type:    "message",
+		Phase:   "final_answer",
+		Content: json.RawMessage(`[{"type":"output_text","text":"done"}]`),
+	}
+	replayed, ok := responsesOutputItemReplayInput(item)
+	if !ok {
+		t.Fatalf("expected message item to replay")
+	}
+	if replayed.Status != "" {
+		t.Fatalf("message replay must not set status: %+v", replayed)
+	}
+}
+
+func TestResponsesOutputItemReplayInput_ReasoningStripsStatus(t *testing.T) {
+	item := responsesOutputItem{
+		Raw:  json.RawMessage(`{"id":"rs_1","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"inspect first"}],"encrypted_content":"enc_123"}`),
+		Type: "reasoning",
+	}
+	replayed, ok := responsesOutputItemReplayInput(item)
+	if !ok {
+		t.Fatalf("expected reasoning item to replay")
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(replayed.Raw, &decoded); err != nil {
+		t.Fatalf("decode replayed reasoning: %v", err)
+	}
+	if _, exists := decoded["status"]; exists {
+		t.Fatalf("reasoning replay must strip status: %s", replayed.Raw)
+	}
+	if decoded["encrypted_content"] != "enc_123" {
+		t.Fatalf("reasoning replay lost encrypted_content: %s", replayed.Raw)
+	}
+}
+
+func TestResponsesOutputItemReplayInput_FunctionCallDropsNonFCPrefixID(t *testing.T) {
+	item := responsesOutputItem{
+		ID:        "ctc_1",
+		Type:      "function_call",
+		CallID:    "call_1",
+		Name:      "read_file",
+		Arguments: json.RawMessage(`"{\"path\":\"README.md\"}"`),
+	}
+	replayed, ok := responsesOutputItemReplayInput(item)
+	if !ok {
+		t.Fatalf("expected function_call item to replay")
+	}
+	if replayed.ID != "" {
+		t.Fatalf("non-fc_ id must be dropped: %+v", replayed)
+	}
+}

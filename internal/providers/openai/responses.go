@@ -358,7 +358,6 @@ func appendResponsesInputItem(input []responsesInputItem, msg providers.ChatMess
 				Type:    "message",
 				ID:      responsesProviderItemIDForModel(msg.ProviderItemID, msg.ProviderItemModel, model),
 				Role:    "assistant",
-				Status:  "completed",
 				Phase:   string(msg.Phase),
 				Content: []responsesInputContentPart{{Type: "output_text", Text: msg.Content}},
 			})
@@ -377,7 +376,7 @@ func appendResponsesInputItem(input []responsesInputItem, msg providers.ChatMess
 			}
 			input = append(input, responsesInputItem{
 				Type:      "function_call",
-				ID:        responsesProviderItemIDForModel(call.ProviderItemID, call.ProviderItemModel, model),
+				ID:        responsesFunctionCallItemID(responsesProviderItemIDForModel(call.ProviderItemID, call.ProviderItemModel, model)),
 				CallID:    call.ID,
 				Name:      call.Name,
 				Arguments: call.Arguments,
@@ -406,7 +405,28 @@ func responsesReasoningInputItem(block providers.ReasoningBlock) (responsesInput
 	if err := json.Unmarshal(raw, &probe); err != nil || probe.Type != "reasoning" {
 		return responsesInputItem{}, false
 	}
-	return responsesInputItem{Raw: append(json.RawMessage(nil), raw...)}, true
+	replay := stripResponsesReasoningStatus(raw)
+	return responsesInputItem{Raw: append(json.RawMessage(nil), replay...)}, true
+}
+
+// stripResponsesReasoningStatus removes the output-only `status` field from a
+// reasoning item before replaying it as input. The Responses wire accepts
+// `status` on output items but some model endpoints reject it on input items,
+// and the upstream codex-rs Reasoning shape has no such field.
+func stripResponsesReasoningStatus(raw json.RawMessage) json.RawMessage {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return raw
+	}
+	if _, ok := obj["status"]; !ok {
+		return raw
+	}
+	delete(obj, "status")
+	stripped, err := json.Marshal(obj)
+	if err != nil {
+		return raw
+	}
+	return stripped
 }
 
 func responsesProviderItemIDForModel(itemID, itemModel, targetModel string) string {
@@ -416,6 +436,29 @@ func responsesProviderItemIDForModel(itemID, itemModel, targetModel string) stri
 	}
 	itemModel = strings.TrimSpace(itemModel)
 	if itemModel == "" || itemModel == strings.TrimSpace(targetModel) {
+		return clampResponsesItemID(itemID)
+	}
+	return ""
+}
+
+// clampResponsesItemID enforces the Responses API 64-character cap on item
+// ids. Truncation is done on Unicode code points so multi-byte characters are
+// never split mid-sequence.
+func clampResponsesItemID(id string) string {
+	runes := []rune(id)
+	if len(runes) <= 64 {
+		return id
+	}
+	return string(runes[:64])
+}
+
+// responsesFunctionCallItemID sanitizes a function_call item id for input
+// replay. The Responses wire requires function_call item ids to use the fc_
+// prefix; ids that do not (for example custom-tool ids replayed from another
+// provider) are dropped instead of being sent through and rejected upstream.
+func responsesFunctionCallItemID(itemID string) string {
+	itemID = clampResponsesItemID(itemID)
+	if itemID == "" || strings.HasPrefix(itemID, "fc_") {
 		return itemID
 	}
 	return ""

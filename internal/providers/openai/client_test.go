@@ -2180,7 +2180,7 @@ func TestResponsesRequest_KeepsTopLevelToolsStableAcrossSpawnDiscovery(t *testin
 
 func TestResponsesRequest_ReplaysReasoningBlocks(t *testing.T) {
 	client := &Client{}
-	reasoningRaw := `{"id":"rs_1","type":"reasoning","summary":[{"type":"summary_text","text":"inspect first"}],"encrypted_content":"enc_123"}`
+	reasoningRaw := `{"id":"rs_1","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"inspect first"}],"encrypted_content":"enc_123"}`
 
 	payload, err := client.buildResponsesRequest(providers.ChatRequest{
 		Model: "gpt-test",
@@ -2220,10 +2220,122 @@ func TestResponsesRequest_ReplaysReasoningBlocks(t *testing.T) {
 	}
 	reasoning, ok := input[1].(map[string]any)
 	if !ok || reasoning["type"] != "reasoning" || reasoning["id"] != "rs_1" || reasoning["encrypted_content"] != "enc_123" {
-		t.Fatalf("reasoning item was not replayed verbatim: %#v", input[1])
+		t.Fatalf("reasoning item was not replayed: %#v", input[1])
+	}
+	if _, exists := reasoning["status"]; exists {
+		t.Fatalf("reasoning item must not replay the output-only status field: %#v", reasoning)
 	}
 	if input[2].(map[string]any)["type"] != "function_call" {
 		t.Fatalf("expected function call after reasoning item, got %#v", input[2])
+	}
+}
+
+func TestResponsesRequest_MessageItemsOmitStatus(t *testing.T) {
+	client := &Client{}
+	payload, err := client.buildResponsesRequest(providers.ChatRequest{
+		Model: "gpt-test",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "inspect"},
+			{Role: "assistant", Content: "I'll inspect it.", ProviderItemID: "msg_1", ProviderItemModel: "gpt-test"},
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	body, err := marshalResponsesRequest(payload)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	input := decoded["input"].([]any)
+	msgItem, ok := input[1].(map[string]any)
+	if !ok || msgItem["type"] != "message" {
+		t.Fatalf("unexpected message input: %#v", input[1])
+	}
+	if _, exists := msgItem["status"]; exists {
+		t.Fatalf("message input item must not include status: %#v", msgItem)
+	}
+}
+
+func TestResponsesRequest_FunctionCallItemIDRequiresFCPrefix(t *testing.T) {
+	client := &Client{}
+	payload, err := client.buildResponsesRequest(providers.ChatRequest{
+		Model: "gpt-test",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "act"},
+			{
+				Role: "assistant",
+				ToolCalls: []providers.ToolCall{{
+					ID: "call_1", Name: "read_file", Arguments: `{"path":"README.md"}`,
+					ProviderItemID: "ctc_custom_1", ProviderItemModel: "gpt-test",
+				}},
+			},
+			{Role: "tool", ToolCallID: "call_1", Content: "contents"},
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	body, err := marshalResponsesRequest(payload)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	input := decoded["input"].([]any)
+	callItem, ok := input[1].(map[string]any)
+	if !ok || callItem["type"] != "function_call" || callItem["call_id"] != "call_1" {
+		t.Fatalf("unexpected function_call input: %#v", input[1])
+	}
+	if _, exists := callItem["id"]; exists {
+		t.Fatalf("non-fc_ item id must be dropped from function_call input: %#v", callItem)
+	}
+}
+
+func TestResponsesRequest_ClampsOversizedItemIDs(t *testing.T) {
+	client := &Client{}
+	longID := "fc_" + strings.Repeat("x", 80)
+	payload, err := client.buildResponsesRequest(providers.ChatRequest{
+		Model: "gpt-test",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "act"},
+			{
+				Role: "assistant",
+				ToolCalls: []providers.ToolCall{{
+					ID: "call_1", Name: "read_file", Arguments: `{"path":"README.md"}`,
+					ProviderItemID: longID, ProviderItemModel: "gpt-test",
+				}},
+			},
+			{Role: "tool", ToolCallID: "call_1", Content: "contents"},
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	body, err := marshalResponsesRequest(payload)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	input := decoded["input"].([]any)
+	callItem := input[1].(map[string]any)
+	id, _ := callItem["id"].(string)
+	if len([]rune(id)) > 64 {
+		t.Fatalf("item id must be clamped to 64 chars, got %d", len([]rune(id)))
+	}
+	if !strings.HasPrefix(id, "fc_") {
+		t.Fatalf("item id lost fc_ prefix after clamping: %q", id)
 	}
 }
 

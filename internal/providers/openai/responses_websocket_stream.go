@@ -1252,7 +1252,7 @@ func responsesOutputItemReplayInput(item responsesOutputItem) (responsesInputIte
 		if len(item.Raw) == 0 {
 			return responsesInputItem{}, false
 		}
-		return responsesInputItem{Raw: append(json.RawMessage(nil), item.Raw...)}, true
+		return responsesInputItem{Raw: append(json.RawMessage(nil), stripResponsesReasoningStatus(item.Raw)...)}, true
 	case "message":
 		content, err := parseResponsesContent(item.Content)
 		if err != nil || content == "" {
@@ -1260,16 +1260,15 @@ func responsesOutputItemReplayInput(item responsesOutputItem) (responsesInputIte
 		}
 		return responsesInputItem{
 			Type:    "message",
-			ID:      item.ID,
+			ID:      clampResponsesItemID(item.ID),
 			Role:    "assistant",
-			Status:  "completed",
 			Phase:   string(providers.NormalizeMessagePhase(item.Phase)),
 			Content: []responsesInputContentPart{{Type: "output_text", Text: content}},
 		}, true
 	case "function_call":
 		return responsesInputItem{
 			Type:      "function_call",
-			ID:        item.ID,
+			ID:        responsesFunctionCallItemID(item.ID),
 			CallID:    item.CallID,
 			Name:      item.Name,
 			Arguments: item.argumentsString(),
@@ -1277,7 +1276,7 @@ func responsesOutputItemReplayInput(item responsesOutputItem) (responsesInputIte
 	case "tool_search_call":
 		return responsesInputItem{
 			Type:      "tool_search_call",
-			ID:        item.ID,
+			ID:        clampResponsesItemID(item.ID),
 			CallID:    item.CallID,
 			Status:    "completed",
 			Execution: "client",
