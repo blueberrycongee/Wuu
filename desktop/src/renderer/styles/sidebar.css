@@ -828,9 +828,11 @@
   display: grid;
   min-width: 0;
   min-height: 44px;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
+  /* Share the section header's icon and copy axes. The larger avatar may
+   * overflow its narrow icon track, but remains optically centered on it. */
+  grid-template-columns: var(--sidebar-nav-icon-col) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
+  column-gap: var(--sidebar-nav-column-gap);
   border-radius: 10px;
   padding: 5px 8px;
   background: transparent;
@@ -852,6 +854,7 @@
   display: block;
   width: 34px;
   height: 34px;
+  justify-self: center;
   overflow: hidden;
   border-radius: 10px;
 }
