@@ -21,6 +21,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/capability"
+	"github.com/blueberrycongee/wuu/internal/claudeengine"
 	"github.com/blueberrycongee/wuu/internal/codexengine"
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
@@ -170,7 +171,13 @@ type Session struct {
 	// engines is the registry of agent engines this runtime can host. The
 	// built-in wuu engine is registered at construction; external engines
 	// (Claude, Codex) register as they are added.
-	engines            *agentengine.Registry
+	engines *agentengine.Registry
+	// codexHost is the host behind the registered codex engine, kept so
+	// settings updates can rebuild the engine around the same process.
+	codexHost *codexengine.Host
+	// DefaultEngine is the engine id used for new threads when the caller
+	// does not request one explicitly (settings default; empty = wuu).
+	DefaultEngine      agentengine.EngineID
 	pluginGenerationMu sync.Mutex
 	pluginGeneration   *PluginGeneration
 }
@@ -239,6 +246,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		DeferredToolCatalogPrompt:   s.DeferredToolCatalogPrompt,
 		ReadinessIssues:             s.ReadinessIssues,
 		InferenceJournalRuntime:     s.InferenceJournalRuntime,
+		DefaultEngine:               s.DefaultEngine,
 		engines:                     s.engines,
 	}
 	return clone
@@ -712,11 +720,47 @@ func NewSession(opts Options) (*Session, error) {
 		return nil, fmt.Errorf("register built-in agent engine: %w", err)
 	}
 	// The codex engine hosts the codex CLI app-server as an external agent.
-	// It registers unconditionally: when the binary is missing, opening a
-	// codex-bound thread fails with a clear error instead of a hidden state.
-	codexBinary, codexErr := codexengine.ResolveBinary()
-	_ = codexErr
-	runtimeSession.engines.Register(codexengine.NewEngine(codexengine.NewHost(codexBinary, rootDir)))
+	// Settings can disable it or override the binary path; auto mode
+	// (unset) enables it when the CLI is found, and a missing binary fails
+	// with a clear error at first use.
+	codexEnabled := true
+	codexBinary, _ := codexengine.ResolveBinary()
+	if engineCfg := cfg.Engines; engineCfg != nil {
+		if strings.TrimSpace(engineCfg.DefaultEngine) != "" {
+			runtimeSession.DefaultEngine = agentengine.NormalizeEngineID(engineCfg.DefaultEngine)
+		}
+		if codexCfg := engineCfg.Codex; codexCfg != nil {
+			enabled, explicit := codexCfg.EngineEnabled()
+			if explicit {
+				codexEnabled = enabled
+			}
+			if path := strings.TrimSpace(codexCfg.BinaryPath); path != "" {
+				codexBinary = path
+			}
+		}
+	}
+	if codexEnabled {
+		codexHost := codexengine.NewHost(codexBinary, rootDir)
+		if err := runtimeSession.engines.Register(codexengine.NewEngine(codexHost)); err == nil {
+			runtimeSession.codexHost = codexHost
+		}
+	}
+	// The claude engine follows the same settings shape: auto when the CLI
+	// is found, explicit disable or binary override from settings.
+	claudeEnabled := true
+	claudeBinary, _ := claudeengine.ResolveBinary()
+	if engineCfg := cfg.Engines; engineCfg != nil && engineCfg.Claude != nil {
+		enabled, explicit := engineCfg.Claude.EngineEnabled()
+		if explicit {
+			claudeEnabled = enabled
+		}
+		if path := strings.TrimSpace(engineCfg.Claude.BinaryPath); path != "" {
+			claudeBinary = path
+		}
+	}
+	if claudeEnabled {
+		runtimeSession.engines.Register(claudeengine.NewEngine(claudeBinary, rootDir))
+	}
 	initialHooks := hooks.NewDispatcher(nil)
 	initialHooks.Replace(hookDispatcher)
 	runtimeSession.pluginGeneration = &PluginGeneration{

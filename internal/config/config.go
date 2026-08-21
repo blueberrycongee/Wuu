@@ -108,6 +108,9 @@ type Config struct {
 	// configurations. Shared project settings are stripped before merge; UI
 	// writers must persist grants in .wuu/settings.local.json.
 	Extensions *extensions.Settings `json:"extensions,omitempty"`
+	// Engines configures external agent engines (codex, claude) in the
+	// desktop settings. Nil means auto-detection from the CLI binaries.
+	Engines *EnginesConfig `json:"engines,omitempty"`
 }
 
 // InstructionFilesConfig overrides project and user instruction discovery.

@@ -1,0 +1,123 @@
+// Command fakeclaude is a minimal claude CLI stub speaking the headless
+// stream-json protocol over stdio. It exists only for claudeengine tests.
+package main
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func send(v any) {
+	line, _ := json.Marshal(v)
+	fmt.Fprintln(os.Stdout, string(line))
+}
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println("2.1.226 (fake)")
+		return
+	}
+	// Resume mode: emit init with the requested session id.
+	resumeID := ""
+	for i, arg := range os.Args {
+		if arg == "--resume" && i+1 < len(os.Args) {
+			resumeID = os.Args[i+1]
+		}
+	}
+	if resumeID == "" {
+		resumeID = "fake-session-1"
+	}
+	send(map[string]any{
+		"type":    "system",
+		"subtype": "init",
+		"message": map[string]any{
+			"session_id":          resumeID,
+			"claude_code_version": "2.1.226 (fake)",
+			"model":               "claude-sonnet-4",
+		},
+	})
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var envelope struct {
+			Type            string  `json:"type"`
+			ParentToolUseID *string `json:"parent_tool_use_id"`
+			Message         struct {
+				Content any `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+			continue
+		}
+		// Detect tool_result content and answer with the tool outcome.
+		if blocks, ok := envelope.Message.Content.([]any); ok {
+			for _, raw := range blocks {
+				block, _ := raw.(map[string]any)
+				if block["type"] == "tool_result" {
+					toolID, _ := block["tool_use_id"].(string)
+					text, _ := block["content"].(string)
+					send(map[string]any{
+						"type": "assistant",
+						"message": map[string]any{
+							"role":    "assistant",
+							"content": []any{map[string]any{"type": "text", "text": "Ran tool " + toolID + ": " + text}},
+						},
+					})
+					sendResult(false)
+					continue
+				}
+			}
+			continue
+		}
+		// Plain user prompt: stream a thinking delta, a text delta, usage,
+		// then the result.
+		send(map[string]any{
+			"type":    "system",
+			"subtype": "hook_started",
+			"message": map[string]any{"hook_event_name": "PreToolUse"},
+		})
+		send(map[string]any{
+			"type":  "stream_event",
+			"event": "content_block_delta",
+			"delta": map[string]any{"type": "thinking_delta", "thinking": "let me think..."},
+		})
+		send(map[string]any{
+			"type":  "stream_event",
+			"event": "content_block_delta",
+			"delta": map[string]any{"type": "text_delta", "text": "Hello from "},
+		})
+		send(map[string]any{
+			"type":    "assistant",
+			"message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "claude."}}},
+		})
+		send(map[string]any{
+			"type":  "stream_event",
+			"event": "message_delta",
+			"usage": map[string]any{"input_tokens": 80, "output_tokens": 12, "cache_read_input_tokens": 30},
+		})
+		sendResult(false)
+	}
+}
+
+func sendResult(isError bool) {
+	payload := map[string]any{
+		"type":        "result",
+		"subtype":     "success",
+		"is_error":    isError,
+		"stop_reason": "end_turn",
+		"result":      "ok",
+		"usage":       map[string]any{"input_tokens": 80, "output_tokens": 12, "cache_read_input_tokens": 30},
+	}
+	if isError {
+		payload["error"] = map[string]any{"message": "fake failure"}
+	}
+	send(payload)
+}

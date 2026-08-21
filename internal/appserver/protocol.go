@@ -8,6 +8,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/channels"
+	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/execution"
 	"github.com/blueberrycongee/wuu/internal/extensions"
 	"github.com/blueberrycongee/wuu/internal/insight"
@@ -27,6 +28,8 @@ const (
 	MethodConfigModelUpdate               = "config/model/update"
 	MethodConfigAdvancedUpdate            = "config/advanced/update"
 	MethodConfigGeneralUpdate             = "config/general/update"
+	MethodEngineList                      = "engine/list"
+	MethodEngineUpdate                    = "engine/update"
 	MethodExtensionCatalogRefresh         = "extension/catalog/refresh"
 	MethodExtensionPackageUpdate          = "extension/package/update"
 	MethodPluginPackageInspect            = "plugin/package/inspect"
@@ -1211,8 +1214,39 @@ type ThreadStartParams struct {
 	CWD         string `json:"cwd,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	// Engine selects the agent engine the thread is bound to. Empty is the
-	// built-in "wuu" engine; the binding is fixed at creation.
+	// settings default engine (or the built-in "wuu" engine); the binding is
+	// fixed at creation.
 	Engine string `json:"engine,omitempty"`
+}
+
+// EngineInfo describes one agent engine for the settings surface.
+type EngineInfo struct {
+	ID           string   `json:"id"`
+	Version      string   `json:"version,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+	// Enabled reports whether the engine is registered (settings-driven).
+	Enabled bool `json:"enabled"`
+	// BinaryPath is the resolved CLI binary path, when the engine uses one.
+	BinaryPath string `json:"binary_path,omitempty"`
+	// BinaryOK reports whether the binary exists and is executable.
+	BinaryOK bool `json:"binary_ok"`
+	// Error carries a human-readable reason when the engine is not usable.
+	Error string `json:"error,omitempty"`
+}
+
+// EngineListResult is the engine/list response: current engine inventory
+// plus the persisted settings the settings UI edits.
+type EngineListResult struct {
+	Engines  []EngineInfo          `json:"engines"`
+	Settings *config.EnginesConfig `json:"settings,omitempty"`
+}
+
+// EngineUpdateParams is the engine/update request body. Nil fields are
+// left unchanged.
+type EngineUpdateParams struct {
+	DefaultEngine string                     `json:"default_engine,omitempty"`
+	Codex         *config.EngineBinaryUpdate `json:"codex,omitempty"`
+	Claude        *config.EngineBinaryUpdate `json:"claude,omitempty"`
 }
 
 type ThreadStartResult struct {

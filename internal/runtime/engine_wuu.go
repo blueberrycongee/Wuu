@@ -8,6 +8,8 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentengine"
+	"github.com/blueberrycongee/wuu/internal/claudeengine"
+	"github.com/blueberrycongee/wuu/internal/codexengine"
 )
 
 // WuuEngine is the built-in agent engine: the native StreamRunner loop that
@@ -91,6 +93,58 @@ func (s *Session) EngineAvailable(id agentengine.EngineID) bool {
 	}
 	_, ok := s.engines.Lookup(id)
 	return ok
+}
+
+// Engines exposes the engine registry for settings-driven listing and
+// enable/disable.
+func (s *Session) Engines() *agentengine.Registry {
+	if s == nil {
+		return nil
+	}
+	return s.engines
+}
+
+// RebuildCodexEngine re-registers the codex engine after a settings change
+// (binary path override or enable/disable). The host instance is preserved
+// so a running app-server keeps its process; only future acquisitions use
+// the new binary path.
+func (s *Session) RebuildCodexEngine(enabled bool, binaryPath string) {
+	if s == nil || s.engines == nil {
+		return
+	}
+	s.engines.Unregister(agentengine.EngineID("codex"))
+	if !enabled {
+		return
+	}
+	host := codexengine.NewHost(binaryPath, s.RootDir)
+	if err := s.engines.Register(codexengine.NewEngine(host)); err != nil {
+		return
+	}
+	s.codexHost = host
+}
+
+// RebuildClaudeEngine re-registers the claude engine after a settings
+// change (binary path override or enable/disable). The engine is
+// stateless; only the resolved binary path matters.
+func (s *Session) RebuildClaudeEngine(enabled bool, binaryPath string) {
+	if s == nil || s.engines == nil {
+		return
+	}
+	s.engines.Unregister(agentengine.EngineID("claude"))
+	if !enabled {
+		return
+	}
+	if err := s.engines.Register(claudeengine.NewEngine(binaryPath, s.RootDir)); err != nil {
+		return
+	}
+}
+
+// CodexHost returns the currently registered codex engine host, if any.
+func (s *Session) CodexHost() *codexengine.Host {
+	if s == nil {
+		return nil
+	}
+	return s.codexHost
 }
 
 // WuuEngine returns the built-in engine factory. The built-in engine only

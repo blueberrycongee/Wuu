@@ -73,6 +73,7 @@ export type ArchivedRoomView = {
 import { normalizedVariantForProviderModel, providerModelReasoningMode, providerModelVariantOptions, variantLabel } from "./RuntimeHelpers";
 import { ENABLE_REMOTE_CONTROL, ENABLE_VOICE_INPUT } from "./FeatureFlags";
 import { MessageFlowFontSizeControl } from "./MessageFlowFontSizeSection";
+import { EngineSettingsSection } from "./EngineSettingsSection";
 import { SettingsRemotePage } from "./SettingsRemotePage";
 import { ThemePreferenceControl } from "./ThemePreferenceSection";
 import { LanguagePreferenceControl } from "./LanguagePreferenceSection";
@@ -1879,6 +1880,7 @@ function SettingsGeneralPage({
 
   return (
     <>
+      <EngineSettingsSection />
       <SettingsSection title={t("settings.appearance")} testID="settings-appearance">
         <SettingsCard>
           <SettingsRow title={t("settings.language")}>

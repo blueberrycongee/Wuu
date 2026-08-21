@@ -1042,6 +1042,42 @@ export type ConfigGeneralUpdateResult = {
   general_settings: GeneralSettingsSummary;
 };
 
+/** One agent engine as reported by engine/list for the settings surface. */
+export type EngineInfo = {
+  id: string;
+  version?: string;
+  capabilities?: string[];
+  enabled: boolean;
+  binary_path?: string;
+  binary_ok: boolean;
+  error?: string;
+};
+
+/** Mutable per-engine settings (enabled toggle + binary path override). */
+export type EngineBinarySettings = {
+  enabled?: boolean;
+  binary_path?: string;
+};
+
+/** Persisted engine settings section from the server config. */
+export type EngineSettingsConfig = {
+  default_engine?: string;
+  codex?: EngineBinarySettings;
+  claude?: EngineBinarySettings;
+};
+
+export type EngineListResult = {
+  engines: EngineInfo[];
+  settings?: EngineSettingsConfig;
+};
+
+/** engine/update request body. Nil fields are left unchanged. */
+export type EngineUpdateParams = {
+  default_engine?: string;
+  codex?: EngineBinarySettings;
+  claude?: EngineBinarySettings;
+};
+
 export type CodexModelSummary = {
   slug: string;
   display_name?: string;
@@ -2457,6 +2493,8 @@ export type WuuDesktopApi = {
   updateGeneralSettings: (
     settings: RuntimeGeneralSettingsUpdate
   ) => Promise<ConfigGeneralUpdateResult>;
+  listEngines: () => Promise<EngineListResult>;
+  updateEngines: (params: EngineUpdateParams) => Promise<EngineListResult>;
   updateExtensionPackage: (
     params: ExtensionPackageUpdateParams
   ) => Promise<ExtensionPackageUpdateResult>;

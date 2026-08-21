@@ -214,6 +214,16 @@ func (r *Registry) Lookup(id EngineID) (Factory, bool) {
 	return f, ok
 }
 
+// Unregister removes a factory by id. Settings-driven enable/disable uses
+// this to take an engine out of rotation; threads already bound to it keep
+// their history readable but fail turns with an explicit error.
+func (r *Registry) Unregister(id EngineID) {
+	if r == nil {
+		return
+	}
+	delete(r.factories, NormalizeEngineID(string(id)))
+}
+
 // Descriptors lists all registered engines in stable order.
 func (r *Registry) Descriptors() []Descriptor {
 	if r == nil {

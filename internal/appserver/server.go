@@ -904,6 +904,10 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleConfigAdvancedUpdate(req)
 	case MethodConfigGeneralUpdate:
 		return s.handleConfigGeneralUpdate(req)
+	case MethodEngineList:
+		return s.handleEngineList(req)
+	case MethodEngineUpdate:
+		return s.handleEngineUpdate(req)
 	case MethodExtensionCatalogRefresh:
 		return s.handleExtensionCatalogRefresh(req)
 	case MethodExtensionPackageUpdate:

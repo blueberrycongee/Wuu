@@ -270,6 +270,8 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:config-advanced-update", settings),
   updateGeneralSettings: (settings) =>
     ipcRenderer.invoke("wuu:config-general-update", settings),
+  listEngines: () => ipcRenderer.invoke("wuu:engines-list"),
+  updateEngines: (params) => ipcRenderer.invoke("wuu:engines-update", params),
   updateExtensionPackage: (params) =>
     ipcRenderer.invoke("wuu:extension-package-update", params),
   refreshExtensionCatalog: () =>

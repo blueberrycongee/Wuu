@@ -33,6 +33,8 @@ import type {
   ConfigCodexModelsResult,
   ConfigModelCatalogRefreshResult,
   ConfigModelUpdateResult,
+  EngineListResult,
+  EngineUpdateParams,
   ExtensionCatalogRefreshResult,
   ExtensionPackageUpdateParams,
   ExtensionPackageUpdateResult,
@@ -1550,6 +1552,12 @@ app.whenReady().then(async () => {
         "config/general/update",
         settings ?? {},
       ),
+  );
+  ipcMain.handle("wuu:engines-list", (event) =>
+    appServerRequest<EngineListResult>(event, "engine/list"),
+  );
+  ipcMain.handle("wuu:engines-update", (event, params: EngineUpdateParams) =>
+    appServerRequest<EngineListResult>(event, "engine/update", params ?? {}),
   );
   ipcMain.handle(
     "wuu:extension-package-update",
