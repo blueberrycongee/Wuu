@@ -229,7 +229,6 @@ export const enUS = {
   "sidebar.removeFromFolderDrop": "Drop here to remove from folder",
   "sidebar.newFolder": "New folder",
   "sidebar.folderNamePrompt": "Folder name",
-  "sidebar.noFolders": "Create a folder to organize conversations across workspaces.",
   "sidebar.renameGroup": "Rename",
   "sidebar.renameFolder": "Rename folder",
   "sidebar.renamePinnedGroup": "Rename pinned group",

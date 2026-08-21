@@ -1019,9 +1019,7 @@ export function AppSidebar({
                 onDragCancel={handleFolderDragCancel}
               >
                 <SortableContext items={folderSortableIDs} strategy={verticalListSortingStrategy}>
-                  {organization.folders.length === 0 ? (
-                    <div className="session-organization-empty">{t("sidebar.noFolders")}</div>
-                  ) : organization.folders.map((folder) => {
+                  {organization.folders.map((folder) => {
                     const collapsed = collapsedFolderIDs.has(folder.id);
                     const sortableID = `${FOLDER_SORTABLE_PREFIX}${folder.id}`;
                     return (

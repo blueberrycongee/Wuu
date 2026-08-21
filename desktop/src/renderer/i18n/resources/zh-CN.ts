@@ -227,7 +227,6 @@ export const zhCN = {
   "sidebar.removeFromFolderDrop": "拖到这里移出文件夹",
   "sidebar.newFolder": "新建文件夹",
   "sidebar.folderNamePrompt": "文件夹名称",
-  "sidebar.noFolders": "新建文件夹，跨工作区整理会话。",
   "sidebar.renameGroup": "重命名",
   "sidebar.renameFolder": "重命名文件夹",
   "sidebar.renamePinnedGroup": "重命名置顶分组",
