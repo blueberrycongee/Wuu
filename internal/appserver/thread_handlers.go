@@ -705,7 +705,7 @@ func (s *Server) handleThreadList(req Request) error {
 	// entries so a restarted server cannot leak workers into the root rail
 	// without turning a list request into an N² metadata scan.
 	agentThreadIDs := make(map[string]struct{})
-	rootIDs, err := s.rootThreadIDs()
+	rootIDs, err := s.rootThreadIDsForSessions(sessions)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -1260,6 +1260,13 @@ func (s *Server) threadWithWorktreeStatus(thread Thread) Thread {
 		return thread
 	}
 	info := *thread.Worktree
+	// A worktree that no longer exists on disk (moved or deleted since the
+	// session was created) cannot report status. Spawning git against the
+	// stale path costs a process start per stale thread on every listing,
+	// which dominates thread/list once worktrees are removed.
+	if stat, statErr := os.Stat(info.Path); statErr != nil || !stat.IsDir() {
+		return thread
+	}
 	manager, err := s.worktreeManager(firstNonEmpty(info.BaseRepo, thread.CWD, s.rt.RootDir))
 	if err == nil {
 		if status, statusErr := manager.Status(info.Path); statusErr == nil {
@@ -1306,13 +1313,31 @@ func (s *Server) childAgentsForThread(threadID string) ([]Agent, error) {
 
 	children := make([]Agent, 0)
 	childIndexByPath := make(map[string]int)
+	childIDs := make([]string, 0, len(threads))
 	for _, meta := range threads {
 		if !isDirectChildAgentThread(threadID, meta) {
 			continue
 		}
-		pinned, archived := s.childAgentPinArchive(meta.ID)
+		childIDs = append(childIDs, meta.ID)
+	}
+	if len(childIDs) == 0 {
+		return nil, nil
+	}
+	// Resolve pin/archive flags for every direct child in one store open.
+	// Per-child session.Find opens and reconfigures the (potentially huge)
+	// sessions database once per child, which dominates thread/list for
+	// workspaces with many subagent sessions.
+	childPinnedArchived, err := session.FindPinnedArchived(s.rt.SessionDir, childIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, meta := range threads {
+		if !isDirectChildAgentThread(threadID, meta) {
+			continue
+		}
+		flags := childPinnedArchived[meta.ID]
 		childIndexByPath[meta.Path] = len(children)
-		children = append(children, agentFromThreadMetadata(meta, pinned, archived))
+		children = append(children, agentFromThreadMetadata(meta, flags.Pinned, flags.Archived))
 	}
 	if len(children) == 0 {
 		return nil, nil
@@ -1413,23 +1438,6 @@ func terminalAgentThreadStatus(status subagent.Status) (agentthread.Status, bool
 	default:
 		return "", false
 	}
-}
-
-// childAgentPinArchive fetches the pinned/archived flags for a child agent's
-// own session from the same session store keyed by the agent ID. A missing
-// session or lookup error collapses to (false, false) so the renderer still
-// gets a usable Agent record; the per-agent row is only meaningful for
-// completed sessions that have been written to disk, so silent fallback here
-// is safe.
-func (s *Server) childAgentPinArchive(agentID string) (pinned, archived bool) {
-	if s == nil || s.rt == nil || strings.TrimSpace(agentID) == "" {
-		return false, false
-	}
-	sess, ok, err := session.Find(s.rt.SessionDir, agentID)
-	if err != nil || !ok {
-		return false, false
-	}
-	return sess.PinnedAt != nil, sess.ArchivedAt != nil
 }
 
 func (s *Server) agentSessionThread(agentID string) (Thread, bool, error) {
@@ -1543,6 +1551,20 @@ func (s *Server) rootThreadIDs() ([]string, error) {
 	if s == nil || s.rt == nil {
 		return nil, nil
 	}
+	sessions, err := session.ListForCWD(s.rt.SessionDir, s.rt.RootDir, s.rt.WorkspaceID, 0)
+	if err != nil {
+		return nil, err
+	}
+	return s.rootThreadIDsForSessions(sessions)
+}
+
+// rootThreadIDsForSessions is rootThreadIDs with the workspace session list
+// already loaded, so thread/list does not rescan the sessions table for the
+// same rows it just fetched.
+func (s *Server) rootThreadIDsForSessions(sessions []session.Session) ([]string, error) {
+	if s == nil || s.rt == nil {
+		return nil, nil
+	}
 	seen := make(map[string]bool)
 	var ids []string
 	add := func(id string) {
@@ -1554,10 +1576,6 @@ func (s *Server) rootThreadIDs() ([]string, error) {
 		ids = append(ids, id)
 	}
 
-	sessions, err := session.ListForCWD(s.rt.SessionDir, s.rt.RootDir, s.rt.WorkspaceID, 0)
-	if err != nil {
-		return nil, err
-	}
 	for _, sess := range sessions {
 		add(sess.ID)
 	}

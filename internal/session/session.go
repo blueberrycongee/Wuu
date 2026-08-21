@@ -383,6 +383,79 @@ func Find(sessDir, id string) (Session, bool, error) {
 	return findSessionDB(db, id)
 }
 
+// PinnedArchived captures the pinned/archived state of one session. Thread
+// listing resolves these flags for child agent sessions, where a per-session
+// store open (and its schema/PRAGMA setup) dominates the cost of a big list.
+type PinnedArchived struct {
+	Pinned   bool
+	Archived bool
+}
+
+// FindPinnedArchived resolves pinned/archived flags for many session IDs with
+// a single store open. IDs that do not exist are simply absent from the
+// result, mirroring Find's ok=false semantics. Queries are batched to stay
+// well under SQLite's variable limit.
+func FindPinnedArchived(sessDir string, ids []string) (map[string]PinnedArchived, error) {
+	result := make(map[string]PinnedArchived, len(ids))
+	unique := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	if len(unique) == 0 {
+		return result, nil
+	}
+	db, err := openStore(sessDir)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	const batchSize = 500
+	for start := 0; start < len(unique); start += batchSize {
+		end := start + batchSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		batch := unique[start:end]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
+		args := make([]any, len(batch))
+		for i, id := range batch {
+			args[i] = id
+		}
+		rows, err := db.Query(`
+SELECT id, pinned_at, archived_at FROM sessions WHERE id IN (`+placeholders+`)`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("find pinned/archived sessions: %w", err)
+		}
+		for rows.Next() {
+			var id string
+			var pinnedAt, archivedAt *string
+			if err := rows.Scan(&id, &pinnedAt, &archivedAt); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan pinned/archived session: %w", err)
+			}
+			result[id] = PinnedArchived{
+				Pinned:   pinnedAt != nil,
+				Archived: archivedAt != nil,
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan pinned/archived sessions: %w", err)
+		}
+		rows.Close()
+	}
+	return result, nil
+}
+
 // FindManagedByRequest returns the session created by one owner for an opaque
 // creation request. The pair is unique, making session.create idempotent
 // across runtime restarts and concurrent retries.
