@@ -29,6 +29,7 @@ import {
 } from "react";
 import type {
   DesktopProject,
+  EngineInfo,
   GitStatusResult,
   InitializeResult,
   MessageContentPart,
@@ -150,6 +151,10 @@ export function Composer({
   onToggleCodexRuntimeMenu,
   onSelectRuntimeModel,
   onSelectRuntimeEffort,
+  engines,
+  activeEngine,
+  engineLocked,
+  onSelectEngine,
   onSelectPermissionMode,
   onOpenSettings,
   onOpenSkillsCatalog,
@@ -237,6 +242,10 @@ export function Composer({
   onToggleCodexRuntimeMenu: (menu: Exclude<CodexRuntimeMenu, null>) => void;
   onSelectRuntimeModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
   onSelectRuntimeEffort: (variant: string) => void | Promise<boolean>;
+  engines?: EngineInfo[];
+  activeEngine?: string;
+  engineLocked?: boolean;
+  onSelectEngine?: (id: string) => void;
   onSelectPermissionMode: (mode: PermissionMode) => void;
   onToggleBranchMenu: () => void;
   onOpenSettings: () => void;
@@ -1211,6 +1220,10 @@ export function Composer({
                         openMenu={codexRuntimeMenu}
                         anchorRef={codexRuntimeRef}
                         running={runtimeControlsDisabled}
+                        engines={engines}
+                        activeEngine={activeEngine}
+                        engineLocked={engineLocked}
+                        onSelectEngine={onSelectEngine}
                         onToggleMenu={onToggleCodexRuntimeMenu}
                         onSelectModel={onSelectRuntimeModel}
                         onSelectEffort={onSelectRuntimeEffort}

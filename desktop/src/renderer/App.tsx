@@ -15,6 +15,7 @@ import type {
   Agent,
   ChannelRoom,
   DesktopProject,
+  EngineListResult,
   ExtensionPackageUpdateParams,
   InitializeResult,
   InputFile,
@@ -832,6 +833,22 @@ export function App(): JSX.Element {
   const dismissModelCatalogTip = useCallback(() => {
     setModelCatalogTip(null);
   }, []);
+  // Agent engine inventory for the composer picker: which external agents are
+  // auto-detected plus the settings default. Loaded on mount and refreshed
+  // when the runtime picker opens, so engine settings changes show up without
+  // restarting. Failures keep the last known inventory (picker degrades to
+  // the built-in Wuu option).
+  const [engineInventory, setEngineInventory] = useState<EngineListResult | undefined>();
+  const refreshEngineInventory = useCallback(async () => {
+    try {
+      setEngineInventory(await window.wuu.listEngines());
+    } catch {
+      // Keep the last known inventory.
+    }
+  }, []);
+  useEffect(() => {
+    void refreshEngineInventory();
+  }, [refreshEngineInventory]);
   // When the user clicks "分叉" on a non-latest user message, the fork
   // picker dialog asks whether to stay local or fork into a new worktree.
   // Holding the source thread snapshot in state lets the dialog callback
@@ -1105,6 +1122,18 @@ export function App(): JSX.Element {
   }, [activeWorkspaceFile]);
   const activeThread = activeThreadForState(state);
   const activeThreadID = activeThread?.id;
+  // Draft engine for the next brand-new conversation. Empty means "follow the
+  // settings default". Unlike the fallback chain, an explicit "wuu" selection
+  // is stored as-is so it overrides an external default engine. Engine
+  // binding is a per-thread creation decision, so the draft resets whenever
+  // the active thread changes.
+  const [draftEngine, setDraftEngine] = useState<string>("");
+  useEffect(() => {
+    setDraftEngine("");
+  }, [activeThreadID]);
+  const selectDraftEngine = useCallback((id: string) => {
+    setDraftEngine(id);
+  }, []);
   useEffect(() => {
     let current = true;
     if (!activeThreadID || !userQuestionApiAvailable) {
@@ -2623,6 +2652,9 @@ export function App(): JSX.Element {
         ? { ...rawContextUsage, window: modelContextWindow }
         : rawContextUsage;
     const streamStatus = activeThreadStreamStatus;
+    const defaultEngine = engineInventory?.settings?.default_engine ?? "";
+    const effectiveEngine =
+      (activeThread?.engine_id ?? "") || draftEngine || defaultEngine || "wuu";
     return (
       <>
       <Composer
@@ -2661,6 +2693,10 @@ export function App(): JSX.Element {
         }
         readOnly={activeThreadReadOnly}
         initialized={visibleConversationRuntime}
+        engines={engineInventory?.engines}
+        activeEngine={effectiveEngine !== "wuu" ? effectiveEngine : ""}
+        engineLocked={Boolean(activeThread)}
+        onSelectEngine={selectDraftEngine}
         gitStatus={state.gitStatus}
         projects={state.projects}
         activeContext={state.activeContext}
@@ -2703,7 +2739,12 @@ export function App(): JSX.Element {
           setCodexRuntimeMenu(null);
           setBranchMenuOpen((open) => !open);
         }}
-        onToggleCodexRuntimeMenu={toggleCodexRuntimeMenu}
+        onToggleCodexRuntimeMenu={(menu) => {
+          toggleCodexRuntimeMenu(menu);
+          // Engine settings may have changed in the settings page; re-check
+          // auto-detection when the picker is opened.
+          void refreshEngineInventory();
+        }}
         onSelectRuntimeModel={async (provider, model, variant) => {
           const request = mascotRuntimePreviewRequestRef.current + 1;
           mascotRuntimePreviewRequestRef.current = request;
@@ -2963,6 +3004,7 @@ export function App(): JSX.Element {
     getSidebarThreads: () => sidebarThreads,
     getSidebarProjectThreadsByProjectID: () =>
       sidebarProjectThreadsByProjectID,
+    getRunningThreadIDs: () => crossWorkdirRunningThreadIDs,
     
     beginViewSwitch,
     beginInstantThreadSwitch,
@@ -3002,6 +3044,8 @@ export function App(): JSX.Element {
       restorePrimaryComposerDraft(emptyComposerDraft()),
     resetSplitComposerDrafts: () =>
       setSplitComposerDrafts(initialSplitComposerDrafts()),
+    getCrossWorkspaceThreads: () => sidebarThreads,
+    getRunningThreadIDs: () => crossWorkdirRunningThreadIDs,
     nextDraftSessionTab,
     selectThread,
     beginViewSwitch,
@@ -3826,7 +3870,7 @@ export function App(): JSX.Element {
       const thread =
         targetThread ??
         requireThread(
-          await window.wuu.startThread(),
+          await window.wuu.startThread(draftEngine ? { engine: draftEngine } : {}),
           "thread/start did not return a thread",
         );
       appStateRef.current = {

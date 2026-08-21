@@ -968,43 +968,46 @@ export function SettingsView({
                 onFailure={() => setActivePage("providers")}
               />
             ) : activePage === "providers" ? (
-              <SettingsProvidersPage
-                providers={providers}
-                providerLabels={providerLabels}
-                running={running}
-                providerDraft={providerDraft}
-                providerTypeDraft={providerTypeDraft}
-                modelDraft={modelDraft}
-                variantDraft={variantDraft}
-                baseURLDraft={baseURLDraft}
-                apiKeyDraft={apiKeyDraft}
-                addingProvider={addingProvider}
-                error={error}
-                selectedProvider={selectedProvider}
-                connectionLocked={connectionLocked}
-                variantOptions={variantOptions}
-                providerNameTaken={Boolean(providerNameTaken)}
-                onProviderChange={activateProvider}
-                onStartAddingProvider={startAddingProvider}
-                onCancelAddingProvider={cancelAddingProvider}
-                onProviderDraftChange={setProviderDraft}
-                onProviderTypeDraftChange={setProviderTypeDraft}
-                onModelDraftChange={(value) => {
-                  setModelDraft(value);
-                  setVariantDraft("");
-                }}
-                onVariantDraftChange={changeVariant}
-                onBaseURLDraftChange={setBaseURLDraft}
-                onAPIKeyDraftChange={setAPIKeyDraft}
-                onCommitModel={commitModelName}
-                onCommitBaseURL={commitBaseURL}
-                onCommitAPIKey={commitAPIKey}
-                onSubmit={submit}
-                onRemoveProvider={requestRemoveProvider}
-                onRefreshModelCatalog={onRefreshModelCatalog}
-                runningProviderNames={runningProviderNameSet}
-                disabled={addSubmitDisabled}
-              />
+              <>
+                <EngineSettingsSection />
+                <SettingsProvidersPage
+                  providers={providers}
+                  providerLabels={providerLabels}
+                  running={running}
+                  providerDraft={providerDraft}
+                  providerTypeDraft={providerTypeDraft}
+                  modelDraft={modelDraft}
+                  variantDraft={variantDraft}
+                  baseURLDraft={baseURLDraft}
+                  apiKeyDraft={apiKeyDraft}
+                  addingProvider={addingProvider}
+                  error={error}
+                  selectedProvider={selectedProvider}
+                  connectionLocked={connectionLocked}
+                  variantOptions={variantOptions}
+                  providerNameTaken={Boolean(providerNameTaken)}
+                  onProviderChange={activateProvider}
+                  onStartAddingProvider={startAddingProvider}
+                  onCancelAddingProvider={cancelAddingProvider}
+                  onProviderDraftChange={setProviderDraft}
+                  onProviderTypeDraftChange={setProviderTypeDraft}
+                  onModelDraftChange={(value) => {
+                    setModelDraft(value);
+                    setVariantDraft("");
+                  }}
+                  onVariantDraftChange={changeVariant}
+                  onBaseURLDraftChange={setBaseURLDraft}
+                  onAPIKeyDraftChange={setAPIKeyDraft}
+                  onCommitModel={commitModelName}
+                  onCommitBaseURL={commitBaseURL}
+                  onCommitAPIKey={commitAPIKey}
+                  onSubmit={submit}
+                  onRemoveProvider={requestRemoveProvider}
+                  onRefreshModelCatalog={onRefreshModelCatalog}
+                  runningProviderNames={runningProviderNameSet}
+                  disabled={addSubmitDisabled}
+                />
+              </>
             ) : activePage === "advanced" ? (
               <>
                 <SettingsAdvancedPage
@@ -1880,7 +1883,6 @@ function SettingsGeneralPage({
 
   return (
     <>
-      <EngineSettingsSection />
       <SettingsSection title={t("settings.appearance")} testID="settings-appearance">
         <SettingsCard>
           <SettingsRow title={t("settings.language")}>

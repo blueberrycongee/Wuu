@@ -33,10 +33,11 @@ import {
   Zap,
   type LucideIcon
 } from "lucide-react";
-import { type CSSProperties, type RefObject, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import type {
   CodexModelSummary,
   DesktopProject,
+  EngineInfo,
   GitStatusResult,
   InitializeResult,
   PermissionSummary,
@@ -67,6 +68,82 @@ import { translateCurrent as translate, useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 
 type ChipTone = "neutral" | "danger";
+
+// Agent engine display names. The engine abstraction stays out of the UI:
+// to the user these are agent choices on the same level as models.
+const ENGINE_LABELS: Record<string, string> = {
+  wuu: "Wuu",
+  codex: "Codex",
+  claude: "Claude Code"
+};
+
+function engineLabel(id: string): string {
+  return ENGINE_LABELS[id] ?? id;
+}
+
+type EngineOption = {
+  id: string;
+  label: string;
+};
+
+// Available engine choices shown in the runtime picker. The built-in wuu
+// engine is always present; external engines appear only when auto-detected
+// (enabled and binary found). An active external engine is kept in the list
+// even when it just became unavailable, so the selection stays visible.
+function availableEngineOptions(
+  engines: EngineInfo[] | undefined,
+  activeEngine: string
+): EngineOption[] {
+  const options: EngineOption[] = [{ id: "wuu", label: engineLabel("wuu") }];
+  for (const engine of engines ?? []) {
+    if (engine.id !== "codex" && engine.id !== "claude") continue;
+    if (!engine.enabled || (!engine.binary_ok && engine.id !== activeEngine)) continue;
+    options.push({ id: engine.id, label: engineLabel(engine.id) });
+  }
+  return options;
+}
+
+function EngineOptionsMenu({
+  options,
+  selected,
+  locked,
+  running,
+  lockedDescription,
+  onSelect
+}: {
+  options: EngineOption[];
+  selected: string;
+  locked: boolean;
+  running: boolean;
+  lockedDescription?: string;
+  onSelect: (id: string) => void;
+}): JSX.Element {
+  const { t } = useI18n();
+  return (
+    <>
+      <div className="codex-menu-label">{t("runtime.agent")}</div>
+      {locked && lockedDescription ? (
+        <div className="composer-menu-note">{lockedDescription}</div>
+      ) : null}
+      {options.map((option) => {
+        const isSelected = option.id === selected;
+        return (
+          <button
+            key={option.id}
+            role="menuitem"
+            type="button"
+            disabled={locked || running || isSelected}
+            onClick={() => onSelect(option.id)}
+          >
+            <Cpu className="icon-lg" />
+            <span>{option.label}</span>
+            {isSelected ? <Check className="icon" /> : null}
+          </button>
+        );
+      })}
+    </>
+  );
+}
 
 type PermissionModeState = PermissionMode;
 
@@ -136,6 +213,10 @@ export function RuntimePicker({
   openMenu,
   anchorRef,
   running,
+  engines,
+  activeEngine,
+  engineLocked,
+  onSelectEngine,
   onToggleMenu,
   onSelectModel,
   onSelectEffort
@@ -146,6 +227,10 @@ export function RuntimePicker({
   openMenu: CodexRuntimeMenu;
   anchorRef: RefObject<HTMLDivElement | null>;
   running: boolean;
+  engines?: EngineInfo[];
+  activeEngine?: string;
+  engineLocked?: boolean;
+  onSelectEngine?: (id: string) => void;
   onToggleMenu: (menu: Exclude<CodexRuntimeMenu, null>) => void;
   onSelectModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
   onSelectEffort: (variant: string) => void | Promise<boolean>;
@@ -157,6 +242,9 @@ export function RuntimePicker({
   const currentProviderModel = currentProvider?.models?.find((model) => model.id === initialized.model);
   const currentVariant = initialized.variant ?? initialized.effort ?? "";
   const placement: FloatingMenuPlacement = variant === "hero" ? "below" : "above";
+  const externalEngine = activeEngine && activeEngine !== "wuu" ? activeEngine : "";
+  const engineOptions = availableEngineOptions(engines, externalEngine);
+  const selectedEngine = externalEngine || "wuu";
   return (
     <div className="codex-runtime-anchor" ref={anchorRef}>
       <Tooltip content={running ? t("runtime.modelSwitchWhileRunning") : undefined}>
@@ -168,8 +256,12 @@ export function RuntimePicker({
           aria-expanded={openMenu === "model"}
           onClick={() => onToggleMenu("model")}
         >
-          <span>{runtimeTriggerLabel(initialized, currentProviderModel, currentCodexModel)}</span>
-          <span className="codex-runtime-effort">{variantLabel(currentVariant)}</span>
+          <span>
+            {externalEngine
+              ? engineLabel(externalEngine)
+              : runtimeTriggerLabel(initialized, currentProviderModel, currentCodexModel)}
+          </span>
+          {externalEngine ? null : <span className="codex-runtime-effort">{variantLabel(currentVariant)}</span>}
           <ChevronDown className="icon" />
         </button>
       </Tooltip>
@@ -182,15 +274,44 @@ export function RuntimePicker({
           width={260}
           flip
         >
-          <RuntimeModelMenu
-            initialized={initialized}
-            state={state}
-            selectedProvider={initialized.provider}
-            selectedModel={initialized.model}
-            selectedVariant={currentVariant}
-            onSelectModel={onSelectModel}
-            onSelectEffort={onSelectEffort}
-          />
+          {externalEngine ? (
+            <div className="codex-runtime-menu codex-model-menu" role="menu">
+              <EngineOptionsMenu
+                options={engineOptions}
+                selected={selectedEngine}
+                locked={Boolean(engineLocked)}
+                running={running}
+                lockedDescription={engineLocked ? t("runtime.agentLockedDescription") : undefined}
+                onSelect={(id) => onSelectEngine?.(id)}
+              />
+              <div className="composer-menu-note warning">
+                <strong>{engineLabel(externalEngine)}</strong>
+                <span>{t("runtime.externalEngineModelsNote", { name: engineLabel(externalEngine) })}</span>
+              </div>
+            </div>
+          ) : (
+            <RuntimeModelMenu
+              initialized={initialized}
+              state={state}
+              selectedProvider={initialized.provider}
+              selectedModel={initialized.model}
+              selectedVariant={currentVariant}
+              onSelectModel={onSelectModel}
+              onSelectEffort={onSelectEffort}
+              header={
+                engineOptions.length > 1 ? (
+                  <EngineOptionsMenu
+                    options={engineOptions}
+                    selected={selectedEngine}
+                    locked={Boolean(engineLocked)}
+                    running={running}
+                    lockedDescription={engineLocked ? t("runtime.agentLockedDescription") : undefined}
+                    onSelect={(id) => onSelectEngine?.(id)}
+                  />
+                ) : null
+              }
+            />
+          )}
         </FloatingMenuPortal>
       ) : null}
     </div>
@@ -204,7 +325,8 @@ function RuntimeModelMenu({
   selectedModel,
   selectedVariant,
   onSelectModel,
-  onSelectEffort
+  onSelectEffort,
+  header
 }: {
   initialized: InitializeResult;
   state: CodexModelLoadState;
@@ -213,6 +335,7 @@ function RuntimeModelMenu({
   selectedVariant: string;
   onSelectModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
   onSelectEffort: (variant: string) => void | Promise<boolean>;
+  header?: ReactNode;
 }): JSX.Element {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -297,6 +420,7 @@ function RuntimeModelMenu({
 
   return (
     <div className="codex-runtime-menu codex-model-menu" role="menu">
+      {header ?? null}
       <label className="select-menu-search">
         <Search className="select-menu-search-icon icon-lg" />
         <input
