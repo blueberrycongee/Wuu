@@ -256,6 +256,7 @@ export function ConversationSplitLayoutRenderer({
 export type ConversationTitleContentProps = {
   state: AppState;
   crossWorkspaceThreads: Thread[];
+  runningThreadIDs?: ReadonlySet<string>;
   sessionTabsVisible: boolean;
   pendingSwitchThreadID?: string;
   pendingComposerMessagesByThread: PendingComposerMessagesByThread;
@@ -274,6 +275,7 @@ export type ConversationTitleContentProps = {
 export function ConversationTitleContent({
   state,
   crossWorkspaceThreads,
+  runningThreadIDs,
   sessionTabsVisible,
   pendingSwitchThreadID,
   pendingComposerMessagesByThread,
@@ -309,6 +311,7 @@ export function ConversationTitleContent({
       <SessionTabStrip
         state={state}
         crossWorkspaceThreads={crossWorkspaceThreads}
+        runningThreadIDs={runningThreadIDs}
         pendingSwitchThreadID={pendingSwitchThreadID}
         pendingComposerMessagesByThread={pendingComposerMessagesByThread}
         channelUnreadByRoomID={channelUnreadByRoomID}
@@ -342,6 +345,8 @@ export function ConversationTitleContent({
           title: sessionTabLabel(tab, tabState),
           kind: tab.kind,
           busy: isThreadRunning(tabThread) || (
+            tab.kind === "thread" && runningThreadIDs?.has(tab.threadID)
+          ) || (
             pendingSwitchThreadID !== undefined &&
             tab.kind === "thread" &&
             pendingSwitchThreadID === tab.threadID

@@ -43,6 +43,7 @@ const POP_OUT_DRAG_DISTANCE_PX = 54;
 export function SessionTabStrip({
   state,
   crossWorkspaceThreads,
+  runningThreadIDs,
   pendingSwitchThreadID,
   pendingComposerMessagesByThread,
   channelUnreadByRoomID = {},
@@ -60,6 +61,11 @@ export function SessionTabStrip({
 }: {
   state: AppState;
   crossWorkspaceThreads?: Thread[];
+  // Main-process aggregate of threads with an in-progress turn in ANY
+  // workspace. Cached cross-workspace thread snapshots can be stale or
+  // missing, so without this a background tab's spinner would depend on
+  // which workspace happens to be active.
+  runningThreadIDs?: ReadonlySet<string>;
   pendingSwitchThreadID?: string;
   pendingComposerMessagesByThread: PendingComposerMessagesByThread;
   channelUnreadByRoomID?: Record<string, number>;
@@ -148,11 +154,14 @@ export function SessionTabStrip({
     setTabContextMenu({ tabID, x: event.clientX, y: event.clientY });
   }
 
+  const crossWorkdirRunning = (tab: SessionTab): boolean =>
+    tab.kind === "thread" && runningThreadIDs?.has(tab.threadID) === true;
   const runningTabIDs = new Set<string>();
   for (const tab of state.sessionTabs) {
     if (
       tab.kind === "thread" &&
-      isThreadRunning(threadForTab(tabState, tab.threadID))
+      (isThreadRunning(threadForTab(tabState, tab.threadID)) ||
+        crossWorkdirRunning(tab))
     ) {
       runningTabIDs.add(tab.id);
     }
@@ -210,7 +219,10 @@ export function SessionTabStrip({
                     : undefined;
                 // Keep the session visibly active until all of its child
                 // agents settle, even when the parent turn has completed.
-                const running = isThreadExecuting(tabThread);
+                // The aggregate running set covers non-active workspaces,
+                // whose cached thread snapshots do not track live turns.
+                const running =
+                  isThreadExecuting(tabThread) || crossWorkdirRunning(tab);
                 const pendingSwitch =
                   pendingSwitchThreadID !== undefined &&
                   tab.kind === "thread" &&
@@ -324,7 +336,9 @@ export function SessionTabStrip({
                 }
                 running={
                   draggingTab.kind === "thread"
-                    ? isThreadRunning(threadForTab(state, draggingTab.threadID))
+                    ? isThreadExecuting(
+                        threadForTab(tabState, draggingTab.threadID),
+                      ) || crossWorkdirRunning(draggingTab)
                     : false
                 }
                 unread={
@@ -332,9 +346,12 @@ export function SessionTabStrip({
                   (draggingTab.kind === "channel-room"
                     ? (channelUnreadByRoomID[draggingTab.roomID] ?? 0) > 0
                     : draggingTab.kind === "thread" &&
-                      !isThreadRunning(threadForTab(state, draggingTab.threadID)) &&
+                      !isThreadExecuting(
+                        threadForTab(tabState, draggingTab.threadID),
+                      ) &&
+                      !crossWorkdirRunning(draggingTab) &&
                       isThreadUnread(
-                        threadForTab(state, draggingTab.threadID),
+                        threadForTab(tabState, draggingTab.threadID),
                         state.lastViewedTurnByThreadID[draggingTab.threadID],
                       ))
                 }

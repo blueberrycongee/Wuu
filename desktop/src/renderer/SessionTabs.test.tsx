@@ -675,6 +675,7 @@ describe("SessionTabStrip right-click menu", () => {
     state: AppState,
     captured: ReturnType<typeof makeCaptured>,
     crossWorkspaceThreads?: Thread[],
+    runningThreadIDs?: ReadonlySet<string>,
   ): void {
     act(() => {
       root = createRoot(container);
@@ -682,6 +683,7 @@ describe("SessionTabStrip right-click menu", () => {
         <SessionTabStrip
           state={state}
           crossWorkspaceThreads={crossWorkspaceThreads}
+          runningThreadIDs={runningThreadIDs}
           pendingComposerMessagesByThread={{}}
           canStartNewThread
           onSelect={captured.onSelect}
@@ -975,6 +977,48 @@ describe("SessionTabStrip right-click menu", () => {
       },
       captured,
       [threadA, threadB],
+    );
+
+    expect(container.querySelectorAll(".session-tab")[1]?.classList.contains("running")).toBe(
+      true,
+    );
+
+    rightClickTab(0);
+    clickMenuItem("关闭未运行的");
+
+    expect(captured.closedBatches).toEqual([[threadSessionTabID(threadA.id)]]);
+  });
+
+  it("spins a tab whose turn runs in another workspace even when its cached thread is stale", () => {
+    const contextA = projectContext();
+    const contextB: RuntimeContext = {
+      kind: "project",
+      project_id: "project-2",
+      cwd: "/tmp/project-2",
+    };
+    const threadA = makeThreadWithTurn("thread-a", "turn-a-1", "completed");
+    // The cached snapshot of threadB says completed (stale); only the
+    // main-process running aggregate knows its turn is in progress.
+    const threadB = {
+      ...makeThreadWithTurn("thread-b", "turn-b-1", "completed"),
+      cwd: contextB.cwd,
+    };
+    const captured = makeCaptured();
+    renderWith(
+      {
+        ...initialState,
+        activeContext: contextA,
+        thread: threadA,
+        activeSessionTabID: threadSessionTabID(threadA.id),
+        sessionTabs: [
+          createThreadSessionTab(threadA, contextA),
+          createThreadSessionTab(threadB, contextB),
+        ],
+        threads: [threadA],
+      },
+      captured,
+      [threadA, threadB],
+      new Set(["thread-b"]),
     );
 
     expect(container.querySelectorAll(".session-tab")[1]?.classList.contains("running")).toBe(

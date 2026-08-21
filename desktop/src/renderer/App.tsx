@@ -4723,6 +4723,7 @@ export function App(): JSX.Element {
             <ConversationTitleContent
               state={state}
               crossWorkspaceThreads={sidebarThreads}
+              runningThreadIDs={crossWorkdirRunningThreadIDs}
               sessionTabsVisible={sessionTabsVisible}
               pendingSwitchThreadID={visiblePendingThreadID}
               pendingComposerMessagesByThread={pendingComposerMessagesByThread}
