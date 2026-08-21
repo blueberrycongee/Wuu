@@ -97,9 +97,63 @@ func TestEngineSessionForThreadUnavailable(t *testing.T) {
 	}
 }
 
+func TestEngineSessionForThreadUsesRegisteredExternalFactory(t *testing.T) {
+	registry := agentengine.NewRegistry()
+	factory := &testThreadBoundEngine{id: agentengine.EngineID("claude")}
+	if err := registry.Register(factory); err != nil {
+		t.Fatalf("register external engine: %v", err)
+	}
+	s := &Session{engines: registry}
+	rt := &ThreadRuntime{EngineID: factory.id}
+	binding := agentengine.ThreadBinding{ThreadID: "thread-1", RootDir: "/workspace"}
+
+	sess := s.EngineSessionForThread(context.Background(), rt, binding)
+	if sess != factory.session {
+		t.Fatalf("resolved session = %T, want registered external session", sess)
+	}
+	if factory.binding.ThreadID != binding.ThreadID || factory.binding.RootDir != binding.RootDir {
+		t.Fatalf("binding = %+v, want %+v", factory.binding, binding)
+	}
+}
+
 func TestEngineUnavailableSession(t *testing.T) {
 	sess := EngineUnavailableSession(agentengine.EngineID("codex"))
 	if _, err := sess.RunTurn(context.Background(), agentengine.TurnInput{}, nil); !errors.Is(err, agentengine.ErrUnknownEngine) {
 		t.Fatalf("RunTurn = %v, want ErrUnknownEngine", err)
 	}
 }
+
+type testThreadBoundEngine struct {
+	id      agentengine.EngineID
+	binding agentengine.ThreadBinding
+	session *testEngineSession
+}
+
+func (e *testThreadBoundEngine) Descriptor(context.Context) (agentengine.Descriptor, error) {
+	return agentengine.Descriptor{ID: e.id, Version: "test"}, nil
+}
+
+func (e *testThreadBoundEngine) Open(context.Context, agentengine.OpenRequest) (agentengine.Session, error) {
+	return nil, errors.New("unexpected Open")
+}
+
+func (e *testThreadBoundEngine) Resume(context.Context, agentengine.ResumeRequest) (agentengine.Session, error) {
+	return nil, errors.New("unexpected Resume")
+}
+
+func (e *testThreadBoundEngine) SessionForThread(_ context.Context, binding agentengine.ThreadBinding) (agentengine.Session, error) {
+	e.binding = binding
+	if e.session == nil {
+		e.session = &testEngineSession{}
+	}
+	return e.session, nil
+}
+
+type testEngineSession struct{}
+
+func (*testEngineSession) RunTurn(context.Context, agentengine.TurnInput, agentengine.EventSink) (agentengine.TurnResult, error) {
+	return agentengine.TurnResult{}, nil
+}
+
+func (*testEngineSession) Interrupt(context.Context, string) error { return nil }
+func (*testEngineSession) Close(context.Context) error             { return nil }

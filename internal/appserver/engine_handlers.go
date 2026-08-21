@@ -37,7 +37,7 @@ func (s *Server) handleEngineUpdate(req Request) error {
 		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
 	}
 	update := config.EnginesSettingsUpdate{
-		DefaultEngine: strings.TrimSpace(params.DefaultEngine),
+		DefaultEngine: params.DefaultEngine,
 		Codex:         params.Codex,
 		Claude:        params.Claude,
 	}
@@ -51,7 +51,8 @@ func (s *Server) handleEngineUpdate(req Request) error {
 	}, nil)
 }
 
-// engineInventory lists the registered engines with binary status.
+// engineInventory lists every supported engine, including disabled or missing
+// external binaries, so settings never confuse absence with a loading state.
 func (s *Server) engineInventory() []EngineInfo {
 	if s.rt == nil {
 		return nil
@@ -64,22 +65,26 @@ func (s *Server) engineInventory() []EngineInfo {
 		Enabled:  true,
 		BinaryOK: true,
 	})
-	if s.rt.Engines() == nil {
-		return out
+	descriptors := make(map[agentengine.EngineID]agentengine.Descriptor)
+	if s.rt.Engines() != nil {
+		for _, desc := range s.rt.Engines().Descriptors() {
+			descriptors[desc.ID] = desc
+		}
 	}
-	for _, desc := range s.rt.Engines().Descriptors() {
+	for _, id := range []agentengine.EngineID{"codex", "claude"} {
+		desc := descriptors[id]
 		info := EngineInfo{
-			ID:           string(desc.ID),
+			ID:           string(id),
 			Version:      desc.Version,
 			Capabilities: append([]string(nil), desc.Capabilities...),
-			Enabled:      true,
+			Enabled:      s.rt.EngineAvailable(id),
 		}
-		switch desc.ID {
-		case agentengine.EngineID("codex"):
+		switch id {
+		case "codex":
 			path, err := s.codexBinaryPath()
 			info.BinaryPath = path
 			info.BinaryOK, info.Error = binaryStatus(path, err)
-		case agentengine.EngineID("claude"):
+		case "claude":
 			path, err := s.claudeBinaryPath()
 			info.BinaryPath = path
 			info.BinaryOK, info.Error = binaryStatus(path, err)
@@ -128,10 +133,10 @@ func (s *Server) applyEngineSettingsToRuntime() {
 	if err != nil {
 		return
 	}
-	codexEnabled := true
-	codexBinary, _ := codexengine.ResolveBinary()
-	claudeEnabled := true
-	claudeBinary, _ := claudeengine.ResolveBinary()
+	codexBinary, codexResolveErr := codexengine.ResolveBinary()
+	codexEnabled := codexResolveErr == nil
+	claudeBinary, claudeResolveErr := claudeengine.ResolveBinary()
+	claudeEnabled := claudeResolveErr == nil
 	defaultEngine := agentengine.EngineWuu
 	if engineCfg := cfg.Engines; engineCfg != nil {
 		if trimmed := strings.TrimSpace(engineCfg.DefaultEngine); trimmed != "" {
@@ -144,6 +149,9 @@ func (s *Server) applyEngineSettingsToRuntime() {
 			}
 			if path := strings.TrimSpace(codexCfg.BinaryPath); path != "" {
 				codexBinary = path
+				if !explicit {
+					codexEnabled = true
+				}
 			}
 		}
 		if claudeCfg := engineCfg.Claude; claudeCfg != nil {
@@ -153,12 +161,18 @@ func (s *Server) applyEngineSettingsToRuntime() {
 			}
 			if path := strings.TrimSpace(claudeCfg.BinaryPath); path != "" {
 				claudeBinary = path
+				if !explicit {
+					claudeEnabled = true
+				}
 			}
 		}
 	}
-	s.rt.DefaultEngine = defaultEngine
 	s.rt.RebuildCodexEngine(codexEnabled, codexBinary)
 	s.rt.RebuildClaudeEngine(claudeEnabled, claudeBinary)
+	if !s.rt.EngineAvailable(defaultEngine) {
+		defaultEngine = agentengine.EngineWuu
+	}
+	s.rt.DefaultEngine = defaultEngine
 }
 
 // codexBinaryPath resolves the codex binary: settings override, then env

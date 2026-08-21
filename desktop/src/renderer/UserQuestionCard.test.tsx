@@ -68,4 +68,54 @@ describe("UserQuestionCard", () => {
       answers: [{ id: "path", selected: ["Safe"], custom: "Keep the rollback simple" }],
     });
   });
+
+  it("localizes engine approval choices while submitting protocol labels", async () => {
+    const onAnswer = vi.fn(async () => undefined);
+    const request: UserQuestionRequest = {
+      request_id: "approval-request-1",
+      plugin_id: "agent-engine-codex",
+      execution_id: "execution-1",
+      thread_id: "thread-1",
+      turn_id: "turn-1",
+      created_at: new Date().toISOString(),
+      questions: [{
+        id: "approval.command_execution",
+        header: "codex approval",
+        question: "Allow this command to run?",
+        detail: "git status",
+        options: [
+          { label: "Allow once", description: "Approve only this request" },
+          { label: "Allow for this session", description: "Approve matching requests for this engine session" },
+          { label: "Deny", description: "Do not allow this request" },
+        ],
+      }],
+    };
+    window.wuu = {
+      initialLanguagePreference: "system",
+      initialSystemLocale: "zh-CN",
+    } as unknown as WuuDesktopApi;
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <I18nProvider>
+          <UserQuestionCard request={request} onAnswer={onAnswer} onCancel={async () => undefined} />
+        </I18nProvider>,
+      );
+    });
+
+    expect(container.textContent).toContain("允许 Codex 执行这个命令吗？");
+    const option = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("仅允许这一次"));
+    expect(option).toBeTruthy();
+    await act(async () => { option?.click(); });
+    const submit = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === "继续");
+    await act(async () => { submit?.click(); });
+
+    expect(onAnswer).toHaveBeenCalledWith({
+      answers: [{ id: "approval.command_execution", selected: ["Allow once"] }],
+    });
+  });
 });

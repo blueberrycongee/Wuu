@@ -151,6 +151,12 @@ func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	if isManualCompactPrompt(params.Prompt) {
+		th.mu.Lock()
+		engineID := agentengine.NormalizeEngineID(th.EngineID)
+		th.mu.Unlock()
+		if engineID != agentengine.EngineWuu {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("compact is unavailable for %s engine threads", engineID))
+		}
 		if len(images) > 0 || len(files) > 0 {
 			return s.writeResponse(req.ID, nil, errors.New("compact does not accept attachments"))
 		}
@@ -1864,6 +1870,9 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		ExternalRef: th.EngineRef,
 		PersistRef: func(ref string) error {
 			return s.persistThreadEngineRef(th.ID, ref)
+		},
+		RequestApproval: func(approvalCtx context.Context, request agentengine.ApprovalRequest) (agentengine.ApprovalDecision, error) {
+			return s.requestEngineApproval(approvalCtx, th.ID, turnID, request)
 		},
 	})
 	if engine == nil {

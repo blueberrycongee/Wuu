@@ -2,9 +2,75 @@ import { Circle, CircleDot, Square, SquareCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import type {
   UserQuestionAnswer,
+  UserQuestion,
+  UserQuestionOption,
   UserQuestionRequest,
 } from "../shared/protocol";
 import { useI18n } from "./i18n";
+
+const APPROVAL_ALLOW_ONCE = "Allow once";
+const APPROVAL_ALLOW_SESSION = "Allow for this session";
+const APPROVAL_DENY = "Deny";
+
+function approvalKind(question: UserQuestion): "command" | "file" | "permissions" | undefined {
+  if (question.id === "approval.command_execution") return "command";
+  if (question.id === "approval.file_change") return "file";
+  if (question.id === "approval.permissions") return "permissions";
+  return undefined;
+}
+
+function approvalEngineName(pluginID: string): string | undefined {
+  if (!pluginID.startsWith("agent-engine-")) return undefined;
+  const engine = pluginID.slice("agent-engine-".length).trim();
+  if (!engine) return undefined;
+  return engine.charAt(0).toUpperCase() + engine.slice(1);
+}
+
+function approvalQuestionText(
+  request: UserQuestionRequest,
+  question: UserQuestion,
+  t: ReturnType<typeof useI18n>["t"],
+): { header: string; question: string } | undefined {
+  const engine = approvalEngineName(request.plugin_id);
+  const kind = approvalKind(question);
+  if (!engine || !kind) return undefined;
+  const values = { engine };
+  const questionKeys = {
+    command: "userQuestion.approvalCommandQuestion",
+    file: "userQuestion.approvalFileQuestion",
+    permissions: "userQuestion.approvalPermissionsQuestion",
+  } as const;
+  return {
+    header: t("userQuestion.approvalHeader", values),
+    question: t(questionKeys[kind], values),
+  };
+}
+
+function approvalOptionText(
+  request: UserQuestionRequest,
+  question: UserQuestion,
+  option: UserQuestionOption,
+  t: ReturnType<typeof useI18n>["t"],
+): UserQuestionOption {
+  if (!approvalEngineName(request.plugin_id) || !approvalKind(question)) return option;
+  const labels: Record<string, { label: Parameters<typeof t>[0]; description: Parameters<typeof t>[0] }> = {
+    [APPROVAL_ALLOW_ONCE]: {
+      label: "userQuestion.approvalAllowOnce",
+      description: "userQuestion.approvalAllowOnceDescription",
+    },
+    [APPROVAL_ALLOW_SESSION]: {
+      label: "userQuestion.approvalAllowSession",
+      description: "userQuestion.approvalAllowSessionDescription",
+    },
+    [APPROVAL_DENY]: {
+      label: "userQuestion.approvalDeny",
+      description: "userQuestion.approvalDenyDescription",
+    },
+  };
+  const keys = labels[option.label];
+  if (!keys) return option;
+  return { label: t(keys.label), description: t(keys.description) };
+}
 
 type Props = {
   request: UserQuestionRequest;
@@ -63,12 +129,15 @@ export function UserQuestionCard({ request, onAnswer, onCancel }: Props): JSX.El
     <section className="user-question-card" aria-label={t("userQuestion.kicker")}>
       <p className="user-question-kicker">{t("userQuestion.kicker")}</p>
       {request.questions.map((question) => {
-        const lead = question.header || question.question;
+        const approvalText = approvalQuestionText(request, question, t);
+        const header = approvalText?.header || question.header;
+        const prompt = approvalText?.question || question.question;
+        const lead = header || prompt;
         return (
           <div className="user-question-field" key={question.id}>
             <p className="user-question-prompt">{lead}</p>
-            {question.header ? (
-              <p className="user-question-body">{question.question}</p>
+            {header ? (
+              <p className="user-question-body">{prompt}</p>
             ) : null}
             {question.detail ? (
               <p className="user-question-detail">{question.detail}</p>
@@ -80,6 +149,7 @@ export function UserQuestionCard({ request, onAnswer, onCancel }: Props): JSX.El
                 aria-label={lead}
               >
                 {question.options.map((option) => {
+                  const displayOption = approvalOptionText(request, question, option, t);
                   const active = selected[question.id]?.includes(option.label) ?? false;
                   return (
                     <button
@@ -102,10 +172,10 @@ export function UserQuestionCard({ request, onAnswer, onCancel }: Props): JSX.El
                         )}
                       </span>
                       <span className="user-question-option-content">
-                        <span className="user-question-option-label">{option.label}</span>
-                        {option.description ? (
+                        <span className="user-question-option-label">{displayOption.label}</span>
+                        {displayOption.description ? (
                           <span className="user-question-option-description">
-                            {option.description}
+                            {displayOption.description}
                           </span>
                         ) : null}
                       </span>

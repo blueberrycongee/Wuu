@@ -55,7 +55,7 @@ export function EngineSettingsSection(): JSX.Element {
     [engines],
   );
   const enabledIds = useMemo(
-    () => engines.filter((e) => e.enabled).map((e) => e.id),
+    () => engines.filter((e) => e.enabled && e.binary_ok).map((e) => e.id),
     [engines],
   );
 
@@ -79,6 +79,7 @@ export function EngineSettingsSection(): JSX.Element {
         <div className="settings-row-control-block">
           <div className="settings-engine-path-row">
             <input
+              key={`${id}-${engineSettings?.binary_path ?? ""}`}
               className="settings-text-input settings-engine-path-input"
               type="text"
               aria-label={`${label} ${t("settings.engineBinaryPath")}`}

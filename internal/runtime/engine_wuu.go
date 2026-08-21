@@ -170,9 +170,6 @@ func (s *Session) EngineSessionForThread(ctx context.Context, rt *ThreadRuntime,
 		return nil
 	}
 	id := agentengine.NormalizeEngineID(string(rt.EngineID))
-	if err := agentengine.CheckEngine(id); err != nil {
-		return &unavailableEngineSession{id: id}
-	}
 	if id == agentengine.EngineWuu {
 		if rt.StreamRunner == nil {
 			return nil

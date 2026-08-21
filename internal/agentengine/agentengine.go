@@ -105,6 +105,47 @@ type TurnInput struct {
 // translate their native events into the same shape at this boundary.
 type EventSink func(providers.StreamEvent)
 
+// ApprovalKind identifies the external-engine action waiting for a user
+// decision. The host owns presentation and timeout semantics; engines only
+// translate between their native protocol and this stable request shape.
+type ApprovalKind string
+
+const (
+	ApprovalCommandExecution ApprovalKind = "command_execution"
+	ApprovalFileChange       ApprovalKind = "file_change"
+	ApprovalPermissions      ApprovalKind = "permissions"
+)
+
+// ApprovalDecision is the host's answer to an external engine request.
+type ApprovalDecision string
+
+const (
+	ApprovalAccept           ApprovalDecision = "accept"
+	ApprovalAcceptForSession ApprovalDecision = "accept_for_session"
+	ApprovalDecline          ApprovalDecision = "decline"
+	ApprovalCancel           ApprovalDecision = "cancel"
+)
+
+// ApprovalRequest carries only user-facing, engine-neutral approval details.
+// Native permission payloads remain opaque and are echoed back only when the
+// user explicitly accepts them.
+type ApprovalRequest struct {
+	Kind        ApprovalKind
+	EngineID    EngineID
+	ThreadID    string
+	TurnID      string
+	ItemID      string
+	Command     string
+	CWD         string
+	FilePath    string
+	Reason      string
+	Permissions any
+}
+
+// ApprovalHandler blocks until the host accepts, declines, cancels, expires,
+// or the owning turn context ends. Missing handlers must fail closed.
+type ApprovalHandler func(context.Context, ApprovalRequest) (ApprovalDecision, error)
+
 // TurnResult is the outcome of one engine turn.
 type TurnResult struct {
 	// Result is the native loop result of the built-in wuu engine. External
@@ -145,6 +186,10 @@ type ThreadBinding struct {
 	// PersistRef stores a newly created native session reference back into
 	// the thread's persisted binding.
 	PersistRef func(ref string) error
+	// RequestApproval lets an external engine reuse the host's interaction
+	// broker and conversation card. Nil means interactive approval is not
+	// available and the engine must decline.
+	RequestApproval ApprovalHandler
 }
 
 // ThreadBoundFactory is an optional factory extension for engines that bind

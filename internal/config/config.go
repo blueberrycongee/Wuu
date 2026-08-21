@@ -653,6 +653,20 @@ func (c Config) Validate() error {
 	if _, ok := c.Providers[c.DefaultProvider]; !ok {
 		return fmt.Errorf("default_provider %q not found in providers", c.DefaultProvider)
 	}
+	if c.Engines != nil {
+		defaultEngine := strings.TrimSpace(c.Engines.DefaultEngine)
+		switch defaultEngine {
+		case "", "wuu", "codex", "claude":
+		default:
+			return fmt.Errorf("engines.default_engine %q is not supported", defaultEngine)
+		}
+		if defaultEngine == "codex" && engineExplicitlyDisabled(c.Engines.Codex) {
+			return errors.New("engines.default_engine cannot be codex while engines.codex is disabled")
+		}
+		if defaultEngine == "claude" && engineExplicitlyDisabled(c.Engines.Claude) {
+			return errors.New("engines.default_engine cannot be claude while engines.claude is disabled")
+		}
+	}
 
 	for name, provider := range c.Providers {
 		if provider.Type == "" {
@@ -757,6 +771,10 @@ func (c Config) Validate() error {
 	}
 
 	return nil
+}
+
+func engineExplicitlyDisabled(engine *EngineBinaryConfig) bool {
+	return engine != nil && engine.Enabled != nil && !*engine.Enabled
 }
 
 func validateModelRolesConfig(c Config) error {

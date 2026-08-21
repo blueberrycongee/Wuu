@@ -2,6 +2,7 @@ package codexengine
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -129,6 +130,48 @@ func TestEngineMissingBinaryFailsClearly(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "codex") {
 		t.Fatalf("error should mention codex, got: %v", err)
+	}
+}
+
+func TestSessionTranslatesCommandApproval(t *testing.T) {
+	var got agentengine.ApprovalRequest
+	sess := &Session{
+		ref: "codex-thread-1",
+		approval: func(_ context.Context, request agentengine.ApprovalRequest) (agentengine.ApprovalDecision, error) {
+			got = request
+			return agentengine.ApprovalAcceptForSession, nil
+		},
+	}
+	raw, err := json.Marshal(CommandExecutionApprovalParams{
+		ThreadID: "codex-thread-1", TurnID: "turn-1", ItemID: "item-1",
+		Command: "git status", CWD: "/workspace", Reason: "inspect",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := sess.handleCommandApproval(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, ok := result.(ApprovalDecisionResponse)
+	if !ok || response.Decision != DecisionAcceptForSession {
+		t.Fatalf("response = %#v", result)
+	}
+	if got.Kind != agentengine.ApprovalCommandExecution || got.Command != "git status" || got.ItemID != "item-1" {
+		t.Fatalf("translated request = %+v", got)
+	}
+}
+
+func TestSessionDeclinesApprovalWithoutHostHandler(t *testing.T) {
+	sess := &Session{ref: "codex-thread-1"}
+	raw := json.RawMessage(`{"threadId":"codex-thread-1","turnId":"turn-1","filePath":"a.txt"}`)
+	result, err := sess.handleFileChangeApproval(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := result.(ApprovalDecisionResponse)
+	if response.Decision != DecisionDecline {
+		t.Fatalf("decision = %q, want decline", response.Decision)
 	}
 }
 

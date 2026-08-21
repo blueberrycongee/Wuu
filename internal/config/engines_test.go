@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -15,11 +16,13 @@ func TestUpdateEnginesSettingsRoundTrip(t *testing.T) {
 	}
 
 	disabled := false
+	defaultEngine := "codex"
+	binaryPath := "/opt/codex/bin/codex"
 	if err := UpdateEnginesSettings(configPath, EnginesSettingsUpdate{
-		DefaultEngine: "codex",
+		DefaultEngine: &defaultEngine,
 		Codex: &EngineBinaryUpdate{
 			Enabled:    &disabled,
-			BinaryPath: "/opt/codex/bin/codex",
+			BinaryPath: &binaryPath,
 		},
 	}); err != nil {
 		t.Fatalf("update: %v", err)
@@ -32,8 +35,8 @@ func TestUpdateEnginesSettingsRoundTrip(t *testing.T) {
 	if cfg.Engines == nil {
 		t.Fatal("engines section missing after update")
 	}
-	if cfg.Engines.DefaultEngine != "codex" {
-		t.Fatalf("default engine = %q, want codex", cfg.Engines.DefaultEngine)
+	if cfg.Engines.DefaultEngine != "" {
+		t.Fatalf("disabled default engine = %q, want wuu fallback", cfg.Engines.DefaultEngine)
 	}
 	if cfg.Engines.Codex == nil {
 		t.Fatal("codex section missing")
@@ -45,7 +48,7 @@ func TestUpdateEnginesSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("binary path = %q", cfg.Engines.Codex.BinaryPath)
 	}
 
-	// Re-enable and clear the path override.
+	// Re-enable while preserving the existing path override.
 	enabled := true
 	if err := UpdateEnginesSettings(configPath, EnginesSettingsUpdate{
 		Codex: &EngineBinaryUpdate{Enabled: &enabled},
@@ -62,6 +65,37 @@ func TestUpdateEnginesSettingsRoundTrip(t *testing.T) {
 	// binary_path persists (empty update leaves it untouched).
 	if cfg.Engines.Codex.BinaryPath != "/opt/codex/bin/codex" {
 		t.Fatalf("binary path lost = %q", cfg.Engines.Codex.BinaryPath)
+	}
+
+	// An explicit empty path clears the override and restores PATH lookup.
+	emptyPath := ""
+	if err := UpdateEnginesSettings(configPath, EnginesSettingsUpdate{
+		Codex: &EngineBinaryUpdate{BinaryPath: &emptyPath},
+	}); err != nil {
+		t.Fatalf("clear binary path: %v", err)
+	}
+	cfg, _, err = LoadPath(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Engines.Codex.BinaryPath != "" {
+		t.Fatalf("binary path after clear = %q", cfg.Engines.Codex.BinaryPath)
+	}
+}
+
+func TestEnginesConfigRejectsUnknownOrDisabledDefault(t *testing.T) {
+	base := Default()
+	base.Engines = &EnginesConfig{DefaultEngine: "other"}
+	if err := base.Validate(); err == nil || !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("Validate unknown default = %v", err)
+	}
+	disabled := false
+	base.Engines = &EnginesConfig{
+		DefaultEngine: "claude",
+		Claude:        &EngineBinaryConfig{Enabled: &disabled},
+	}
+	if err := base.Validate(); err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("Validate disabled default = %v", err)
 	}
 }
 

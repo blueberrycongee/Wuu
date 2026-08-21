@@ -8335,6 +8335,36 @@ func TestServerTurnStartSlashCompactRoutesToCompactOnlyTurn(t *testing.T) {
 	}
 }
 
+func TestServerRejectsWuuCompactForExternalEngineThread(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread.ID
+	th := srv.thread(threadID)
+	th.mu.Lock()
+	th.EngineID = "claude"
+	th.mu.Unlock()
+
+	raw, err := json.Marshal(map[string]any{
+		"id": "compact-external", "method": MethodTurnStart,
+		"params": TurnStartParams{ThreadID: threadID, Prompt: "/compact"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.handleLine(context.Background(), raw); err != nil {
+		t.Fatalf("turn/start: %v", err)
+	}
+	response := responseByID(t, parseOutput(t, out.String()), "compact-external")
+	if response["error"] == nil || !strings.Contains(remarshal[ResponseError](t, response["error"]).Message, "unavailable for claude") {
+		t.Fatalf("response = %+v", response)
+	}
+}
+
 func TestServerRejectsSteerForCompactTurn(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	out := &lockedBuffer{}

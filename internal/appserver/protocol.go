@@ -1244,7 +1244,7 @@ type EngineListResult struct {
 // EngineUpdateParams is the engine/update request body. Nil fields are
 // left unchanged.
 type EngineUpdateParams struct {
-	DefaultEngine string                     `json:"default_engine,omitempty"`
+	DefaultEngine *string                    `json:"default_engine,omitempty"`
 	Codex         *config.EngineBinaryUpdate `json:"codex,omitempty"`
 	Claude        *config.EngineBinaryUpdate `json:"claude,omitempty"`
 }

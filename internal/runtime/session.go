@@ -723,8 +723,8 @@ func NewSession(opts Options) (*Session, error) {
 	// Settings can disable it or override the binary path; auto mode
 	// (unset) enables it when the CLI is found, and a missing binary fails
 	// with a clear error at first use.
-	codexEnabled := true
-	codexBinary, _ := codexengine.ResolveBinary()
+	codexBinary, codexResolveErr := codexengine.ResolveBinary()
+	codexEnabled := codexResolveErr == nil
 	if engineCfg := cfg.Engines; engineCfg != nil {
 		if strings.TrimSpace(engineCfg.DefaultEngine) != "" {
 			runtimeSession.DefaultEngine = agentengine.NormalizeEngineID(engineCfg.DefaultEngine)
@@ -736,6 +736,9 @@ func NewSession(opts Options) (*Session, error) {
 			}
 			if path := strings.TrimSpace(codexCfg.BinaryPath); path != "" {
 				codexBinary = path
+				if !explicit {
+					codexEnabled = true
+				}
 			}
 		}
 	}
@@ -747,8 +750,8 @@ func NewSession(opts Options) (*Session, error) {
 	}
 	// The claude engine follows the same settings shape: auto when the CLI
 	// is found, explicit disable or binary override from settings.
-	claudeEnabled := true
-	claudeBinary, _ := claudeengine.ResolveBinary()
+	claudeBinary, claudeResolveErr := claudeengine.ResolveBinary()
+	claudeEnabled := claudeResolveErr == nil
 	if engineCfg := cfg.Engines; engineCfg != nil && engineCfg.Claude != nil {
 		enabled, explicit := engineCfg.Claude.EngineEnabled()
 		if explicit {
@@ -756,10 +759,16 @@ func NewSession(opts Options) (*Session, error) {
 		}
 		if path := strings.TrimSpace(engineCfg.Claude.BinaryPath); path != "" {
 			claudeBinary = path
+			if !explicit {
+				claudeEnabled = true
+			}
 		}
 	}
 	if claudeEnabled {
 		runtimeSession.engines.Register(claudeengine.NewEngine(claudeBinary, rootDir))
+	}
+	if runtimeSession.DefaultEngine != "" && !runtimeSession.EngineAvailable(runtimeSession.DefaultEngine) {
+		runtimeSession.DefaultEngine = agentengine.EngineWuu
 	}
 	initialHooks := hooks.NewDispatcher(nil)
 	initialHooks.Replace(hookDispatcher)

@@ -19,12 +19,9 @@ import (
 // to engine_id "codex" through it.
 type Engine struct {
 	host *Host
-
-	// ApproveCommand decides shell-command approval requests. Nil denies
-	// everything (the design's default: no mapping, no approval).
-	ApproveCommand func(CommandExecutionApprovalParams) string
-	// ApproveFileChange decides file-change approval requests. Nil denies.
-	ApproveFileChange func(FileChangeApprovalParams) string
+	// RequestApproval bridges Codex's reverse-RPC approval requests to Wuu's
+	// host-owned interaction broker. Nil declines every request.
+	RequestApproval agentengine.ApprovalHandler
 }
 
 // NewEngine builds the codex engine around a host (binary discovery +
@@ -73,6 +70,7 @@ func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.Threa
 		model:       binding.Model,
 		externalRef: binding.ExternalRef,
 		persistRef:  binding.PersistRef,
+		approval:    binding.RequestApproval,
 	})
 }
 
@@ -82,6 +80,7 @@ type sessionOptions struct {
 	model       string
 	externalRef string
 	persistRef  func(string) error
+	approval    agentengine.ApprovalHandler
 }
 
 func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengine.Session, error) {
@@ -92,6 +91,10 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 	if err != nil {
 		return nil, err
 	}
+	approval := opts.approval
+	if approval == nil {
+		approval = e.RequestApproval
+	}
 	return &Session{
 		engine:   e,
 		client:   client,
@@ -100,6 +103,7 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 		model:    opts.model,
 		ref:      opts.externalRef,
 		persist:  opts.persistRef,
+		approval: approval,
 	}, nil
 }
 
@@ -115,9 +119,11 @@ type Session struct {
 	rootDir  string
 	model    string
 
-	mu      sync.Mutex
-	ref     string
-	persist func(string) error
+	mu          sync.Mutex
+	ref         string
+	persist     func(string) error
+	approval    agentengine.ApprovalHandler
+	approvalCtx context.Context
 }
 
 // RunTurn starts a codex turn and translates its notifications into Wuu
@@ -129,11 +135,21 @@ func (s *Session) RunTurn(ctx context.Context, input agentengine.TurnInput, sink
 	if err := ctx.Err(); err != nil {
 		return agentengine.TurnResult{}, err
 	}
+	s.mu.Lock()
+	s.approvalCtx = ctx
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.approvalCtx = nil
+		s.mu.Unlock()
+	}()
 	// First turn: create the codex thread and persist its id so later turns
 	// (and later app-server processes) resume the same native session.
 	if err := s.ensureThread(ctx); err != nil {
 		return agentengine.TurnResult{}, err
 	}
+	unregister := s.registerApprovalHandlers()
+	defer unregister()
 	prompt := turnPrompt(input.History)
 	// Subscribe before turn/start: the app-server streams notifications
 	// immediately after responding, so a late subscription would drop them.
@@ -159,6 +175,109 @@ func (s *Session) RunTurn(ctx context.Context, input agentengine.TurnInput, sink
 			return agentengine.TurnResult{}, ctx.Err()
 		}
 	}
+}
+
+func (s *Session) registerApprovalHandlers() func() {
+	if s == nil || s.client == nil {
+		return func() {}
+	}
+	remove := []func(){
+		s.client.OnRequest(MethodCommandExecApproval, s.handleCommandApproval),
+		s.client.OnRequest(MethodFileChangeApproval, s.handleFileChangeApproval),
+		s.client.OnRequest(MethodPermissionsApproval, s.handlePermissionsApproval),
+	}
+	return func() {
+		for _, fn := range remove {
+			fn()
+		}
+	}
+}
+
+func (s *Session) approvalDecision(ctx context.Context, request agentengine.ApprovalRequest) string {
+	if s == nil || s.approval == nil {
+		return string(DecisionDecline)
+	}
+	s.mu.Lock()
+	if s.approvalCtx != nil {
+		ctx = s.approvalCtx
+	}
+	s.mu.Unlock()
+	decision, err := s.approval(ctx, request)
+	if err != nil {
+		return string(DecisionDecline)
+	}
+	switch decision {
+	case agentengine.ApprovalAccept:
+		return string(DecisionAccept)
+	case agentengine.ApprovalAcceptForSession:
+		return string(DecisionAcceptForSession)
+	case agentengine.ApprovalCancel:
+		return string(DecisionCancel)
+	default:
+		return string(DecisionDecline)
+	}
+}
+
+func (s *Session) handleCommandApproval(raw json.RawMessage) (any, error) {
+	var params CommandExecutionApprovalParams
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return nil, err
+	}
+	if !s.matchesThread(params.ThreadID) {
+		return nil, errRequestNotForSession
+	}
+	return ApprovalDecisionResponse{Decision: s.approvalDecision(context.Background(), agentengine.ApprovalRequest{
+		Kind: agentengine.ApprovalCommandExecution, EngineID: agentengine.EngineID("codex"),
+		ThreadID: params.ThreadID, TurnID: params.TurnID, ItemID: params.ItemID,
+		Command: params.Command, CWD: params.CWD, Reason: params.Reason,
+	})}, nil
+}
+
+func (s *Session) handleFileChangeApproval(raw json.RawMessage) (any, error) {
+	var params FileChangeApprovalParams
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return nil, err
+	}
+	if !s.matchesThread(params.ThreadID) {
+		return nil, errRequestNotForSession
+	}
+	return ApprovalDecisionResponse{Decision: s.approvalDecision(context.Background(), agentengine.ApprovalRequest{
+		Kind: agentengine.ApprovalFileChange, EngineID: agentengine.EngineID("codex"),
+		ThreadID: params.ThreadID, TurnID: params.TurnID, ItemID: params.ItemID,
+		FilePath: params.FilePath, Reason: params.Reason,
+	})}, nil
+}
+
+func (s *Session) handlePermissionsApproval(raw json.RawMessage) (any, error) {
+	var params PermissionsApprovalParams
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return nil, err
+	}
+	if !s.matchesThread(params.ThreadID) {
+		return nil, errRequestNotForSession
+	}
+	request := agentengine.ApprovalRequest{Kind: agentengine.ApprovalPermissions, EngineID: agentengine.EngineID("codex"), ThreadID: params.ThreadID, TurnID: params.TurnID, ItemID: params.ItemID, Reason: params.Reason, Permissions: params.Permissions}
+	decision := s.approvalDecision(context.Background(), request)
+	scope := ""
+	switch decision {
+	case string(DecisionAccept):
+		scope = "turn"
+	case string(DecisionAcceptForSession):
+		scope = "session"
+	default:
+		return PermissionsApprovalResponse{Permissions: nil, Scope: ""}, nil
+	}
+	return PermissionsApprovalResponse{Permissions: params.Permissions, Scope: scope}, nil
+}
+
+func (s *Session) matchesThread(threadID string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	ref := s.ref
+	s.mu.Unlock()
+	return strings.TrimSpace(ref) != "" && strings.TrimSpace(ref) == strings.TrimSpace(threadID)
 }
 
 // ensureThread runs thread/start once and persists the native thread id.

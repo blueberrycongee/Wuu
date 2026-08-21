@@ -1544,6 +1544,8 @@ export type Thread = {
   model: string;
   model_variant?: string;
   model_effort?: string;
+  // Agent engine bound at thread creation (wuu, codex, claude).
+  engine_id?: string;
   permission_mode?: string;
   cwd: string;
   workspace_id?: string;
@@ -1571,6 +1573,9 @@ export type Thread = {
 
 export type ThreadStartParams = {
   ephemeral?: boolean;
+  cwd?: string;
+  workspace_id?: string;
+  engine?: string;
 };
 
 export type ThreadSearchResultItem = {

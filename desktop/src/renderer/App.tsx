@@ -2666,7 +2666,11 @@ export function App(): JSX.Element {
         activeContext={state.activeContext}
         activeProject={activeProject}
         compactDisabledReason={
-          !activeThread ? t("app.openConversationFirst") : undefined
+          !activeThread
+            ? t("app.openConversationFirst")
+            : activeThread.engine_id && activeThread.engine_id !== "wuu"
+              ? t("slash.compact.externalEngineUnavailable")
+              : undefined
         }
         sideThreadDisabledReason={
           !activeThread ? t("app.sendMessageFirst") : undefined

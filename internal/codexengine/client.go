@@ -47,7 +47,7 @@ type Client struct {
 	notifyToken uint64
 	pending     map[int64]*pendingRequest
 	notify      map[string][]*notifHandler
-	requests    map[string]func(json.RawMessage) (any, error)
+	requests    map[string][]*requestHandler
 	closed      bool
 	closeErr    error
 }
@@ -59,6 +59,12 @@ type notifHandler struct {
 	token uint64
 	fn    func(json.RawMessage)
 }
+
+type requestHandler struct {
+	fn func(json.RawMessage) (any, error)
+}
+
+var errRequestNotForSession = errors.New("request belongs to another Codex session")
 
 type pendingRequest struct {
 	reply chan json.RawMessage
@@ -72,7 +78,7 @@ func NewClient(t *Transport) *Client {
 		transport: t,
 		pending:   make(map[int64]*pendingRequest),
 		notify:    make(map[string][]*notifHandler),
-		requests:  make(map[string]func(json.RawMessage) (any, error)),
+		requests:  make(map[string][]*requestHandler),
 	}
 }
 
@@ -125,10 +131,27 @@ func (c *Client) OnNotification(method string, h func(json.RawMessage)) func() {
 // result is sent back as the JSON-RPC response; an error is sent as the
 // error response. Without a handler the client answers method-not-found so
 // the app-server never blocks on us.
-func (c *Client) OnRequest(method string, h func(json.RawMessage) (any, error)) {
+func (c *Client) OnRequest(method string, h func(json.RawMessage) (any, error)) func() {
+	handler := &requestHandler{fn: h}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.requests[method] = h
+	c.requests[method] = append(c.requests[method], handler)
+	c.mu.Unlock()
+	return func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		handlers := c.requests[method]
+		for i, current := range handlers {
+			if current == handler {
+				handlers = append(handlers[:i], handlers[i+1:]...)
+				break
+			}
+		}
+		if len(handlers) == 0 {
+			delete(c.requests, method)
+		} else {
+			c.requests[method] = handlers
+		}
+	}
 }
 
 // Request sends a JSON-RPC request and decodes the result into result.
@@ -215,7 +238,9 @@ func (c *Client) handleLine(line string) {
 			// string ids are not used by the codex app-server; ignore.
 			return
 		}
-		c.dispatchServerRequest(id, msg.Method, msg.Params)
+		// Approval handlers may wait minutes for a user decision. Keep the
+		// stdout reader free so notifications and other threads continue.
+		go c.dispatchServerRequest(id, msg.Method, msg.Params)
 	case len(msg.ID) > 0:
 		// Response to one of our requests.
 		c.dispatchResponse(msg.ID, msg.Result, msg.Error)
@@ -261,23 +286,30 @@ func (c *Client) dispatchNotification(method string, params json.RawMessage) {
 
 func (c *Client) dispatchServerRequest(id int64, method string, params json.RawMessage) {
 	c.mu.Lock()
-	h := c.requests[method]
+	handlers := append([]*requestHandler(nil), c.requests[method]...)
 	c.mu.Unlock()
-	if h == nil {
+	if len(handlers) == 0 {
 		c.writeError(id, &RPCError{Code: -32601, Message: "no handler registered for " + method})
 		return
 	}
-	result, err := h(params)
-	if err != nil {
-		var rpcErr *RPCError
-		if errors.As(err, &rpcErr) {
-			c.writeError(id, rpcErr)
+	for _, handler := range handlers {
+		result, err := handler.fn(params)
+		if errors.Is(err, errRequestNotForSession) {
+			continue
+		}
+		if err != nil {
+			var rpcErr *RPCError
+			if errors.As(err, &rpcErr) {
+				c.writeError(id, rpcErr)
+				return
+			}
+			c.writeError(id, &RPCError{Code: -32603, Message: err.Error()})
 			return
 		}
-		c.writeError(id, &RPCError{Code: -32603, Message: err.Error()})
+		c.writeResult(id, result)
 		return
 	}
-	c.writeResult(id, result)
+	c.writeError(id, &RPCError{Code: -32601, Message: "no handler registered for " + method})
 }
 
 func (c *Client) writeResult(id int64, result any) {

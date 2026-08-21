@@ -32,13 +32,13 @@ type EngineBinaryConfig struct {
 
 // EngineBinaryUpdate is the mutable view of EngineBinaryConfig from the UI.
 type EngineBinaryUpdate struct {
-	Enabled    *bool  `json:"enabled,omitempty"`
-	BinaryPath string `json:"binary_path,omitempty"`
+	Enabled    *bool   `json:"enabled,omitempty"`
+	BinaryPath *string `json:"binary_path,omitempty"`
 }
 
 // EnginesSettingsUpdate is the engine/update request body.
 type EnginesSettingsUpdate struct {
-	DefaultEngine string              `json:"default_engine,omitempty"`
+	DefaultEngine *string             `json:"default_engine,omitempty"`
 	Codex         *EngineBinaryUpdate `json:"codex,omitempty"`
 	Claude        *EngineBinaryUpdate `json:"claude,omitempty"`
 }
@@ -62,9 +62,16 @@ func UpdateEnginesSettings(configPath string, update EnginesSettingsUpdate) erro
 	}
 	applyEngineBinaryUpdate(engines, "codex", update.Codex)
 	applyEngineBinaryUpdate(engines, "claude", update.Claude)
-	if strings.TrimSpace(update.DefaultEngine) != "" {
-		engines["default_engine"] = strings.TrimSpace(update.DefaultEngine)
+	if update.DefaultEngine != nil {
+		defaultEngine := strings.TrimSpace(*update.DefaultEngine)
+		if defaultEngine == "" || defaultEngine == "wuu" {
+			delete(engines, "default_engine")
+		} else {
+			engines["default_engine"] = defaultEngine
+		}
 	}
+	resetDisabledDefaultEngine(engines, "codex", update.Codex)
+	resetDisabledDefaultEngine(engines, "claude", update.Claude)
 	if len(engines) == 0 {
 		delete(raw, "engines")
 	}
@@ -100,11 +107,24 @@ func applyEngineBinaryUpdate(engines map[string]any, name string, update *Engine
 			entry["enabled"] = false
 		}
 	}
-	if path := strings.TrimSpace(update.BinaryPath); path != "" {
-		entry["binary_path"] = path
+	if update.BinaryPath != nil {
+		if path := strings.TrimSpace(*update.BinaryPath); path != "" {
+			entry["binary_path"] = path
+		} else {
+			delete(entry, "binary_path")
+		}
 	}
 	if len(entry) == 0 {
 		delete(engines, name)
+	}
+}
+
+func resetDisabledDefaultEngine(engines map[string]any, name string, update *EngineBinaryUpdate) {
+	if update == nil || update.Enabled == nil || *update.Enabled {
+		return
+	}
+	if current, _ := engines["default_engine"].(string); strings.TrimSpace(current) == name {
+		delete(engines, "default_engine")
 	}
 }
 
