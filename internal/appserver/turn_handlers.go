@@ -14,6 +14,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
+	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/compact"
 	"github.com/blueberrycongee/wuu/internal/config"
@@ -814,6 +815,30 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	if s == nil || s.closed.Load() {
 		return nil, errServerClosed
 	}
+	// External-engine threads (codex, later claude) carry no native
+	// StreamRunner: the engine session drives the turn in the external
+	// process. Only the engine stamp is needed on the runtime handle.
+	if agentengine.NormalizeEngineID(th.EngineID) != agentengine.EngineWuu {
+		th.mu.Lock()
+		if th.execRuntime != nil {
+			rt := th.execRuntime
+			th.mu.Unlock()
+			return rt, nil
+		}
+		rt := &runtime.ThreadRuntime{
+			EngineID: agentengine.NormalizeEngineID(th.EngineID),
+			Selection: runtime.ThreadModelSelection{
+				Provider:       th.ModelProvider,
+				Model:          th.Model,
+				Variant:        th.ModelVariant,
+				Effort:         th.ModelEffort,
+				PermissionMode: th.PermissionMode,
+			},
+		}
+		th.execRuntime = rt
+		th.mu.Unlock()
+		return rt, nil
+	}
 	th.mu.Lock()
 	existing := th.execRuntime
 	running := th.running
@@ -880,6 +905,9 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	if err != nil {
 		return nil, err
 	}
+	// Stamp the engine the thread is bound to onto the runtime. A cached
+	// runtime keeps its original stamp; threads never silently switch.
+	threadRuntime.EngineID = agentengine.NormalizeEngineID(th.EngineID)
 	if threadRuntime.Toolkit != nil {
 		// Inject the embedded-browser bridge for every thread here. The bridge
 		// closure must carry this thread's id + workdir so tab operations route
@@ -1825,6 +1853,25 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if threadRuntime != nil && threadRuntime.StreamRunner != nil {
 		runner = threadRuntime.StreamRunner
 	}
+	// Resolve the engine session for this turn. The built-in wuu engine is
+	// the native runner selected above; a thread bound to an engine this
+	// build cannot host fails every turn with an explicit error instead of
+	// silently running the native loop.
+	engine := s.rt.EngineSessionForThread(ctx, threadRuntime, agentengine.ThreadBinding{
+		ThreadID:    th.ID,
+		RootDir:     firstNonEmpty(th.CWD, s.rt.RootDir),
+		Model:       th.Model,
+		ExternalRef: th.EngineRef,
+		PersistRef: func(ref string) error {
+			return s.persistThreadEngineRef(th.ID, ref)
+		},
+	})
+	if engine == nil {
+		engine = s.rt.WuuEngine().SessionForRunner(s.rt.StreamRunner)
+	}
+	if engine == nil {
+		engine = runtime.EngineUnavailableSession(agentengine.NormalizeEngineID(string(threadRuntime.EngineID)))
+	}
 	turnWorktreePath := ""
 	var frozenTreeContext []agent.ContextSegment
 	if th != nil {
@@ -1840,39 +1887,57 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if len(frozenTreeContext) > 0 {
 		requestContext = append(append([]agent.ContextSegment(nil), requestContext...), frozenTreeContext...)
 	}
-	baseTurnTools := runner.Tools
-	baseForceInitialCompact := runner.ForceInitialCompact
-	baseCompactOnly := runner.CompactOnly
-	baseToolWaitInterrupt := runner.ToolWaitInterrupt
-	baseBeforeStep := runner.BeforeStep
-	baseBeforeRequestContext := runner.BeforeRequestContext
-	baseOnRequestContext := runner.OnRequestContext
-	baseOnCompactAttempt := runner.OnCompactAttempt
-	baseOnToolBatchRejected := runner.OnToolBatchRejected
-	baseOnUsage := runner.OnUsage
-	baseOnTokenUsage := runner.OnTokenUsage
-	var restoreRunnerOnce sync.Once
-	restoreRunner := func() {
-		restoreRunnerOnce.Do(func() {
-			runner.Tools = baseTurnTools
-			runner.ForceInitialCompact = baseForceInitialCompact
-			runner.CompactOnly = baseCompactOnly
-			runner.ToolWaitInterrupt = baseToolWaitInterrupt
-			runner.BeforeStep = baseBeforeStep
-			runner.BeforeRequestContext = baseBeforeRequestContext
-			runner.OnRequestContext = baseOnRequestContext
-			runner.OnCompactAttempt = baseOnCompactAttempt
-			runner.OnToolBatchRejected = baseOnToolBatchRejected
-			runner.OnUsage = baseOnUsage
-			runner.OnTokenUsage = baseOnTokenUsage
-		})
+	// The runner bookkeeping below (per-turn callback wiring, force-compact
+	// flags, restore) only applies to the built-in wuu engine's native
+	// runner. External-engine threads (Claude/Codex) run through their engine
+	// session instead and have no StreamRunner.
+	var baseTurnTools agent.ToolExecutor
+	var baseForceInitialCompact bool
+	var baseCompactOnly bool
+	var baseToolWaitInterrupt func() <-chan struct{}
+	var baseBeforeStep func() []providers.ChatMessage
+	var baseBeforeRequestContext func() []agent.ContextSegment
+	var baseOnRequestContext func(agent.RequestContextInfo)
+	var baseOnCompactAttempt func(agent.CompactAttemptInfo)
+	var baseOnToolBatchRejected func(agent.ToolBatchRejectionInfo)
+	var baseOnUsage func(input, output int)
+	var baseOnTokenUsage func(providers.TokenUsage)
+	restoreRunner := func() {}
+	if runner != nil {
+		baseTurnTools = runner.Tools
+		baseForceInitialCompact = runner.ForceInitialCompact
+		baseCompactOnly = runner.CompactOnly
+		baseToolWaitInterrupt = runner.ToolWaitInterrupt
+		baseBeforeStep = runner.BeforeStep
+		baseBeforeRequestContext = runner.BeforeRequestContext
+		baseOnRequestContext = runner.OnRequestContext
+		baseOnCompactAttempt = runner.OnCompactAttempt
+		baseOnToolBatchRejected = runner.OnToolBatchRejected
+		baseOnUsage = runner.OnUsage
+		baseOnTokenUsage = runner.OnTokenUsage
+		var restoreRunnerOnce sync.Once
+		restoreRunner = func() {
+			restoreRunnerOnce.Do(func() {
+				runner.Tools = baseTurnTools
+				runner.ForceInitialCompact = baseForceInitialCompact
+				runner.CompactOnly = baseCompactOnly
+				runner.ToolWaitInterrupt = baseToolWaitInterrupt
+				runner.BeforeStep = baseBeforeStep
+				runner.BeforeRequestContext = baseBeforeRequestContext
+				runner.OnRequestContext = baseOnRequestContext
+				runner.OnCompactAttempt = baseOnCompactAttempt
+				runner.OnToolBatchRejected = baseOnToolBatchRejected
+				runner.OnUsage = baseOnUsage
+				runner.OnTokenUsage = baseOnTokenUsage
+			})
+		}
+		if th != nil {
+			runner.ToolWaitInterrupt = th.steerWaitInterrupt
+		} else {
+			runner.ToolWaitInterrupt = nil
+		}
 	}
 	defer restoreRunner()
-	if th != nil {
-		runner.ToolWaitInterrupt = th.steerWaitInterrupt
-	} else {
-		runner.ToolWaitInterrupt = nil
-	}
 	// Fork-to-worktree step 5: bind the thread's isolated checkout into the
 	// tool execution context. All turn variants funnel through here, so a
 	// worktree-bound thread's file/shell tools switch their execution CWD to
@@ -1886,8 +1951,10 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	// Assigned unconditionally every turn: the runner is per-thread and
 	// long-lived, so a /compact turn must not leave the force flag armed
 	// for the turns that follow it.
-	runner.ForceInitialCompact = turnRuntime.ForceCompact
-	runner.CompactOnly = turnRuntime.CompactOnly
+	if runner != nil {
+		runner.ForceInitialCompact = turnRuntime.ForceCompact
+		runner.CompactOnly = turnRuntime.CompactOnly
+	}
 	if threadRuntime != nil && threadRuntime.Toolkit != nil {
 		runtime.ConfigureToolkitPermissions(threadRuntime.Toolkit, turnPermissions)
 	}
@@ -1896,6 +1963,10 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	// Captured once per turn: the runner is per-thread for its lifetime,
 	// so the model identity does not change between usage samples.
 	contextWindowTokens := usageContextWindowTokens(runner)
+	usageModel := th.Model
+	if runner != nil {
+		usageModel = runner.Model
+	}
 	toolRecordStart := 0
 	if threadRuntime != nil && threadRuntime.Toolkit != nil {
 		toolRecordStart = len(threadRuntime.Toolkit.ToolTelemetry())
@@ -1943,7 +2014,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		notify(NotificationTurnUsage, TurnUsageNotification{
 			ThreadID:            th.ID,
 			TurnID:              turnID,
-			Model:               runner.Model,
+			Model:               usageModel,
 			InputTokens:         snapshot.InputTokens,
 			OutputTokens:        snapshot.OutputTokens,
 			ContextTokens:       contextTokens,
@@ -1952,121 +2023,125 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			ContextWindowTokens: contextWindowTokens,
 		})
 	}
-	runner.OnUsage = func(inputTokens, outputTokens int) {
-		if baseOnUsage != nil {
-			baseOnUsage(inputTokens, outputTokens)
+	if runner != nil {
+		runner.OnUsage = func(inputTokens, outputTokens int) {
+			if baseOnUsage != nil {
+				baseOnUsage(inputTokens, outputTokens)
+			}
 		}
 	}
 	var contextRequests []sessiontrace.RequestContextRecord
 	var providerStates []sessiontrace.ProviderStateRecord
 	var compactAttempts []sessiontrace.CompactRecord
 	var barrierRejections []sessiontrace.BarrierToolBatchRejectionRecord
-	runner.OnTokenUsage = func(usage providers.TokenUsage) {
-		if baseOnTokenUsage != nil {
-			baseOnTokenUsage(usage)
-		}
-		attachUsageToLatestRequestContext(contextRequests, usage)
-		usagePushMu.Lock()
-		completedUsage = addUsage(completedUsage, usage)
-		liveUsage = providers.TokenUsage{}
-		usageSnapshot := completedUsage
-		usagePushMu.Unlock()
-		notifyUsage(usageSnapshot, usage.TotalContextTokens(), true)
-	}
-	runner.OnRequestContext = func(info agent.RequestContextInfo) {
-		if baseOnRequestContext != nil {
-			baseOnRequestContext(info)
-		}
-		contextRequests = append(contextRequests, sessiontrace.RequestContextRecord{
-			StepIndex:                info.StepIndex,
-			TransientMessages:        info.TransientMessages,
-			ContentBytes:             info.ContentBytes,
-			BlockKinds:               append([]string(nil), info.BlockKinds...),
-			BlockKindCounts:          cloneStringIntMap(info.BlockKindCounts),
-			BlockKindBytes:           cloneStringIntMap(info.BlockKindBytes),
-			SegmentLifecycleCounts:   cloneStringIntMap(info.SegmentLifecycleCounts),
-			SegmentPlacementCounts:   cloneStringIntMap(info.SegmentPlacementCounts),
-			SegmentCachePolicyCounts: cloneStringIntMap(info.SegmentCachePolicyCounts),
-			MessageCount:             info.MessageCount,
-			SystemMessages:           info.SystemMessages,
-			HiddenMessages:           info.HiddenMessages,
-			ToolCount:                info.ToolCount,
-			StablePrefix:             info.StablePrefix,
-			TurnPrefix:               info.TurnPrefix,
-			DynamicBytes:             info.DynamicBytes,
-			SystemBytes:              info.SystemBytes,
-			StablePrefixBytes:        info.StablePrefixBytes,
-			TurnPrefixBytes:          info.TurnPrefixBytes,
-			MessageBytes:             info.MessageBytes,
-			ToolSchemaBytes:          info.ToolSchemaBytes,
-			LoadableToolCount:        info.LoadableToolCount,
-			LoadableToolSchemaBytes:  info.LoadableToolSchemaBytes,
-			LoadableToolSurfaceHash:  info.LoadableToolSurfaceHash,
-			SystemHash:               info.SystemHash,
-			StablePrefixHash:         info.StablePrefixHash,
-			TurnPrefixHash:           info.TurnPrefixHash,
-			ToolSurfaceHash:          info.ToolSurfaceHash,
-			PromptCacheKey:           info.PromptCacheKey,
-			InputTokens:              info.InputTokens,
-			OutputTokens:             info.OutputTokens,
-			CacheCreationTokens:      info.CacheCreationTokens,
-			CacheReadTokens:          info.CacheReadTokens,
-			SystemSections:           requestContextSystemSections(info.SystemSections),
-		})
-	}
-	runner.OnCompactAttempt = func(info agent.CompactAttemptInfo) {
-		if baseOnCompactAttempt != nil {
-			baseOnCompactAttempt(info)
-		}
-		compactAttempts = append(compactAttempts, compactRecord(info))
-	}
-	runner.OnToolBatchRejected = func(info agent.ToolBatchRejectionInfo) {
-		if baseOnToolBatchRejected != nil {
-			baseOnToolBatchRejected(info)
-		}
-		barrierRejections = append(barrierRejections, barrierToolBatchRejectionRecord(info))
-	}
-	runner.BeforeStep = func() []providers.ChatMessage {
-		var messages []providers.ChatMessage
-		if baseBeforeStep != nil {
-			messages = append(messages, baseBeforeStep()...)
-		}
-		th.mu.Lock()
-		steers, batch := th.takePendingSteersLocked(turnID, time.Now().UTC())
-		th.resetSteerWakeLocked()
-		th.mu.Unlock()
-		notifyBatch(batch)
-		for _, steer := range steers {
-			if ids := agentCompletionResultIDs(steer.ClientID); len(ids) > 0 {
-				turnRuntime.AgentCompletionResultIDs = append(turnRuntime.AgentCompletionResultIDs, ids...)
+	if runner != nil {
+		runner.OnTokenUsage = func(usage providers.TokenUsage) {
+			if baseOnTokenUsage != nil {
+				baseOnTokenUsage(usage)
 			}
+			attachUsageToLatestRequestContext(contextRequests, usage)
+			usagePushMu.Lock()
+			completedUsage = addUsage(completedUsage, usage)
+			liveUsage = providers.TokenUsage{}
+			usageSnapshot := completedUsage
+			usagePushMu.Unlock()
+			notifyUsage(usageSnapshot, usage.TotalContextTokens(), true)
 		}
-		if len(steers) > 0 {
-			messages = append(messages, steers...)
+		runner.OnRequestContext = func(info agent.RequestContextInfo) {
+			if baseOnRequestContext != nil {
+				baseOnRequestContext(info)
+			}
+			contextRequests = append(contextRequests, sessiontrace.RequestContextRecord{
+				StepIndex:                info.StepIndex,
+				TransientMessages:        info.TransientMessages,
+				ContentBytes:             info.ContentBytes,
+				BlockKinds:               append([]string(nil), info.BlockKinds...),
+				BlockKindCounts:          cloneStringIntMap(info.BlockKindCounts),
+				BlockKindBytes:           cloneStringIntMap(info.BlockKindBytes),
+				SegmentLifecycleCounts:   cloneStringIntMap(info.SegmentLifecycleCounts),
+				SegmentPlacementCounts:   cloneStringIntMap(info.SegmentPlacementCounts),
+				SegmentCachePolicyCounts: cloneStringIntMap(info.SegmentCachePolicyCounts),
+				MessageCount:             info.MessageCount,
+				SystemMessages:           info.SystemMessages,
+				HiddenMessages:           info.HiddenMessages,
+				ToolCount:                info.ToolCount,
+				StablePrefix:             info.StablePrefix,
+				TurnPrefix:               info.TurnPrefix,
+				DynamicBytes:             info.DynamicBytes,
+				SystemBytes:              info.SystemBytes,
+				StablePrefixBytes:        info.StablePrefixBytes,
+				TurnPrefixBytes:          info.TurnPrefixBytes,
+				MessageBytes:             info.MessageBytes,
+				ToolSchemaBytes:          info.ToolSchemaBytes,
+				LoadableToolCount:        info.LoadableToolCount,
+				LoadableToolSchemaBytes:  info.LoadableToolSchemaBytes,
+				LoadableToolSurfaceHash:  info.LoadableToolSurfaceHash,
+				SystemHash:               info.SystemHash,
+				StablePrefixHash:         info.StablePrefixHash,
+				TurnPrefixHash:           info.TurnPrefixHash,
+				ToolSurfaceHash:          info.ToolSurfaceHash,
+				PromptCacheKey:           info.PromptCacheKey,
+				InputTokens:              info.InputTokens,
+				OutputTokens:             info.OutputTokens,
+				CacheCreationTokens:      info.CacheCreationTokens,
+				CacheReadTokens:          info.CacheReadTokens,
+				SystemSections:           requestContextSystemSections(info.SystemSections),
+			})
 		}
-		return messages
-	}
-	turnRequestContext := cloneContextSegments(requestContext)
-	runner.BeforeRequestContext = func() []agent.ContextSegment {
-		var segments []agent.ContextSegment
-		if baseBeforeRequestContext != nil {
-			segments = append(segments, baseBeforeRequestContext()...)
+		runner.OnCompactAttempt = func(info agent.CompactAttemptInfo) {
+			if baseOnCompactAttempt != nil {
+				baseOnCompactAttempt(info)
+			}
+			compactAttempts = append(compactAttempts, compactRecord(info))
 		}
-		th.mu.Lock()
-		activeSteerContextSet := th.activeSteerContextSet
-		activeSteerDocument := th.activeSteerDocument
-		th.mu.Unlock()
-		segments = append(
-			segments,
-			activeDocumentContextForTurn(turnRequestContext, activeSteerContextSet, activeSteerDocument)...,
-		)
-		return segments
+		runner.OnToolBatchRejected = func(info agent.ToolBatchRejectionInfo) {
+			if baseOnToolBatchRejected != nil {
+				baseOnToolBatchRejected(info)
+			}
+			barrierRejections = append(barrierRejections, barrierToolBatchRejectionRecord(info))
+		}
+		runner.BeforeStep = func() []providers.ChatMessage {
+			var messages []providers.ChatMessage
+			if baseBeforeStep != nil {
+				messages = append(messages, baseBeforeStep()...)
+			}
+			th.mu.Lock()
+			steers, batch := th.takePendingSteersLocked(turnID, time.Now().UTC())
+			th.resetSteerWakeLocked()
+			th.mu.Unlock()
+			notifyBatch(batch)
+			for _, steer := range steers {
+				if ids := agentCompletionResultIDs(steer.ClientID); len(ids) > 0 {
+					turnRuntime.AgentCompletionResultIDs = append(turnRuntime.AgentCompletionResultIDs, ids...)
+				}
+			}
+			if len(steers) > 0 {
+				messages = append(messages, steers...)
+			}
+			return messages
+		}
+		turnRequestContext := cloneContextSegments(requestContext)
+		runner.BeforeRequestContext = func() []agent.ContextSegment {
+			var segments []agent.ContextSegment
+			if baseBeforeRequestContext != nil {
+				segments = append(segments, baseBeforeRequestContext()...)
+			}
+			th.mu.Lock()
+			activeSteerContextSet := th.activeSteerContextSet
+			activeSteerDocument := th.activeSteerDocument
+			th.mu.Unlock()
+			segments = append(
+				segments,
+				activeDocumentContextForTurn(turnRequestContext, activeSteerContextSet, activeSteerDocument)...,
+			)
+			return segments
+		}
 	}
 	driverCtx := loopdriver.WithExecutionContext(ctx, loopdriver.ExecutionContext{
 		SessionID:   th.ID,
 		ExecutionID: turnID,
 	})
-	res, err := runner.RunWithCallback(driverCtx, history, func(ev providers.StreamEvent) {
+	turnResult, err := engine.RunTurn(driverCtx, agentengine.TurnInput{History: history}, func(ev providers.StreamEvent) {
 		th.mu.Lock()
 		if th.currentTurn != turnID {
 			th.mu.Unlock()
@@ -2091,6 +2166,9 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			Event:    sanitizeStreamEvent(ev),
 		})
 	})
+	// RunTurn returns the engine outcome; the built-in wuu engine's result is
+	// the native loop result the rest of the turn accounting consumes.
+	res := turnResult.Result
 	if s.rt != nil && s.rt.HookDispatcher != nil {
 		th.mu.Lock()
 		title := th.Title

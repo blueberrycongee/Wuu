@@ -18,8 +18,10 @@ import (
 	"github.com/blueberrycongee/wuu/internal/activity"
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
+	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/capability"
+	"github.com/blueberrycongee/wuu/internal/codexengine"
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/extensions"
@@ -165,8 +167,12 @@ type Session struct {
 	DeferredToolCatalogPrompt   string
 	ReadinessIssues             []ReadinessIssue
 	InferenceJournalRuntime     *session.InferenceJournalRuntime
-	pluginGenerationMu          sync.Mutex
-	pluginGeneration            *PluginGeneration
+	// engines is the registry of agent engines this runtime can host. The
+	// built-in wuu engine is registered at construction; external engines
+	// (Claude, Codex) register as they are added.
+	engines            *agentengine.Registry
+	pluginGenerationMu sync.Mutex
+	pluginGeneration   *PluginGeneration
 }
 
 // MaxParallel returns the worker concurrency configured for this session.
@@ -233,6 +239,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		DeferredToolCatalogPrompt:   s.DeferredToolCatalogPrompt,
 		ReadinessIssues:             s.ReadinessIssues,
 		InferenceJournalRuntime:     s.InferenceJournalRuntime,
+		engines:                     s.engines,
 	}
 	return clone
 }
@@ -262,6 +269,9 @@ type ThreadRuntime struct {
 	// behind its back (e.g. another app-server process repinned the
 	// session), so callers compare this stamp before reusing an idle runtime.
 	Selection ThreadModelSelection
+	// EngineID is the agent engine this runtime executes for. It is stamped
+	// from the thread's persisted binding; the built-in engine is "wuu".
+	EngineID agentengine.EngineID
 }
 
 // ThreadModelSelection is the model choice persisted with one conversation.
@@ -692,6 +702,21 @@ func NewSession(opts Options) (*Session, error) {
 		ReadinessIssues:             readinessIssues,
 		InferenceJournalRuntime:     journalRuntime,
 	}
+	// The built-in wuu engine is the native StreamRunner loop. Registering it
+	// here makes the seam explicit: thread runtimes are always created by an
+	// engine factory, starting with this one.
+	runtimeSession.engines = agentengine.NewRegistry()
+	if err := runtimeSession.engines.Register(&WuuEngine{session: runtimeSession}); err != nil {
+		journalOwned = false
+		_ = journalRuntime.Close()
+		return nil, fmt.Errorf("register built-in agent engine: %w", err)
+	}
+	// The codex engine hosts the codex CLI app-server as an external agent.
+	// It registers unconditionally: when the binary is missing, opening a
+	// codex-bound thread fails with a clear error instead of a hidden state.
+	codexBinary, codexErr := codexengine.ResolveBinary()
+	_ = codexErr
+	runtimeSession.engines.Register(codexengine.NewEngine(codexengine.NewHost(codexBinary, rootDir)))
 	initialHooks := hooks.NewDispatcher(nil)
 	initialHooks.Replace(hookDispatcher)
 	runtimeSession.pluginGeneration = &PluginGeneration{

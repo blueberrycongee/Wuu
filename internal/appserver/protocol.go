@@ -1210,6 +1210,9 @@ type ThreadStartParams struct {
 	Ephemeral   bool   `json:"ephemeral,omitempty"`
 	CWD         string `json:"cwd,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
+	// Engine selects the agent engine the thread is bound to. Empty is the
+	// built-in "wuu" engine; the binding is fixed at creation.
+	Engine string `json:"engine,omitempty"`
 }
 
 type ThreadStartResult struct {
@@ -1959,17 +1962,21 @@ const (
 )
 
 type Thread struct {
-	ID               string        `json:"id"`
-	Source           string        `json:"source,omitempty"`
-	ParentID         string        `json:"parent_id,omitempty"`
-	AgentPath        string        `json:"agent_path,omitempty"`
-	Preview          string        `json:"preview"`
-	Title            string        `json:"title,omitempty"`
-	ModelProvider    string        `json:"model_provider"`
-	Model            string        `json:"model"`
-	ModelVariant     string        `json:"model_variant"`
-	ModelEffort      string        `json:"model_effort"`
-	PermissionMode   string        `json:"permission_mode"`
+	ID             string `json:"id"`
+	Source         string `json:"source,omitempty"`
+	ParentID       string `json:"parent_id,omitempty"`
+	AgentPath      string `json:"agent_path,omitempty"`
+	Preview        string `json:"preview"`
+	Title          string `json:"title,omitempty"`
+	ModelProvider  string `json:"model_provider"`
+	Model          string `json:"model"`
+	ModelVariant   string `json:"model_variant"`
+	ModelEffort    string `json:"model_effort"`
+	PermissionMode string `json:"permission_mode"`
+	// EngineID is the agent engine the thread is bound to ("wuu" for the
+	// built-in engine; external engines like Claude or Codex will carry
+	// their own ids).
+	EngineID         string        `json:"engine_id,omitempty"`
 	CWD              string        `json:"cwd"`
 	WorkspaceID      string        `json:"workspace_id,omitempty"`
 	WorkspaceKind    WorkspaceKind `json:"workspace_kind,omitempty"`

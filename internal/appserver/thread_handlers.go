@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
+	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
@@ -63,6 +64,13 @@ func (s *Server) handleThreadStart(req Request) error {
 	if workspaceID == "" {
 		workspaceID = s.rt.WorkspaceID
 	}
+	// Engine selection is a thread-creation decision; threads never silently
+	// switch engines afterwards. The registry is the source of truth: the
+	// built-in wuu engine plus any external engines this build hosts.
+	engineID := agentengine.NormalizeEngineID(params.Engine)
+	if !s.rt.EngineAvailable(engineID) {
+		return s.writeResponse(req.ID, nil, agentengine.CheckEngine(engineID))
+	}
 	workspaceKind := workspaceKindForCWD(s.rt.WuuHome, threadCWD)
 	threadSource := ""
 	if !params.Ephemeral {
@@ -73,6 +81,9 @@ func (s *Server) handleThreadStart(req Request) error {
 			return s.writeResponse(req.ID, nil, err)
 		}
 		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, id, s.currentSessionRuntimeSelection()); err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+		if _, err := session.SetEngine(s.rt.SessionDir, id, string(engineID)); err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
 		// Bind project threads to the active workspace's stable id so their
@@ -91,6 +102,7 @@ func (s *Server) handleThreadStart(req Request) error {
 		history = append(history, providers.ChatMessage{Role: "system", Content: prompt})
 	}
 	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, persistHistory, time.Now().UTC())
+	th.EngineID = string(engineID)
 	th.Source = threadSource
 	applyThreadRuntimeSelection(th, s.currentSessionRuntimeSelection())
 	th.WorkspaceID = workspaceID
@@ -428,6 +440,13 @@ func (s *Server) handleThreadFork(req Request) error {
 		PermissionMode: source.permissionMode,
 	})
 	if err != nil {
+		_, _ = session.Delete(s.rt.SessionDir, sess.ID)
+		cleanupWorktree()
+		return s.writeResponse(req.ID, nil, err)
+	}
+	// A fork inherits its source's engine binding; threads never silently
+	// switch engines.
+	if _, err := session.SetEngine(s.rt.SessionDir, sess.ID, source.thread.EngineID); err != nil {
 		_, _ = session.Delete(s.rt.SessionDir, sess.ID)
 		cleanupWorktree()
 		return s.writeResponse(req.ID, nil, err)
@@ -1124,6 +1143,8 @@ func applySessionMetadata(th *threadState, metadata session.Session) {
 	if selection := runtimeSelectionFromSession(metadata); selection.Provider != "" && selection.Model != "" {
 		applyThreadRuntimeSelection(th, selection)
 	}
+	th.EngineID = string(agentengine.NormalizeEngineID(metadata.EngineID))
+	th.EngineRef = strings.TrimSpace(metadata.EngineRef)
 	th.ForkedFromID = metadata.ForkedFromID
 	th.ForkedFromTurnID = metadata.ForkedFromTurnID
 	th.ForkedFromItemID = metadata.ForkedFromItemID
@@ -1135,6 +1156,26 @@ func applySessionMetadata(th *threadState, metadata session.Session) {
 	th.FolderID = metadata.FolderID
 	th.PinGroupID = metadata.PinGroupID
 	th.ArchivedAt = metadata.ArchivedAt
+}
+
+// persistThreadEngineRef stores the engine's native session reference for a
+// thread (for example a codex thread id) in the session row and the live
+// thread state. It is invoked by engine sessions after they create their
+// native thread on first use, so later turns resume it.
+func (s *Server) persistThreadEngineRef(threadID, ref string) error {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return nil
+	}
+	if _, err := session.SetEngineRef(s.rt.SessionDir, threadID, ref); err != nil {
+		return err
+	}
+	if th := s.thread(threadID); th != nil {
+		th.mu.Lock()
+		th.EngineRef = ref
+		th.mu.Unlock()
+	}
+	return nil
 }
 
 // runtimeSelectionFromSession is the one conversion from a persisted session
@@ -1185,6 +1226,7 @@ func threadEntryFromSession(sess session.Session, provider, model string) thread
 			ModelVariant:     selection.Variant,
 			ModelEffort:      selection.Effort,
 			PermissionMode:   permissionMode,
+			EngineID:         string(agentengine.NormalizeEngineID(sess.EngineID)),
 			CWD:              sess.CWD,
 			WorkspaceID:      sess.WorkspaceID,
 			Status:           ThreadStatusIdle,

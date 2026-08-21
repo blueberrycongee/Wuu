@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/compact"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
 	"github.com/blueberrycongee/wuu/internal/participant"
@@ -35,6 +36,7 @@ func newThreadState(id string, history []providers.ChatMessage, rtProvider, mode
 		ModelProvider:  rtProvider,
 		Model:          model,
 		CWD:            cwd,
+		EngineID:       string(agentengine.EngineWuu),
 		Turns:          turnsFromHistory(id, history, now),
 		PersistHistory: persistHistory,
 		toolItems:      make(map[string]string),
@@ -58,6 +60,7 @@ func (th *threadState) snapshotLocked() Thread {
 		ModelVariant:    th.ModelVariant,
 		ModelEffort:     th.ModelEffort,
 		PermissionMode:  th.PermissionMode,
+		EngineID:        string(agentengine.NormalizeEngineID(th.EngineID)),
 		CWD:             th.CWD,
 		WorkspaceID:     th.WorkspaceID,
 		WorkspaceKind:   th.WorkspaceKind,

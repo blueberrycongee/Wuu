@@ -52,6 +52,14 @@ type Session struct {
 	Variant           string    `json:"variant,omitempty"`
 	Effort            string    `json:"effort,omitempty"`
 	PermissionMode    string    `json:"permission_mode,omitempty"`
+	// EngineID is the agent engine the thread is bound to. Empty reads as
+	// the built-in wuu engine, which is the legacy default for sessions
+	// persisted before engine binding existed.
+	EngineID string `json:"engine_id,omitempty"`
+	// EngineRef is the engine's native session reference for this thread
+	// (for example a codex thread id). It is written once the engine creates
+	// the native session and read back to resume it.
+	EngineRef string `json:"engine_ref,omitempty"`
 	// WorkspaceID is the stable, location-independent identity of the workspace
 	// this session belongs to (the desktop's registered-project id). Sessions
 	// of a workspace with an id are listed by that id, so they follow the
@@ -290,7 +298,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, pin_group_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-	       provider, model, variant, effort, permission_mode
+	       provider, model, variant, effort, permission_mode, engine_id, engine_ref
 FROM sessions`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
@@ -395,7 +403,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, pin_group_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-       provider, model, variant, effort, permission_mode
+       provider, model, variant, effort, permission_mode, engine_id, engine_ref
 FROM sessions
 WHERE owner = ? AND creation_request_id = ?`, owner, requestID)
 	sess, err := scanSession(row)
@@ -511,6 +519,29 @@ func SetRuntimeSelection(sessDir, id string, selection RuntimeSelection) (Sessio
 		s.Variant = strings.TrimSpace(selection.Variant)
 		s.Effort = strings.TrimSpace(selection.Effort)
 		s.PermissionMode = strings.TrimSpace(selection.PermissionMode)
+	})
+}
+
+// SetEngine binds a session to an agent engine. A thread binds its engine at
+// creation and never silently switches; changing it requires an explicit
+// product action. The engine id must be non-empty; callers pass the
+// normalized id of a known engine (the built-in id is "wuu").
+func SetEngine(sessDir, id, engineID string) (Session, error) {
+	engineID = strings.TrimSpace(engineID)
+	if engineID == "" {
+		return Session{}, fmt.Errorf("engine id is required")
+	}
+	return updateMetadata(sessDir, id, false, func(s *Session) {
+		s.EngineID = engineID
+	})
+}
+
+// SetEngineRef stores the engine's native session reference for a thread
+// (for example a codex thread id). It is written once the engine creates the
+// native session and read back to resume it.
+func SetEngineRef(sessDir, id, ref string) (Session, error) {
+	return updateMetadata(sessDir, id, false, func(s *Session) {
+		s.EngineRef = strings.TrimSpace(ref)
 	})
 }
 
@@ -1487,6 +1518,12 @@ WHERE workflow_id = ''`); err != nil {
 	if err := addColumnIfMissing(db, "sessions", "permission_mode", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := addColumnIfMissing(db, "sessions", "engine_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "sessions", "engine_ref", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if err := addColumnIfMissing(db, "sessions", "folder_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -1551,8 +1588,8 @@ func insertSessionSQL() string {
 		forked_from_id, forked_from_turn_id, forked_from_item_id,
 		pinned_at, folder_id, pin_group_id, archived_at, worktree_path, worktree_base_head, worktree_base_repo,
 		workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-		provider, model, variant, effort, permission_mode
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		provider, model, variant, effort, permission_mode, engine_id, engine_ref
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 }
 
 func updateSessionTx(tx *sql.Tx, sess Session) error {
@@ -1562,7 +1599,7 @@ SET created_at = ?, updated_at = ?, title = ?, summary = ?, entries = ?, cwd = ?
     forked_from_id = ?, forked_from_turn_id = ?, forked_from_item_id = ?,
     pinned_at = ?, folder_id = ?, pin_group_id = ?, archived_at = ?, worktree_path = ?, worktree_base_head = ?, worktree_base_repo = ?,
     workspace_id = ?, source = ?, owner = ?, visibility = ?, parent_id = ?, context_source = ?, creation_request_id = ?,
-	provider = ?, model = ?, variant = ?, effort = ?, permission_mode = ?
+	provider = ?, model = ?, variant = ?, effort = ?, permission_mode = ?, engine_id = ?, engine_ref = ?
 WHERE id = ?`,
 		timeText(sess.CreatedAt), timeText(sess.UpdatedAt), sess.Title, sess.Summary, sess.Entries, normalizeCWD(sess.CWD),
 		sess.ForkedFromID, sess.ForkedFromTurnID, sess.ForkedFromItemID,
@@ -1572,6 +1609,8 @@ WHERE id = ?`,
 		strings.TrimSpace(sess.Owner), strings.TrimSpace(sess.Visibility), strings.TrimSpace(sess.ParentID), strings.TrimSpace(sess.ContextSource), strings.TrimSpace(sess.CreationRequestID),
 		strings.TrimSpace(sess.Provider), strings.TrimSpace(sess.Model), strings.TrimSpace(sess.Variant),
 		strings.TrimSpace(sess.Effort), strings.TrimSpace(sess.PermissionMode),
+		strings.TrimSpace(sess.EngineID),
+		strings.TrimSpace(sess.EngineRef),
 		sess.ID,
 	)
 	if err != nil {
@@ -1611,6 +1650,8 @@ func sessionArgs(sess Session) []any {
 		strings.TrimSpace(sess.Variant),
 		strings.TrimSpace(sess.Effort),
 		strings.TrimSpace(sess.PermissionMode),
+		strings.TrimSpace(sess.EngineID),
+		strings.TrimSpace(sess.EngineRef),
 	}
 }
 
@@ -1621,7 +1662,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, pin_group_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-	       provider, model, variant, effort, permission_mode
+	       provider, model, variant, effort, permission_mode, engine_id, engine_ref
 FROM sessions
 WHERE id = ?`, id)
 	return scanSessionRow(row)
@@ -1634,7 +1675,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, pin_group_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-	       provider, model, variant, effort, permission_mode
+	       provider, model, variant, effort, permission_mode, engine_id, engine_ref
 FROM sessions
 WHERE id = ?`, id)
 	return scanSessionRow(row)
@@ -1665,7 +1706,7 @@ func scanSession(scanner interface {
 		&pinnedAt, &s.FolderID, &s.PinGroupID, &archivedAt,
 		&s.WorktreePath, &s.WorktreeBaseHEAD, &s.WorktreeBaseRepo,
 		&s.WorkspaceID, &s.Source, &s.Owner, &s.Visibility, &s.ParentID, &s.ContextSource, &s.CreationRequestID,
-		&s.Provider, &s.Model, &s.Variant, &s.Effort, &s.PermissionMode,
+		&s.Provider, &s.Model, &s.Variant, &s.Effort, &s.PermissionMode, &s.EngineID, &s.EngineRef,
 	); err != nil {
 		return Session{}, err
 	}

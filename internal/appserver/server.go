@@ -51,16 +51,22 @@ type threadState struct {
 	// historyHeadSeq is the physical append-only session_messages head that
 	// History was reconstructed through. It must not be derived from the
 	// logical messages: a checkpoint may retain no records or only old seqs.
-	historyHeadSeq           int
-	CreatedAt                time.Time
-	UpdatedAt                time.Time
-	LastAccessedAt           time.Time
-	Title                    string
-	ModelProvider            string
-	Model                    string
-	ModelVariant             string
-	ModelEffort              string
-	PermissionMode           string
+	historyHeadSeq int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	LastAccessedAt time.Time
+	Title          string
+	ModelProvider  string
+	Model          string
+	ModelVariant   string
+	ModelEffort    string
+	PermissionMode string
+	// EngineID is the agent engine this thread is bound to. It is fixed at
+	// thread creation; the built-in engine is "wuu".
+	EngineID string
+	// EngineRef is the engine's native session reference for this thread
+	// (for example a codex thread id), persisted when the engine creates it.
+	EngineRef                string
 	CWD                      string
 	WorkspaceKind            WorkspaceKind
 	ForkedFromID             string

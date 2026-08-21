@@ -1,0 +1,362 @@
+package codexengine
+
+import "encoding/json"
+
+// JSON-RPC methods of the codex app-server. Codex omits the jsonrpc:"2.0"
+// envelope field; the shapes here follow the official protocol (see
+// thirdparty/codex/codex-rs/app-server/README.md and cindy's protocol.ts).
+const (
+	MethodInitialize           = "initialize"
+	MethodThreadStart          = "thread/start"
+	MethodThreadResume         = "thread/resume"
+	MethodThreadUnsubscribe    = "thread/unsubscribe"
+	MethodTurnStart            = "turn/start"
+	MethodTurnInterrupt        = "turn/interrupt"
+	MethodAccountRateLimits    = "account/rateLimits/read"
+	MethodCommandExecApproval  = "item/commandExecution/requestApproval"
+	MethodFileChangeApproval   = "item/fileChange/requestApproval"
+	MethodPermissionsApproval  = "item/permissions/requestApproval"
+	MethodMcpElicitation       = "mcpServer/elicitation/request"
+	MethodToolRequestUserInput = "item/tool/requestUserInput"
+)
+
+// Notification method names (verified against the vendored codex protocol:
+// no item/updated, no thread/status/updated in current versions; the error
+// notification method is literally "error").
+const (
+	NotifyThreadStarted         = "thread/started"
+	NotifyThreadStatusChanged   = "thread/status/changed"
+	NotifyThreadSettingsUpdated = "thread/settings/updated"
+	NotifyTurnStarted           = "turn/started"
+	NotifyTurnCompleted         = "turn/completed"
+	NotifyTurnPlanUpdated       = "turn/plan/updated"
+	NotifyItemStarted           = "item/started"
+	NotifyItemCompleted         = "item/completed"
+	NotifyAgentMessageDelta     = "item/agentMessage/delta"
+	NotifyReasoningTextDelta    = "item/reasoning/textDelta"
+	NotifyReasoningSummaryAdded = "item/reasoning/summaryPartAdded"
+	NotifyReasoningSummaryDelta = "item/reasoning/summaryTextDelta"
+	NotifyTokenUsageUpdated     = "thread/tokenUsage/updated"
+	NotifyError                 = "error"
+	NotifyServerRequestResolved = "serverRequest/resolved"
+)
+
+// ClientInfo identifies the host application to the app-server.
+type ClientInfo struct {
+	Name    string `json:"name"`
+	Title   string `json:"title,omitempty"`
+	Version string `json:"version"`
+}
+
+// InitializeParams is the initialize request body.
+type InitializeParams struct {
+	ClientInfo   ClientInfo          `json:"clientInfo"`
+	Capabilities *InitializeCapabili `json:"capabilities,omitempty"`
+}
+
+// InitializeCapabili enables the experimental v2 protocol surface.
+type InitializeCapabili struct {
+	ExperimentalAPI bool `json:"experimentalApi,omitempty"`
+}
+
+// InitializeResponse carries the server's home directory and platform info.
+type InitializeResponse struct {
+	UserAgent      string `json:"userAgent"`
+	CodexHome      string `json:"codexHome"`
+	PlatformFamily string `json:"platformFamily,omitempty"`
+	PlatformOS     string `json:"platformOs,omitempty"`
+}
+
+// ApprovalPolicy controls interactive approval routing. Wire values are
+// kebab-case (untrusted/onRequest/granular/never).
+type ApprovalPolicy string
+
+const (
+	ApprovalUntrusted ApprovalPolicy = "untrusted"
+	ApprovalOnRequest ApprovalPolicy = "onRequest"
+	ApprovalGranular  ApprovalPolicy = "granular"
+	ApprovalNever     ApprovalPolicy = "never"
+)
+
+// SandboxMode is the thread sandbox level.
+type SandboxMode string
+
+const (
+	SandboxReadOnly       SandboxMode = "read-only"
+	SandboxWorkspaceWrite SandboxMode = "workspace-write"
+	SandboxDangerFull     SandboxMode = "danger-full-access"
+)
+
+// ReasoningEffort mirrors codex reasoning effort values.
+type ReasoningEffort string
+
+const (
+	EffortNone    ReasoningEffort = "none"
+	EffortMinimal ReasoningEffort = "minimal"
+	EffortLow     ReasoningEffort = "low"
+	EffortMedium  ReasoningEffort = "medium"
+	EffortHigh    ReasoningEffort = "high"
+	EffortMax     ReasoningEffort = "max"
+	EffortUltra   ReasoningEffort = "ultra"
+)
+
+// ThreadStartParams starts a new codex thread.
+type ThreadStartParams struct {
+	Model                 string         `json:"model,omitempty"`
+	ModelProvider         string         `json:"modelProvider,omitempty"`
+	CWD                   string         `json:"cwd,omitempty"`
+	ApprovalPolicy        ApprovalPolicy `json:"approvalPolicy,omitempty"`
+	Sandbox               SandboxMode    `json:"sandbox,omitempty"`
+	Permissions           string         `json:"permissions,omitempty"`
+	Config                map[string]any `json:"config,omitempty"`
+	ServiceTier           *string        `json:"serviceTier,omitempty"`
+	DeveloperInstructs    string         `json:"developerInstructions,omitempty"`
+	RuntimeWorkspaceRoots []string       `json:"runtimeWorkspaceRoots,omitempty"`
+}
+
+// ThreadStartResponse returns the created thread id and effective model.
+type ThreadStartResponse struct {
+	Thread      ThreadInfo `json:"thread"`
+	Model       string     `json:"model"`
+	CWD         string     `json:"cwd"`
+	ServiceTier *string    `json:"serviceTier,omitempty"`
+}
+
+// ThreadInfo is the thread envelope returned by thread/start and thread/resume.
+type ThreadInfo struct {
+	ID string `json:"id"`
+}
+
+// ThreadResumeParams reopens an existing codex thread by id.
+type ThreadResumeParams struct {
+	ThreadID       string         `json:"threadId"`
+	Model          string         `json:"model,omitempty"`
+	ModelProvider  string         `json:"modelProvider,omitempty"`
+	CWD            string         `json:"cwd,omitempty"`
+	ApprovalPolicy ApprovalPolicy `json:"approvalPolicy,omitempty"`
+	Sandbox        SandboxMode    `json:"sandbox,omitempty"`
+	Permissions    string         `json:"permissions,omitempty"`
+	ExcludeTurns   bool           `json:"excludeTurns,omitempty"`
+}
+
+// ThreadResumeResponse mirrors ThreadStartResponse.
+type ThreadResumeResponse struct {
+	Thread ThreadInfo `json:"thread"`
+	Model  string     `json:"model"`
+	CWD    string     `json:"cwd"`
+}
+
+// ThreadUnsubscribeParams detaches from a thread's event stream.
+type ThreadUnsubscribeParams struct {
+	ThreadID string `json:"threadId"`
+}
+
+// UserInput is one input entry for turn/start; the type discriminator is
+// "type" with camelCase variants.
+type UserInput struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+	URL  string `json:"url,omitempty"`
+	Path string `json:"path,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// TurnStartParams starts a turn on an existing thread.
+type TurnStartParams struct {
+	ThreadID              string          `json:"threadId"`
+	Input                 []UserInput     `json:"input"`
+	Model                 string          `json:"model,omitempty"`
+	ReasoningEffort       ReasoningEffort `json:"reasoningEffort,omitempty"`
+	RuntimeWorkspaceRoots []string        `json:"runtimeWorkspaceRoots,omitempty"`
+	Permissions           string          `json:"permissions,omitempty"`
+}
+
+// TurnStartResponse echoes the started turn.
+type TurnStartResponse struct {
+	Turn TurnInfo `json:"turn"`
+}
+
+// TurnInfo is the turn envelope.
+type TurnInfo struct {
+	ID string `json:"id"`
+}
+
+// TurnInterruptParams cancels an in-flight turn.
+type TurnInterruptParams struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+}
+
+// ── Notification params ─────────────────────────────────────────────────────
+
+// ThreadStartedNotificationParams accompanies thread/started.
+type ThreadStartedNotificationParams struct {
+	Thread ThreadInfo `json:"thread"`
+}
+
+// TurnStartedNotificationParams accompanies turn/started.
+type TurnStartedNotificationParams struct {
+	ThreadID string   `json:"threadId"`
+	Turn     TurnInfo `json:"turn"`
+}
+
+// TurnCompletedInfo is the turn object inside turn/completed.
+type TurnCompletedInfo struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Error  *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// TurnCompletedNotificationParams accompanies turn/completed. The status
+// field lives on the nested turn object.
+type TurnCompletedNotificationParams struct {
+	ThreadID string            `json:"threadId"`
+	Turn     TurnCompletedInfo `json:"turn"`
+}
+
+// ItemEnvelope is the shared shape of every v2 item; the "type" field
+// discriminates (agentMessage, reasoning, userMessage, toolCall,
+// commandExecution, fileChange, ...).
+type ItemEnvelope struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+}
+
+// ItemStartedNotificationParams accompanies item/started.
+type ItemStartedNotificationParams struct {
+	ThreadID string       `json:"threadId"`
+	TurnID   string       `json:"turnId"`
+	Item     ItemEnvelope `json:"item"`
+}
+
+// ItemUpdatedNotificationParams accompanies item/updated.
+type ItemUpdatedNotificationParams struct {
+	ThreadID string       `json:"threadId"`
+	TurnID   string       `json:"turnId"`
+	Item     ItemEnvelope `json:"item"`
+}
+
+// ItemCompletedNotificationParams accompanies item/completed.
+type ItemCompletedNotificationParams struct {
+	ThreadID string       `json:"threadId"`
+	TurnID   string       `json:"turnId"`
+	Item     ItemEnvelope `json:"item"`
+}
+
+// AgentMessageDeltaNotificationParams carries streaming agent text deltas.
+type AgentMessageDeltaNotificationParams struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	ItemID   string `json:"itemId"`
+	Delta    string `json:"delta"`
+}
+
+// ReasoningTextDeltaNotificationParams carries streaming reasoning text.
+type ReasoningTextDeltaNotificationParams struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	ItemID   string `json:"itemId"`
+	Delta    string `json:"delta"`
+}
+
+// ReasoningSummaryPartAddedNotificationParams opens a reasoning summary part.
+type ReasoningSummaryPartAddedNotificationParams struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	ItemID   string `json:"itemId"`
+}
+
+// ReasoningSummaryTextDeltaNotificationParams streams one summary part.
+type ReasoningSummaryTextDeltaNotificationParams struct {
+	ThreadID     string `json:"threadId"`
+	TurnID       string `json:"turnId"`
+	ItemID       string `json:"itemId"`
+	Delta        string `json:"delta"`
+	SummaryIndex int    `json:"summaryIndex"`
+}
+
+// TokenUsageBreakdown is one usage bucket. "total" is the thread lifetime
+// cumulative; "last" is the current turn's increment.
+type TokenUsageBreakdown struct {
+	TotalTokens           int `json:"totalTokens"`
+	InputTokens           int `json:"inputTokens"`
+	CachedInputTokens     int `json:"cachedInputTokens"`
+	CacheWriteInputTokens int `json:"cacheWriteInputTokens"`
+	OutputTokens          int `json:"outputTokens"`
+	ReasoningOutputTokens int `json:"reasoningOutputTokens"`
+}
+
+// TokenUsageNotificationParams accompanies thread/tokenUsage/updated.
+type TokenUsageNotificationParams struct {
+	ThreadID   string `json:"threadId"`
+	TurnID     string `json:"turnId"`
+	TokenUsage struct {
+		Total              TokenUsageBreakdown `json:"total"`
+		Last               TokenUsageBreakdown `json:"last"`
+		ModelContextWindow *int                `json:"modelContextWindow"`
+	} `json:"tokenUsage"`
+}
+
+// ErrorNotificationParams accompanies the "error" notification. The error
+// object is the contract; the message string is human text only.
+type ErrorNotificationParams struct {
+	ThreadID  string `json:"threadId"`
+	TurnID    string `json:"turnId"`
+	WillRetry bool   `json:"willRetry"`
+	Error     struct {
+		Message        string          `json:"message"`
+		CodexErrorInfo json.RawMessage `json:"codexErrorInfo"`
+	} `json:"error"`
+}
+
+// ── Server requests (approvals) ─────────────────────────────────────────────
+
+// ApprovalDecision values for approval server requests.
+const (
+	DecisionAccept           = "accept"
+	DecisionAcceptForSession = "acceptForSession"
+	DecisionDecline          = "decline"
+	DecisionCancel           = "cancel"
+)
+
+// CommandExecutionApprovalParams asks the host to approve a shell command.
+type CommandExecutionApprovalParams struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	ItemID   string `json:"itemId,omitempty"`
+	Command  string `json:"command"`
+	CWD      string `json:"cwd,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// ApprovalDecisionResponse is the shared response shape for approval
+// requests (accept/decline/cancel).
+type ApprovalDecisionResponse struct {
+	Decision string `json:"decision"`
+}
+
+// FileChangeApprovalParams asks the host to approve a file write.
+type FileChangeApprovalParams struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	ItemID   string `json:"itemId,omitempty"`
+	FilePath string `json:"filePath"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// PermissionsApprovalParams asks the host to approve a permissions grant.
+type PermissionsApprovalParams struct {
+	ThreadID    string `json:"threadId"`
+	TurnID      string `json:"turnId"`
+	ItemID      string `json:"itemId,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+	Permissions any    `json:"permissions"`
+}
+
+// PermissionsApprovalResponse grants (non-empty permissions) or denies.
+type PermissionsApprovalResponse struct {
+	Permissions any    `json:"permissions"`
+	Scope       string `json:"scope"`
+}
