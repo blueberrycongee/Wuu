@@ -27,6 +27,23 @@ const WUU_MASCOT_LAYOUT = _layout(WUU_MASCOT_NAME, {
   traits: WUU_MASCOT_TRAITS,
 });
 
+function withLongMascotEyes(expression: Expression): Expression {
+  return {
+    ...expression,
+    p: {
+      ...expression.p,
+      // Expressions may move the eyes and body, but the mascot should keep its
+      // long portrait eyes instead of morphing them into horizontal squints.
+      esx: 1,
+      esy: 1,
+      esx2: 0,
+      esy2: 0,
+      tilt: 0,
+      tilt2: 0,
+    },
+  };
+}
+
 export type WuuMascotAccessory =
   | "none"
   | "cap"
@@ -59,18 +76,16 @@ const WUU_MASCOT_ACTIVITY_EXPRESSIONS: Readonly<
   Record<WuuMascotActivity, Expression | undefined>
 > = {
   idle: undefined,
-  // A draft existing at all is the good news of the empty-session screen, so
-  // composing gets the pleased eyes while the head lifts to face the user.
-  compose: happy,
-  // A quiet head-cocked pose reads as concentration without relying on the
-  // explicit activity prop below alone. Eye geometry still morphs in place.
-  thinking: smug,
-  compact: smug,
-  search: surprised,
-  edit: happy,
-  command: happy,
-  read: smug,
-  tool: happy,
+  // Activity still changes gaze, spacing, and body position, while this shared
+  // wrapper keeps the eye silhouette consistently long everywhere Wuu appears.
+  compose: withLongMascotEyes(happy),
+  thinking: withLongMascotEyes(smug),
+  compact: withLongMascotEyes(smug),
+  search: withLongMascotEyes(surprised),
+  edit: withLongMascotEyes(happy),
+  command: withLongMascotEyes(happy),
+  read: withLongMascotEyes(smug),
+  tool: withLongMascotEyes(happy),
 };
 
 type WuuMascotRuntime = {

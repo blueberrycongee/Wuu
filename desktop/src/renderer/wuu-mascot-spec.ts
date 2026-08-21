@@ -4,7 +4,13 @@
  */
 export const WUU_MASCOT_NAME = "wuu";
 export const WUU_MASCOT_DEFAULT_HUE = 14;
-export const WUU_MASCOT_TRAITS = { shape: 0.2, "body.ratio": 0.5 } as const;
+// Keep the mascot's signature eyes as long portrait capsules. Activity poses
+// may move the pair, but WuuMascot prevents them from being squashed into bars.
+export const WUU_MASCOT_TRAITS = {
+  shape: 0.2,
+  "body.ratio": 0.5,
+  "eye.ratio": 1,
+} as const;
 
 export type WuuMascotActivity =
   | "idle"

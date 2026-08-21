@@ -71,9 +71,9 @@ export function EmptyConversationHome({
     <section className="empty-home" data-wuu-component="empty-session">
       <div className="empty-home-inner session-flow">
         <div className="empty-home-header">
-          {/* The wuu blobatar greeting, idling with its gaze lowered toward
-              the composer below and lifting its head (activity "compose") as
-              soon as a draft exists; see .empty-home-mascot in turns.css. Hue
+          {/* The wuu blobatar greeting, keeping its long eyes while its gaze is
+              lowered toward the composer and lifting its head (activity
+              "compose") as soon as a draft exists; see .empty-home-mascot in turns.css. Hue
               is pinned the same way default avatars are, so the mark matches
               the pairing hero on the phone companion. Shape is pinned to
               "round" (the first silhouette, shape < 0.28) with the aspect
