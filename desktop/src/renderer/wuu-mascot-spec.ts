@@ -5,11 +5,17 @@
 export const WUU_MASCOT_NAME = "wuu";
 export const WUU_MASCOT_DEFAULT_HUE = 14;
 // Keep the mascot's signature eyes as long portrait capsules. Activity poses
-// may move the pair, but WuuMascot prevents them from being squashed into bars.
+// may move and naturally foreshorten the pair, but both eyes start from the
+// same authored geometry and WuuMascot never squashes them into bars.
 export const WUU_MASCOT_TRAITS = {
   shape: 0.2,
   "body.ratio": 0.5,
   "eye.ratio": 1,
+  // These normalized trait positions resolve both second-eye multipliers to 1.
+  "eye.scale": 0.4782608695652174,
+  "eye.stretch": 0.45454545454545453,
+  "eye.dy": 0.5,
+  "eye.lean2": 0.5,
 } as const;
 
 export type WuuMascotActivity =
@@ -25,9 +31,9 @@ export type WuuMascotActivity =
 
 /**
  * Where the mascot looks in each activity, layered on top of the expression.
- * The turn is carried by the eye pair's position and foreshortening only —
- * the capsules stay parallel — so even the 28px process-row ball reads the
- * glance. Yaw looks left/right, pitch up/down; undefined is straight ahead.
+ * The turn is carried by the eye pair's position plus natural spherical
+ * foreshortening, so even the 28px process-row ball reads the glance. Yaw looks
+ * left/right, pitch up/down; undefined is straight ahead.
  *
  * - idle greets with its gaze lowered toward the composer (or the status text
  *   under the launch view): an invitation, not a stare.

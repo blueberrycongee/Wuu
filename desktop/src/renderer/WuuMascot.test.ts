@@ -17,22 +17,20 @@ describe("vendored mascot geometry", () => {
       perspective: WUU_MASCOT_ACTIVITY_PERSPECTIVES[activity],
     });
 
-  it("keeps both Wuu eyes as crisp capsules at compact process-row sizes", () => {
+  it("authors matching long eyes, then foreshortens them across the sphere", () => {
     const read = forActivity("read");
 
-    expect(BLOBATAR_VERSION).toBe("0.2.0-wuu.7");
+    expect(BLOBATAR_VERSION).toBe("0.2.0-wuu.8");
+    expect(flat.eyes[1]!.rx).toBeCloseTo(flat.eyes[0]!.rx, 10);
+    expect(flat.eyes[1]!.ry).toBeCloseTo(flat.eyes[0]!.ry, 10);
+    expect(flat.eyes[1]!.rot).toBeCloseTo(flat.eyes[0]!.rot, 10);
     for (const eye of read.eyes) {
       expect(eye.rx / read.body.rx).toBeGreaterThan(0.055);
     }
-    // The projection moves the pair but never touches the capsules: same
-    // size, same lean, no warp — at these sizes a shrunk capsule reads as a
-    // smaller eye, not as a turned surface.
-    expect(read.eyes.map((e) => [e.rx, e.ry, e.rot])).toEqual(
-      flat.eyes.map((e) => [e.rx, e.ry, e.rot]),
-    );
+    expect(read.eyes[1]!.ry).not.toBeCloseTo(read.eyes[0]!.ry, 3);
   });
 
-  it("carries a distinct gaze in every activity, and none of them warp the eyes", () => {
+  it("carries a distinct, naturally projected gaze in every activity", () => {
     const pairCenter = (l: typeof flat) => ({
       x: (l.eyes[0]!.cx + l.eyes[1]!.cx) / 2 - l.body.cx,
       y: (l.eyes[0]!.cy + l.eyes[1]!.cy) / 2 - l.body.cy,
@@ -41,11 +39,10 @@ describe("vendored mascot geometry", () => {
 
     for (const [activity, perspective] of Object.entries(WUU_MASCOT_ACTIVITY_PERSPECTIVES)) {
       const layout = forActivity(activity as WuuMascotActivity);
-      // Capsules stay capsules: same size, same lean, no warp, whatever the gaze.
-      expect(layout.eyes.map((e) => [e.rx, e.ry, e.rot]), activity).toEqual(
+      if (!perspective) continue;
+      expect(layout.eyes.map((e) => [e.rx, e.ry, e.rot]), activity).not.toEqual(
         flat.eyes.map((e) => [e.rx, e.ry, e.rot]),
       );
-      if (!perspective) continue;
       const center = pairCenter(layout);
       // The pair moves the way the perspective names: yaw sideways, pitch
       // vertically (SVG y grows downward, so a positive pitch looks up).

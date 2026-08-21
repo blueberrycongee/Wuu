@@ -1,6 +1,6 @@
 {
   "name": "blobatar",
-  "version": "0.2.0-wuu.7",
+  "version": "0.2.0-wuu.8",
   "description": "Deterministic geometric blobatars from any string. No dependencies.",
   "type": "module",
   "//sideEffects": "Not `false`. That would license bundlers to drop `import \"blobatar/motion.css\"` as dead weight, and animated blobatars would silently render static for everyone shipping through a bundler.",

@@ -54,13 +54,7 @@ const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
 const radians = (degrees: number) => (degrees * Math.PI) / 180;
 
-/**
- * The sphere turn is carried by where the eyes land — and nothing else. The
- * capsules are small by design, and at these sizes a foreshortened capsule
- * reads as a *smaller eye*, not as a turned surface; the pair sliding across
- * the face is the whole cue. What leaves this function is always the authored
- * capsule: its own seeded lean, its own size, only translated.
- */
+/** Projects eye positions and their local tangent axes onto a turned sphere. */
 function projectEyes<
   E extends {
     cx: number;
@@ -87,20 +81,59 @@ function projectEyes<
     return [x1, y * cp - z1 * sp, y * sp + z1 * cp] as const;
   };
   const mix = (from: number, to: number) => from + (to - from) * strength;
+  const CAMERA_DISTANCE = 4;
 
   return eyes.map((eye) => {
-    // Lift the eye's home onto the unit sphere, turn it, project back
-    // orthographically. The clamp is the limb: a gaze aimed past the
-    // silhouette settles onto it instead of leaving the face.
+    // Lift the eye's home and its local drawing axes onto the unit sphere. The
+    // clamp is the limb: a gaze aimed past the silhouette settles onto it.
     const x = clamp((eye.cx - body.cx) / body.rx, -0.82, 0.82);
     const y = clamp((eye.cy - body.cy) / body.ry, -0.82, 0.82);
     const z = Math.sqrt(Math.max(0.08, 1 - x * x - y * y));
     const point = rotate([x, y, z]);
 
+    // `right` and `down` are unit tangent vectors at the authored eye centre.
+    // Rotate them with the surface, then measure their screen projection so a
+    // capsule near the limb foreshortens instead of remaining a flat sticker.
+    const radial = Math.hypot(x, z);
+    const right = [z / radial, 0, -x / radial] as const;
+    const down = [-x * y / radial, radial, -y * z / radial] as const;
+    const angle = radians(eye.rot);
+    const ca = Math.cos(angle);
+    const sa = Math.sin(angle);
+    const horizontal = rotate([
+      right[0] * ca + down[0] * sa,
+      right[1] * ca + down[1] * sa,
+      right[2] * ca + down[2] * sa,
+    ]);
+    const vertical = rotate([
+      -right[0] * sa + down[0] * ca,
+      -right[1] * sa + down[1] * ca,
+      -right[2] * sa + down[2] * ca,
+    ]);
+
+    // A gentle perspective term makes the eye turning toward the limb recede
+    // slightly. The sphere's front plane remains scale 1, so a straight-on pair
+    // keeps exactly the authored dimensions.
+    const depthScale = (CAMERA_DISTANCE - 1) / (CAMERA_DISTANCE - point[2]);
+    // Keep a compact avatar's mark above a one-device-pixel floor even at the
+    // strongest supported turn; it still foreshortens clearly without vanishing.
+    const horizontalScale = Math.max(
+      0.62,
+      Math.hypot(horizontal[0], horizontal[1]) * depthScale,
+    );
+    const verticalScale = Math.max(
+      0.62,
+      Math.hypot(vertical[0], vertical[1]) * depthScale,
+    );
+    const projectedRotation = Math.atan2(horizontal[1], horizontal[0]) * 180 / Math.PI;
+
     return {
       ...eye,
-      cx: mix(eye.cx, body.cx + point[0] * body.rx),
-      cy: mix(eye.cy, body.cy + point[1] * body.ry),
+      cx: mix(eye.cx, body.cx + point[0] * body.rx * depthScale),
+      cy: mix(eye.cy, body.cy + point[1] * body.ry * depthScale),
+      rx: mix(eye.rx, eye.rx * horizontalScale),
+      ry: mix(eye.ry, eye.ry * verticalScale),
+      rot: mix(eye.rot, projectedRotation),
     };
   });
 }
