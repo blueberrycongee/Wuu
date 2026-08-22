@@ -75,6 +75,17 @@ func (s *Server) handleThreadStart(req Request) error {
 	if !s.rt.EngineAvailable(engineID) {
 		return s.writeResponse(req.ID, nil, agentengine.CheckEngine(engineID))
 	}
+	selection := s.currentSessionRuntimeSelection()
+	if model := strings.TrimSpace(params.Model); model != "" {
+		selection.Model = model
+	}
+	if effort := strings.TrimSpace(params.Effort); effort != "" {
+		selection.Effort = effort
+		selection.Variant = ""
+	}
+	if engineID != agentengine.EngineWuu {
+		selection.Provider = string(engineID)
+	}
 	workspaceKind := workspaceKindForCWD(s.rt.WuuHome, threadCWD)
 	threadSource := ""
 	if !params.Ephemeral {
@@ -84,7 +95,7 @@ func (s *Server) handleThreadStart(req Request) error {
 		if err := session.WritePluginGenerationSnapshot(s.rt.SessionDir, id, s.rt.PluginGenerationSnapshot()); err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
-		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, id, s.currentSessionRuntimeSelection()); err != nil {
+		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, id, selection); err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
 		if _, err := session.SetEngine(s.rt.SessionDir, id, string(engineID)); err != nil {
@@ -108,7 +119,7 @@ func (s *Server) handleThreadStart(req Request) error {
 	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, persistHistory, time.Now().UTC())
 	th.EngineID = string(engineID)
 	th.Source = threadSource
-	applyThreadRuntimeSelection(th, s.currentSessionRuntimeSelection())
+	applyThreadRuntimeSelection(th, selection)
 	th.WorkspaceID = workspaceID
 	th.WorkspaceKind = workspaceKind
 	th.Ephemeral = params.Ephemeral

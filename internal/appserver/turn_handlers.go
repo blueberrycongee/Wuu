@@ -1867,6 +1867,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		ThreadID:    th.ID,
 		RootDir:     firstNonEmpty(th.CWD, s.rt.RootDir),
 		Model:       th.Model,
+		Effort:      th.ModelEffort,
 		ExternalRef: th.EngineRef,
 		PersistRef: func(ref string) error {
 			return s.persistThreadEngineRef(th.ID, ref)

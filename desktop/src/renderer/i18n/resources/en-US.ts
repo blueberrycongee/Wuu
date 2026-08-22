@@ -809,6 +809,8 @@ export const enUS = {
   "runtime.permission.readOnly": "Read-only",
   "runtime.permission.unconfined": "Unconfined",
   "runtime.searchModels": "Search models",
+  "runtime.model": "Model",
+  "runtime.selectModel": "Select model",
   "runtime.noMatchingModels": "No matching models",
   "runtime.reasoningEffort": "Reasoning effort",
   "runtime.loadingCodexModels": "Loading Codex models",

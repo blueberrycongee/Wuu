@@ -807,6 +807,8 @@ export const zhCN = {
   "runtime.permission.readOnly": "只读",
   "runtime.permission.unconfined": "无边界",
   "runtime.searchModels": "搜索模型",
+  "runtime.model": "模型",
+  "runtime.selectModel": "选择模型",
   "runtime.noMatchingModels": "没有匹配的模型",
   "runtime.reasoningEffort": "推理强度",
   "runtime.loadingCodexModels": "正在加载 Codex 模型",

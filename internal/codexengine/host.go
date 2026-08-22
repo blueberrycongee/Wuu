@@ -87,6 +87,41 @@ func (h *Host) Acquire(ctx context.Context) (*Client, error) {
 	return client, nil
 }
 
+// ListModels reads the model catalog owned by the installed Codex app-server.
+func (h *Host) ListModels(ctx context.Context) ([]ModelListItem, error) {
+	client, err := h.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer h.Release()
+	models := make([]ModelListItem, 0)
+	cursor := ""
+	seen := make(map[string]struct{})
+	for {
+		var page ModelListResponse
+		if err := client.Request(ctx, MethodModelList, ModelListParams{
+			Cursor: cursor,
+			Limit:  100,
+		}, &page); err != nil {
+			return nil, fmt.Errorf("codex model/list: %w", err)
+		}
+		for _, model := range page.Data {
+			if !model.Hidden {
+				models = append(models, model)
+			}
+		}
+		next := strings.TrimSpace(page.NextCursor)
+		if next == "" {
+			return models, nil
+		}
+		if _, ok := seen[next]; ok {
+			return nil, fmt.Errorf("codex model/list repeated cursor %q", next)
+		}
+		seen[next] = struct{}{}
+		cursor = next
+	}
+}
+
 // Release drops one session's reference. The app-server is shut down when
 // the last reference is released.
 func (h *Host) Release() {

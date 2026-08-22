@@ -154,7 +154,11 @@ export function Composer({
   engines,
   activeEngine,
   engineLocked,
+  engineModel,
+  engineEffort,
   onSelectEngine,
+  onSelectEngineModel,
+  onSelectEngineEffort,
   onSelectPermissionMode,
   onOpenSettings,
   onOpenSkillsCatalog,
@@ -245,7 +249,11 @@ export function Composer({
   engines?: EngineInfo[];
   activeEngine?: string;
   engineLocked?: boolean;
+  engineModel?: string;
+  engineEffort?: string;
   onSelectEngine?: (id: string) => void;
+  onSelectEngineModel?: (model: string, effort: string) => void;
+  onSelectEngineEffort?: (effort: string) => void;
   onSelectPermissionMode: (mode: PermissionMode) => void;
   onToggleBranchMenu: () => void;
   onOpenSettings: () => void;
@@ -1223,7 +1231,11 @@ export function Composer({
                         engines={engines}
                         activeEngine={activeEngine}
                         engineLocked={engineLocked}
+                        engineModel={engineModel}
+                        engineEffort={engineEffort}
                         onSelectEngine={onSelectEngine}
+                        onSelectEngineModel={onSelectEngineModel}
+                        onSelectEngineEffort={onSelectEngineEffort}
                         onToggleMenu={onToggleCodexRuntimeMenu}
                         onSelectModel={onSelectRuntimeModel}
                         onSelectEffort={onSelectRuntimeEffort}

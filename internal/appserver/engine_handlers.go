@@ -1,11 +1,13 @@
 package appserver
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/claudeengine"
@@ -84,14 +86,66 @@ func (s *Server) engineInventory() []EngineInfo {
 			path, err := s.codexBinaryPath()
 			info.BinaryPath = path
 			info.BinaryOK, info.Error = binaryStatus(path, err)
+			if info.Enabled && info.BinaryOK && s.rt.CodexHost() != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				models, modelErr := s.rt.CodexHost().ListModels(ctx)
+				cancel()
+				if modelErr != nil {
+					info.ModelsError = modelErr.Error()
+				} else {
+					info.Models = codexEngineModels(models)
+				}
+			}
 		case "claude":
 			path, err := s.claudeBinaryPath()
 			info.BinaryPath = path
 			info.BinaryOK, info.Error = binaryStatus(path, err)
+			if info.Enabled && info.BinaryOK {
+				info.Models = claudeEngineModels()
+			}
 		}
 		out = append(out, info)
 	}
 	return out
+}
+
+func codexEngineModels(models []codexengine.ModelListItem) []EngineModelInfo {
+	out := make([]EngineModelInfo, 0, len(models))
+	for _, model := range models {
+		id := strings.TrimSpace(model.Model)
+		if id == "" {
+			id = strings.TrimSpace(model.ID)
+		}
+		if id == "" {
+			continue
+		}
+		efforts := make([]string, 0, len(model.SupportedReasoningEfforts))
+		for _, effort := range model.SupportedReasoningEfforts {
+			if value := strings.TrimSpace(string(effort.ReasoningEffort)); value != "" {
+				efforts = append(efforts, value)
+			}
+		}
+		out = append(out, EngineModelInfo{
+			ID:               id,
+			DisplayName:      strings.TrimSpace(model.DisplayName),
+			DefaultEffort:    strings.TrimSpace(string(model.DefaultReasoningEffort)),
+			SupportedEfforts: efforts,
+			IsDefault:        model.IsDefault,
+		})
+	}
+	return out
+}
+
+// Claude Code exposes stable model aliases through --model. The CLI resolves
+// each alias to the account's current eligible model, so this list does not
+// hard-code dated model versions.
+func claudeEngineModels() []EngineModelInfo {
+	efforts := []string{"low", "medium", "high", "xhigh", "max"}
+	return []EngineModelInfo{
+		{ID: "sonnet", DisplayName: "Sonnet", DefaultEffort: "high", SupportedEfforts: efforts, IsDefault: true},
+		{ID: "opus", DisplayName: "Opus", DefaultEffort: "high", SupportedEfforts: efforts},
+		{ID: "haiku", DisplayName: "Haiku", DefaultEffort: "high", SupportedEfforts: efforts},
+	}
 }
 
 // claudeBinaryPath resolves the claude binary: settings override, then env

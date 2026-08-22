@@ -68,6 +68,7 @@ func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.Threa
 		threadID:    binding.ThreadID,
 		rootDir:     binding.RootDir,
 		model:       binding.Model,
+		effort:      ReasoningEffort(binding.Effort),
 		externalRef: binding.ExternalRef,
 		persistRef:  binding.PersistRef,
 		approval:    binding.RequestApproval,
@@ -78,6 +79,7 @@ type sessionOptions struct {
 	threadID    string
 	rootDir     string
 	model       string
+	effort      ReasoningEffort
 	externalRef string
 	persistRef  func(string) error
 	approval    agentengine.ApprovalHandler
@@ -101,6 +103,7 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 		threadID: opts.threadID,
 		rootDir:  opts.rootDir,
 		model:    opts.model,
+		effort:   opts.effort,
 		ref:      opts.externalRef,
 		persist:  opts.persistRef,
 		approval: approval,
@@ -118,6 +121,7 @@ type Session struct {
 	threadID string
 	rootDir  string
 	model    string
+	effort   ReasoningEffort
 
 	mu          sync.Mutex
 	ref         string
@@ -322,7 +326,8 @@ func (s *Session) startTurn(ctx context.Context, prompt string) (TurnStartRespon
 	err := s.client.Request(ctx, MethodTurnStart, TurnStartParams{
 		ThreadID: s.ref,
 		Input:    []UserInput{{Type: "text", Text: prompt}},
-		Model:    s.model,
+		Model:           s.model,
+		ReasoningEffort: s.effort,
 	}, &resp)
 	return resp, err
 }

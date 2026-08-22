@@ -15,6 +15,7 @@ import type {
   Agent,
   ChannelRoom,
   DesktopProject,
+  EngineInfo,
   EngineListResult,
   ExtensionPackageUpdateParams,
   InitializeResult,
@@ -329,6 +330,19 @@ function isNoModelConfiguredError(message: string): boolean {
     lower.includes("not found in providers") ||
     lower.includes("model is required")
   );
+}
+
+type EngineRuntimeSelection = { model: string; effort: string };
+
+function defaultEngineRuntimeSelection(engine?: EngineInfo): EngineRuntimeSelection {
+  const model = engine?.models?.find((item) => item.is_default) ?? engine?.models?.[0];
+  const efforts = model?.supported_efforts ?? [];
+  const effort = model?.default_effort && efforts.includes(model.default_effort)
+    ? model.default_effort
+    : efforts.includes("medium")
+      ? "medium"
+      : efforts[0] ?? "";
+  return { model: model?.id ?? "", effort };
 }
 
 function useStableCallback<T extends (...args: any[]) => any>(callback: T): T {
@@ -1128,12 +1142,24 @@ export function App(): JSX.Element {
   // binding is a per-thread creation decision, so the draft resets whenever
   // the active thread changes.
   const [draftEngine, setDraftEngine] = useState<string>("");
+  const [draftEngineRuntime, setDraftEngineRuntime] = useState<EngineRuntimeSelection>({
+    model: "",
+    effort: "",
+  });
   useEffect(() => {
     setDraftEngine("");
+    setDraftEngineRuntime({ model: "", effort: "" });
   }, [activeThreadID]);
   const selectDraftEngine = useCallback((id: string) => {
     setDraftEngine(id);
-  }, []);
+    setDraftEngineRuntime(
+      id === "wuu"
+        ? { model: "", effort: "" }
+        : defaultEngineRuntimeSelection(
+            engineInventory?.engines.find((engine) => engine.id === id),
+          ),
+    );
+  }, [engineInventory]);
   useEffect(() => {
     let current = true;
     if (!activeThreadID || !userQuestionApiAvailable) {
@@ -2655,6 +2681,19 @@ export function App(): JSX.Element {
     const defaultEngine = engineInventory?.settings?.default_engine ?? "";
     const effectiveEngine =
       (activeThread?.engine_id ?? "") || draftEngine || defaultEngine || "wuu";
+    const effectiveEngineInfo = engineInventory?.engines.find(
+      (engine) => engine.id === effectiveEngine,
+    );
+    const defaultEngineRuntime = defaultEngineRuntimeSelection(effectiveEngineInfo);
+    const effectiveEngineRuntime = activeThread && effectiveEngine !== "wuu"
+      ? {
+          model: activeThread.model,
+          effort: activeThread.model_effort ?? activeThread.model_variant ?? "",
+        }
+      : {
+          model: draftEngineRuntime.model || defaultEngineRuntime.model,
+          effort: draftEngineRuntime.effort || defaultEngineRuntime.effort,
+        };
     return (
       <>
       <Composer
@@ -2696,7 +2735,15 @@ export function App(): JSX.Element {
         engines={engineInventory?.engines}
         activeEngine={effectiveEngine !== "wuu" ? effectiveEngine : ""}
         engineLocked={Boolean(activeThread)}
+        engineModel={effectiveEngineRuntime.model}
+        engineEffort={effectiveEngineRuntime.effort}
         onSelectEngine={selectDraftEngine}
+        onSelectEngineModel={(model, effort) =>
+          setDraftEngineRuntime({ model, effort })
+        }
+        onSelectEngineEffort={(effort) =>
+          setDraftEngineRuntime((current) => ({ ...current, effort }))
+        }
         gitStatus={state.gitStatus}
         projects={state.projects}
         activeContext={state.activeContext}
@@ -3833,10 +3880,22 @@ export function App(): JSX.Element {
       return false;
     }
     const activeContext = currentState.activeContext;
-    if (!hasReadyProvider(currentState.initialized?.providers)) {
+    const newThreadEngine =
+      (targetThread?.engine_id ?? "")
+      || draftEngine
+      || engineInventory?.settings?.default_engine
+      || "wuu";
+    if (newThreadEngine === "wuu" && !hasReadyProvider(currentState.initialized?.providers)) {
       showNoModelConfiguredToast();
       return false;
     }
+    const defaultExternalRuntime = defaultEngineRuntimeSelection(
+      engineInventory?.engines.find((engine) => engine.id === newThreadEngine),
+    );
+    const newThreadEngineRuntime = {
+      model: draftEngineRuntime.model || defaultExternalRuntime.model,
+      effort: draftEngineRuntime.effort || defaultExternalRuntime.effort,
+    };
     enableConversationAutoFollow();
     resetRunDebugEvents({
       source: "client",
@@ -3870,7 +3929,10 @@ export function App(): JSX.Element {
       const thread =
         targetThread ??
         requireThread(
-          await window.wuu.startThread(draftEngine ? { engine: draftEngine } : {}),
+          await window.wuu.startThread({
+            ...(draftEngine ? { engine: draftEngine } : {}),
+            ...(newThreadEngine !== "wuu" ? newThreadEngineRuntime : {}),
+          }),
           "thread/start did not return a thread",
         );
       appStateRef.current = {

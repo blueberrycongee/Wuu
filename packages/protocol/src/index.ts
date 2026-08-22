@@ -1051,6 +1051,17 @@ export type EngineInfo = {
   binary_path?: string;
   binary_ok: boolean;
   error?: string;
+  models?: EngineModelInfo[];
+  models_error?: string;
+};
+
+/** One model exposed by an external agent engine. */
+export type EngineModelInfo = {
+  id: string;
+  display_name?: string;
+  default_effort?: string;
+  supported_efforts?: string[];
+  is_default?: boolean;
 };
 
 /** Mutable per-engine settings (enabled toggle + binary path override). */
@@ -1576,6 +1587,8 @@ export type ThreadStartParams = {
   cwd?: string;
   workspace_id?: string;
   engine?: string;
+  model?: string;
+  effort?: string;
 };
 
 export type ThreadSearchResultItem = {

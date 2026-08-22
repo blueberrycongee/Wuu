@@ -4623,7 +4623,7 @@ html.resizing-workspace-terminal-split * {
 
 .codex-model-menu {
   display: flex;
-  width: 260px;
+  width: 320px;
   max-height: min(
     var(--floating-menu-available-height, 999px),
     400px,
@@ -4633,6 +4633,52 @@ html.resizing-workspace-terminal-split * {
   gap: 0;
   overflow: hidden;
   padding: 6px;
+}
+
+.runtime-agent-section {
+  flex: 0 0 auto;
+  margin: 0 -6px 6px;
+  padding: 2px 8px 9px;
+  border-bottom: 1px solid var(--menu-border);
+}
+
+.runtime-agent-heading {
+  padding: 2px 2px 7px;
+}
+
+.runtime-agent-options {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 2px;
+  border-radius: calc(var(--radius-sm) + 2px);
+  background: var(--ink-overlay-6);
+}
+
+.codex-runtime-menu .runtime-agent-option {
+  height: 32px;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--ink-secondary);
+  font-size: var(--font-sm);
+  padding: 0 8px;
+  text-align: center;
+}
+
+.codex-runtime-menu .runtime-agent-option[aria-checked="true"] {
+  background: var(--menu-bg);
+  box-shadow: 0 1px 3px var(--ink-overlay-12);
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.codex-runtime-menu .runtime-agent-option:hover:not(:disabled) {
+  background: var(--menu-bg);
+}
+
+.codex-runtime-menu .runtime-agent-option:disabled:not([aria-checked="true"]) {
+  opacity: 0.5;
 }
 
 .codex-model-menu .select-menu-search {
@@ -4647,6 +4693,7 @@ html.resizing-workspace-terminal-split * {
   gap: 1px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  padding-bottom: 2px;
 }
 
 .codex-model-group-label {

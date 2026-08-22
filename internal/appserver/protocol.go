@@ -1217,6 +1217,10 @@ type ThreadStartParams struct {
 	// settings default engine (or the built-in "wuu" engine); the binding is
 	// fixed at creation.
 	Engine string `json:"engine,omitempty"`
+	// Model and Effort are engine-native runtime options for the new thread.
+	// Empty values inherit the current runtime selection.
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
 }
 
 // EngineInfo describes one agent engine for the settings surface.
@@ -1232,6 +1236,17 @@ type EngineInfo struct {
 	BinaryOK bool `json:"binary_ok"`
 	// Error carries a human-readable reason when the engine is not usable.
 	Error string `json:"error,omitempty"`
+	// Models is the engine-owned model inventory used by the composer picker.
+	Models      []EngineModelInfo `json:"models,omitempty"`
+	ModelsError string            `json:"models_error,omitempty"`
+}
+
+type EngineModelInfo struct {
+	ID               string   `json:"id"`
+	DisplayName      string   `json:"display_name,omitempty"`
+	DefaultEffort    string   `json:"default_effort,omitempty"`
+	SupportedEfforts []string `json:"supported_efforts,omitempty"`
+	IsDefault        bool     `json:"is_default,omitempty"`
 }
 
 // EngineListResult is the engine/list response: current engine inventory

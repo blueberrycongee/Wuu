@@ -89,6 +89,8 @@ func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.Threa
 	return e.newSession(ctx, sessionOptions{
 		threadID:    binding.ThreadID,
 		rootDir:     firstNonEmpty(binding.RootDir, e.rootDir),
+		model:       binding.Model,
+		effort:      binding.Effort,
 		externalRef: binding.ExternalRef,
 		persistRef:  binding.PersistRef,
 	})
@@ -97,6 +99,8 @@ func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.Threa
 type sessionOptions struct {
 	threadID    string
 	rootDir     string
+	model       string
+	effort      string
 	externalRef string
 	persistRef  func(string) error
 }
@@ -108,6 +112,8 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 	return &Session{
 		engine:  e,
 		rootDir: opts.rootDir,
+		model:   opts.model,
+		effort:  opts.effort,
 		ref:     opts.externalRef,
 		persist: opts.persistRef,
 	}, nil
@@ -119,6 +125,8 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 type Session struct {
 	engine  *Engine
 	rootDir string
+	model   string
+	effort  string
 
 	mu      sync.Mutex
 	ref     string
@@ -227,6 +235,12 @@ func (s *Session) spawn(ctx context.Context, sub *turnSubscription) (*Transport,
 		// Fail closed: without a wired approval handler the CLI must not
 		// wait for an interactive permission prompt that never arrives.
 		"--permission-mode", "dontAsk",
+	}
+	if model := strings.TrimSpace(s.model); model != "" {
+		args = append(args, "--model", model)
+	}
+	if effort := strings.TrimSpace(s.effort); effort != "" {
+		args = append(args, "--effort", effort)
 	}
 	if ref != "" {
 		args = append(args, "--resume", ref)

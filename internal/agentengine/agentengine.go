@@ -180,6 +180,7 @@ type ThreadBinding struct {
 	ThreadID string
 	RootDir  string
 	Model    string
+	Effort   string
 	// ExternalRef is the engine's persisted native session reference (for
 	// example a codex thread id); empty means the engine must create one.
 	ExternalRef string
