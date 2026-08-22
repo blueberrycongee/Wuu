@@ -294,7 +294,10 @@ export function WuuMascot({
       rear.remove();
       front.remove();
     };
-  }, [svg]);
+  // Blobatar replaces its inner SVG markup when an activity changes the
+  // expression or perspective. Rebuild our portal targets in that same layout
+  // pass so accessories never remain mounted to the detached previous body.
+  }, [activity, svg]);
 
   useEffect(() => {
     if (!svg || !followPointer) return;
