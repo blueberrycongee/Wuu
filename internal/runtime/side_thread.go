@@ -151,6 +151,7 @@ func (s *Session) newSideThreadBaseRunner(selected ThreadModelSelection) *agent.
 	runner := cloneStreamRunnerForThread(s.StreamRunner, nil)
 	runner.Client = client
 	runner.ProviderName = resolvedName
+	runner.ProviderObservationKey = agent.BuildProviderObservationKey(resolvedName, ruleProviderCfg.BaseURL, ruleProviderCfg.Type, ruleProviderCfg.API, ruleProviderCfg.WireAPI, ruleProviderCfg.StreamTransport, agent.ProviderUsageNormalizationKey(ruleProviderCfg.CacheCreationInputTokensOmitted, ruleProviderCfg.InputTokensIncludeCacheRead))
 	runner.Model = model
 	runner.APIModel = apiModel
 	// The cloned runner inherits the workspace model's media admission

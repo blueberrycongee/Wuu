@@ -90,14 +90,15 @@ type ToolDiscoveryProvider interface {
 // around RunToolLoop that always executes through the streaming Step
 // path; unary clients are adapted underneath via AdaptStreamClient.
 type Runner struct {
-	Client               providers.Client
-	ProviderName         string
-	Tools                ToolExecutor
-	Model                string
-	SystemPrompt         string
-	SystemPromptSections []SystemPromptSectionInfo
-	MaxSteps             int
-	Temperature          float64
+	Client                 providers.Client
+	ProviderName           string
+	ProviderObservationKey string
+	Tools                  ToolExecutor
+	Model                  string
+	SystemPrompt           string
+	SystemPromptSections   []SystemPromptSectionInfo
+	MaxSteps               int
+	Temperature            float64
 	// ContextWindowOverride is the resolved provider/model context window.
 	// Zero disables proactive compaction when the limit is unknown.
 	ContextWindowOverride int
@@ -119,6 +120,7 @@ type Runner struct {
 	// ProviderOptions carries provider-specific model compatibility and variant
 	// options into both agent requests and nested compaction requests.
 	ProviderOptions  map[string]any
+	Variant          string
 	InferenceJournal providers.InferenceJournal
 }
 
@@ -171,6 +173,8 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 		Tools:                       r.Tools,
 		Model:                       r.Model,
 		ProviderName:                r.ProviderName,
+		ProviderObservationKey:      r.ProviderObservationKey,
+		ModelVariant:                r.Variant,
 		InferenceOperationKind:      providers.InferenceOperationAgentRound,
 		InferenceWorkloadProfile:    providers.InferenceProfileInteractive,
 		Temperature:                 r.Temperature,
@@ -185,12 +189,16 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 		SystemPromptSections:        cloneSystemPromptSections(r.SystemPromptSections),
 		OnUsage:                     onUsage,
 		Compact: func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
-			return compact.CompactWithBudgetAndOptions(ctx, messages, r.Client, r.Model, compact.Budget{
+			budget, budgetErr := applyAdaptiveCompactBudget(ctx, messages, compact.Budget{
 				ContextTokens:       maxCtx,
 				InputTokens:         r.MaxInputTokens,
 				OutputReserveTokens: r.OutputReserveTokens,
 				KeepRecentTokens:    r.CompactKeepRecentTokens,
-			}, r.ProviderOptions)
+			})
+			if budgetErr != nil {
+				return messages, budgetErr
+			}
+			return compact.CompactWithBudgetAndOptions(ctx, messages, r.Client, r.Model, budget, r.ProviderOptions)
 		},
 	}
 

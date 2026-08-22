@@ -249,6 +249,7 @@ func RunToolLoop(
 			}
 		}
 		compactCtx, lineage := providers.BeginInferenceOperationLineage(ctx, lastAgentOperationID)
+		compactCtx = withCompactBudgetHint(compactCtx, compactBudgetHint{Reason: reason})
 		compacted, cerr := effectiveCompact(compactCtx, messages)
 		if cfg.AfterCompact != nil {
 			if hookErr := cfg.AfterCompact(ctx, reason, cerr); hookErr != nil {
@@ -476,6 +477,14 @@ func RunToolLoop(
 		prevCacheFingerprint = currentFingerprint
 
 		requestInfo := requestContextInfo(stepIdx, assembly, req.Tools, cacheHint, cfg.SystemPromptSections)
+		requestUsageContract := usageContractKey(
+			cfg.ProviderObservationKey,
+			req.Provider,
+			req.Model,
+			cfg.ModelVariant,
+			req.Effort,
+			req.ProviderOptions,
+		)
 		if cfg.OnRequestContext != nil {
 			cfg.OnRequestContext(requestInfo)
 		}
@@ -515,11 +524,18 @@ func RunToolLoop(
 			// CompactFn carries whatever client/model knowledge it
 			// needs. This is the reactive backstop for the case
 			// where our proactive estimate undercounted.
-			if effectiveCompact != nil && providers.IsContextOverflow(err) && !overflowCompacted {
+			// Once visible assistant text has streamed, retrying from the original
+			// request would erase that partial answer from durable history (and can
+			// duplicate what the user already saw). Preserve it through the normal
+			// error path below; reactive compaction is safe only before output.
+			if effectiveCompact != nil && providers.IsContextOverflow(err) && !overflowCompacted && stepResultHasNoPartialOutput(result) {
 				overflowCompacted = true // gate first; never retry twice
 				usageBefore := usage.Breakdown()
 				before := usageBefore.Total()
 				msgsBefore := len(messages)
+				lastSuccessfulTokens := usage.LastSuccessfulRequestTokensForContract(requestUsageContract)
+				failedRequestTokens := estimateOutboundRequestTokens(req)
+				targetTotalTokens := reactiveCompactTarget(threshold, lastSuccessfulTokens)
 				if cfg.OnCompactStart != nil {
 					cfg.OnCompactStart(CompactReasonOverflow)
 				}
@@ -533,6 +549,12 @@ func RunToolLoop(
 				var lineage *providers.InferenceOperationLineage
 				if cerr == nil {
 					compactCtx, compactLineage := providers.BeginInferenceOperationLineage(ctx, req.Operation.ID)
+					compactCtx = withCompactBudgetHint(compactCtx, compactBudgetHint{
+						Reason:               CompactReasonOverflow,
+						LastSuccessfulTokens: lastSuccessfulTokens,
+						FailedRequestTokens:  failedRequestTokens,
+						TargetTotalTokens:    targetTotalTokens,
+					})
 					lineage = compactLineage
 					compacted, cerr = effectiveCompact(compactCtx, messages)
 					if cfg.AfterCompact != nil {
@@ -623,7 +645,7 @@ func RunToolLoop(
 			// context is retained and re-sent for the rest of the run, so it
 			// occupies the context window like any other message and must
 			// count toward the compaction estimate.
-			usage.RecordResponse(result.Usage)
+			usage.RecordResponseForContract(requestUsageContract, result.Usage)
 		}
 		if err := providers.ValidateAssistantToolCalls(result.ToolCalls); err != nil {
 			return LoopResult{
@@ -924,6 +946,15 @@ func resolveEffectiveCompaction(cfg LoopConfig) CompactFn {
 		}
 		return fallback(ctx, messages)
 	}
+}
+
+func stepResultHasNoPartialOutput(result StepResult) bool {
+	return strings.TrimSpace(result.Content) == "" &&
+		strings.TrimSpace(result.ReasoningContent) == "" &&
+		strings.TrimSpace(result.ProviderItemID) == "" &&
+		len(result.ReasoningBlocks) == 0 &&
+		len(result.ToolCalls) == 0 &&
+		result.ToolRuntime == nil
 }
 
 func compactChanged(before, after []providers.ChatMessage) bool {

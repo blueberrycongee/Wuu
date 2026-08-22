@@ -26,6 +26,16 @@ type UsageTracker struct {
 	// lastResponseTotal is the most recent (input+output) token count
 	// reported by the provider. Zero means no successful round yet.
 	lastResponseTotal int
+	// lastSuccessfulRequestTokens is the provider-reported model input for the
+	// same response (uncached + cache creation + cache read), excluding generated
+	// output. Reactive compaction treats this as the accepted full-request lower
+	// bound rather than conflating request size with post-generation occupancy.
+	lastSuccessfulRequestTokens int
+	// lastResponseContract identifies the provider/model contract that produced
+	// both observations. Persisted seeds intentionally leave this empty: they are
+	// useful for display and proactive estimates, but must not be treated as a
+	// safe lower bound after a model or provider switch.
+	lastResponseContract string
 	// pendingDelta is an estimate of tokens added to `messages` since
 	// the last response was recorded. Reset every time RecordResponse
 	// is called.
@@ -44,6 +54,7 @@ const (
 	UsageAdjustmentSeededGroundTruth         UsageAdjustment = "seeded_ground_truth"
 	UsageAdjustmentInitialHistoryEstimate    UsageAdjustment = "initial_history_estimate"
 	UsageAdjustmentLengthReset               UsageAdjustment = "length_reset"
+	UsageAdjustmentProviderContractReset     UsageAdjustment = "provider_contract_reset"
 	UsageAdjustmentRequestShapeReset         UsageAdjustment = "request_shape_reset"
 	UsageAdjustmentRequestShapeTailRebase    UsageAdjustment = "request_shape_tail_rebase"
 	UsageAdjustmentExternalRewriteSeed       UsageAdjustment = "external_rewrite_seed"
@@ -80,12 +91,21 @@ func NewUsageTracker() *UsageTracker {
 // session with prompt caching look almost empty and the auto-compact
 // trigger would never fire.
 func (t *UsageTracker) RecordResponse(usage *providers.TokenUsage) {
+	t.RecordResponseForContract("", usage)
+}
+
+// RecordResponseForContract stores successful provider usage together with the
+// provider/model contract that accepted it. Reactive compaction uses this
+// identity to avoid carrying a large-model observation across a model switch.
+func (t *UsageTracker) RecordResponseForContract(contract string, usage *providers.TokenUsage) {
 	if t == nil || usage == nil {
 		return
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.lastResponseTotal = usage.TotalContextTokens()
+	t.lastSuccessfulRequestTokens = usage.InputTokens + usage.CacheCreationTokens + usage.CacheReadTokens
+	t.lastResponseContract = contract
 	// The new ground truth already includes everything we'd been
 	// estimating, so the pending delta resets to zero.
 	t.pendingDelta = 0
@@ -143,6 +163,20 @@ func (t *UsageTracker) LastResponseTotal() int {
 	return t.lastResponseTotal
 }
 
+// LastSuccessfulRequestTokensForContract returns the provider-reported full
+// model input only when it belongs to the requested provider/model contract.
+func (t *UsageTracker) LastSuccessfulRequestTokensForContract(contract string) int {
+	if t == nil || contract == "" {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.lastResponseContract != contract {
+		return 0
+	}
+	return t.lastSuccessfulRequestTokens
+}
+
 // HasGroundTruth reports whether the tracker has seen at least one
 // successful provider response and therefore holds a real usage
 // baseline instead of pure local estimates.
@@ -175,6 +209,8 @@ func (t *UsageTracker) SeedGroundTruth(total int) bool {
 		return false
 	}
 	t.lastResponseTotal = total
+	t.lastSuccessfulRequestTokens = 0
+	t.lastResponseContract = ""
 	t.adjustment = UsageAdjustmentSeededGroundTruth
 	return true
 }
@@ -198,6 +234,8 @@ func (t *UsageTracker) Reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.lastResponseTotal = 0
+	t.lastSuccessfulRequestTokens = 0
+	t.lastResponseContract = ""
 	t.pendingDelta = 0
 	t.adjustment = ""
 }
@@ -212,9 +250,11 @@ func (t *UsageTracker) Clone() *UsageTracker {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return &UsageTracker{
-		lastResponseTotal: t.lastResponseTotal,
-		pendingDelta:      t.pendingDelta,
-		adjustment:        t.adjustment,
+		lastResponseTotal:           t.lastResponseTotal,
+		lastSuccessfulRequestTokens: t.lastSuccessfulRequestTokens,
+		lastResponseContract:        t.lastResponseContract,
+		pendingDelta:                t.pendingDelta,
+		adjustment:                  t.adjustment,
 	}
 }
 

@@ -35,7 +35,11 @@ type StreamRunner struct {
 	ToolLedger   *toolledger.Ledger
 	Model        string
 	APIModel     string
-	SystemPrompt string
+	// ProviderObservationKey is an opaque identity for the configured provider
+	// instance and its endpoint/protocol. Runtime construction fills it so an
+	// in-place provider reconfiguration cannot reuse stale context observations.
+	ProviderObservationKey string
+	SystemPrompt           string
 	// SystemPromptSections mirrors SystemPrompt as metadata only, allowing
 	// request telemetry to explain the stable prompt without exposing text.
 	SystemPromptSections []SystemPromptSectionInfo
@@ -174,6 +178,7 @@ type StreamRunner struct {
 	trackedHistoryHash     string
 	trackedHistoryTailHash string
 	trackedHistoryTailID   string
+	trackedUsageContract   string
 
 	// retainedContextMu guards the cross-turn request-context state used for
 	// prompt-cache prefix continuity. The state is fingerprinted against the
@@ -339,7 +344,8 @@ func (gateway *streamDriverGateway) result(receiptID string) (LoopResult, bool) 
 }
 
 func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers.ChatMessage, onEvent StreamCallback, policy loopdriver.LoopPolicy, descriptor loopdriver.Descriptor, execution loopdriver.ExecutionContext) (LoopResult, error) {
-	if r.Client == nil {
+	client, providerObservationKey := r.providerConnectionSnapshot()
+	if client == nil {
 		return LoopResult{}, errors.New("client is required")
 	}
 	if strings.TrimSpace(r.Model) == "" {
@@ -350,13 +356,14 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 	if requestModel == "" {
 		requestModel = r.Model
 	}
+	runUsageContract := usageContractKey(providerObservationKey, r.ProviderName, requestModel, r.Variant, r.Effort, r.ProviderOptions)
 	history = filterDurableHistory(history)
 	recoveredToolMessages, err := r.pendingToolResultMessages(ctx, history)
 	if err != nil {
 		return LoopResult{}, fmt.Errorf("recover pending tool results: %w", err)
 	}
 	history = append(history, recoveredToolMessages...)
-	runUsage, baseHistoryLen := r.prepareUsageTracker(history)
+	runUsage, baseHistoryLen := r.prepareUsageTrackerForContract(history, runUsageContract)
 
 	effectiveOnEvent := onEvent
 
@@ -365,7 +372,7 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		tools = nil
 	}
 	step := &streamStep{
-		client:                  r.Client,
+		client:                  client,
 		onEvent:                 effectiveOnEvent,
 		tools:                   tools,
 		toolLedger:              r.ToolLedger,
@@ -407,6 +414,8 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		Tools:                    tools,
 		Model:                    requestModel,
 		ProviderName:             r.ProviderName,
+		ProviderObservationKey:   providerObservationKey,
+		ModelVariant:             r.Variant,
 		InferenceOperationKind:   operationKind,
 		InferenceWorkloadProfile: workloadProfile,
 		SessionID:                execution.SessionID,
@@ -459,12 +468,16 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 			})
 		},
 		Compact: func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
-			return compact.CompactWithBudgetAndOptions(ctx, messages, r.Client, requestModel, compact.Budget{
+			budget, budgetErr := applyAdaptiveCompactBudget(ctx, messages, compact.Budget{
 				ContextTokens:       compactContextTokens,
 				InputTokens:         r.MaxInputTokens,
 				OutputReserveTokens: r.OutputReserveTokens,
 				KeepRecentTokens:    r.CompactKeepRecentTokens,
-			}, r.ProviderOptions)
+			})
+			if budgetErr != nil {
+				return messages, budgetErr
+			}
+			return compact.CompactWithBudgetAndOptions(ctx, messages, client, requestModel, budget, r.ProviderOptions)
 		},
 		CompactionRegistry: r.CompactionRegistry,
 		// Forward each tool result through the streaming callback so
@@ -566,7 +579,7 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 	}
 	res.NewMessages = filterDurableHistory(res.NewMessages)
 	if err != nil {
-		r.commitUsageTracker(runUsage, history[:baseHistoryLen])
+		r.commitUsageTrackerForContract(runUsage, history[:baseHistoryLen], runUsageContract)
 		return res, err
 	}
 	finalHistory := append(providers.CloneChatMessages(history[:baseHistoryLen]), res.NewMessages...)
@@ -578,7 +591,7 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 	if res.HistoryRewritten {
 		finalHistory = providers.CloneChatMessages(res.NewMessages)
 	}
-	r.commitUsageTracker(runUsage, finalHistory)
+	r.commitUsageTrackerForContract(runUsage, finalHistory, runUsageContract)
 	if r.AfterTurn != nil {
 		fullHistory := make([]providers.ChatMessage, 0, len(history)+len(res.NewMessages))
 		fullHistory = append(fullHistory, history...)
@@ -658,6 +671,10 @@ func isInternalContextHistoryMessage(msg providers.ChatMessage) bool {
 // The returned tracker is run-local; callers must commit it
 // explicitly after deciding which history actually persists.
 func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*UsageTracker, int) {
+	return r.prepareUsageTrackerForContract(history, r.currentUsageContract())
+}
+
+func (r *StreamRunner) prepareUsageTrackerForContract(history []providers.ChatMessage, currentUsageContract string) (*UsageTracker, int) {
 	r.usageMu.Lock()
 	defer r.usageMu.Unlock()
 
@@ -670,6 +687,14 @@ func (r *StreamRunner) prepareUsageTracker(history []providers.ChatMessage) (*Us
 	trackedHash := r.trackedHistoryHash
 	trackedTailHash := r.trackedHistoryTailHash
 	trackedTailID := r.trackedHistoryTailID
+	if currentUsageContract != "" && r.trackedUsageContract != "" && currentUsageContract != r.trackedUsageContract {
+		tracker.Reset()
+		tracker.SetAdjustment(UsageAdjustmentProviderContractReset)
+		trackedLen = 0
+		trackedHash = ""
+		trackedTailHash = ""
+		trackedTailID = ""
+	}
 	if trackedLen < 0 {
 		trackedLen = 0
 	}
@@ -736,6 +761,10 @@ func (r *StreamRunner) storeRetainedRequestContext(state *RetainedRequestContext
 // commitUsageTracker publishes a run-local usage snapshot as the new
 // shared baseline for future turns.
 func (r *StreamRunner) commitUsageTracker(tracker *UsageTracker, history []providers.ChatMessage) {
+	r.commitUsageTrackerForContract(tracker, history, r.currentUsageContract())
+}
+
+func (r *StreamRunner) commitUsageTrackerForContract(tracker *UsageTracker, history []providers.ChatMessage, usageContract string) {
 	if tracker == nil {
 		return
 	}
@@ -746,6 +775,39 @@ func (r *StreamRunner) commitUsageTracker(tracker *UsageTracker, history []provi
 	r.trackedHistoryHash = hashMessagesForRequestShape(history)
 	r.trackedHistoryTailHash = historyTailAnchor(history)
 	r.trackedHistoryTailID = historyTailIdentity(history)
+	r.trackedUsageContract = usageContract
+}
+
+func (r *StreamRunner) currentUsageContract() string {
+	if r == nil {
+		return ""
+	}
+	r.usageMu.Lock()
+	providerObservationKey := r.ProviderObservationKey
+	r.usageMu.Unlock()
+	model := strings.TrimSpace(r.APIModel)
+	if model == "" {
+		model = r.Model
+	}
+	return usageContractKey(providerObservationKey, r.ProviderName, model, r.Variant, r.Effort, r.ProviderOptions)
+}
+
+func (r *StreamRunner) providerConnectionSnapshot() (providers.StreamClient, string) {
+	r.usageMu.Lock()
+	defer r.usageMu.Unlock()
+	return r.Client, r.ProviderObservationKey
+}
+
+// UpdateProviderConnection atomically replaces the transport and its opaque
+// observation identity for subsequent runs.
+func (r *StreamRunner) UpdateProviderConnection(client providers.StreamClient, observationKey string) {
+	if r == nil {
+		return
+	}
+	r.usageMu.Lock()
+	r.Client = client
+	r.ProviderObservationKey = observationKey
+	r.usageMu.Unlock()
 }
 
 func historyTailAnchor(history []providers.ChatMessage) string {
@@ -849,6 +911,11 @@ func (r *StreamRunner) ResetConversationUsage(history []providers.ChatMessage) {
 	r.trackedHistoryHash = hashMessagesForRequestShape(history)
 	r.trackedHistoryTailHash = historyTailAnchor(history)
 	r.trackedHistoryTailID = historyTailIdentity(history)
+	model := strings.TrimSpace(r.APIModel)
+	if model == "" {
+		model = r.Model
+	}
+	r.trackedUsageContract = usageContractKey(r.ProviderObservationKey, r.ProviderName, model, r.Variant, r.Effort, r.ProviderOptions)
 }
 
 // SynchronizeConversationUsage reconciles a long-lived runner with the
@@ -1144,9 +1211,24 @@ func (s *streamStep) Execute(ctx context.Context, req providers.ChatRequest) (St
 		if failure.Category == providers.FailureCanceled || failure.Category == providers.FailureDeadline {
 			outcome = providers.InferenceOutcomeCanceled
 		}
+		partialToolCalls := make([]providers.ToolCall, 0, len(pendingTools))
+		for i := 0; i < len(pendingTools); i++ {
+			if tc, ok := pendingTools[i]; ok {
+				partialToolCalls = append(partialToolCalls, *tc)
+			}
+		}
+		partialToolRuntime := currentToolRuntime()
+		if partialToolRuntime != nil {
+			partialToolRuntime.Cancel()
+		}
 		partial := StepResult{
-			Content: contentBuf.String(),
-			Phase:   messagePhase,
+			Content:          contentBuf.String(),
+			Phase:            messagePhase,
+			ProviderItemID:   providerItemID,
+			ReasoningContent: thinkingBuf.String(),
+			ReasoningBlocks:  cloneReasoningBlocks(reasoningBlocks),
+			ToolCalls:        partialToolCalls,
+			ToolRuntime:      partialToolRuntime,
 		}
 		if journalErr := req.Execution.Complete(outcome, failure); journalErr != nil {
 			return partial, errors.Join(fmt.Errorf("stream request failed: %w", err), fmt.Errorf("complete failed inference operation: %w", journalErr))

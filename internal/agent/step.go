@@ -201,6 +201,13 @@ type LoopConfig struct {
 	// ProviderName is Wuu's configured provider identity. It never goes on the
 	// wire; provider adapters use it to filter provider-native replay state.
 	ProviderName string
+	// ProviderObservationKey is an opaque identity for the configured provider
+	// instance plus its endpoint/protocol. Reactive compaction only reuses a
+	// successful request observation when this key, the API model, variant, and
+	// provider options all match. Empty falls back to ProviderName isolation.
+	ProviderObservationKey string
+	// ModelVariant is the selected model-scoped option bundle identity.
+	ModelVariant string
 	// InferenceOperationKind and InferenceWorkloadProfile classify each
 	// provider request for the shared retry lifecycle.
 	InferenceOperationKind   providers.InferenceOperationKind

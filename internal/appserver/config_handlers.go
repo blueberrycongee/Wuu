@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/authstorage"
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/extensions"
@@ -1534,7 +1535,7 @@ func (s *Server) applyModelSelectionToRuntime(
 		}
 	}
 	if s.rt.StreamRunner != nil && client != nil {
-		s.rt.StreamRunner.Client = client
+		s.rt.StreamRunner.UpdateProviderConnection(client, agent.BuildProviderObservationKey(resolvedName, ruleProviderCfg.BaseURL, ruleProviderCfg.Type, ruleProviderCfg.API, ruleProviderCfg.WireAPI, ruleProviderCfg.StreamTransport, agent.ProviderUsageNormalizationKey(ruleProviderCfg.CacheCreationInputTokensOmitted, ruleProviderCfg.InputTokensIncludeCacheRead)))
 	}
 	if explicitSelection {
 		s.rt.RefreshSystemPrompt(resolvedName, apiModel)

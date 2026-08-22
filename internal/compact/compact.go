@@ -29,9 +29,11 @@ const defaultCompactTimeout = 20 * time.Minute
 const maxCompactOutputChars = 80_000
 const (
 	compactSummaryFallbackMaxTokens = 4096
-	compactSummaryInputMaxTokens    = 80_000
-	compactSummaryInputMinTokens    = 4_000
-	compactSummaryInputFraction     = 0.5
+	// SummaryInputMaxTokens caps each summarization request independently from
+	// the provider model's advertised context window.
+	SummaryInputMaxTokens        = 80_000
+	compactSummaryInputMinTokens = 4_000
+	compactSummaryInputFraction  = 0.5
 	// Ordinary conversation text carries user requirements and engineering
 	// rationale, so retain substantially more of it than tool output. Runtime
 	// limits are also clamped to the current summary-input budget below.
@@ -163,6 +165,15 @@ type Budget struct {
 	InputTokens         int
 	OutputReserveTokens int
 	KeepRecentTokens    int
+	// TargetTokens caps the model-visible durable history returned by this
+	// compact pass. Zero keeps the configured/default raw-tail policy. Reactive
+	// compaction sets this from a trusted model threshold or a same-contract
+	// successful request so only the minimum necessary old prefix is rewritten.
+	TargetTokens int
+	// SummaryInputTokens is an operational chunk budget, separate from the
+	// model's context/output contract. Unknown-model recovery seeds it from
+	// observed requests and geometrically backs off on summary overflow.
+	SummaryInputTokens int
 }
 
 // CanCompactWithBudget reports whether CompactWithBudget can replace at least
@@ -207,6 +218,9 @@ func CompactWithBudgetAndOptions(ctx context.Context, messages []providers.ChatM
 		Content:         BuildSummaryContent(summary),
 		DiscoveredTools: summaryDiscoveredTools,
 	})
+	if plan.protectedCurrentUser != nil {
+		compacted = append(compacted, providers.CloneChatMessage(*plan.protectedCurrentUser))
+	}
 	compacted = append(compacted, providers.CloneChatMessages(toKeep)...)
 	return compacted, nil
 }
@@ -217,6 +231,7 @@ type compactionPlan struct {
 	previousSummaryDiscoveredTools []providers.LoadableToolDefinition
 	conversation                   []providers.ChatMessage
 	keepStart                      int
+	protectedCurrentUser           *providers.ChatMessage
 }
 
 func planCompaction(messages []providers.ChatMessage, model string, budget Budget) (compactionPlan, bool) {
@@ -229,9 +244,28 @@ func planCompaction(messages []providers.ChatMessage, model string, budget Budge
 	}
 
 	conversationForCompact := stripHistoricalImages(conversation)
-	keepStart := compactKeepStart(conversationForCompact, compactTailBudgetForBudget(model, budget))
+	tailBudget := compactTailBudgetForBudget(model, budget)
+	if budget.TargetTokens > 0 {
+		tailBudget = compactTargetTailBudget(systemPrefix, budget)
+	}
+	keepStart := len(conversationForCompact)
+	if tailBudget > 0 {
+		keepStart = compactKeepStart(conversationForCompact, tailBudget)
+	}
 	if keepStart <= 0 || keepStart > len(conversationForCompact) {
 		return compactionPlan{}, false
+	}
+	var protectedCurrentUser *providers.ChatMessage
+	if budget.TargetTokens > 0 {
+		// The newest user query is fixed request surface, even when a long
+		// single-turn tool run forces us to summarize some later messages from
+		// that same turn. Reinsert the raw query ahead of the retained tail.
+		if currentTurnStart := lastUserMessageIndex(conversationForCompact); currentTurnStart >= 0 && keepStart > currentTurnStart {
+			queryTokens := EstimateMessagesTokens(conversationForCompact[currentTurnStart : currentTurnStart+1])
+			keepStart = compactKeepStart(conversationForCompact, max(1, tailBudget-queryTokens))
+			cloned := providers.CloneChatMessage(conversationForCompact[currentTurnStart])
+			protectedCurrentUser = &cloned
+		}
 	}
 
 	return compactionPlan{
@@ -240,6 +274,7 @@ func planCompaction(messages []providers.ChatMessage, model string, budget Budge
 		previousSummaryDiscoveredTools: previousSummaryDiscoveredTools,
 		conversation:                   conversationForCompact,
 		keepStart:                      keepStart,
+		protectedCurrentUser:           protectedCurrentUser,
 	}, true
 }
 
@@ -251,14 +286,31 @@ func summarizeCompactHistory(ctx context.Context, client providers.Client, model
 	summary := strings.TrimSpace(previousSummary)
 	remaining := messages
 	for len(remaining) > 0 {
-		n := compactSummaryChunkSize(remaining, summary, inputBudget)
-		if n <= 0 {
-			n = 1
+		chunkBudget := inputBudget
+		var n int
+		var next string
+		var err error
+		for overflowAttempt := 0; ; overflowAttempt++ {
+			n = compactSummaryChunkSize(remaining, summary, chunkBudget)
+			if n <= 0 {
+				n = 1
+			}
+			chunk := remaining[:n]
+			next, err = summarizeCompactChunkWithInputBudget(ctx, client, model, budget, options, chunk, summary, chunkBudget, false)
+			if err == nil {
+				break
+			}
+			if !providers.IsContextOverflow(err) || overflowAttempt >= maxCompactRetries {
+				return "", err
+			}
+			// The first operational estimate was too large for this provider/model.
+			// Halve the whole chunk budget rather than silently dropping individual
+			// old messages from the summary input. The successful size becomes the
+			// ceiling for subsequent chunks in this pass.
+			chunkBudget = max(1, chunkBudget/2)
 		}
-		chunk := remaining[:n]
-		next, err := summarizeCompactChunk(ctx, client, model, budget, options, chunk, summary)
-		if err != nil {
-			return "", err
+		if chunkBudget < inputBudget {
+			inputBudget = chunkBudget
 		}
 		summary = limitSummaryOutput(FormatSummary(next))
 		remaining = remaining[n:]
@@ -278,11 +330,25 @@ func limitSummaryOutput(summary string) string {
 }
 
 func summarizeCompactChunk(ctx context.Context, client providers.Client, model string, budget Budget, options map[string]any, messages []providers.ChatMessage, previousSummary string) (string, error) {
+	return summarizeCompactChunkWithInputBudget(
+		ctx,
+		client,
+		model,
+		budget,
+		options,
+		messages,
+		previousSummary,
+		compactSummaryInputBudgetForBudget(model, budget),
+		true,
+	)
+}
+
+func summarizeCompactChunkWithInputBudget(ctx context.Context, client providers.Client, model string, budget Budget, options map[string]any, messages []providers.ChatMessage, previousSummary string, inputBudget int, defensiveTrim bool) (string, error) {
 	toSummarize := messages
 	maxTokens := compactSummaryMaxTokensForBudget(budget)
 	outputLimitCount := 0
 	for overflowAttempt := 0; ; overflowAttempt++ {
-		prompt := buildSummaryPromptForBudget(toSummarize, previousSummary, compactSummaryInputBudgetForBudget(model, budget))
+		prompt := buildSummaryPromptForBudget(toSummarize, previousSummary, inputBudget)
 		for {
 			attemptPrompt := prompt
 			if outputLimitCount > 0 {
@@ -304,7 +370,7 @@ func summarizeCompactChunk(ctx context.Context, client providers.Client, model s
 			// window, drop the oldest message from this chunk and try again.
 			// The chunker prevents normal huge histories from reaching this
 			// path; this remains a backstop for provider-specific counting.
-			if providers.IsContextOverflow(err) && outputLimitCount == 0 && overflowAttempt < maxCompactRetries && len(toSummarize) > 1 {
+			if defensiveTrim && providers.IsContextOverflow(err) && outputLimitCount == 0 && overflowAttempt < maxCompactRetries && len(toSummarize) > 1 {
 				toSummarize = toSummarize[1:]
 				break
 			}
@@ -319,6 +385,13 @@ func compactSummaryMaxTokensForBudget(budget Budget) int {
 		return compactSummaryFallbackMaxTokens
 	}
 	return min(preferred, budget.OutputReserveTokens)
+}
+
+// SummaryReserveTokens returns the model-visible durable-history allowance
+// reserved for a replacement summary, including its stable handoff wrapper.
+// It is operational compaction budgeting, not a claim about model capability.
+func SummaryReserveTokens(budget Budget) int {
+	return compactSummaryMaxTokensForBudget(budget) + EstimateTokens(BuildSummaryContent(""))
 }
 
 func compactSummaryRequest(model, prompt string, maxTokens int, options map[string]any) providers.ChatRequest {
@@ -630,18 +703,43 @@ func compactTailBudget(model string, maxContextTokens int) int {
 }
 
 func compactSummaryInputBudgetForBudget(model string, budget Budget) int {
+	if budget.SummaryInputTokens > 0 {
+		if budget.SummaryInputTokens > SummaryInputMaxTokens {
+			return SummaryInputMaxTokens
+		}
+		return budget.SummaryInputTokens
+	}
 	usable := compactUsableInputWindow(model, budget)
 	if usable <= 0 {
 		return compactSummaryInputMinTokens
 	}
 	inputBudget := int(float64(usable) * compactSummaryInputFraction)
-	if inputBudget > compactSummaryInputMaxTokens {
-		return compactSummaryInputMaxTokens
+	if inputBudget > SummaryInputMaxTokens {
+		return SummaryInputMaxTokens
 	}
 	if inputBudget < compactSummaryInputMinTokens {
 		return min(usable, compactSummaryInputMinTokens)
 	}
 	return inputBudget
+}
+
+func compactTargetTailBudget(systemPrefix []providers.ChatMessage, budget Budget) int {
+	target := budget.TargetTokens
+	if target <= 0 {
+		return 0
+	}
+	target -= EstimateMessagesTokens(systemPrefix)
+	// The replacement summary becomes part of durable history. Reserve its
+	// maximum requested output plus the stable handoff wrapper before assigning
+	// the remainder to recent raw turns.
+	target -= SummaryReserveTokens(budget)
+	if target < 0 {
+		target = 0
+	}
+	if budget.KeepRecentTokens > 0 && target > budget.KeepRecentTokens {
+		target = budget.KeepRecentTokens
+	}
+	return target
 }
 
 func compactTailBudgetForBudget(model string, budget Budget) int {
@@ -715,7 +813,34 @@ func compactSummaryChunkSize(messages []providers.ChatMessage, previousSummary s
 	if keep == 0 {
 		return 1
 	}
-	return keep
+	return compactSummaryChunkBoundary(messages, keep)
+}
+
+func compactSummaryChunkBoundary(messages []providers.ChatMessage, keep int) int {
+	if keep <= 0 || keep >= len(messages) {
+		return keep
+	}
+	// Prefer ending immediately before a user turn so each summary request sees
+	// complete conversational turns. If the first turn alone exceeds the chunk
+	// budget, fall back to the narrower tool-lifecycle invariant below.
+	for boundary := keep; boundary > 0; boundary-- {
+		if strings.EqualFold(messages[boundary].Role, "user") {
+			return boundary
+		}
+	}
+
+	toolSafe := adjustToolBoundary(messages, keep)
+	if toolSafe > 0 {
+		return toolSafe
+	}
+	// A single oversized turn began with an assistant tool call. Keep its whole
+	// contiguous result block in one chunk; per-message prompt projection still
+	// bounds large tool-result bodies.
+	end := keep
+	for end < len(messages) && strings.EqualFold(messages[end].Role, "tool") {
+		end++
+	}
+	return max(1, end)
 }
 
 func compactSummaryPromptMessageTokens(msg providers.ChatMessage, limits compactPromptLimits) int {
