@@ -82,6 +82,7 @@ export function EmptyConversationHome({
           <WuuMascot
             className="empty-home-mascot"
             activity={activity}
+            followPointer
             aria-hidden="true"
           />
           <h2>{title}</h2>

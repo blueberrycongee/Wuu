@@ -5,6 +5,7 @@ import "blobatar/motion.css";
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useState,
@@ -229,6 +230,7 @@ type WuuMascotProps = Omit<
   model?: string;
   accessory?: WuuMascotAccessory;
   activity?: WuuMascotActivity;
+  followPointer?: boolean;
 };
 
 export function WuuMascot({
@@ -236,6 +238,7 @@ export function WuuMascot({
   model,
   accessory,
   activity = "idle",
+  followPointer = false,
   style,
   ...svgProps
 }: WuuMascotProps): JSX.Element {
@@ -253,6 +256,74 @@ export function WuuMascot({
       svg?.querySelector<SVGGElement>(".mo-bob > g:not(.mo-eyes)") ?? null;
     setBodyLayer((current) => current === nextBodyLayer ? current : nextBodyLayer);
   });
+
+  useEffect(() => {
+    if (!svg || !followPointer) return;
+
+    const reducedMotion = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : null;
+    let pointer: { x: number; y: number } | null = null;
+    let animationFrame: number | null = null;
+
+    const renderGaze = () => {
+      animationFrame = null;
+      const rect = svg.getBoundingClientRect();
+      if (!pointer || reducedMotion?.matches || rect.width === 0 || rect.height === 0) {
+        svg.style.setProperty("--wuu-mascot-gaze-x", "0px");
+        svg.style.setProperty("--wuu-mascot-gaze-y", "0px");
+        return;
+      }
+
+      const dx = pointer.x - (rect.left + rect.width / 2);
+      const dy = pointer.y - (rect.top + rect.height / 2);
+      const distance = Math.hypot(dx, dy);
+      const reach = Math.max(80, Math.min(window.innerWidth, window.innerHeight) * 0.18);
+      const strength = Math.min(1, distance / reach);
+      const directionX = distance > 0 ? dx / distance : 0;
+      const directionY = distance > 0 ? dy / distance : 0;
+
+      // Keep the extra gaze small: the activity perspective remains the base
+      // pose, and the pointer only nudges the eye pair within the face.
+      svg.style.setProperty(
+        "--wuu-mascot-gaze-x",
+        `${(directionX * strength * rect.width * 0.04).toFixed(2)}px`,
+      );
+      svg.style.setProperty(
+        "--wuu-mascot-gaze-y",
+        `${(directionY * strength * rect.height * 0.032).toFixed(2)}px`,
+      );
+    };
+
+    const scheduleGaze = () => {
+      if (animationFrame !== null) return;
+      animationFrame = window.requestAnimationFrame(renderGaze);
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      pointer = { x: event.clientX, y: event.clientY };
+      scheduleGaze();
+    };
+    const resetGaze = () => {
+      pointer = null;
+      scheduleGaze();
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("blur", resetGaze);
+    document.documentElement.addEventListener("mouseleave", resetGaze);
+    reducedMotion?.addEventListener("change", resetGaze);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("blur", resetGaze);
+      document.documentElement.removeEventListener("mouseleave", resetGaze);
+      reducedMotion?.removeEventListener("change", resetGaze);
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+      svg.style.removeProperty("--wuu-mascot-gaze-x");
+      svg.style.removeProperty("--wuu-mascot-gaze-y");
+    };
+  }, [followPointer, svg]);
 
   // Keep Blobatar's own hue fixed so provider changes only update inherited
   // colour variables. The SVG subtree and its seeded animation phases survive;
@@ -281,6 +352,7 @@ export function WuuMascot({
         data-wuu-mascot-provider-hue={hue}
         data-wuu-mascot-accessory={selectedAccessory}
         data-wuu-mascot-activity={activity}
+        data-wuu-mascot-follows-pointer={followPointer ? "" : undefined}
       />
       {/* Portal into the rendered body group rather than beside it. This keeps
           the accessory under the eye layer, inside Blobatar's exact breathe and
