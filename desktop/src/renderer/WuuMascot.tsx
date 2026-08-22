@@ -261,13 +261,36 @@ export function WuuMascot({
   const colors = palette(hue);
   const selectedAccessory = accessory ?? modelMascotAccessory(effectiveModel);
   const [svg, setSVG] = useState<SVGSVGElement | null>(null);
-  const [bodyLayer, setBodyLayer] = useState<SVGGElement | null>(null);
+  const [mascotLayers, setMascotLayers] = useState<{
+    rear: SVGGElement;
+    front: SVGGElement;
+  } | null>(null);
 
   useLayoutEffect(() => {
-    const nextBodyLayer =
+    const bodyLayer =
       svg?.querySelector<SVGGElement>(".mo-bob > g:not(.mo-eyes)") ?? null;
-    setBodyLayer((current) => current === nextBodyLayer ? current : nextBodyLayer);
-  });
+    if (!bodyLayer) {
+      setMascotLayers(null);
+      return undefined;
+    }
+
+    // Accessories need two paint planes to look worn rather than pasted on.
+    // Both live inside the body group so Blobatar's structural body selector
+    // does not repaint them; the core silhouette occludes the rear plane, while
+    // the front plane remains below the eyes.
+    const rear = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    const front = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    rear.classList.add("wuu-mascot-layer", "wuu-mascot-layer-rear");
+    front.classList.add("wuu-mascot-layer", "wuu-mascot-layer-front");
+    bodyLayer.insertBefore(rear, bodyLayer.firstChild);
+    bodyLayer.appendChild(front);
+    setMascotLayers({ rear, front });
+
+    return () => {
+      rear.remove();
+      front.remove();
+    };
+  }, [svg]);
 
   useEffect(() => {
     if (!svg || !followPointer) return;
@@ -366,23 +389,30 @@ export function WuuMascot({
         data-wuu-mascot-activity={activity}
         data-wuu-mascot-follows-pointer={followPointer ? "" : undefined}
       />
-      {/* Portal into the rendered body group rather than beside it. This keeps
-          the accessory under the eye layer, inside Blobatar's exact breathe and
-          bob transforms, while avoiding the library's direct-child body fill
-          selector from repainting the accessory. */}
-      {bodyLayer && selectedAccessory !== "none"
-        ? createPortal(
-            <MascotAccessory
-              key={selectedAccessory}
-              accessory={selectedAccessory}
-            />,
-            bodyLayer,
-          )
+      {mascotLayers && selectedAccessory !== "none"
+        ? <>
+            {createPortal(
+              <MascotAccessory
+                key={`${selectedAccessory}-rear`}
+                accessory={selectedAccessory}
+                layer="rear"
+              />,
+              mascotLayers.rear,
+            )}
+            {createPortal(
+              <MascotAccessory
+                key={`${selectedAccessory}-front`}
+                accessory={selectedAccessory}
+                layer="front"
+              />,
+              mascotLayers.front,
+            )}
+          </>
         : null}
-      {bodyLayer && activity !== "idle" && activity !== "compact"
+      {mascotLayers && activity !== "idle" && activity !== "compact"
         ? createPortal(
             <MascotActivityProp key={activity} activity={activity} />,
-            bodyLayer,
+            mascotLayers.front,
           )
         : null}
     </>
@@ -495,13 +525,50 @@ function MascotActivityProp({
 
 function MascotAccessory({
   accessory,
+  layer,
 }: {
   accessory: Exclude<WuuMascotAccessory, "none">;
+  layer: "rear" | "front";
 }): JSX.Element {
   const { body } = WUU_MASCOT_LAYOUT;
   const top = body.cy - body.ry;
   const bottom = body.cy + body.ry;
   const centerX = body.cx;
+  const lowerAnchorY = body.cy + body.ry * 0.62;
+
+  if (layer === "rear") {
+    return (
+      <g
+        className={`wuu-mascot-accessory wuu-mascot-accessory-rear wuu-mascot-accessory-${accessory}`}
+        aria-hidden="true"
+      >
+        {accessory === "headphones" ? (
+          <path className="wuu-mascot-line wuu-mascot-headphone-band" d={`M ${body.cx - body.rx * 0.86} ${body.cy + 5} Q ${body.cx - body.rx * 0.9} ${top - 5} ${centerX} ${top - 8} Q ${body.cx + body.rx * 0.9} ${top - 5} ${body.cx + body.rx * 0.86} ${body.cy + 5}`} />
+        ) : null}
+        {accessory === "scarf" ? (
+          <path className="wuu-mascot-fill" d={`M ${centerX + 7} ${lowerAnchorY + 1} Q ${centerX + 23} ${bottom + 2} ${centerX + 15} ${bottom + 18} L ${centerX + 4} ${bottom + 10} Q ${centerX + 10} ${bottom - 1} ${centerX + 1} ${lowerAnchorY + 4} Z`} />
+        ) : null}
+        {accessory === "bunny-ears" ? (
+          <>
+            <path className="wuu-mascot-fill" d={`M ${centerX - 18} ${top + 7} Q ${centerX - 29} ${top - 13} ${centerX - 17} ${top - 17} Q ${centerX - 6} ${top - 12} ${centerX - 10} ${top + 8} Z`} />
+            <path className="wuu-mascot-fill" d={`M ${centerX + 10} ${top + 8} Q ${centerX + 6} ${top - 12} ${centerX + 17} ${top - 17} Q ${centerX + 29} ${top - 13} ${centerX + 18} ${top + 7} Z`} />
+          </>
+        ) : null}
+        {accessory === "cat-ears" ? (
+          <>
+            <path className="wuu-mascot-fill" d={`M ${centerX - 25} ${top + 10} L ${centerX - 20} ${top - 11} Q ${centerX - 8} ${top - 4} ${centerX - 4} ${top + 9} Z`} />
+            <path className="wuu-mascot-fill" d={`M ${centerX + 4} ${top + 9} Q ${centerX + 8} ${top - 4} ${centerX + 20} ${top - 11} L ${centerX + 25} ${top + 10} Z`} />
+          </>
+        ) : null}
+        {accessory === "ribbon" ? (
+          <g transform={`translate(${body.cx + body.rx * 0.72} ${top + 5})`}>
+            <path className="wuu-mascot-fill" d="M -2 0 Q -15 -11 -17 1 Q -14 12 -2 4 Z" />
+            <path className="wuu-mascot-fill" d="M 2 0 Q 15 -11 17 1 Q 14 12 2 4 Z" />
+          </g>
+        ) : null}
+      </g>
+    );
+  }
 
   return (
     <g
@@ -540,15 +607,14 @@ function MascotAccessory({
       ) : null}
       {accessory === "headphones" ? (
         <>
-          <path className="wuu-mascot-line wuu-mascot-headphone-band" d={`M ${body.cx - body.rx * 0.86} ${body.cy + 5} Q ${body.cx - body.rx * 0.9} ${top - 5} ${centerX} ${top - 8} Q ${body.cx + body.rx * 0.9} ${top - 5} ${body.cx + body.rx * 0.86} ${body.cy + 5}`} />
           <rect className="wuu-mascot-fill" x={body.cx - body.rx - 3} y={body.cy - 8} width="11" height="23" rx="5.5" />
           <rect className="wuu-mascot-fill" x={body.cx + body.rx - 8} y={body.cy - 8} width="11" height="23" rx="5.5" />
         </>
       ) : null}
       {accessory === "scarf" ? (
         <>
-          <path className="wuu-mascot-fill" d={`M ${body.cx - body.rx * 0.76} ${bottom - 15} Q ${centerX} ${bottom - 7} ${body.cx + body.rx * 0.76} ${bottom - 15} L ${body.cx + body.rx * 0.7} ${bottom - 5} Q ${centerX} ${bottom + 1} ${body.cx - body.rx * 0.7} ${bottom - 5} Z`} />
-          <path className="wuu-mascot-fill" d={`M ${centerX + 8} ${bottom - 7} Q ${centerX + 19} ${bottom + 2} ${centerX + 14} ${bottom + 16} L ${centerX + 3} ${bottom + 8} L ${centerX + 2} ${bottom - 5} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${body.cx - body.rx * 0.76} ${lowerAnchorY - 6} Q ${centerX} ${lowerAnchorY + 2} ${body.cx + body.rx * 0.76} ${lowerAnchorY - 6} L ${body.cx + body.rx * 0.69} ${lowerAnchorY + 6} Q ${centerX} ${lowerAnchorY + 12} ${body.cx - body.rx * 0.69} ${lowerAnchorY + 6} Z`} />
+          <circle className="wuu-mascot-band" cx={centerX + 10} cy={lowerAnchorY + 5} r="4.5" />
         </>
       ) : null}
       {accessory === "beret" ? (
@@ -583,9 +649,9 @@ function MascotAccessory({
       ) : null}
       {accessory === "bow-tie" ? (
         <>
-          <path className="wuu-mascot-fill" d={`M ${centerX - 3} ${bottom - 9} Q ${centerX - 17} ${bottom - 20} ${centerX - 23} ${bottom - 8} Q ${centerX - 18} ${bottom + 3} ${centerX - 3} ${bottom - 5} Z`} />
-          <path className="wuu-mascot-fill" d={`M ${centerX + 3} ${bottom - 9} Q ${centerX + 17} ${bottom - 20} ${centerX + 23} ${bottom - 8} Q ${centerX + 18} ${bottom + 3} ${centerX + 3} ${bottom - 5} Z`} />
-          <circle className="wuu-mascot-band" cx={centerX} cy={bottom - 7} r="5" />
+          <path className="wuu-mascot-fill" d={`M ${centerX - 3} ${lowerAnchorY - 2} Q ${centerX - 13} ${lowerAnchorY - 11} ${centerX - 19} ${lowerAnchorY - 3} Q ${centerX - 16} ${lowerAnchorY + 7} ${centerX - 3} ${lowerAnchorY + 2} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX + 3} ${lowerAnchorY - 2} Q ${centerX + 13} ${lowerAnchorY - 11} ${centerX + 19} ${lowerAnchorY - 3} Q ${centerX + 16} ${lowerAnchorY + 7} ${centerX + 3} ${lowerAnchorY + 2} Z`} />
+          <circle className="wuu-mascot-band" cx={centerX} cy={lowerAnchorY} r="4.2" />
         </>
       ) : null}
       {accessory === "graduation-cap" ? (
@@ -612,29 +678,16 @@ function MascotAccessory({
       {accessory === "mushroom-cap" ? (
         <path className="wuu-mascot-fill" d={`M ${centerX - 29} ${top + 12} Q ${centerX - 23} ${top - 12} ${centerX} ${top - 14} Q ${centerX + 23} ${top - 12} ${centerX + 29} ${top + 12} Q ${centerX + 11} ${top + 5} ${centerX} ${top + 12} Q ${centerX - 11} ${top + 5} ${centerX - 29} ${top + 12} Z`} />
       ) : null}
-      {accessory === "bunny-ears" ? (
-        <>
-          <path className="wuu-mascot-fill" d={`M ${centerX - 18} ${top + 7} Q ${centerX - 29} ${top - 13} ${centerX - 17} ${top - 17} Q ${centerX - 6} ${top - 12} ${centerX - 10} ${top + 8} Z`} />
-          <path className="wuu-mascot-fill" d={`M ${centerX + 10} ${top + 8} Q ${centerX + 6} ${top - 12} ${centerX + 17} ${top - 17} Q ${centerX + 29} ${top - 13} ${centerX + 18} ${top + 7} Z`} />
-        </>
-      ) : null}
-      {accessory === "cat-ears" ? (
-        <>
-          <path className="wuu-mascot-fill" d={`M ${centerX - 25} ${top + 10} L ${centerX - 20} ${top - 11} Q ${centerX - 8} ${top - 4} ${centerX - 4} ${top + 9} Z`} />
-          <path className="wuu-mascot-fill" d={`M ${centerX + 4} ${top + 9} Q ${centerX + 8} ${top - 4} ${centerX + 20} ${top - 11} L ${centerX + 25} ${top + 10} Z`} />
-        </>
-      ) : null}
       {accessory === "ribbon" ? (
         <g transform={`translate(${body.cx + body.rx * 0.72} ${top + 5})`}>
-          <path className="wuu-mascot-fill" d="M -2 0 Q -15 -11 -17 1 Q -14 12 -2 4 Z" />
-          <path className="wuu-mascot-fill" d="M 2 0 Q 15 -11 17 1 Q 14 12 2 4 Z" />
           <circle className="wuu-mascot-band" cy="2" r="4.5" />
         </g>
       ) : null}
       {accessory === "necktie" ? (
         <>
-          <path className="wuu-mascot-fill" d={`M ${centerX} ${bottom - 19} L ${centerX + 7} ${bottom - 14} L ${centerX} ${bottom - 9} L ${centerX - 7} ${bottom - 14} Z`} />
-          <path className="wuu-mascot-fill" d={`M ${centerX} ${bottom - 9} L ${centerX - 8} ${bottom + 4} L ${centerX} ${bottom + 10} L ${centerX + 8} ${bottom + 4} Z`} />
+          <path className="wuu-mascot-line" d={`M ${centerX - 20} ${lowerAnchorY - 7} L ${centerX - 6} ${lowerAnchorY} M ${centerX + 20} ${lowerAnchorY - 7} L ${centerX + 6} ${lowerAnchorY}`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX} ${lowerAnchorY - 5} L ${centerX + 6} ${lowerAnchorY} L ${centerX} ${lowerAnchorY + 6} L ${centerX - 6} ${lowerAnchorY} Z`} />
+          <path className="wuu-mascot-fill" d={`M ${centerX} ${lowerAnchorY + 6} L ${centerX - 7} ${bottom + 2} L ${centerX} ${bottom + 8} L ${centerX + 7} ${bottom + 2} Z`} />
         </>
       ) : null}
     </g>
