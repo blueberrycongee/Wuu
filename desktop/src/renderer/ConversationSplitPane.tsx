@@ -123,9 +123,6 @@ export function ConversationSplitPane({
     );
     return attachAfterTurn ? <div className="user-question-after-turn">{card}</div> : card;
   };
-  const closeLabel = t(
-    pane === "secondary" ? "split.closeRight" : "split.closeLeft",
-  );
   const paneRunning = isThreadRunning(thread);
   const paneReadOnly = Boolean(thread.read_only);
   const paneStatus = paneRunning
@@ -142,15 +139,17 @@ export function ConversationSplitPane({
       )}
       onPointerDown={onActivate}
     >
-      <button
-        className="icon-button conversation-split-close"
-        type="button"
-        aria-label={closeLabel}
-        title={closeLabel}
-        onClick={onClose}
-      >
-        <X className="icon" />
-      </button>
+      {pane === "secondary" && (
+        <button
+          className="icon-button conversation-split-close"
+          type="button"
+          aria-label={t("split.closeRight")}
+          title={t("split.closeRight")}
+          onClick={onClose}
+        >
+          <X className="icon" />
+        </button>
+      )}
       <div
         ref={onBodyRef}
         className="conversation-split-body"
