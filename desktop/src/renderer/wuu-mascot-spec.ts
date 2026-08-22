@@ -41,7 +41,7 @@ export type WuuMascotActivity =
  * - compose lifts its head to face the user the moment a draft exists.
  * - thinking glances up and aside; compact watches the hole descend overhead.
  * - search/edit/command/tool look down into the work unfolding below the row.
- * - read keeps its long-established look back up at the conversation.
+ * - read follows the open book carried at the lower-right edge of the body.
  */
 export const WUU_MASCOT_ACTIVITY_PERSPECTIVES: Readonly<
   Record<WuuMascotActivity, { yaw: number; pitch: number; strength: number } | undefined>
@@ -53,6 +53,6 @@ export const WUU_MASCOT_ACTIVITY_PERSPECTIVES: Readonly<
   search: { yaw: -16, pitch: -10, strength: 1 },
   edit: { yaw: 14, pitch: -16, strength: 1 },
   command: { yaw: -10, pitch: -12, strength: 1 },
-  read: { yaw: -32, pitch: 16, strength: 1 },
+  read: { yaw: 12, pitch: -8, strength: 1 },
   tool: { yaw: 12, pitch: -10, strength: 1 },
 };

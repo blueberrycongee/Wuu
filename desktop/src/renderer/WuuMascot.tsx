@@ -1,5 +1,11 @@
 import { _layout, palette } from "blobatar";
-import { happy, smug, surprised, type Expression } from "blobatar/expression";
+import {
+  happy,
+  idle as idleExpression,
+  smug,
+  surprised,
+  type Expression,
+} from "blobatar/expression";
 import { Blobatar } from "blobatar/react";
 import "blobatar/motion.css";
 import {
@@ -58,6 +64,11 @@ function withMascotEyes(
     ...expression,
     p: {
       ...expression.p,
+      // Keep the mascot's eye spacing as part of its identity. Stock
+      // expressions push the pair apart by different amounts; on this narrow,
+      // long-eyed face that makes the empty space between the eyes dominate and
+      // causes the spacing to drift as activities change.
+      edx: 0,
       esx: eyes.esx,
       esy: eyes.esy,
       esx2: eyes.esx2 ?? 0,
@@ -68,9 +79,10 @@ function withMascotEyes(
   };
 }
 
-const WUU_MASCOT_EYES = {
-  // The authored long portrait capsules — the idle identity.
-  long: { esx: 1, esy: 1 },
+export const WUU_MASCOT_EYES = {
+  // The authored long portrait capsules — widened just enough to stay delicate
+  // while reading less like two thin strokes at greeting size.
+  long: { esx: 1.12, esy: 1 },
   // A circle: growing the width and shrinking the height by the authored aspect
   // ratio leaves `rx === ry`. 1.6 keeps the dot a touch larger than the long
   // capsule reads, without crowding the pair.
@@ -113,10 +125,10 @@ export type WuuMascotAccessory =
 export type { WuuMascotActivity } from "./wuu-mascot-spec";
 import type { WuuMascotActivity } from "./wuu-mascot-spec";
 
-const WUU_MASCOT_ACTIVITY_EXPRESSIONS: Readonly<
+export const WUU_MASCOT_ACTIVITY_EXPRESSIONS: Readonly<
   Record<WuuMascotActivity, Expression | undefined>
 > = {
-  idle: undefined,
+  idle: withMascotEyes(idleExpression, WUU_MASCOT_EYES.long),
   // Existing activities keep the long-eye identity they always had; nothing here
   // changes their previous look. `WUU_MASCOT_EYES` holds additional eye states
   // for when a caller wants one, and search already opts into the round surprise
@@ -454,11 +466,11 @@ function MascotActivityProp({
           <>
             <path
               className="wuu-mascot-activity-fill"
-              d="M 68 50 Q 77 47 82 52 Q 87 47 96 50 L 96 73 Q 87 70 82 75 Q 77 70 68 73 Z"
+              d="M 72 61 Q 79.5 58 83.5 62 Q 87.5 58 95 61 L 95 80 Q 87.5 77 83.5 82 Q 79.5 77 72 80 Z"
             />
             <path
               className="wuu-mascot-activity-line"
-              d="M 82 52 L 82 75"
+              d="M 83.5 62 L 83.5 82"
             />
           </>
         ) : null}

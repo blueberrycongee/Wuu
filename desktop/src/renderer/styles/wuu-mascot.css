@@ -94,10 +94,15 @@
   --mo-rate: 0.76;
 }
 
-/* Activity props intentionally reach the edge of the 0–100 artwork canvas.
- * Keep the SVG viewport open so their stroke and keyed motion are not cut off
- * at the avatar's circular box. The surrounding process row still owns text
- * overflow and ellipsis. */
+/* Accessories such as tall hats, ears, and neckties intentionally extend past
+ * the 0–100 artwork canvas. Keep their SVG viewport open so the parts outside
+ * the avatar's circular box are not clipped. */
+[data-wuu-mascot-accessory]:not([data-wuu-mascot-accessory="none"]) {
+  overflow: visible;
+}
+
+/* Activity props can reach the same canvas edge. The surrounding process row
+ * still owns text overflow and ellipsis. */
 .process-surface-blobatar[data-wuu-mascot-activity]:not(
     [data-wuu-mascot-activity="idle"]
   ) {

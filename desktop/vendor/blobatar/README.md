@@ -19,9 +19,10 @@ integration loop.
 ## Layout
 
 - `src/` — the library. `test/` — its bun test suite (`bun test`).
-- `demo/` — the tuning grid playground. `bun install && bun dev` in there,
-  then open http://localhost:3001/ to tune traits, expressions and the sphere
-  perspective against a grid of seeds.
+- `demo/` — the mascot workbench. From `desktop/`, run `npm run lab:mascot`,
+  then open http://localhost:3001/. It opens on the real product `WuuMascot`
+  activity, accessory, and size states; the preserved low-level tuning view
+  covers traits, expressions, and sphere perspective against a grid of seeds.
 - `docs/` — design notes and ADRs. `CONTEXT.md` — the glossary; worth reading
   before changing anything.
 - `scripts/probe-compose.ts` — manual browser gate (`bun run probe`, needs

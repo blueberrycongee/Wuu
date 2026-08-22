@@ -2,6 +2,7 @@ import { useMemo, useState, type CSSProperties } from "react";
 import { _layout, traits, type Animate, type BlobatarOptions, type TraitOverrides } from "blobatar";
 import { happy, idle, love, mad, sad, scared, shy, sick, sleepy, smug, surprised, unsure, wink, type Expression, type Pose } from "blobatar/expression";
 import { Blobatar } from "blobatar/react";
+import { ProductMascotWorkbench } from "./ProductMascotWorkbench";
 
 const EXPRESSIONS = { idle, happy, sad, mad, surprised, wink, sleepy, smug, unsure, scared, love, shy, sick } satisfies Record<string, Expression>;
 const TRAIT_GROUPS = {
@@ -29,6 +30,13 @@ function Slider({ label, value, min, max, step, enabled = true, onEnabled, onCha
 }
 
 export function TemporaryPlayground() {
+  const [showProductWorkbench, setShowProductWorkbench] = useState(true);
+  return showProductWorkbench
+    ? <ProductMascotWorkbench onOpenTuning={() => setShowProductWorkbench(false)} />
+    : <BlobatarTuningPlayground onBack={() => setShowProductWorkbench(true)} />;
+}
+
+function BlobatarTuningPlayground({ onBack }: { onBack: () => void }) {
   const [prefix, setPrefix] = useState("user-");
   const [count, setCount] = useState(120);
   const [size, setSize] = useState(56);
@@ -64,7 +72,7 @@ export function TemporaryPlayground() {
 
   return <div className="playground-shell">
     <aside className="playground-panel">
-      <div className="playground-title"><div><strong>Wuu Blobatar Lab</strong><small>临时本地页 · 不进入 Wuu 仓库</small></div><button onClick={() => setEnabledTraits(new Set())}>清空覆盖</button></div>
+      <div className="playground-title"><div><strong>Blobatar 底层调参</strong><small>种子、生成参数、表情与球面透视</small></div><div className="playground-title-actions"><button type="button" onClick={onBack}>返回产品状态</button><button onClick={() => setEnabledTraits(new Set())}>清空覆盖</button></div></div>
       <details open><summary>展示</summary><div className="control-grid">
         <label>视图<select value={expressionsView ? "expressions" : "varieties"} onChange={(event) => setExpressionsView(event.target.value === "expressions")}><option value="varieties">种子变化</option><option value="expressions">全部表情</option></select></label>
         <label>种子前缀<input value={prefix} onChange={(event) => setPrefix(event.target.value)} /></label>

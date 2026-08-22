@@ -8,4 +8,4 @@ const server = serve({
   development: process.env.NODE_ENV !== "production" && { hmr: true, console: true },
 });
 
-console.log(`blobatar tuning grid → ${server.url}`);
+console.log(`Wuu mascot workbench → ${server.url}`);

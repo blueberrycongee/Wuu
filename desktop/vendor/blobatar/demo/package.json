@@ -6,9 +6,7 @@
     "dev": "bun --hot server.ts"
   },
   "dependencies": {
-    "blobatar": "file:..",
-    "react": "^19",
-    "react-dom": "^19"
+    "blobatar": "file:.."
   },
   "devDependencies": {
     "@types/react": "^19",

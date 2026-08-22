@@ -53,8 +53,8 @@ describe("vendored mascot geometry", () => {
     }
   });
 
-  it("keeps the read pose on its long-established glance back at the conversation", () => {
-    expect(WUU_MASCOT_ACTIVITY_PERSPECTIVES.read).toEqual({ yaw: -32, pitch: 16, strength: 1 });
+  it("aims the read pose at the open book on the lower right", () => {
+    expect(WUU_MASCOT_ACTIVITY_PERSPECTIVES.read).toEqual({ yaw: 12, pitch: -8, strength: 1 });
     // And idle greets by looking down toward the composer rather than staring ahead.
     expect(WUU_MASCOT_ACTIVITY_PERSPECTIVES.idle?.pitch).toBeLessThan(0);
   });
