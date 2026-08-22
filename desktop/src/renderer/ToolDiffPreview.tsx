@@ -345,6 +345,9 @@ export function ToolDiffPreview({
   const cardStyle: React.CSSProperties = rect
     ? (() => {
         const horizontalGutter = 24;
+        const verticalGutter = 24;
+        const triggerGap = 8;
+        const cardHeightLimit = 360;
         const bounds = previewBoundsForTrigger(triggerRef.current);
         const boundLeft = bounds ? Math.max(0, bounds.left) : 0;
         const boundRight = bounds
@@ -362,17 +365,27 @@ export function ToolDiffPreview({
           minLeft,
           Math.min(rect.left, maxRight - cardWidth),
         );
-        // Show above the trigger by default, but if there is not enough room
-        // above the viewport top edge, show it below instead.
-        const cardHeightEstimate = 360;
-        const showAbove = rect.top >= cardHeightEstimate + 16;
+        const spaceAbove = Math.max(
+          0,
+          rect.top - triggerGap - verticalGutter,
+        );
+        const spaceBelow = Math.max(
+          0,
+          window.innerHeight - verticalGutter - rect.bottom - triggerGap,
+        );
+        // Prefer above when the full preview fits there. Otherwise use the
+        // roomier side so the card never extends through the window frame.
+        const showAbove =
+          spaceAbove >= cardHeightLimit || spaceAbove >= spaceBelow;
+        const availableHeight = showAbove ? spaceAbove : spaceBelow;
         return {
           position: "fixed",
           left,
           ...(showAbove
-            ? { bottom: window.innerHeight - rect.top + 8 }
-            : { top: rect.bottom + 8, maxHeight: "calc(100vh - 120px)" }),
+            ? { bottom: window.innerHeight - rect.top + triggerGap }
+            : { top: rect.bottom + triggerGap }),
           width: cardWidth,
+          maxHeight: Math.min(cardHeightLimit, availableHeight),
         };
       })()
     : {};
