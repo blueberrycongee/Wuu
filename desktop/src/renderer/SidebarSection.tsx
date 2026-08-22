@@ -23,9 +23,9 @@ type CollapsePhase = "open" | "opening" | "closing";
 /**
  * dnd-kit activator context shared between SortableSection (AppSidebar)
  * and SidebarSection. The default value is `null`, so callsites that
- * are NOT inside a SortableSection (notably the pinned 置顶 section,
- * which is fixed-position and never reorderable) read null and render
- * the header as a plain toggle — no drag listeners leak into pinned.
+ * are NOT inside a SortableSection read null and render the header as a
+ * plain toggle. Pinned folders and workspaces reuse the same sortable
+ * section contract as their source groups.
  */
 export type SidebarSectionDragHandle = {
   dragHandleProps: HTMLAttributes<HTMLButtonElement>;

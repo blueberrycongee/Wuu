@@ -59,6 +59,7 @@ export function SortableSidebarSection({
   ariaLabel,
   headerInfo,
   registerHeaderInfo,
+  sortIndicator,
   containerProps,
   children,
 }: {
@@ -67,6 +68,7 @@ export function SortableSidebarSection({
   ariaLabel: string;
   headerInfo: SidebarSectionHeaderInfo;
   registerHeaderInfo: (id: string, info: SidebarSectionHeaderInfo | null) => void;
+  sortIndicator?: "before" | "after";
   containerProps?: HTMLAttributes<HTMLElement>;
   children: ReactNode;
 }): JSX.Element {
@@ -77,6 +79,7 @@ export function SortableSidebarSection({
     transform,
     transition,
     isDragging,
+    isOver,
   } = useSortable({ id });
   const { label, iconKind, CollapsedIcon, ExpandedIcon } = headerInfo;
   useEffect(() => {
@@ -98,6 +101,8 @@ export function SortableSidebarSection({
       className={className}
       aria-label={ariaLabel}
       data-section-id={id}
+      data-drop-over={isOver || undefined}
+      data-sort-indicator={sortIndicator}
       style={style}
     >
       <SidebarSectionDragHandleContext.Provider value={{ dragHandleProps, isDragging }}>

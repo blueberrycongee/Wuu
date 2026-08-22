@@ -3,21 +3,17 @@ import {
   clearOptimisticAssignment,
   clearReconciledAssignments,
   emptySessionOrganization,
-  moveOrganizationGroup,
   parseSessionOrganization,
 } from "./SessionOrganization";
 import type { ThreadSummary } from "./AppState";
 
 describe("parseSessionOrganization", () => {
-  it("keeps valid server groups", () => {
+  it("keeps valid server folders", () => {
     expect(parseSessionOrganization({
       folders: [{ id: "folder-1", name: "Topic" }],
-      pin_groups: [{ id: "pin-1", name: "Now" }],
     })).toEqual({
       folders: [{ id: "folder-1", name: "Topic" }],
-      pinGroups: [{ id: "pin-1", name: "Now" }],
       folderByThreadID: {},
-      pinGroupByThreadID: {},
     });
   });
 
@@ -48,19 +44,7 @@ describe("optimistic organization assignments", () => {
       turn_count: 0,
     }]]);
 
-    expect(clearReconciledAssignments({ thread: "folder-1" }, threads, "folder_id")).toEqual({});
-    expect(clearReconciledAssignments({ thread: "folder-2" }, threads, "folder_id")).toEqual({ thread: "folder-2" });
-  });
-});
-
-describe("moveOrganizationGroup", () => {
-  const groups = [{ id: "one", name: "One" }, { id: "two", name: "Two" }];
-
-  it("moves a group within bounds", () => {
-    expect(moveOrganizationGroup(groups, "two", -1).map((group) => group.id)).toEqual(["two", "one"]);
-  });
-
-  it("keeps the same list at a boundary", () => {
-    expect(moveOrganizationGroup(groups, "one", -1)).toBe(groups);
+    expect(clearReconciledAssignments({ thread: "folder-1" }, threads)).toEqual({});
+    expect(clearReconciledAssignments({ thread: "folder-2" }, threads)).toEqual({ thread: "folder-2" });
   });
 });

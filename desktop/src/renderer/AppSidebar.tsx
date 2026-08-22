@@ -12,7 +12,6 @@ import {
   MessageSquare,
   MessageSquarePlus,
   MessagesSquare,
-  Pin,
   Plus,
   Search,
   Settings,
@@ -36,9 +35,12 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
@@ -97,8 +99,8 @@ import { PluginSlot } from "./plugins/PluginSlot";
 /**
  * Stable section identity keys for the new sidebar tree.
  *
- * - `SIDEBAR_SECTION_PINNED` is FIXED-position (always first, above the
- *   reorderable list). It is intentionally NOT in `sectionOrder`.
+ * - `SIDEBAR_SECTION_PINNED` is the legacy persisted collapse key. The visible
+ *   pinned functional group now keeps its own persisted order/collapse state.
  * - `SCRATCH_PSEUDO_PROJECT_ID` ("__wuu_scratch__") is the 对话
  *   pseudo-project entry. It belongs to the workspace functional group and
  *   can be reordered with real projects.
@@ -106,10 +108,67 @@ import { PluginSlot } from "./plugins/PluginSlot";
 export const SIDEBAR_SECTION_PINNED = "__wuu_pinned__";
 const FOLDER_REMOVE_DROP_TARGET = "__wuu_remove_from_folder__";
 const FOLDER_SORTABLE_PREFIX = "__wuu_folder_sort__:";
+const PINNED_THREAD_SORTABLE_PREFIX = "__wuu_pinned_thread_sort__:";
+const PINNED_APPEND_DROP_ID = "__wuu_pinned_append_drop__";
+const PINNED_SESSION_DROP_TARGET = "__wuu_pinned_session_drop__";
+const WORKSPACE_SESSION_DROP_TARGET = "__wuu_workspace_session_drop__";
 const SIDEBAR_FUNCTIONAL_GROUP_ORDER_KEY = "wuu.desktop.sidebarFunctionalGroupOrder";
 const SIDEBAR_COLLAPSED_FUNCTIONAL_GROUPS_KEY = "wuu.desktop.sidebarCollapsedFunctionalGroups";
-const SIDEBAR_FUNCTIONAL_GROUP_IDS = ["folders", "workspace"] as const;
+const SIDEBAR_PINNED_ITEMS_KEY = "wuu.desktop.sidebarPinnedItems";
+const LEGACY_SIDEBAR_PINNED_CONTAINERS_KEY = "wuu.desktop.sidebarPinnedContainers";
+const SIDEBAR_FUNCTIONAL_GROUP_IDS = ["pinned", "folders", "workspace"] as const;
 type SidebarFunctionalGroupID = (typeof SIDEBAR_FUNCTIONAL_GROUP_IDS)[number];
+type SidebarPinnedItem = {
+  kind: "thread" | "folder" | "workspace";
+  id: string;
+};
+
+function pinnedItemSortableID(item: SidebarPinnedItem): string {
+  if (item.kind === "thread") return `${PINNED_THREAD_SORTABLE_PREFIX}${item.id}`;
+  if (item.kind === "folder") return `${FOLDER_SORTABLE_PREFIX}${item.id}`;
+  return item.id;
+}
+
+function moveSidebarItem(
+  order: string[],
+  activeID: string,
+  targetID: string,
+  position: "before" | "after",
+): string[] {
+  if (activeID === targetID || !order.includes(activeID) || !order.includes(targetID)) return order;
+  const next = order.filter((id) => id !== activeID);
+  const targetIndex = next.indexOf(targetID);
+  next.splice(targetIndex + (position === "after" ? 1 : 0), 0, activeID);
+  return next.every((id, index) => id === order[index]) ? order : next;
+}
+
+function loadSidebarPinnedItems(): SidebarPinnedItem[] {
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(SIDEBAR_PINNED_ITEMS_KEY)
+        ?? window.localStorage.getItem(LEGACY_SIDEBAR_PINNED_CONTAINERS_KEY)
+        ?? "[]",
+    );
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    return parsed.flatMap((value) => {
+      if (!value || typeof value !== "object") return [];
+      const candidate = value as Partial<SidebarPinnedItem>;
+      if ((candidate.kind !== "thread"
+        && candidate.kind !== "folder"
+        && candidate.kind !== "workspace")
+        || typeof candidate.id !== "string"
+        || !candidate.id
+      ) return [];
+      const key = `${candidate.kind}:${candidate.id}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ kind: candidate.kind, id: candidate.id }];
+    });
+  } catch {
+    return [];
+  }
+}
 
 function loadSidebarFunctionalGroupOrder(): SidebarFunctionalGroupID[] {
   try {
@@ -381,6 +440,9 @@ export function AppSidebar({
   }, [pinnedThreads, projectThreadsByProjectID]);
   const organization = useSessionOrganization(organizationSourceThreads);
   const [collapsedFolderIDs, setCollapsedFolderIDs] = useState<Set<string>>(() => new Set());
+  const [pinnedItems, setPinnedItems] = useState<SidebarPinnedItem[]>(
+    loadSidebarPinnedItems,
+  );
   const [functionalGroupOrder, setFunctionalGroupOrder] = useState<SidebarFunctionalGroupID[]>(
     loadSidebarFunctionalGroupOrder,
   );
@@ -389,14 +451,14 @@ export function AppSidebar({
   const [draggingFunctionalGroupID, setDraggingFunctionalGroupID] =
     useState<SidebarFunctionalGroupID>();
   const [groupContextMenu, setGroupContextMenu] = useState<{
-    kind: "folder" | "pin";
     group: SessionGroup;
+    pinned: boolean;
     x: number;
     y: number;
   } | null>(null);
   const [groupNameDialog, setGroupNameDialog] = useState<
-    | { action: "create"; kind: "folder" | "pin"; thread?: ThreadSummary }
-    | { action: "rename"; kind: "folder" | "pin"; group: SessionGroup }
+    | { action: "create"; thread?: ThreadSummary }
+    | { action: "rename"; group: SessionGroup }
     | null
   >(null);
   const [groupName, setGroupName] = useState("");
@@ -404,12 +466,13 @@ export function AppSidebar({
   const [folderDragThreadID, setFolderDragThreadID] = useState<string>();
   const [folderDropTargetID, setFolderDropTargetID] = useState<string>();
   const folderDropTargetIDRef = useRef<string | undefined>(undefined);
+  const folderDragThread = folderDragThreadID
+    ? organizationSourceThreads.find((thread) => thread.id === folderDragThreadID)
+    : undefined;
   const folderDragCanRemove = Boolean(
-    folderDragThreadID && organization.folderByThreadID[folderDragThreadID],
+    folderDragThreadID
+      && (folderDragThread?.pinned || organization.folderByThreadID[folderDragThreadID]),
   );
-  const contextGroupIndex = groupContextMenu?.kind === "pin"
-    ? organization.pinGroups.findIndex((group) => group.id === groupContextMenu.group.id)
-    : -1;
   const hasRuntimeContext = Boolean(state.activeContext);
   const fixturesEnabled = hasRuntimeContext && Boolean(state.initialized);
   // The scratch pseudo project is "active" when the runtime context is in
@@ -451,21 +514,11 @@ export function AppSidebar({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [draggingSectionID, setDraggingSectionID] = useState<string | undefined>();
-  function handleDragStart(event: DragStartEvent): void {
-    setDraggingSectionID(String(event.active.id));
-  }
-  function handleDragEnd(event: DragEndEvent): void {
-    const activeID = String(event.active.id);
-    const overID = event.over ? String(event.over.id) : undefined;
-    const next = reorderSidebarSections(sectionOrder, activeID, overID);
-    if (next !== sectionOrder) {
-      onReorderSections?.(next);
-    }
-    setDraggingSectionID(undefined);
-  }
-  function handleDragCancel(): void {
-    setDraggingSectionID(undefined);
-  }
+  const [sidebarSortIndicator, setSidebarSortIndicator] = useState<{
+    id: string;
+    position: "before" | "after";
+  }>();
+  const sidebarDragStartClientYRef = useRef<number | undefined>(undefined);
   // Each SortableSection calls back into this registry on every render
   // with its id → header info. The DragOverlay reads from this map to
   // render the right header for the currently dragged section. Using a
@@ -486,41 +539,345 @@ export function AppSidebar({
     ? sectionHeaderInfoByIDRef.current.get(draggingSectionID)
     : undefined;
   const folderSortableIDs = organization.folders.map((folder) => `${FOLDER_SORTABLE_PREFIX}${folder.id}`);
-  const [draggingFolderID, setDraggingFolderID] = useState<string | undefined>();
-  const draggingFolderInfo = draggingFolderID
-    ? sectionHeaderInfoByIDRef.current.get(draggingFolderID)
-    : undefined;
-  function handleFolderDragStart(event: DragStartEvent): void {
-    setDraggingFolderID(String(event.active.id));
+  const availableFolderIDs = new Set(organization.folders.map((folder) => folder.id));
+  const availableWorkspaceIDs = new Set(sidebarProjects.map((project) => project.id));
+  const availablePinnedThreadIDs = new Set(pinnedThreads.map((thread) => thread.id));
+  const validPinnedItems = pinnedItems.filter((entry) => {
+    if (entry.kind === "thread") return availablePinnedThreadIDs.has(entry.id);
+    if (entry.kind === "folder") return availableFolderIDs.has(entry.id);
+    return availableWorkspaceIDs.has(entry.id);
+  });
+  const knownPinnedThreadIDs = new Set(
+    validPinnedItems.filter((entry) => entry.kind === "thread").map((entry) => entry.id),
+  );
+  for (const thread of pinnedThreads) {
+    if (!knownPinnedThreadIDs.has(thread.id)) {
+      validPinnedItems.push({ kind: "thread", id: thread.id });
+    }
   }
-  function handleFolderDragEnd(event: DragEndEvent): void {
+  const pinnedItemSortableIDs = validPinnedItems.map(pinnedItemSortableID);
+  const pinnedItemBySortableID = new Map(
+    validPinnedItems.map((entry) => [pinnedItemSortableID(entry), entry]),
+  );
+  const validPinnedContainers = validPinnedItems.filter(
+    (entry): entry is SidebarPinnedItem & { kind: "folder" | "workspace" } =>
+      entry.kind !== "thread",
+  );
+  const pinnedFolderIDs = new Set(
+    validPinnedContainers.filter((entry) => entry.kind === "folder").map((entry) => entry.id),
+  );
+  const pinnedWorkspaceIDs = new Set(
+    validPinnedContainers.filter((entry) => entry.kind === "workspace").map((entry) => entry.id),
+  );
+  const visibleFolderSortableIDs = folderSortableIDs.filter(
+    (id) => !pinnedFolderIDs.has(id.slice(FOLDER_SORTABLE_PREFIX.length)),
+  );
+  const visibleWorkspaceSectionOrder = sectionOrder.filter(
+    (id) => !pinnedWorkspaceIDs.has(id),
+  );
+
+  function updatePinnedItems(
+    updater: (current: SidebarPinnedItem[]) => SidebarPinnedItem[],
+  ): void {
+    setPinnedItems((current) => {
+      const next = updater(current);
+      window.localStorage.setItem(SIDEBAR_PINNED_ITEMS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function pinContainer(
+    entry: SidebarPinnedItem,
+    targetSortableID?: string,
+    position: "before" | "after" = "after",
+  ): void {
+    updatePinnedItems((current) => {
+      const next = [...current];
+      for (const existing of validPinnedItems) {
+        if (!next.some((candidate) =>
+          candidate.kind === existing.kind && candidate.id === existing.id
+        )) next.push(existing);
+      }
+      const alreadyPinned = next.some(
+        (candidate) => candidate.kind === entry.kind && candidate.id === entry.id,
+      );
+      const target = targetSortableID
+        ? pinnedItemBySortableID.get(targetSortableID)
+        : undefined;
+      if (!target) return alreadyPinned ? next : [...next, entry];
+      const withoutEntry = next.filter(
+        (candidate) => candidate.kind !== entry.kind || candidate.id !== entry.id,
+      );
+      const targetIndex = withoutEntry.findIndex(
+        (candidate) => candidate.kind === target.kind && candidate.id === target.id,
+      );
+      if (targetIndex === -1) return [...withoutEntry, entry];
+      withoutEntry.splice(targetIndex + (position === "after" ? 1 : 0), 0, entry);
+      return withoutEntry;
+    });
+    setCollapsedFunctionalGroupIDs((current) => {
+      if (!current.has("pinned")) return current;
+      const next = new Set(current);
+      next.delete("pinned");
+      persistCollapsedSidebarFunctionalGroups(next);
+      return next;
+    });
+  }
+
+  function unpinContainer(entry: SidebarPinnedItem): void {
+    updatePinnedItems((current) => current.filter(
+      (candidate) => candidate.kind !== entry.kind || candidate.id !== entry.id,
+    ));
+  }
+
+  function toggleThreadPinned(thread: ThreadSummary): void {
+    if (thread.pinned) {
+      unpinContainer({ kind: "thread", id: thread.id });
+    } else {
+      pinContainer({ kind: "thread", id: thread.id });
+    }
+    onTogglePinned(thread);
+  }
+
+  function functionalGroupForSortableID(id: string | undefined): SidebarFunctionalGroupID | undefined {
+    if (!id) return undefined;
+    if (SIDEBAR_FUNCTIONAL_GROUP_IDS.includes(id as SidebarFunctionalGroupID)) {
+      return id as SidebarFunctionalGroupID;
+    }
+    if (id === PINNED_APPEND_DROP_ID) return "pinned";
+    if (pinnedItemBySortableID.has(id)) return "pinned";
+    if (id.startsWith(FOLDER_SORTABLE_PREFIX)) return "folders";
+    if (sectionOrder.includes(id)) return "workspace";
+    return undefined;
+  }
+
+  const sidebarCollisionDetection: CollisionDetection = (args) => {
+    const activeID = String(args.active.id);
+    const activePinnedEntry = pinnedItemBySortableID.get(activeID);
+    const allowed = (candidateID: string): boolean => {
+      if (SIDEBAR_FUNCTIONAL_GROUP_IDS.includes(activeID as SidebarFunctionalGroupID)) {
+        return SIDEBAR_FUNCTIONAL_GROUP_IDS.includes(candidateID as SidebarFunctionalGroupID);
+      }
+      if (activePinnedEntry) {
+        const returnsToEmptySource = activePinnedEntry.kind === "folder"
+          ? visibleFolderSortableIDs.length === 0 && candidateID === "folders"
+          : activePinnedEntry.kind === "workspace"
+            ? visibleWorkspaceSectionOrder.length === 0 && candidateID === "workspace"
+            : candidateID === "folders" || candidateID === "workspace";
+        return returnsToEmptySource
+          || candidateID === PINNED_APPEND_DROP_ID
+          || pinnedItemBySortableID.has(candidateID)
+          || (activePinnedEntry.kind === "folder"
+            ? visibleFolderSortableIDs.includes(candidateID)
+            : activePinnedEntry.kind === "workspace"
+              ? visibleWorkspaceSectionOrder.includes(candidateID)
+              : false);
+      }
+      if (activeID.startsWith(FOLDER_SORTABLE_PREFIX)) {
+        return candidateID === "folders"
+          || candidateID === PINNED_APPEND_DROP_ID
+          || pinnedItemBySortableID.has(candidateID)
+          || (candidateID.startsWith(FOLDER_SORTABLE_PREFIX)
+            && !pinnedItemBySortableID.has(candidateID));
+      }
+      if (sectionOrder.includes(activeID)) {
+        return candidateID === "workspace"
+          || candidateID === PINNED_APPEND_DROP_ID
+          || pinnedItemBySortableID.has(candidateID)
+          || (sectionOrder.includes(candidateID)
+            && !pinnedItemBySortableID.has(candidateID));
+      }
+      return true;
+    };
+    return closestCenter({
+      ...args,
+      droppableContainers: args.droppableContainers.filter(
+        (container) => allowed(String(container.id)),
+      ),
+    });
+  };
+
+  function handleSidebarDragStart(event: DragStartEvent): void {
+    const activeID = String(event.active.id);
+    const activatorClientY = (event.activatorEvent as MouseEvent).clientY;
+    sidebarDragStartClientYRef.current = typeof activatorClientY === "number"
+      ? activatorClientY
+      : undefined;
+    if (SIDEBAR_FUNCTIONAL_GROUP_IDS.includes(activeID as SidebarFunctionalGroupID)) {
+      setDraggingFunctionalGroupID(activeID as SidebarFunctionalGroupID);
+    } else {
+      setDraggingSectionID(activeID);
+    }
+  }
+
+  function handleSidebarDragOver(event: DragOverEvent): void {
     const activeID = String(event.active.id);
     const overID = event.over ? String(event.over.id) : undefined;
-    const next = reorderSidebarSections(folderSortableIDs, activeID, overID);
-    if (next !== folderSortableIDs) {
-      void organization.reorderFolders(next.map((id) => id.slice(FOLDER_SORTABLE_PREFIX.length)));
+    const activePinnedEntry = pinnedItemBySortableID.get(activeID);
+    const activePinned = activePinnedEntry !== undefined;
+    const activeCanEnterPinned = activeID.startsWith(FOLDER_SORTABLE_PREFIX)
+      || sectionOrder.includes(activeID);
+    if ((activePinned || activeCanEnterPinned) && overID === PINNED_APPEND_DROP_ID) {
+      setSidebarSortIndicator({ id: PINNED_APPEND_DROP_ID, position: "after" });
+      return;
     }
-    setDraggingFolderID(undefined);
+    const returnTargets = activePinnedEntry?.kind === "folder"
+      ? visibleFolderSortableIDs
+      : activePinnedEntry?.kind === "workspace"
+        ? visibleWorkspaceSectionOrder
+        : undefined;
+    const returnGroup = activePinnedEntry?.kind === "folder"
+      ? "folders"
+      : activePinnedEntry?.kind === "workspace"
+        ? "workspace"
+        : undefined;
+    if (overID && returnTargets?.includes(overID)) {
+      const overRect = event.over?.rect;
+      const pointerY = sidebarDragStartClientYRef.current === undefined
+        ? undefined
+        : sidebarDragStartClientYRef.current + event.delta.y;
+      const position = overRect && pointerY !== undefined
+        ? pointerY < overRect.top + overRect.height / 2 ? "before" : "after"
+        : "before";
+      setSidebarSortIndicator({ id: overID, position });
+      return;
+    }
+    if (returnTargets?.length === 0 && overID === returnGroup && returnGroup) {
+      setSidebarSortIndicator({ id: returnGroup, position: "after" });
+      return;
+    }
+    if ((!activePinned && !activeCanEnterPinned)
+      || !overID
+      || !pinnedItemBySortableID.has(overID)
+    ) {
+      setSidebarSortIndicator(undefined);
+      return;
+    }
+    if (!activePinned) {
+      const activeRect = event.active.rect.current.translated;
+      const overRect = event.over?.rect;
+      const pointerY = sidebarDragStartClientYRef.current === undefined
+        ? undefined
+        : sidebarDragStartClientYRef.current + event.delta.y;
+      const position = overRect && (pointerY !== undefined || activeRect)
+        ? (pointerY ?? (activeRect ? activeRect.top + activeRect.height / 2 : overRect.top))
+            < overRect.top + overRect.height / 2
+          ? "before"
+          : "after"
+        : "before";
+      setSidebarSortIndicator({ id: overID, position });
+      return;
+    }
+    const activeIndex = pinnedItemSortableIDs.indexOf(activeID);
+    const overIndex = pinnedItemSortableIDs.indexOf(overID);
+    if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) {
+      setSidebarSortIndicator(undefined);
+      return;
+    }
+    setSidebarSortIndicator({
+      id: overID,
+      position: activeIndex < overIndex ? "after" : "before",
+    });
   }
-  function handleFolderDragCancel(): void {
-    setDraggingFolderID(undefined);
-  }
-  function handleFunctionalGroupDragStart(event: DragStartEvent): void {
-    setDraggingFunctionalGroupID(String(event.active.id) as SidebarFunctionalGroupID);
-  }
-  function handleFunctionalGroupDragEnd(event: DragEndEvent): void {
+
+  function handleSidebarDragEnd(event: DragEndEvent): void {
     const activeID = String(event.active.id);
     const overID = event.over ? String(event.over.id) : undefined;
-    const next = reorderSidebarSections(functionalGroupOrder, activeID, overID);
-    if (next !== functionalGroupOrder) {
-      const nextOrder = next as SidebarFunctionalGroupID[];
-      setFunctionalGroupOrder(nextOrder);
-      persistSidebarFunctionalGroupOrder(nextOrder);
+    const activeGroup = functionalGroupForSortableID(activeID);
+    const overGroup = functionalGroupForSortableID(overID);
+
+    if (SIDEBAR_FUNCTIONAL_GROUP_IDS.includes(activeID as SidebarFunctionalGroupID)) {
+      const next = reorderSidebarSections(functionalGroupOrder, activeID, overGroup);
+      if (next !== functionalGroupOrder) {
+        const nextOrder = next as SidebarFunctionalGroupID[];
+        setFunctionalGroupOrder(nextOrder);
+        persistSidebarFunctionalGroupOrder(nextOrder);
+      }
+    } else if (activeGroup === "pinned") {
+      const entry = pinnedItemBySortableID.get(activeID);
+      const returnGroup = entry?.kind === "folder"
+        ? "folders"
+        : entry?.kind === "workspace"
+          ? "workspace"
+          : undefined;
+      if (entry?.kind === "thread" && (overGroup === "folders" || overGroup === "workspace")) {
+        const thread = pinnedThreads.find((candidate) => candidate.id === entry.id);
+        if (thread) toggleThreadPinned(thread);
+      } else if (entry && overGroup === returnGroup) {
+        if (entry.kind === "folder" && overID && visibleFolderSortableIDs.includes(overID)) {
+          const next = moveSidebarItem(
+            folderSortableIDs,
+            activeID,
+            overID,
+            sidebarSortIndicator?.id === overID ? sidebarSortIndicator.position : "before",
+          );
+          if (next !== folderSortableIDs) {
+            void organization.reorderFolders(next.map((id) => id.slice(FOLDER_SORTABLE_PREFIX.length)));
+          }
+        } else if (entry.kind === "workspace" && overID && visibleWorkspaceSectionOrder.includes(overID)) {
+          const next = moveSidebarItem(
+            sectionOrder,
+            activeID,
+            overID,
+            sidebarSortIndicator?.id === overID ? sidebarSortIndicator.position : "before",
+          );
+          if (next !== sectionOrder) onReorderSections?.(next);
+        }
+        unpinContainer(entry);
+      } else if (entry && overGroup === "pinned") {
+        const nextIDs = overID === PINNED_APPEND_DROP_ID
+          ? [...pinnedItemSortableIDs.filter((id) => id !== activeID), activeID]
+          : reorderSidebarSections(pinnedItemSortableIDs, activeID, overID);
+        if (nextIDs !== pinnedItemSortableIDs) {
+          const byID = pinnedItemBySortableID;
+          updatePinnedItems(() => nextIDs.flatMap((id) => {
+            const nextEntry = byID.get(id);
+            return nextEntry ? [nextEntry] : [];
+          }));
+        }
+      }
+    } else if (activeID.startsWith(FOLDER_SORTABLE_PREFIX)) {
+      const folderID = activeID.slice(FOLDER_SORTABLE_PREFIX.length);
+      if (overGroup === "pinned") {
+        pinContainer(
+          { kind: "folder", id: folderID },
+          overID,
+          sidebarSortIndicator && sidebarSortIndicator.id === overID
+            ? sidebarSortIndicator.position
+            : "after",
+        );
+      } else if (overGroup === "folders") {
+        const next = reorderSidebarSections(folderSortableIDs, activeID, overID);
+        if (next !== folderSortableIDs) {
+          void organization.reorderFolders(next.map((id) => id.slice(FOLDER_SORTABLE_PREFIX.length)));
+        }
+      }
+    } else if (sectionOrder.includes(activeID)) {
+      if (overGroup === "pinned") {
+        pinContainer(
+          { kind: "workspace", id: activeID },
+          overID,
+          sidebarSortIndicator && sidebarSortIndicator.id === overID
+            ? sidebarSortIndicator.position
+            : "after",
+        );
+      } else if (overGroup === "workspace") {
+        const next = reorderSidebarSections(sectionOrder, activeID, overID);
+        if (next !== sectionOrder) onReorderSections?.(next);
+      }
     }
+
     setDraggingFunctionalGroupID(undefined);
+    setDraggingSectionID(undefined);
+    setSidebarSortIndicator(undefined);
+    sidebarDragStartClientYRef.current = undefined;
   }
-  function handleFunctionalGroupDragCancel(): void {
+
+  function handleSidebarDragCancel(): void {
     setDraggingFunctionalGroupID(undefined);
+    setDraggingSectionID(undefined);
+    setSidebarSortIndicator(undefined);
+    sidebarDragStartClientYRef.current = undefined;
   }
   function toggleFunctionalGroupCollapsed(groupID: SidebarFunctionalGroupID): void {
     setCollapsedFunctionalGroupIDs((current) => {
@@ -531,7 +888,8 @@ export function AppSidebar({
     });
   }
   const pinnedRows = pinnedThreads;
-  const hasPinnedRows = pinnedRows.length > 0;
+  const hasPinnedRows = validPinnedItems.length > 0;
+  const pinnedHeadingDropTargetID = pinnedItemSortableIDs[0] ?? PINNED_APPEND_DROP_ID;
   const pinnedHasRunning = pinnedRows.some((thread) => isThreadExecuting(thread));
   const pinnedHasUnread = pinnedRows.some((thread) =>
     sidebarThreadUnread(
@@ -552,7 +910,9 @@ export function AppSidebar({
   const visibleProjectThreadsByProjectID = useMemo(() => {
     const next: Record<string, ThreadSummary[]> = {};
     for (const [projectID, threads] of Object.entries(projectThreadsByProjectID)) {
-      next[projectID] = threads.filter((thread) => !organization.folderByThreadID[thread.id]);
+      next[projectID] = threads.filter(
+        (thread) => !thread.pinned && !organization.folderByThreadID[thread.id],
+      );
     }
     return next;
   }, [organization.folderByThreadID, projectThreadsByProjectID]);
@@ -561,41 +921,23 @@ export function AppSidebar({
     for (const folder of organization.folders) next[folder.id] = [];
     for (const thread of allSidebarThreads) {
       const folderID = organization.folderByThreadID[thread.id];
-      // Folder membership is independent from pinning. A pinned conversation
-      // should remain visible in its folder as well as in the pinned section;
-      // otherwise assigning a pinned item succeeds in storage but appears to
-      // do nothing in the folder UI.
-      if (folderID && next[folderID] && !thread.archived) {
+      // Pinning changes where an item is shown in the sidebar, not its domain
+      // ownership. Keep the membership, but do not duplicate pinned sessions
+      // inside their source folder.
+      if (folderID && next[folderID] && !thread.archived && !thread.pinned) {
         next[folderID].push(thread);
       }
     }
     return next;
   }, [allSidebarThreads, organization.folderByThreadID, organization.folders]);
-  const pinnedGroups = useMemo(() => [
-    {
-      id: "",
-      name: t("sidebar.defaultPinnedGroup"),
-      threads: pinnedRows.filter((thread) => !organization.pinGroupByThreadID[thread.id]),
-    },
-    ...organization.pinGroups.map((group) => ({
-      ...group,
-      threads: pinnedRows.filter((thread) => organization.pinGroupByThreadID[thread.id] === group.id),
-    })),
-  ], [organization.pinGroupByThreadID, organization.pinGroups, pinnedRows, t]);
-
   function createFolder(thread?: ThreadSummary): void {
     setGroupName("");
-    setGroupNameDialog({ action: "create", kind: "folder", thread });
+    setGroupNameDialog({ action: "create", thread });
   }
 
-  function createPinGroup(thread?: ThreadSummary): void {
-    setGroupName("");
-    setGroupNameDialog({ action: "create", kind: "pin", thread });
-  }
-
-  function renameGroup(kind: "folder" | "pin", group: SessionGroup): void {
+  function renameFolder(group: SessionGroup): void {
     setGroupName(group.name);
-    setGroupNameDialog({ action: "rename", kind, group });
+    setGroupNameDialog({ action: "rename", group });
   }
 
   function closeGroupNameDialog(): void {
@@ -610,15 +952,9 @@ export function AppSidebar({
     setGroupNamePending(true);
     try {
       if (groupNameDialog.action === "create") {
-        if (groupNameDialog.kind === "folder") {
-          await organization.createFolder(name, groupNameDialog.thread?.id);
-        } else {
-          await organization.createPinGroup(name, groupNameDialog.thread?.id);
-        }
-      } else if (groupNameDialog.kind === "folder") {
-        await organization.renameFolder(groupNameDialog.group.id, name);
+        await organization.createFolder(name, groupNameDialog.thread?.id);
       } else {
-        await organization.renamePinGroup(groupNameDialog.group.id, name);
+        await organization.renameFolder(groupNameDialog.group.id, name);
       }
       closeGroupNameDialog();
     } catch {
@@ -665,8 +1001,94 @@ export function AppSidebar({
         next.delete(folderID);
         return next;
       });
+      const thread = allSidebarThreads.find((candidate) => candidate.id === threadID);
+      if (thread?.pinned) toggleThreadPinned(thread);
       void organization.moveThreadToFolder(threadID, folderID);
     }
+  }
+
+  function dragSessionOverPinned(
+    event: ReactDragEvent<HTMLElement>,
+    targetSortableID: string,
+    fixedPosition?: "before" | "after",
+  ): void {
+    if (!acceptsSessionFolderDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    updateFolderDropTarget(PINNED_SESSION_DROP_TARGET);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const position = fixedPosition
+      ?? (event.clientY < rect.top + rect.height / 2 ? "before" : "after");
+    setSidebarSortIndicator({ id: targetSortableID, position });
+  }
+
+  function leavePinnedSessionTarget(
+    event: ReactDragEvent<HTMLElement>,
+    targetSortableID: string,
+  ): void {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setSidebarSortIndicator((current) => current?.id === targetSortableID ? undefined : current);
+  }
+
+  function dropSessionIntoPinned(
+    event: ReactDragEvent<HTMLElement>,
+    targetSortableID: string,
+    fixedPosition?: "before" | "after",
+  ): void {
+    if (!acceptsSessionFolderDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const threadID = event.dataTransfer.getData(SESSION_FOLDER_DRAG_MIME) || folderDragThreadID;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const position = fixedPosition
+      ?? (event.clientY < rect.top + rect.height / 2 ? "before" : "after");
+    updateFolderDropTarget();
+    setFolderDragThreadID(undefined);
+    setSidebarSortIndicator(undefined);
+    if (!threadID) return;
+    const thread = allSidebarThreads.find((candidate) => candidate.id === threadID);
+    if (thread) {
+      pinContainer({ kind: "thread", id: thread.id }, targetSortableID, position);
+      if (!thread.pinned) onTogglePinned(thread);
+    }
+    setCollapsedFunctionalGroupIDs((current) => {
+      if (!current.has("pinned")) return current;
+      const next = new Set(current);
+      next.delete("pinned");
+      persistCollapsedSidebarFunctionalGroups(next);
+      return next;
+    });
+  }
+
+  function pinnedSessionDropProps(
+    targetSortableID: string,
+    fixedPosition?: "before" | "after",
+  ): HTMLAttributes<HTMLElement> {
+    return {
+      onDragEnter: (event) => dragSessionOverPinned(event, targetSortableID, fixedPosition),
+      onDragOver: (event) => dragSessionOverPinned(event, targetSortableID, fixedPosition),
+      onDragLeave: (event) => leavePinnedSessionTarget(event, targetSortableID),
+      onDrop: (event) => dropSessionIntoPinned(event, targetSortableID, fixedPosition),
+    };
+  }
+
+  function dragSessionOverWorkspace(event: ReactDragEvent<HTMLElement>): void {
+    if (!acceptsSessionFolderDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    updateFolderDropTarget(WORKSPACE_SESSION_DROP_TARGET);
+  }
+
+  function dropSessionIntoWorkspace(event: ReactDragEvent<HTMLElement>): void {
+    if (!acceptsSessionFolderDrag(event)) return;
+    event.preventDefault();
+    const threadID = event.dataTransfer.getData(SESSION_FOLDER_DRAG_MIME) || folderDragThreadID;
+    updateFolderDropTarget();
+    setFolderDragThreadID(undefined);
+    if (!threadID) return;
+    const thread = allSidebarThreads.find((candidate) => candidate.id === threadID);
+    if (thread?.pinned) toggleThreadPinned(thread);
   }
 
   function dragSessionOverFolderRemoval(event: ReactDragEvent<HTMLElement>): void {
@@ -682,22 +1104,24 @@ export function AppSidebar({
     const threadID = event.dataTransfer.getData(SESSION_FOLDER_DRAG_MIME) || folderDragThreadID;
     updateFolderDropTarget();
     setFolderDragThreadID(undefined);
-    if (threadID) void organization.moveThreadToFolder(threadID);
+    if (!threadID) return;
+    const thread = allSidebarThreads.find((candidate) => candidate.id === threadID);
+    if (thread?.pinned) {
+      onTogglePinned(thread);
+    } else {
+      void organization.moveThreadToFolder(threadID);
+    }
   }
 
   const organizationActions = {
     ...organization,
-    togglePinned: (thread: ThreadSummary, fallback: (thread: ThreadSummary) => void) => {
-      fallback(thread);
-    },
-    pinToGroup: (thread: ThreadSummary, pinGroupID?: string) => {
-      organization.moveThreadToPinGroup(thread.id, pinGroupID || "default");
+    togglePinned: (thread: ThreadSummary, _fallback: (thread: ThreadSummary) => void) => {
+      toggleThreadPinned(thread);
     },
     moveToFolder: (thread: ThreadSummary, folderID?: string) => {
       organization.moveThreadToFolder(thread.id, folderID);
     },
     createFolderForThread: (thread: ThreadSummary) => createFolder(thread),
-    createPinGroupForThread: (thread: ThreadSummary) => createPinGroup(thread),
     folderDragThreadID,
     startFolderDrag: (threadID: string) => {
       setFolderDragThreadID(threadID);
@@ -706,11 +1130,133 @@ export function AppSidebar({
     endFolderDrag: () => {
       setFolderDragThreadID(undefined);
       updateFolderDropTarget();
+      setSidebarSortIndicator(undefined);
     },
   };
-  const pinnedCollapsed = collapsedSidebarSectionIDs.has(
-    SIDEBAR_SECTION_PINNED,
-  );
+
+  function renderFolderSection(folder: SessionGroup, pinned: boolean): JSX.Element {
+    const collapsed = collapsedFolderIDs.has(folder.id);
+    const sortableID = `${FOLDER_SORTABLE_PREFIX}${folder.id}`;
+    const folderThreads = folderThreadsByID[folder.id] ?? [];
+    const folderHasRunning = folderThreads.some((thread) => isThreadExecuting(thread));
+    const folderHasUnread = folderThreads.some((thread) => sidebarThreadUnread(
+      thread,
+      activeThreadID,
+      pendingThreadID,
+      state.lastViewedTurnByThreadID,
+    ));
+    return (
+      <SortableSidebarSection
+        id={sortableID}
+        className={`project-section session-folder-drop-target${folderDropTargetID === folder.id ? " drop-active" : ""}`}
+        key={sortableID}
+        ariaLabel={folder.name}
+        headerInfo={{ label: folder.name, iconKind: "project", CollapsedIcon: Folder, ExpandedIcon: FolderOpen }}
+        registerHeaderInfo={registerSectionHeaderInfo}
+        sortIndicator={sidebarSortIndicator?.id === sortableID
+          ? sidebarSortIndicator.position
+          : undefined}
+        containerProps={pinned
+          ? pinnedSessionDropProps(sortableID)
+          : {
+              onDragEnter: (event) => dragSessionOverFolder(event, folder.id),
+              onDragOver: (event) => dragSessionOverFolder(event, folder.id),
+              onDragLeave: (event) => leaveSessionFolderTarget(event, folder.id),
+              onDrop: (event) => dropSessionIntoFolder(event, folder.id),
+            }}
+      >
+        <SidebarSection
+          expanded={!collapsed}
+          iconKind="project"
+          CollapsedIcon={Folder}
+          ExpandedIcon={FolderOpen}
+          label={folder.name}
+          ariaLabel={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
+          title={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
+          running={folderHasRunning}
+          unread={folderHasUnread}
+          onToggle={() => setCollapsedFolderIDs((current) => {
+            const next = new Set(current);
+            if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id);
+            return next;
+          })}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setGroupContextMenu({ group: folder, pinned, x: event.clientX, y: event.clientY });
+          }}
+        >
+          {folderThreads.length > 0 ? (
+            <OrganizationThreadList
+              threads={folderThreads}
+              activeID={activeThreadID}
+              pendingThreadID={pendingThreadID}
+              lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
+              onSelect={onSelectThread}
+              onTogglePinned={onTogglePinned}
+              onArchive={onArchiveThread}
+              onDelete={onDeleteThread}
+              onRename={onRenameThread}
+            />
+          ) : null}
+        </SidebarSection>
+      </SortableSidebarSection>
+    );
+  }
+
+  function renderWorkspaceSection(project: DesktopProject, pinned: boolean): JSX.Element {
+    const isScratchPseudo = project.id === SCRATCH_PSEUDO_PROJECT_ID;
+    const sectionAriaLabel = isScratchPseudo
+      ? t("sidebar.project")
+      : t("sidebar.projectNamed", { name: project.name });
+    return (
+      <SortableSidebarSection
+        key={project.id}
+        id={project.id}
+        className="project-section"
+        ariaLabel={sectionAriaLabel}
+        headerInfo={{
+          label: isScratchPseudo ? t("sidebar.conversations") : project.name,
+          iconKind: isScratchPseudo ? "conversation" : "project",
+          CollapsedIcon: isScratchPseudo ? MessageSquare : Folder,
+          ExpandedIcon: isScratchPseudo ? MessagesSquare : FolderOpen,
+        }}
+        registerHeaderInfo={registerSectionHeaderInfo}
+        sortIndicator={sidebarSortIndicator?.id === project.id
+          ? sidebarSortIndicator.position
+          : undefined}
+        containerProps={pinned ? pinnedSessionDropProps(project.id) : undefined}
+      >
+        <ProjectGroup
+          project={project}
+          activeID={activeProjectID ?? state.activeProjectId}
+          pendingProjectID={pendingProjectID}
+          expandedSidebarSectionIDs={expandedSidebarSectionIDs}
+          loadingProjectThreadIDs={loadingProjectThreadIDs}
+          threadsByProjectID={visibleProjectThreadsByProjectID}
+          activeThreadID={activeThreadID}
+          pendingThreadID={pendingThreadID}
+          lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
+          scratchPseudoProjectID={SCRATCH_PSEUDO_PROJECT_ID}
+          scratchPseudoActive={sidebarScratchPseudoActive}
+          onToggleSidebarSectionCollapsed={onToggleSidebarSectionCollapsed}
+          onSelectProjectWorkspace={onSelectProjectWorkspace}
+          onStartNewThread={onStartNewThreadForProject}
+          onSelectThread={onSelectProjectThread}
+          onToggleThreadPinned={onTogglePinned}
+          onArchiveThread={onArchiveThread}
+          onDeleteThread={onDeleteThread}
+          onRenameThread={onRenameThread}
+          onRemoveProject={onRemoveProject}
+          onRelocateProject={onRelocateProject}
+          projectPinned={pinned}
+          onToggleProjectPinned={(id) => pinned
+            ? unpinContainer({ kind: "workspace", id })
+            : pinContainer({ kind: "workspace", id })}
+        />
+      </SortableSidebarSection>
+    );
+  }
+
   const navigationNodes = useMemo<readonly NavigationSourceNode[]>(() => {
     const nodes: NavigationSourceNode[] = [
       {
@@ -754,8 +1300,13 @@ export function AppSidebar({
       }
     }
 
+    const functionalGroupNodes: Record<SidebarFunctionalGroupID, NavigationSourceNode[]> = {
+      pinned: [],
+      folders: [],
+      workspace: [],
+    };
     if (hasPinnedRows) {
-      nodes.push({
+      functionalGroupNodes.pinned.push({
         id: "section:pinned",
         kind: "section",
         label: t("sidebar.pinned"),
@@ -764,40 +1315,71 @@ export function AppSidebar({
         running: pinnedHasRunning,
         unread: pinnedHasUnread,
       });
-      for (const group of pinnedGroups) {
-        const parentID = organization.pinGroups.length > 0
-          ? `pin-group:${group.id || "default"}`
-          : "section:pinned";
-        if (organization.pinGroups.length > 0) {
-          nodes.push({
-            id: parentID,
-            kind: "section",
-            label: group.name,
-            parentId: "section:pinned",
-            depth: 1,
-            icon: "pin",
-          });
+      for (const entry of validPinnedItems) {
+        if (entry.kind === "thread") {
+          const thread = pinnedRows.find((candidate) => candidate.id === entry.id);
+          if (thread) {
+            functionalGroupNodes.pinned.push(threadNavigationNode(
+              thread,
+              "section:pinned",
+              activeThreadID,
+              state.lastViewedTurnByThreadID,
+              () => onSelectThread(thread.id),
+              () => toggleThreadPinned(thread),
+              1,
+            ));
+          }
+          continue;
         }
-        for (const thread of group.threads) {
-          nodes.push(threadNavigationNode(
+        const folder = entry.kind === "folder"
+          ? organization.folders.find((candidate) => candidate.id === entry.id)
+          : undefined;
+        const project = entry.kind === "workspace"
+          ? sidebarProjects.find((candidate) => candidate.id === entry.id)
+          : undefined;
+        const label = folder?.name ?? project?.name;
+        if (!label) continue;
+        const parentID = `pinned-${entry.kind}:${entry.id}`;
+        const threads = folder
+          ? (folderThreadsByID[folder.id] ?? [])
+          : (visibleProjectThreadsByProjectID[entry.id] ?? []);
+        functionalGroupNodes.pinned.push({
+          id: parentID,
+          kind: "project",
+          label,
+          parentId: "section:pinned",
+          depth: 1,
+          icon: "folder",
+          running: threads.some((thread) => isThreadExecuting(thread)),
+          unread: threads.some((thread) => sidebarThreadUnread(
+            thread,
+            activeThreadID,
+            pendingThreadID,
+            state.lastViewedTurnByThreadID,
+          )),
+          disabled: project ? onSelectProjectWorkspace === undefined : undefined,
+          onActivate: project && onSelectProjectWorkspace
+            ? () => onSelectProjectWorkspace(project.id)
+            : undefined,
+        });
+        for (const thread of threads) {
+          functionalGroupNodes.pinned.push(threadNavigationNode(
             thread,
             parentID,
             activeThreadID,
             state.lastViewedTurnByThreadID,
-            () => onSelectThread(thread.id),
-            () => onTogglePinned(thread),
+            () => project
+              ? onSelectProjectThread(project.id, thread.id)
+              : onSelectThread(thread.id),
+            () => toggleThreadPinned(thread),
           ));
         }
       }
     }
-
-    const functionalGroupNodes: Record<SidebarFunctionalGroupID, NavigationSourceNode[]> = {
-      folders: [],
-      workspace: [],
-    };
-    if (organization.folders.length > 0) {
+    if (organization.folders.some((folder) => !pinnedFolderIDs.has(folder.id))) {
       functionalGroupNodes.folders.push({ id: "section:folders", kind: "section", label: t("sidebar.folders"), icon: "folder", depth: 0 });
       for (const folder of organization.folders) {
+        if (pinnedFolderIDs.has(folder.id)) continue;
         const parentID = `folder:${folder.id}`;
         const folderThreads = folderThreadsByID[folder.id] ?? [];
         functionalGroupNodes.folders.push({
@@ -822,7 +1404,7 @@ export function AppSidebar({
             activeThreadID,
             state.lastViewedTurnByThreadID,
             () => onSelectThread(thread.id),
-            () => onTogglePinned(thread),
+            () => toggleThreadPinned(thread),
           ));
         }
       }
@@ -835,7 +1417,7 @@ export function AppSidebar({
         label: t("sidebar.workspace"),
         depth: 0,
       });
-      for (const projectID of sectionOrder) {
+      for (const projectID of visibleWorkspaceSectionOrder) {
         const project = sidebarProjects.find((candidate) => candidate.id === projectID);
         if (!project) continue;
         const threads = (visibleProjectThreadsByProjectID[projectID] ?? []).filter(
@@ -871,7 +1453,7 @@ export function AppSidebar({
             activeThreadID,
             state.lastViewedTurnByThreadID,
             () => onSelectProjectThread(projectID, thread.id),
-            () => onTogglePinned(thread),
+            () => toggleThreadPinned(thread),
           ));
         }
       }
@@ -917,11 +1499,11 @@ export function AppSidebar({
     onSeedConversationFixture,
     onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
     onStartNewThread, onToggleConversationSearch,
-    onTogglePinned, pendingThreadID, pinnedGroups, pinnedHasRunning,
-    pinnedHasUnread, pinnedRows,
+    onTogglePinned, pendingThreadID, pinnedHasRunning,
+    pinnedHasUnread, pinnedRows, validPinnedItems,
     visibleProjectThreadsByProjectID,
-    folderThreadsByID, functionalGroupOrder, organization.folders, organization.pinGroups,
-    searchOpen, sectionOrder, sidebarProjects, sidebarScratchPseudoActive,
+    folderThreadsByID, functionalGroupOrder, organization.folders, pinnedFolderIDs,
+    searchOpen, sidebarProjects, sidebarScratchPseudoActive, visibleWorkspaceSectionOrder,
     activePluginMainView, openPluginNavigation, pluginNavigationEntries,
     state.activeProjectId, state.initialized, state.lastViewedTurnByThreadID, t,
   ]);
@@ -1047,83 +1629,107 @@ export function AppSidebar({
               </div>
             </section>
           ) : null}
-          <section
-            className="sidebar-functional-group pinned-functional-group"
-            aria-label={t("sidebar.pinned")}
-          >
-            <div className="sidebar-functional-group-body">
-              <div className="pinned-thread-section">
-                <SidebarSection
-                  expanded={!pinnedCollapsed}
-                  iconKind="pinned"
-                  CollapsedIcon={Pin}
-                  ExpandedIcon={Pin}
-                  label={t("sidebar.pinned")}
-                  ariaLabel={t(pinnedCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.pinned") })}
-                  title={t(pinnedCollapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: t("sidebar.pinned") })}
-                  running={pinnedHasRunning}
-                  unread={pinnedHasUnread}
-                  actions={
-                    <button
-                      className="sidebar-functional-action sidebar-section-add-action"
-                      type="button"
-                      aria-label={t("sidebar.newPinnedGroup")}
-                      title={t("sidebar.newPinnedGroup")}
-                      onClick={() => createPinGroup()}
-                    >
-                      <Plus aria-hidden="true" />
-                    </button>
-                  }
-                  onToggle={() => onToggleSidebarSectionCollapsed(SIDEBAR_SECTION_PINNED)}
-                  emptyNote={t("sidebar.noPinnedConversations")}
-                >
-                  {pinnedGroups.map((group) => (
-                    <div className="session-organization-group" key={group.id || "default"}>
-                      {(organization.pinGroups.length > 0 || group.id) ? (
-                        <div
-                          className="session-organization-group-heading"
-                          onContextMenu={group.id ? (event) => {
-                            event.preventDefault();
-                            setGroupContextMenu({ kind: "pin", group, x: event.clientX, y: event.clientY });
-                          } : undefined}
-                        >
-                          {group.name}
-                        </div>
-                      ) : null}
-                      <OrganizationThreadList
-                        threads={group.threads}
-                        activeID={activeThreadID}
-                        pendingThreadID={pendingThreadID}
-                        lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
-                        onSelect={onSelectThread}
-                        onTogglePinned={onTogglePinned}
-                        onArchive={onArchiveThread}
-                        onDelete={onDeleteThread}
-                        onRename={onRenameThread}
-                      />
-                    </div>
-                  ))}
-                  {!hasPinnedRows && organization.pinGroups.length === 0 ? (
-                    <div className="session-organization-empty">{t("sidebar.noPinnedConversations")}</div>
-                  ) : null}
-                </SidebarSection>
-              </div>
-            </div>
-          </section>
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={sidebarCollisionDetection}
             modifiers={[restrictToVerticalAxis]}
-            onDragStart={handleFunctionalGroupDragStart}
-            onDragEnd={handleFunctionalGroupDragEnd}
-            onDragCancel={handleFunctionalGroupDragCancel}
+            onDragStart={handleSidebarDragStart}
+            onDragOver={handleSidebarDragOver}
+            onDragEnd={handleSidebarDragEnd}
+            onDragCancel={handleSidebarDragCancel}
           >
             <SortableContext items={functionalGroupOrder} strategy={verticalListSortingStrategy}>
-              {functionalGroupOrder.map((groupID) => groupID === "folders" ? (
+              {functionalGroupOrder.map((groupID) => groupID === "pinned" ? (
+                <SortableFunctionalGroup
+                  key={groupID}
+                  id={groupID}
+                  ariaLabel={t("sidebar.pinned")}
+                  headingClassName={!hasPinnedRows && folderDropTargetID === PINNED_SESSION_DROP_TARGET
+                    ? "drop-active"
+                    : ""}
+                  headingProps={{
+                    onDragEnter: (event) => dragSessionOverPinned(
+                      event,
+                      pinnedHeadingDropTargetID,
+                      hasPinnedRows ? "before" : "after",
+                    ),
+                    onDragOver: (event) => dragSessionOverPinned(
+                      event,
+                      pinnedHeadingDropTargetID,
+                      hasPinnedRows ? "before" : "after",
+                    ),
+                    onDragLeave: (event) => leavePinnedSessionTarget(event, pinnedHeadingDropTargetID),
+                    onDrop: (event) => dropSessionIntoPinned(
+                      event,
+                      pinnedHeadingDropTargetID,
+                      hasPinnedRows ? "before" : "after",
+                    ),
+                  }}
+                  headingLabel={t("sidebar.pinned")}
+                  collapsed={collapsedFunctionalGroupIDs.has(groupID)}
+                  collapseLabel={t(
+                    collapsedFunctionalGroupIDs.has(groupID)
+                      ? "sidebar.expandSection"
+                      : "sidebar.collapseSection",
+                    { section: t("sidebar.pinned") },
+                  )}
+                  onToggleCollapsed={() => toggleFunctionalGroupCollapsed(groupID)}
+                  collapseDisabled={folderDragThreadID !== undefined}
+                  dragDisabled={folderDragThreadID !== undefined}
+                >
+                  <SortableContext items={pinnedItemSortableIDs} strategy={verticalListSortingStrategy}>
+                    <div
+                      className="sidebar-functional-group-body session-folder-list"
+                      data-folder-dragging={folderDragThreadID !== undefined || undefined}
+                    >
+                      {validPinnedItems.map((entry) => {
+                        if (entry.kind === "thread") {
+                          const thread = pinnedRows.find((candidate) => candidate.id === entry.id);
+                          return thread ? (
+                            <SortablePinnedThreadItem
+                              key={pinnedItemSortableID(entry)}
+                              id={pinnedItemSortableID(entry)}
+                              sortIndicator={sidebarSortIndicator?.id === pinnedItemSortableID(entry)
+                                ? sidebarSortIndicator.position
+                                : undefined}
+                              containerProps={pinnedSessionDropProps(pinnedItemSortableID(entry))}
+                            >
+                              <OrganizationThreadList
+                                threads={[thread]}
+                                activeID={activeThreadID}
+                                pendingThreadID={pendingThreadID}
+                                lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
+                                onSelect={onSelectThread}
+                                onTogglePinned={onTogglePinned}
+                                onArchive={onArchiveThread}
+                                onDelete={onDeleteThread}
+                                onRename={onRenameThread}
+                              />
+                            </SortablePinnedThreadItem>
+                          ) : null;
+                        }
+                        if (entry.kind === "folder") {
+                          const folder = organization.folders.find((candidate) => candidate.id === entry.id);
+                          return folder ? renderFolderSection(folder, true) : null;
+                        }
+                        const project = sidebarProjects.find((candidate) => candidate.id === entry.id);
+                        return project ? renderWorkspaceSection(project, true) : null;
+                      })}
+                      <PinnedAppendDropZone
+                        nativeDropActive={sidebarSortIndicator?.id === PINNED_APPEND_DROP_ID}
+                        containerProps={pinnedSessionDropProps(PINNED_APPEND_DROP_ID, "after")}
+                      />
+                    </div>
+                  </SortableContext>
+                </SortableFunctionalGroup>
+              ) : groupID === "folders" ? (
                 <SortableFunctionalGroup
                   key={groupID}
                   id={groupID}
                   ariaLabel={t("sidebar.folders")}
+                  itemDropIndicator={sidebarSortIndicator?.id === groupID
+                    ? sidebarSortIndicator.position
+                    : undefined}
                   headingClassName={`sidebar-folder-heading${folderDragCanRemove ? " remove-drop-available" : ""}${folderDropTargetID === FOLDER_REMOVE_DROP_TARGET ? " drop-active" : ""}`}
                   headingProps={{
                     "data-folder-remove-drop": folderDragCanRemove || undefined,
@@ -1136,7 +1742,11 @@ export function AppSidebar({
                   headingLabel={(
                     <>
                       {folderDragCanRemove ? <FolderMinus aria-hidden="true" /> : null}
-                      {t(folderDragCanRemove ? "sidebar.removeFromFolderDrop" : "sidebar.folders")}
+                      {t(folderDragThread?.pinned
+                        ? "sidebar.unpin"
+                        : folderDragCanRemove
+                          ? "sidebar.removeFromFolderDrop"
+                          : "sidebar.folders")}
                     </>
                   )}
                   collapsed={collapsedFunctionalGroupIDs.has(groupID)}
@@ -1165,92 +1775,11 @@ export function AppSidebar({
                     className="sidebar-functional-group-body session-folder-list"
                     data-folder-dragging={folderDragThreadID !== undefined || undefined}
                   >
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      modifiers={[restrictToVerticalAxis]}
-                      onDragStart={handleFolderDragStart}
-                      onDragEnd={handleFolderDragEnd}
-                      onDragCancel={handleFolderDragCancel}
-                    >
-                <SortableContext items={folderSortableIDs} strategy={verticalListSortingStrategy}>
-                  {organization.folders.map((folder) => {
-                    const collapsed = collapsedFolderIDs.has(folder.id);
-                    const sortableID = `${FOLDER_SORTABLE_PREFIX}${folder.id}`;
-                    const folderThreads = folderThreadsByID[folder.id] ?? [];
-                    const folderHasRunning = folderThreads.some((thread) =>
-                      isThreadExecuting(thread),
-                    );
-                    const folderHasUnread = folderThreads.some((thread) =>
-                      sidebarThreadUnread(
-                        thread,
-                        activeThreadID,
-                        pendingThreadID,
-                        state.lastViewedTurnByThreadID,
-                      ),
-                    );
-                    return (
-                      <SortableSidebarSection
-                        id={sortableID}
-                        className={`project-section session-folder-drop-target${folderDropTargetID === folder.id ? " drop-active" : ""}`}
-                        key={folder.id}
-                        ariaLabel={folder.name}
-                        headerInfo={{
-                          label: folder.name,
-                          iconKind: "project",
-                          CollapsedIcon: Folder,
-                          ExpandedIcon: FolderOpen,
-                        }}
-                        registerHeaderInfo={registerSectionHeaderInfo}
-                        containerProps={{
-                          onDragEnter: (event) => dragSessionOverFolder(event, folder.id),
-                          onDragOver: (event) => dragSessionOverFolder(event, folder.id),
-                          onDragLeave: (event) => leaveSessionFolderTarget(event, folder.id),
-                          onDrop: (event) => dropSessionIntoFolder(event, folder.id),
-                        }}
-                      >
-                        <SidebarSection
-                          expanded={!collapsed}
-                          iconKind="project"
-                          CollapsedIcon={Folder}
-                          ExpandedIcon={FolderOpen}
-                          label={folder.name}
-                          ariaLabel={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
-                          title={t(collapsed ? "sidebar.expandSection" : "sidebar.collapseSection", { section: folder.name })}
-                          running={folderHasRunning}
-                          unread={folderHasUnread}
-                          onToggle={() => setCollapsedFolderIDs((current) => {
-                            const next = new Set(current);
-                            if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id);
-                            return next;
-                          })}
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setGroupContextMenu({ kind: "folder", group: folder, x: event.clientX, y: event.clientY });
-                          }}
-                        >
-                          {folderThreads.length > 0 ? (
-                            <OrganizationThreadList
-                              threads={folderThreads}
-                              activeID={activeThreadID}
-                              pendingThreadID={pendingThreadID}
-                              lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
-                              onSelect={onSelectThread}
-                              onTogglePinned={onTogglePinned}
-                              onArchive={onArchiveThread}
-                              onDelete={onDeleteThread}
-                              onRename={onRenameThread}
-                            />
-                          ) : null}
-                        </SidebarSection>
-                      </SortableSidebarSection>
-                    );
-                  })}
-                </SortableContext>
-                <DragOverlay>
-                  {draggingFolderInfo ? <SidebarSectionDragPreview info={draggingFolderInfo} /> : null}
-                </DragOverlay>
-                    </DndContext>
+                    <SortableContext items={visibleFolderSortableIDs} strategy={verticalListSortingStrategy}>
+                      {organization.folders
+                        .filter((folder) => !pinnedFolderIDs.has(folder.id))
+                        .map((folder) => renderFolderSection(folder, false))}
+                    </SortableContext>
                   </div>
                 </SortableFunctionalGroup>
               ) : (
@@ -1258,6 +1787,16 @@ export function AppSidebar({
                   key={groupID}
                   id={groupID}
                   ariaLabel={t("sidebar.workspace")}
+                  itemDropIndicator={sidebarSortIndicator?.id === groupID
+                    ? sidebarSortIndicator.position
+                    : undefined}
+                  headingClassName={folderDropTargetID === WORKSPACE_SESSION_DROP_TARGET ? "drop-active" : ""}
+                  headingProps={{
+                    onDragEnter: dragSessionOverWorkspace,
+                    onDragOver: dragSessionOverWorkspace,
+                    onDragLeave: (event) => leaveSessionFolderTarget(event, WORKSPACE_SESSION_DROP_TARGET),
+                    onDrop: dropSessionIntoWorkspace,
+                  }}
                   headingLabel={t("sidebar.workspace")}
                   collapsed={collapsedFunctionalGroupIDs.has(groupID)}
                   collapseLabel={t(
@@ -1295,95 +1834,19 @@ export function AppSidebar({
                     </div>
                   )}
                 >
-                  {sectionOrder.length > 0 ? (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              modifiers={[restrictToVerticalAxis]}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onDragCancel={handleDragCancel}
-            >
-              <SortableContext
-                items={sectionOrder}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="sidebar-functional-group-body">
-                  {sectionOrder.map((key) => {
-            // For SCRATCH_PSEUDO_PROJECT_ID or any real project id, look up
-            // the synthetic DesktopProject (App.tsx prepends the scratch
-            // pseudo so `sidebarProjects` contains every key).
-            const project = sidebarProjects.find((p) => p.id === key);
-            if (!project) {
-              return null;
-            }
-            // The 对话 scratch pseudo is surfaced with aria-label="项目" so
-            // legacy single-wrapper selectors (and screen-reader users
-            // scanning for "项目") still find it. Real projects expose the
-            // more specific aria-label="项目 {name}" so per-project
-            // automation can target them by id.
-            const isScratchPseudo = project.id === SCRATCH_PSEUDO_PROJECT_ID;
-            const sectionAriaLabel = isScratchPseudo
-              ? t("sidebar.project")
-              : t("sidebar.projectNamed", { name: project.name });
-            return (
-              <SortableSidebarSection
-                key={key}
-                id={key}
-                className="project-section"
-                ariaLabel={sectionAriaLabel}
-                headerInfo={{
-                  label: isScratchPseudo ? t("sidebar.conversations") : project.name,
-                  iconKind: isScratchPseudo ? "conversation" : "project",
-                  CollapsedIcon: isScratchPseudo ? MessageSquare : Folder,
-                  ExpandedIcon: isScratchPseudo ? MessagesSquare : FolderOpen,
-                }}
-                registerHeaderInfo={registerSectionHeaderInfo}
-              >
-                <ProjectGroup
-                  project={project}
-                  activeID={activeProjectID ?? state.activeProjectId}
-                  pendingProjectID={pendingProjectID}
-                  expandedSidebarSectionIDs={expandedSidebarSectionIDs}
-                  loadingProjectThreadIDs={loadingProjectThreadIDs}
-                  threadsByProjectID={visibleProjectThreadsByProjectID}
-                  activeThreadID={activeThreadID}
-                  pendingThreadID={pendingThreadID}
-                  
-                  lastViewedTurnByThreadID={state.lastViewedTurnByThreadID}
-                  scratchPseudoProjectID={SCRATCH_PSEUDO_PROJECT_ID}
-                  scratchPseudoActive={sidebarScratchPseudoActive}
-                  onToggleSidebarSectionCollapsed={
-                    onToggleSidebarSectionCollapsed
-                  }
-                  onSelectProjectWorkspace={onSelectProjectWorkspace}
-                  onStartNewThread={onStartNewThreadForProject}
-                  onSelectThread={onSelectProjectThread}
-                  onToggleThreadPinned={onTogglePinned}
-                  onArchiveThread={onArchiveThread}
-                  onDeleteThread={onDeleteThread}
-                  onRenameThread={onRenameThread}
-                  
-                  onRemoveProject={onRemoveProject}
-                  onRelocateProject={onRelocateProject}
-                />
-              </SortableSidebarSection>
-            );
-                  })}
-                </div>
-              </SortableContext>
-              <DragOverlay
-                dropAnimation={{
-                  duration: 150,
-                  easing: "cubic-bezier(0.16, 1, 0.3, 1)",
-                }}
-              >
-                {draggingSectionInfo ? (
-                  <SidebarSectionDragPreview info={draggingSectionInfo} />
-                ) : null}
-              </DragOverlay>
-            </DndContext>
-          ) : null}
+                  {visibleWorkspaceSectionOrder.length > 0 ? (
+                    <SortableContext
+                      items={visibleWorkspaceSectionOrder}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="sidebar-functional-group-body">
+                        {visibleWorkspaceSectionOrder.map((key) => {
+                          const project = sidebarProjects.find((candidate) => candidate.id === key);
+                          return project ? renderWorkspaceSection(project, false) : null;
+                        })}
+                      </div>
+                    </SortableContext>
+                  ) : null}
                 </SortableFunctionalGroup>
               ))}
             </SortableContext>
@@ -1396,9 +1859,17 @@ export function AppSidebar({
               {draggingFunctionalGroupID ? (
                 <div className="sidebar-functional-group-drag-overlay">
                   <span>
-                    {t(draggingFunctionalGroupID === "folders" ? "sidebar.folders" : "sidebar.workspace")}
+                    {t(
+                      draggingFunctionalGroupID === "pinned"
+                        ? "sidebar.pinned"
+                        : draggingFunctionalGroupID === "folders"
+                          ? "sidebar.folders"
+                          : "sidebar.workspace",
+                    )}
                   </span>
                 </div>
+              ) : draggingSectionInfo ? (
+                <SidebarSectionDragPreview info={draggingSectionInfo} />
               ) : null}
             </DragOverlay>
           </DndContext>
@@ -1433,27 +1904,17 @@ export function AppSidebar({
             x={groupContextMenu.x}
             y={groupContextMenu.y}
             items={[
-              ...(groupContextMenu.kind === "pin" ? [
-                {
-                  label: t("sidebar.moveGroupUp"),
-                  disabled: contextGroupIndex <= 0,
-                  onSelect: () => {
-                    organization.reorderPinGroup(groupContextMenu.group.id, -1);
-                  },
-                },
-                {
-                  label: t("sidebar.moveGroupDown"),
-                  disabled: contextGroupIndex < 0 || contextGroupIndex >= organization.pinGroups.length - 1,
-                  onSelect: () => {
-                    organization.reorderPinGroup(groupContextMenu.group.id, 1);
-                  },
-                },
-                { separator: true as const },
-              ] : []),
+              {
+                label: t(groupContextMenu.pinned ? "sidebar.unpin" : "sidebar.pin"),
+                onSelect: () => groupContextMenu.pinned
+                  ? unpinContainer({ kind: "folder", id: groupContextMenu.group.id })
+                  : pinContainer({ kind: "folder", id: groupContextMenu.group.id }),
+              },
+              { separator: true },
               {
                 label: t("sidebar.renameGroup"),
                 onSelect: () => {
-                  renameGroup(groupContextMenu.kind, groupContextMenu.group);
+                  renameFolder(groupContextMenu.group);
                 },
               },
               { separator: true },
@@ -1461,11 +1922,10 @@ export function AppSidebar({
                 label: t("sidebar.deleteGroup"),
                 onSelect: () => {
                   if (!window.confirm(t("sidebar.deleteGroupConfirmation"))) return;
-                  if (groupContextMenu.kind === "folder") {
-                    organization.deleteFolder(groupContextMenu.group.id);
-                  } else {
-                    organization.deletePinGroup(groupContextMenu.group.id);
+                  if (groupContextMenu.pinned) {
+                    unpinContainer({ kind: "folder", id: groupContextMenu.group.id });
                   }
+                  organization.deleteFolder(groupContextMenu.group.id);
                 },
               },
             ]}
@@ -1479,13 +1939,13 @@ export function AppSidebar({
           onSubmit={() => { void submitGroupNameDialog(); }}
           onClose={closeGroupNameDialog}
           dialogTitle={groupNameDialog?.action === "rename"
-            ? t(groupNameDialog.kind === "folder" ? "sidebar.renameFolder" : "sidebar.renamePinnedGroup")
-            : t(groupNameDialog?.kind === "pin" ? "sidebar.newPinnedGroup" : "sidebar.newFolder")}
+            ? t("sidebar.renameFolder")
+            : t("sidebar.newFolder")}
           dialogTitleId="session-organization-name-title"
-          fieldLabel={t(groupNameDialog?.kind === "pin" ? "sidebar.pinGroupNamePrompt" : "sidebar.folderNamePrompt")}
-          fieldAriaLabel={t(groupNameDialog?.kind === "pin" ? "sidebar.pinGroupNamePrompt" : "sidebar.folderNamePrompt")}
-          placeholder={t(groupNameDialog?.kind === "pin" ? "sidebar.pinGroupNamePrompt" : "sidebar.folderNamePrompt")}
-          icon={groupNameDialog?.kind === "pin" ? Pin : Folder}
+          fieldLabel={t("sidebar.folderNamePrompt")}
+          fieldAriaLabel={t("sidebar.folderNamePrompt")}
+          placeholder={t("sidebar.folderNamePrompt")}
+          icon={Folder}
           submitLabel={t(groupNameDialog?.action === "rename" ? "common.save" : "common.create")}
           cancelLabel={t("common.cancel")}
           submitDisabled={groupNamePending || groupName.trim().length === 0 || (
@@ -1505,9 +1965,68 @@ export function AppSidebar({
   );
 }
 
+function PinnedAppendDropZone({
+  nativeDropActive,
+  containerProps,
+}: {
+  nativeDropActive?: boolean;
+  containerProps?: HTMLAttributes<HTMLElement>;
+}): JSX.Element {
+  const { setNodeRef, isOver } = useDroppable({ id: PINNED_APPEND_DROP_ID });
+  return (
+    <div
+      {...containerProps}
+      ref={setNodeRef}
+      className="pinned-append-drop-zone"
+      data-drop-over={isOver || nativeDropActive || undefined}
+      aria-hidden="true"
+    />
+  );
+}
+
+function SortablePinnedThreadItem({
+  id,
+  sortIndicator,
+  containerProps,
+  children,
+}: {
+  id: string;
+  sortIndicator?: "before" | "after";
+  containerProps?: HTMLAttributes<HTMLElement>;
+  children: ReactNode;
+}): JSX.Element {
+  const {
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({ id, disabled: { draggable: true } });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  return (
+    <div
+      {...containerProps}
+      ref={setNodeRef}
+      className="pinned-sortable-thread"
+      data-dragging={isDragging || undefined}
+      data-drop-over={isOver || undefined}
+      data-sort-indicator={sortIndicator}
+      style={style}
+      {...listeners}
+    >
+      {children}
+    </div>
+  );
+}
+
 function SortableFunctionalGroup({
   id,
   ariaLabel,
+  itemDropIndicator,
   headingClassName = "",
   headingProps,
   headingLabel,
@@ -1522,6 +2041,7 @@ function SortableFunctionalGroup({
 }: {
   id: SidebarFunctionalGroupID;
   ariaLabel: string;
+  itemDropIndicator?: "before" | "after";
   headingClassName?: string;
   headingProps?: HTMLAttributes<HTMLDivElement> & {
     "data-folder-remove-drop"?: boolean;
@@ -1543,6 +2063,7 @@ function SortableFunctionalGroup({
     transform,
     transition,
     isDragging,
+    isOver,
   } = useSortable({ id, disabled: dragDisabled });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -1555,6 +2076,8 @@ function SortableFunctionalGroup({
       aria-label={ariaLabel}
       data-functional-group-id={id}
       data-dragging={isDragging || undefined}
+      data-drop-over={isOver || undefined}
+      data-item-drop-indicator={itemDropIndicator}
       data-drag-disabled={dragDisabled || undefined}
       style={style}
     >
@@ -1607,13 +2130,14 @@ function threadNavigationNode(
   lastViewedTurnByThreadID: Readonly<Record<string, string>>,
   onActivate: () => void,
   onTogglePinned: () => void,
+  depth = 2,
 ): NavigationSourceNode {
   return {
     id: `thread:${thread.id}`,
     kind: "thread",
     label: thread.title?.trim() || thread.preview?.trim() || thread.id,
     parentId,
-    depth: 2,
+    depth,
     active: thread.id === activeThreadID,
     pinned: Boolean(thread.pinned),
     unread: isThreadUnread(thread, lastViewedTurnByThreadID[thread.id]),

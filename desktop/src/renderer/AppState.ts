@@ -1582,7 +1582,6 @@ function summarizeThreadForSidebar(
     read_only: thread.read_only,
     pinned: thread.pinned,
     folder_id: thread.folder_id,
-    pin_group_id: thread.pin_group_id,
     archived: thread.archived,
     forked_from_id: thread.forked_from_id,
     forked_from_turn_id: thread.forked_from_turn_id,

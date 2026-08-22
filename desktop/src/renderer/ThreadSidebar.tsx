@@ -1,24 +1,6 @@
-import { Archive, Folder, FolderInput, FolderOpen, GitFork, MessageSquare, MessageSquarePlus, MessagesSquare, Pin } from "lucide-react";
+import { Archive, Folder, FolderOpen, GitFork, MessageSquare, MessageSquarePlus, MessagesSquare, Pin } from "lucide-react";
 import {
-  closestCenter,
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import {
-  type CSSProperties,
   type DragEvent as ReactDragEvent,
-  type HTMLAttributes,
   useEffect,
   useMemo,
   useRef,
@@ -104,6 +86,22 @@ function persistThreadOrder(workspaceID: string, order: string[]): void {
   } catch {
     // A blocked or full localStorage should not prevent in-memory reordering.
   }
+}
+
+type ThreadDropPosition = "before" | "after";
+
+function moveThreadInOrder(
+  order: string[],
+  activeThreadID: string,
+  targetThreadID: string,
+  position: ThreadDropPosition,
+): string[] {
+  if (activeThreadID === targetThreadID) return order;
+  const withoutActive = order.filter((id) => id !== activeThreadID);
+  const targetIndex = withoutActive.indexOf(targetThreadID);
+  if (targetIndex < 0 || withoutActive.length === order.length) return order;
+  withoutActive.splice(targetIndex + (position === "after" ? 1 : 0), 0, activeThreadID);
+  return withoutActive.every((id, index) => id === order[index]) ? order : withoutActive;
 }
 
 function reconcileThreadOrder(threads: ThreadSummary[], storedOrder: string[]): string[] {
@@ -219,6 +217,8 @@ export function ProjectGroup({
   
   onRemoveProject,
   onRelocateProject,
+  projectPinned = false,
+  onToggleProjectPinned,
 }: {
   project: DesktopProject;
   activeID?: string;
@@ -247,6 +247,8 @@ export function ProjectGroup({
   // Point a real workspace at a new folder (keeping its stable id, so its
   // state and history reconnect). The remedy for a moved/deleted directory.
   onRelocateProject?: (id: string) => void;
+  projectPinned?: boolean;
+  onToggleProjectPinned?: (id: string) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const [visibleThreadCount, setVisibleThreadCount] = useState<number>(
@@ -309,13 +311,13 @@ export function ProjectGroup({
     .map((id) => threadsByID.get(id))
     .filter((thread): thread is ThreadSummary => thread !== undefined);
 
-  function reorderProjectThreads(activeThreadID: string, overThreadID: string): void {
-    const oldIndex = reconciledThreadOrder.indexOf(activeThreadID);
-    const newIndex = reconciledThreadOrder.indexOf(overThreadID);
-    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
-      return;
-    }
-    const next = arrayMove(reconciledThreadOrder, oldIndex, newIndex);
+  function reorderProjectThreads(
+    activeThreadID: string,
+    overThreadID: string,
+    position: ThreadDropPosition,
+  ): void {
+    const next = moveThreadInOrder(reconciledThreadOrder, activeThreadID, overThreadID, position);
+    if (next === reconciledThreadOrder) return;
     setThreadOrder(next);
     persistThreadOrder(project.id, next);
   }
@@ -377,7 +379,7 @@ export function ProjectGroup({
             : onToggleSidebarSectionCollapsed(project.id)
         }
         onContextMenu={
-          isScratchPseudo || (!onRemoveProject && !onRelocateProject)
+          !onRemoveProject && !onRelocateProject && !onToggleProjectPinned
             ? undefined
             : (event) => {
                 event.preventDefault();
@@ -429,14 +431,19 @@ export function ProjectGroup({
           x={contextMenu.x}
           y={contextMenu.y}
           items={[
-            {
+            ...(onToggleProjectPinned ? [{
+              label: t(projectPinned ? "sidebar.unpin" : "sidebar.pin"),
+              onSelect: () => onToggleProjectPinned(project.id),
+            }, ...(!isScratchPseudo ? [{ separator: true } as const] : [])] : []),
+            ...(!isScratchPseudo ? [{
               label: t("threadSidebar.relocate"),
+              disabled: !onRelocateProject,
               onSelect: () => onRelocateProject?.(project.id),
-            },
-            {
+            }, {
               label: t("threadSidebar.removeWorkspace"),
+              disabled: !onRemoveProject,
               onSelect: () => onRemoveProject?.(project.id),
-            },
+            }] : []),
           ]}
           onClose={() => setContextMenu(null)}
         />
@@ -513,7 +520,11 @@ function ThreadList({
   onArchive: (thread: ThreadSummary) => void;
   onDelete: (thread: ThreadSummary) => void;
   onRename?: (thread: ThreadSummary, title: string) => void;
-  onReorder: (activeThreadID: string, overThreadID: string) => void;
+  onReorder: (
+    activeThreadID: string,
+    overThreadID: string,
+    position: ThreadDropPosition,
+  ) => void;
   onShowMore: () => void;
   onCollapse: () => void;
 }): JSX.Element {
@@ -683,7 +694,11 @@ function ThreadRows({
   onArchive: (thread: ThreadSummary) => void;
   onDelete: (thread: ThreadSummary) => void;
   onRename?: (thread: ThreadSummary, title: string) => void;
-  onReorder?: (activeThreadID: string, overThreadID: string) => void;
+  onReorder?: (
+    activeThreadID: string,
+    overThreadID: string,
+    position: ThreadDropPosition,
+  ) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const organization = useSessionOrganizationActions();
@@ -698,16 +713,11 @@ function ThreadRows({
     initialTitle: string;
   } | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
-
-  function handleDragEnd(event: DragEndEvent): void {
-    if (!event.over || event.active.id === event.over.id) {
-      return;
-    }
-    onReorder?.(String(event.active.id), String(event.over.id));
-  }
+  const [draggingThreadID, setDraggingThreadID] = useState<string>();
+  const [threadSortIndicator, setThreadSortIndicator] = useState<{
+    id: string;
+    position: ThreadDropPosition;
+  }>();
 
   function handleContextMenu(
     targetThread: ThreadSummary,
@@ -750,39 +760,56 @@ function ThreadRows({
 
   function organizationMenuItems(thread: ThreadSummary): ThreadContextMenuItem[] {
     if (!organization) return [];
-    const items: ThreadContextMenuItem[] = [];
-    if (thread.pinned) {
-      items.push({
-        label: t("threadSidebar.moveToDefaultPinnedGroup"),
-        onSelect: () => organization.pinToGroup(thread),
-      });
-    }
-    for (const group of organization.pinGroups) {
-      items.push({
-        label: t(thread.pinned ? "threadSidebar.moveToPinnedGroup" : "threadSidebar.pinToGroup", { name: group.name }),
-        onSelect: () => organization.pinToGroup(thread, group.id),
-      });
-    }
-    items.push({
-      label: t("threadSidebar.newPinnedGroup"),
-      onSelect: () => organization.createPinGroupForThread(thread),
-    });
-    items.push({ separator: true });
+    const items: ThreadContextMenuItem[] = [{ separator: true }];
     items.push(...folderOrganizationMenuItems(thread));
     return items;
   }
 
-  function openFolderMenu(thread: ThreadSummary, element: HTMLElement): void {
-    const rect = element.getBoundingClientRect();
-    setContextMenu({ x: rect.left, y: rect.bottom + 4, thread, mode: "folder" });
-  }
-
-  function startFolderDrag(thread: ThreadSummary, event: ReactDragEvent<HTMLButtonElement>): void {
-    const row = event.currentTarget.closest<HTMLElement>(".thread-row");
+  function startThreadDrag(thread: ThreadSummary, event: ReactDragEvent<HTMLDivElement>): void {
+    const interactiveAction = (event.target as HTMLElement).closest(".thread-row-actions");
+    if (interactiveAction) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData(SESSION_FOLDER_DRAG_MIME, thread.id);
-    if (row) event.dataTransfer.setDragImage(row, 24, row.offsetHeight / 2);
+    event.dataTransfer.setDragImage(event.currentTarget, 24, event.currentTarget.offsetHeight / 2);
+    setDraggingThreadID(thread.id);
+    setThreadSortIndicator(undefined);
     organization?.startFolderDrag(thread.id);
+  }
+
+  function dragThreadOver(thread: ThreadSummary, event: ReactDragEvent<HTMLDivElement>): void {
+    if (!onReorder || !draggingThreadID || draggingThreadID === thread.id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    const rect = event.currentTarget.getBoundingClientRect();
+    setThreadSortIndicator({
+      id: thread.id,
+      position: event.clientY < rect.top + rect.height / 2 ? "before" : "after",
+    });
+  }
+
+  function leaveThreadDropTarget(threadID: string, event: ReactDragEvent<HTMLDivElement>): void {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setThreadSortIndicator((current) => current?.id === threadID ? undefined : current);
+  }
+
+  function dropThread(thread: ThreadSummary, event: ReactDragEvent<HTMLDivElement>): void {
+    if (!onReorder || !draggingThreadID || draggingThreadID === thread.id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const position = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    onReorder(draggingThreadID, thread.id, position);
+    setThreadSortIndicator(undefined);
+  }
+
+  function endThreadDrag(): void {
+    setDraggingThreadID(undefined);
+    setThreadSortIndicator(undefined);
+    organization?.endFolderDrag();
   }
 
   function editableThreadTitle(thread: ThreadSummary): string {
@@ -820,16 +847,7 @@ function ThreadRows({
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      modifiers={[restrictToVerticalAxis]}
-      onDragEnd={handleDragEnd}
-    >
-      <SortableContext
-        items={threads.map((thread) => thread.id)}
-        strategy={verticalListSortingStrategy}
-      >
+    <>
       {threads.map((thread) => {
         const pendingSwitch = pendingThreadID === thread.id;
         const running = isThreadExecuting(thread);
@@ -844,33 +862,26 @@ function ThreadRows({
             lastViewedTurnByThreadID[thread.id],
           );
         return (
-          <SortableThreadRow
+          <div
             key={thread.id}
-            id={thread.id}
-            disabled={!onReorder}
             className={`thread-row sidebar-session-row ${thread.id === activeID ? "active" : ""}${running ? " running" : ""}${
               pendingSwitch ? " pending-switch" : ""
-            }${unread ? " has-unread" : ""}${organization?.folderDragThreadID === thread.id ? " folder-dragging" : ""}`}
+            }${unread ? " has-unread" : ""}${draggingThreadID === thread.id ? " dragging" : ""}`}
             aria-current={thread.id === activeID ? "page" : undefined}
+            draggable={Boolean(organization || onReorder)}
+            data-draggable={Boolean(organization || onReorder) || undefined}
+            data-sortable={Boolean(onReorder) || undefined}
+            data-sort-indicator={threadSortIndicator?.id === thread.id
+              ? threadSortIndicator.position
+              : undefined}
             onContextMenu={(e) => handleContextMenu(thread, e)}
+            onDragStart={(event) => startThreadDrag(thread, event)}
+            onDragEnter={(event) => dragThreadOver(thread, event)}
+            onDragOver={(event) => dragThreadOver(thread, event)}
+            onDragLeave={(event) => leaveThreadDropTarget(thread.id, event)}
+            onDrop={(event) => dropThread(thread, event)}
+            onDragEnd={endThreadDrag}
           >
-              {organization && organization.folders.length > 0 ? (
-                <button
-                  className="sidebar-row-icon-button thread-row-folder-drag"
-                  type="button"
-                  draggable
-                  aria-label={t("threadSidebar.organizeInFolder")}
-                  aria-haspopup="menu"
-                  aria-expanded={contextMenu?.mode === "folder" && contextMenu.thread.id === thread.id}
-                  title={t("threadSidebar.dragToFolder")}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => openFolderMenu(thread, event.currentTarget)}
-                  onDragStart={(event) => startFolderDrag(thread, event)}
-                  onDragEnd={() => organization.endFolderDrag()}
-                >
-                  <FolderInput className="icon-sm" aria-hidden="true" />
-                </button>
-              ) : null}
               {running ? (
                 <span className="thread-row-spinner" aria-hidden="true" />
               ) : null}
@@ -919,10 +930,9 @@ function ThreadRows({
                   <Archive className="icon-sm" />
                 </button>
               </div>
-          </SortableThreadRow>
+          </div>
         );
       })}
-      </SortableContext>
       {contextMenu ? (
         <ThreadContextMenu
           x={contextMenu.x}
@@ -990,38 +1000,7 @@ function ThreadRows({
         submitLabel={t("common.save")}
         cancelLabel={t("common.cancel")}
       />
-    </DndContext>
-  );
-}
-
-function SortableThreadRow({
-  id,
-  className,
-  children,
-  disabled,
-  ...props
-}: HTMLAttributes<HTMLDivElement> & { id: string; disabled?: boolean }): JSX.Element {
-  const { setNodeRef, transform, transition, isDragging, listeners } = useSortable({
-    id,
-    disabled,
-  });
-  const style: CSSProperties = {
-    ...props.style,
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 1 : undefined,
-  };
-  return (
-    <div
-      {...props}
-      {...listeners}
-      ref={setNodeRef}
-      data-sortable={!disabled || undefined}
-      className={`${className ?? ""}${isDragging ? " dragging" : ""}`}
-      style={style}
-    >
-      {children}
-    </div>
+    </>
   );
 }
 
@@ -1060,13 +1039,13 @@ export function PinnedThreadList({
     .map((id) => threadsByID.get(id))
     .filter((thread): thread is ThreadSummary => thread !== undefined);
 
-  function reorderPinnedThreads(activeThreadID: string, overThreadID: string): void {
-    const oldIndex = reconciledThreadOrder.indexOf(activeThreadID);
-    const newIndex = reconciledThreadOrder.indexOf(overThreadID);
-    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
-      return;
-    }
-    const next = arrayMove(reconciledThreadOrder, oldIndex, newIndex);
+  function reorderPinnedThreads(
+    activeThreadID: string,
+    overThreadID: string,
+    position: ThreadDropPosition,
+  ): void {
+    const next = moveThreadInOrder(reconciledThreadOrder, activeThreadID, overThreadID, position);
+    if (next === reconciledThreadOrder) return;
     setThreadOrder(next);
     persistThreadOrder(PINNED_THREAD_ORDER_ID, next);
   }

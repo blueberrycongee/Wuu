@@ -1534,14 +1534,12 @@ export type SessionOrganizationGroup = {
   id: string;
   name: string;
   sort_order: number;
-  default?: boolean;
   created_at: string;
   updated_at: string;
 };
 
 export type SessionOrganization = {
   folders: SessionOrganizationGroup[];
-  pin_groups: SessionOrganizationGroup[];
 };
 
 export type Thread = {
@@ -1570,7 +1568,6 @@ export type Thread = {
   ephemeral?: boolean;
   pinned?: boolean;
   folder_id?: string;
-  pin_group_id?: string;
   archived?: boolean;
   forked_from_id?: string;
   forked_from_turn_id?: string;
@@ -2676,20 +2673,15 @@ export type WuuDesktopApi = {
     threadId: string,
     limit?: number
   ) => Promise<ThreadPreviewResult>;
-  pinThread: (threadId: string, pinned: boolean, pinGroupId?: string) => Promise<{ thread: Thread }>;
+  pinThread: (threadId: string, pinned: boolean) => Promise<{ thread: Thread }>;
   getSessionOrganization: () => Promise<{ organization: SessionOrganization }>;
   createSessionFolder: (name: string) => Promise<{ group: SessionOrganizationGroup }>;
   renameSessionFolder: (id: string, name: string) => Promise<{ group: SessionOrganizationGroup }>;
   reorderSessionFolders: (ids: string[]) => Promise<{ organization: SessionOrganization }>;
   deleteSessionFolder: (id: string) => Promise<{ ok: boolean }>;
-  createPinGroup: (name: string) => Promise<{ group: SessionOrganizationGroup }>;
-  renamePinGroup: (id: string, name: string) => Promise<{ group: SessionOrganizationGroup }>;
-  reorderPinGroups: (ids: string[]) => Promise<{ organization: SessionOrganization }>;
-  deletePinGroup: (id: string) => Promise<{ ok: boolean }>;
   updateThreadOrganization: (
     threadId: string,
     folderId?: string,
-    pinGroupId?: string,
   ) => Promise<{ thread: Thread }>;
   archiveThread: (
     threadId: string,

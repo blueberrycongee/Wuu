@@ -1072,8 +1072,7 @@
  * sections measure identically (project bodies sit one `.project-group`
  * wrapper deeper, and a container gap would double-count for the
  * sections whose body is a direct child). */
-.project-section,
-.pinned-thread-section {
+.project-section {
   display: flex;
   min-width: 0;
   flex: 0 0 auto;
@@ -1098,10 +1097,6 @@
   min-width: 0;
   flex-direction: column;
   gap: var(--sidebar-functional-row-gap);
-}
-
-.pinned-functional-group {
-  gap: 0;
 }
 
 .sidebar-functional-heading {
@@ -1219,6 +1214,118 @@
 .sidebar-folder-heading.remove-drop-available.drop-active {
   background: color-mix(in srgb, var(--sidebar-accent) 12%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-accent) 48%, transparent);
+}
+
+.sidebar-functional-heading.drop-active {
+  background: color-mix(in srgb, var(--sidebar-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sidebar-accent) 48%, transparent);
+}
+
+.sidebar-functional-group[data-item-drop-indicator] > .sidebar-functional-heading {
+  position: relative;
+}
+
+.sidebar-functional-group[data-item-drop-indicator] > .sidebar-functional-heading::after {
+  position: absolute;
+  right: 8px;
+  bottom: -2px;
+  left: 8px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--sidebar-accent);
+  content: "";
+  pointer-events: none;
+}
+
+.sidebar-functional-group[data-functional-group-id="pinned"][data-drop-over="true"] > .sidebar-functional-heading,
+.sidebar-functional-group[data-functional-group-id="pinned"] > .sidebar-functional-heading.drop-active {
+  position: relative;
+  background: transparent;
+  box-shadow: none;
+}
+
+.sidebar-functional-group[data-functional-group-id="pinned"][data-drop-over="true"] > .sidebar-functional-heading::after,
+.sidebar-functional-group[data-functional-group-id="pinned"] > .sidebar-functional-heading.drop-active::after {
+  position: absolute;
+  right: 8px;
+  bottom: -2px;
+  left: 8px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--sidebar-accent);
+  content: "";
+  pointer-events: none;
+}
+
+.pinned-sortable-thread {
+  position: relative;
+  border-radius: var(--radius-sm);
+  touch-action: none;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
+}
+
+.pinned-sortable-thread .thread-row-main,
+.sidebar-functional-group[data-functional-group-id="pinned"] .sidebar-section-row.can-reorder {
+  cursor: grab;
+}
+
+.pinned-sortable-thread[data-dragging="true"] .thread-row-main,
+.sidebar-functional-group[data-functional-group-id="pinned"] .sidebar-section-row.dragging {
+  cursor: grabbing;
+}
+
+.pinned-sortable-thread[data-dragging="true"] {
+  z-index: 2;
+  opacity: 0.72;
+}
+
+.sidebar-functional-group .project-section {
+  position: relative;
+}
+
+.pinned-sortable-thread[data-sort-indicator]::after,
+.sidebar-functional-group .project-section[data-sort-indicator]::after {
+  position: absolute;
+  z-index: 4;
+  right: 8px;
+  left: 8px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--sidebar-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sidebar-accent) 24%, transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.pinned-sortable-thread[data-sort-indicator="before"]::after,
+.sidebar-functional-group .project-section[data-sort-indicator="before"]::after {
+  top: -2px;
+}
+
+.pinned-sortable-thread[data-sort-indicator="after"]::after,
+.sidebar-functional-group .project-section[data-sort-indicator="after"]::after {
+  bottom: -2px;
+}
+
+.pinned-append-drop-zone {
+  position: relative;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.pinned-append-drop-zone[data-drop-over="true"]::after {
+  position: absolute;
+  top: -2px;
+  right: 8px;
+  left: 8px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--sidebar-accent);
+  content: "";
+  pointer-events: none;
 }
 
 .sidebar-folder-heading-label {
@@ -1771,6 +1878,7 @@
 }
 
 .sidebar-session-row {
+  position: relative;
   height: 30px;
   min-width: 0;
   border-radius: var(--radius-sm);
@@ -1781,17 +1889,39 @@
   padding-left: var(--sidebar-row-pad-x);
 }
 
-.sidebar-session-row[data-sortable="true"] {
+.sidebar-session-row[data-draggable="true"],
+.sidebar-session-row[data-draggable="true"] .thread-row-main {
   cursor: grab;
 }
 
-.sidebar-session-row.dragging {
+.sidebar-session-row.dragging,
+.sidebar-session-row.dragging .thread-row-main {
   cursor: grabbing;
+}
+
+.sidebar-session-row.dragging {
   opacity: 0.72;
 }
 
-.sidebar-session-row.folder-dragging {
-  opacity: 0.62;
+.sidebar-session-row[data-sort-indicator]::after {
+  position: absolute;
+  z-index: 4;
+  right: 8px;
+  left: 8px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--sidebar-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sidebar-accent) 24%, transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.sidebar-session-row[data-sort-indicator="before"]::after {
+  top: -2px;
+}
+
+.sidebar-session-row[data-sort-indicator="after"]::after {
+  bottom: -2px;
 }
 
 .thread-row {
@@ -1848,46 +1978,6 @@
   border-top-color: var(--sidebar-thread-spinner-notch);
   border-radius: var(--radius-pill);
   animation: wuu-spin var(--session-loading-spin-duration) linear infinite;
-}
-
-.thread-row-folder-drag {
-  position: absolute;
-  top: 50%;
-  /* Mirror the archive action's right inset so both edge controls sit on the
-   * same 8px sidebar axis. The 22px status column plus 10px grid gap still
-   * leaves an 8px clear gap between this 24px button and the title. */
-  left: var(--sidebar-row-pad-x, 8px);
-  z-index: 2;
-  cursor: grab;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-50%);
-  transition:
-    background-color var(--motion-fast) var(--ease-out),
-    color var(--motion-fast) var(--ease-out),
-    opacity var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
-}
-
-.thread-row:hover .thread-row-folder-drag,
-.thread-row-folder-drag:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.thread-row-folder-drag:active {
-  cursor: grabbing;
-  transform: translateY(-50%) scale(0.96);
-}
-
-.thread-row:has(.thread-row-folder-drag):hover::before,
-.thread-row:has(.thread-row-folder-drag:focus-visible)::before {
-  opacity: 0;
-}
-
-.thread-row:has(.thread-row-folder-drag):hover .thread-row-spinner,
-.thread-row:has(.thread-row-folder-drag:focus-visible) .thread-row-spinner {
-  opacity: 0;
 }
 
 .thread-row.has-unread::before {
@@ -2188,7 +2278,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .thread-row-main > .thread-row-title,
-  .thread-row-folder-drag,
   .thread-row-actions {
     transition: none;
   }
