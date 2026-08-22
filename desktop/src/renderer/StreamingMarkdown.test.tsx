@@ -179,12 +179,8 @@ describe("StreamingMarkdown", () => {
     expect(paragraphs[0].textContent).toBe("好的，当前在 main 分支。我现在启动 dev 环境。");
 
     const cursor = surface.querySelector(".stream-cursor") as HTMLElement | null;
-    expect(cursor?.classList.contains("stream-cursor-block-tail")).toBe(true);
-    expect(cursor?.parentElement).toBe(surface);
-    const blockTailRule = turnsCSS.match(
-      /\.stream-cursor-block-tail\s*\{([\s\S]*?)\n\}/,
-    )?.[1] ?? "";
-    expect(blockTailRule).toContain("position: absolute;");
+    expect(cursor?.classList.contains("stream-cursor-block-tail")).toBe(false);
+    expect(cursor?.closest(".rich-paragraph")).toBe(paragraphs[0]);
   });
 
   it("renders the visible text as markdown during streaming", async () => {

@@ -1622,6 +1622,7 @@
 
 .streaming-markdown {
   display: block;
+  position: relative;
   min-width: 0;
   color: inherit;
   font: inherit;
@@ -1684,9 +1685,16 @@
  * survives after the content. */
 .stream-cursor-block-tail {
   position: absolute;
+  left: 0;
+  bottom: 0;
   display: block;
   width: 0;
   height: 0;
+}
+
+.stream-cursor-block-tail::after {
+  top: auto;
+  bottom: 0;
 }
 
                                                                          

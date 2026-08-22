@@ -178,6 +178,13 @@ export function StreamingMarkdown({
     () => createCursorTextRenderer(animateWords),
     [animateWords]
   );
+  // A block has already played its arrival animation before trailing blank
+  // lines promote it out of the live tail. Re-render only its cursor marker;
+  // replaying every word animation here would create a second visible flash.
+  const stableCursorTextRenderer = useMemo(
+    () => createCursorTextRenderer(false),
+    [],
+  );
   // Mermaid is expensive; do not flip the markdown renderer at settle for
   // ordinary text. Only messages that actually contain a Mermaid fence enter
   // the diagram renderer after streaming ends.
@@ -210,18 +217,26 @@ export function StreamingMarkdown({
   // the raw `**` in the rendered message. The text renderer removes this
   // parsing-only boundary before it reaches the DOM.
   //
-  // Some completed blocks have no inline tail for the sentinel. A closed
-  // fence is one example; prose ending in blank lines is another because the
-  // complete paragraph has already moved into `split.blocks`. Appending the
-  // sentinel to either tail parses it as a new empty paragraph, leaving a
-  // permanent blank row after a historical message. Keep the cursor as the
-  // existing zero-flow-height sibling in both cases — same settle-stable DOM
-  // slot, no reserved vertical space.
+  // When trailing blank lines promote the visible tail into a stable prose
+  // block, keep the cursor inside that last block. The old absolute sibling
+  // had no inline anchor and could paint at the top of the message instead of
+  // after the last visible character. A closed fence remains the one shape
+  // that cannot safely accept the sentinel without creating a paragraph below
+  // the code card, so it keeps the zero-flow-height sibling fallback.
+  const lastStableBlockIndex = split.blocks.length - 1;
+  const lastStableBlock = split.blocks[lastStableBlockIndex] ?? "";
+  const tailIsEmpty = split.tail.trim().length === 0;
+  const cursorStableBlockIndex = showCursor &&
+    tailIsEmpty &&
+    lastStableBlockIndex >= 0 &&
+    !endsWithFenceCloser(lastStableBlock.trimEnd())
+      ? lastStableBlockIndex
+      : -1;
   const cursorNeedsBlockTail = showCursor && (
     endsWithFenceCloser(split.tail) ||
-    (split.blocks.length > 0 && split.tail.trim().length === 0)
+    (tailIsEmpty && lastStableBlockIndex >= 0 && cursorStableBlockIndex < 0)
   );
-  const tailText = showCursor && !cursorNeedsBlockTail
+  const tailText = showCursor && !cursorNeedsBlockTail && cursorStableBlockIndex < 0
     ? `${split.tail}${CURSOR_MARKDOWN_BOUNDARY}${CURSOR_SENTINEL}`
     : split.tail;
 
@@ -237,9 +252,18 @@ export function StreamingMarkdown({
         // into one large markdown tree when streaming ends.
         <div className="streaming-markdown-block" key={index}>
           <MemoMarkdownContent
-            text={block}
+            text={
+              index === cursorStableBlockIndex
+                ? insertCursorBeforeTrailingWhitespace(block)
+                : block
+            }
             cwd={cwd}
             onOpenFile={onOpenFile}
+            renderText={
+              index === cursorStableBlockIndex
+                ? stableCursorTextRenderer
+                : undefined
+            }
             renderMermaid={renderMermaid}
           />
         </div>
@@ -443,6 +467,12 @@ function endsWithFenceCloser(text: string): boolean {
     activeFence.marker === finalMarker &&
     finalMarkerLength >= activeFence.length,
   );
+}
+
+function insertCursorBeforeTrailingWhitespace(text: string): string {
+  const trailingWhitespace = text.match(/\s*$/)?.[0] ?? "";
+  const visibleEnd = text.length - trailingWhitespace.length;
+  return `${text.slice(0, visibleEnd)}${CURSOR_MARKDOWN_BOUNDARY}${CURSOR_SENTINEL}${trailingWhitespace}`;
 }
 
 type StableBlockSplit = { blocks: string[]; tail: string };
