@@ -12,37 +12,25 @@ func (s *Server) handleSessionOrganizationList(req Request) error {
 	return s.writeResponse(req.ID, SessionOrganizationListResult{Organization: organization}, err)
 }
 
-func (s *Server) handleOrganizationGroupCreate(req Request, pin bool) error {
+func (s *Server) handleOrganizationGroupCreate(req Request) error {
 	var params OrganizationGroupCreateParams
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	var group session.OrganizationGroup
-	var err error
-	if pin {
-		group, err = session.CreatePinGroup(s.rt.SessionDir, params.Name)
-	} else {
-		group, err = session.CreateFolder(s.rt.SessionDir, params.Name)
-	}
+	group, err := session.CreateFolder(s.rt.SessionDir, params.Name)
 	return s.writeResponse(req.ID, OrganizationGroupResult{Group: group}, err)
 }
 
-func (s *Server) handleOrganizationGroupUpdate(req Request, pin bool) error {
+func (s *Server) handleOrganizationGroupUpdate(req Request) error {
 	var params OrganizationGroupUpdateParams
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	var group session.OrganizationGroup
-	var err error
-	if pin {
-		group, err = session.RenamePinGroup(s.rt.SessionDir, params.ID, params.Name)
-	} else {
-		group, err = session.RenameFolder(s.rt.SessionDir, params.ID, params.Name)
-	}
+	group, err := session.RenameFolder(s.rt.SessionDir, params.ID, params.Name)
 	return s.writeResponse(req.ID, OrganizationGroupResult{Group: group}, err)
 }
 
-func (s *Server) handleOrganizationGroupDelete(req Request, pin bool) error {
+func (s *Server) handleOrganizationGroupDelete(req Request) error {
 	var params OrganizationGroupDeleteParams
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
@@ -53,16 +41,11 @@ func (s *Server) handleOrganizationGroupDelete(req Request, pin bool) error {
 	}
 	affected := make([]string, 0)
 	for _, sess := range sessions {
-		if (!pin && sess.FolderID == params.ID) || (pin && sess.PinGroupID == params.ID) {
+		if sess.FolderID == params.ID {
 			affected = append(affected, sess.ID)
 		}
 	}
-	if pin {
-		err = session.DeletePinGroup(s.rt.SessionDir, params.ID)
-	} else {
-		err = session.DeleteFolder(s.rt.SessionDir, params.ID)
-	}
-	if err != nil {
+	if err := session.DeleteFolder(s.rt.SessionDir, params.ID); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	if err := s.writeResponse(req.ID, map[string]bool{"ok": true}, nil); err != nil {
@@ -81,18 +64,12 @@ func (s *Server) handleOrganizationGroupDelete(req Request, pin bool) error {
 	return nil
 }
 
-func (s *Server) handleOrganizationGroupReorder(req Request, pin bool) error {
+func (s *Server) handleOrganizationGroupReorder(req Request) error {
 	var params OrganizationGroupReorderParams
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	var err error
-	if pin {
-		err = session.ReorderPinGroups(s.rt.SessionDir, params.IDs)
-	} else {
-		err = session.ReorderFolders(s.rt.SessionDir, params.IDs)
-	}
-	if err != nil {
+	if err := session.ReorderFolders(s.rt.SessionDir, params.IDs); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	organization, err := session.ListOrganization(s.rt.SessionDir)
@@ -108,7 +85,7 @@ func (s *Server) handleThreadOrganizationUpdate(req Request) error {
 	if id == "" {
 		return s.writeResponse(req.ID, nil, errors.New("thread_id is required"))
 	}
-	metadata, err := session.UpdateOrganization(s.rt.SessionDir, id, params.FolderID, params.PinGroupID)
+	metadata, err := session.UpdateOrganization(s.rt.SessionDir, id, params.FolderID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}

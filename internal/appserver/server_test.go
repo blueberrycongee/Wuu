@@ -7102,7 +7102,7 @@ func TestServerThreadPinAndArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || pinned.PinnedAt == nil || pinned.PinGroupID != session.DefaultPinGroupID {
+	if !ok || pinned.PinnedAt == nil {
 		t.Fatalf("pin not persisted: ok=%v session=%+v", ok, pinned)
 	}
 
@@ -7125,8 +7125,8 @@ func TestServerThreadPinAndArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || archived.PinGroupID != "" {
-		t.Fatalf("archive should clear pin group: ok=%v session=%+v", ok, archived)
+	if !ok || archived.PinnedAt != nil {
+		t.Fatalf("archive should clear pin: ok=%v session=%+v", ok, archived)
 	}
 
 	if err := srv.handleLine(context.Background(), []byte(`{"id":"4","method":"thread/list"}`)); err != nil {
@@ -7161,10 +7161,6 @@ func TestServerThreadOrganizationUpdatesAreIndependentAndListsUsePersistedMetada
 	if err != nil {
 		t.Fatal(err)
 	}
-	pinGroup, err := session.CreatePinGroup(rt.SessionDir, "Now")
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	update := func(requestID string, params map[string]any) Thread {
 		t.Helper()
@@ -7181,18 +7177,18 @@ func TestServerThreadOrganizationUpdatesAreIndependentAndListsUsePersistedMetada
 		return remarshal[ThreadOrganizationUpdateResult](t, responseByID(t, parseOutput(t, out.String()), requestID)["result"]).Thread
 	}
 
-	updated := update("2", map[string]any{"folder_id": folder.ID, "pin_group_id": pinGroup.ID})
-	if updated.FolderID != folder.ID || updated.PinGroupID != pinGroup.ID {
+	updated := update("2", map[string]any{"folder_id": folder.ID})
+	if updated.FolderID != folder.ID {
 		t.Fatalf("unexpected organization update: %+v", updated)
 	}
 	updated = update("3", map[string]any{"folder_id": ""})
-	if updated.FolderID != "" || updated.PinGroupID != pinGroup.ID {
-		t.Fatalf("folder-only update changed pin group: %+v", updated)
+	if updated.FolderID != "" {
+		t.Fatalf("folder was not cleared: %+v", updated)
 	}
 
 	// Change the database without touching this server's loaded thread. Global
 	// listing must still treat persisted organization metadata as authoritative.
-	if _, err := session.UpdateOrganization(rt.SessionDir, threadID, &folder.ID, nil); err != nil {
+	if _, err := session.UpdateOrganization(rt.SessionDir, threadID, &folder.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := srv.notifyThreadUpdated(updated); err != nil {
@@ -7200,7 +7196,7 @@ func TestServerThreadOrganizationUpdatesAreIndependentAndListsUsePersistedMetada
 	}
 	notifications := notificationsByMethod(parseOutput(t, out.String()), NotificationThreadUpdated)
 	notified := remarshal[ThreadUpdatedNotification](t, notifications[len(notifications)-1]["params"])
-	if notified.Thread.FolderID != folder.ID || notified.Thread.PinGroupID != pinGroup.ID || notified.Thread.WorkspaceID != rt.WorkspaceID {
+	if notified.Thread.FolderID != folder.ID || notified.Thread.WorkspaceID != rt.WorkspaceID {
 		t.Fatalf("thread update emitted stale organization metadata: %+v", notified.Thread)
 	}
 	// A registered project's path may change while a thread remains loaded.
@@ -7218,7 +7214,7 @@ func TestServerThreadOrganizationUpdatesAreIndependentAndListsUsePersistedMetada
 		t.Fatalf("thread/listAll: %v", err)
 	}
 	list := remarshal[ThreadListResult](t, responseByID(t, parseOutput(t, out.String()), "4")["result"])
-	if len(list.Threads) != 1 || list.Threads[0].FolderID != folder.ID || list.Threads[0].PinGroupID != pinGroup.ID {
+	if len(list.Threads) != 1 || list.Threads[0].FolderID != folder.ID {
 		t.Fatalf("listAll did not use persisted organization metadata: %+v", list.Threads)
 	}
 	if list.Threads[0].WorkspaceID != rt.WorkspaceID {

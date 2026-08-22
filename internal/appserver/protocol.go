@@ -95,10 +95,6 @@ const (
 	MethodSessionFolderUpdate             = "sessionFolder/update"
 	MethodSessionFolderReorder            = "sessionFolder/reorder"
 	MethodSessionFolderDelete             = "sessionFolder/delete"
-	MethodPinGroupCreate                  = "pinGroup/create"
-	MethodPinGroupUpdate                  = "pinGroup/update"
-	MethodPinGroupReorder                 = "pinGroup/reorder"
-	MethodPinGroupDelete                  = "pinGroup/delete"
 	MethodThreadArchive                   = "thread/archive"
 	MethodThreadCompactStart              = "thread/compact/start"
 	MethodThreadRegenerateTitle           = "thread/regenerate-title"
@@ -1525,9 +1521,8 @@ type ThreadPreviewResult struct {
 }
 
 type ThreadPinParams struct {
-	ThreadID   string `json:"thread_id"`
-	Pinned     bool   `json:"pinned"`
-	PinGroupID string `json:"pin_group_id,omitempty"`
+	ThreadID string `json:"thread_id"`
+	Pinned   bool   `json:"pinned"`
 }
 
 type ThreadPinResult struct {
@@ -1560,9 +1555,8 @@ type OrganizationGroupResult struct {
 }
 
 type ThreadOrganizationUpdateParams struct {
-	ThreadID   string  `json:"thread_id"`
-	FolderID   *string `json:"folder_id,omitempty"`
-	PinGroupID *string `json:"pin_group_id,omitempty"`
+	ThreadID string  `json:"thread_id"`
+	FolderID *string `json:"folder_id,omitempty"`
 }
 
 type ThreadOrganizationUpdateResult struct {
@@ -2036,7 +2030,6 @@ type Thread struct {
 	Ephemeral        bool          `json:"ephemeral,omitempty"`
 	Pinned           bool          `json:"pinned,omitempty"`
 	FolderID         string        `json:"folder_id,omitempty"`
-	PinGroupID       string        `json:"pin_group_id,omitempty"`
 	Archived         bool          `json:"archived,omitempty"`
 	ForkedFromID     string        `json:"forked_from_id,omitempty"`
 	ForkedFromTurnID string        `json:"forked_from_turn_id,omitempty"`

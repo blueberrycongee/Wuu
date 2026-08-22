@@ -78,7 +78,6 @@ type threadState struct {
 	WorkspaceID              string
 	PinnedAt                 *time.Time
 	FolderID                 string
-	PinGroupID               string
 	ArchivedAt               *time.Time
 	Turns                    []Turn
 	PersistHistory           bool
@@ -1051,21 +1050,13 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 	case MethodSessionOrganizationList:
 		return s.handleSessionOrganizationList(req)
 	case MethodSessionFolderCreate:
-		return s.handleOrganizationGroupCreate(req, false)
+		return s.handleOrganizationGroupCreate(req)
 	case MethodSessionFolderUpdate:
-		return s.handleOrganizationGroupUpdate(req, false)
+		return s.handleOrganizationGroupUpdate(req)
 	case MethodSessionFolderReorder:
-		return s.handleOrganizationGroupReorder(req, false)
+		return s.handleOrganizationGroupReorder(req)
 	case MethodSessionFolderDelete:
-		return s.handleOrganizationGroupDelete(req, false)
-	case MethodPinGroupCreate:
-		return s.handleOrganizationGroupCreate(req, true)
-	case MethodPinGroupUpdate:
-		return s.handleOrganizationGroupUpdate(req, true)
-	case MethodPinGroupReorder:
-		return s.handleOrganizationGroupReorder(req, true)
-	case MethodPinGroupDelete:
-		return s.handleOrganizationGroupDelete(req, true)
+		return s.handleOrganizationGroupDelete(req)
 	case MethodThreadArchive:
 		return s.handleThreadArchive(req)
 	case MethodThreadCompactStart:

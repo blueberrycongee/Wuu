@@ -71,7 +71,6 @@ type Session struct {
 	ForkedFromItemID string     `json:"forked_from_item_id,omitempty"`
 	PinnedAt         *time.Time `json:"pinned_at,omitempty"`
 	FolderID         string     `json:"folder_id,omitempty"`
-	PinGroupID       string     `json:"pin_group_id,omitempty"`
 	ArchivedAt       *time.Time `json:"archived_at,omitempty"`
 	WorktreePath     string     `json:"worktree_path,omitempty"`
 	WorktreeBaseHEAD string     `json:"worktree_base_head,omitempty"`
@@ -295,7 +294,7 @@ func List(sessDir string, limit int) ([]Session, error) {
 	rows, err := db.Query(`
 SELECT id, created_at, updated_at, title, summary, entries, cwd,
        forked_from_id, forked_from_turn_id, forked_from_item_id,
-       pinned_at, folder_id, pin_group_id, archived_at,
+       pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
 	       provider, model, variant, effort, permission_mode, engine_id, engine_ref
@@ -473,7 +472,7 @@ func FindManagedByRequest(sessDir, owner, requestID string) (Session, bool, erro
 	row := db.QueryRow(`
 SELECT id, created_at, updated_at, title, summary, entries, cwd,
        forked_from_id, forked_from_turn_id, forked_from_item_id,
-       pinned_at, folder_id, pin_group_id, archived_at,
+       pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
        provider, model, variant, effort, permission_mode, engine_id, engine_ref
@@ -548,7 +547,7 @@ func UpdateWorkspaceBinding(
 
 // UpdatePinned marks a session as pinned or unpinned.
 func UpdatePinned(sessDir, id string, pinned bool) (Session, error) {
-	return UpdatePinnedInGroup(sessDir, id, pinned, "")
+	return updateSessionOrganization(sessDir, id, nil, &pinned)
 }
 
 // SetWorkspaceID binds a session to a stable, location-independent workspace
@@ -643,7 +642,6 @@ func UpdateArchived(sessDir, id string, archived bool) (Session, error) {
 		if archived {
 			s.ArchivedAt = &now
 			s.PinnedAt = nil
-			s.PinGroupID = ""
 		} else {
 			s.ArchivedAt = nil
 		}
@@ -1033,7 +1031,6 @@ func migrateSchema(db *sql.DB) error {
 			forked_from_item_id TEXT NOT NULL DEFAULT '',
 			pinned_at TEXT,
 			folder_id TEXT NOT NULL DEFAULT '',
-			pin_group_id TEXT NOT NULL DEFAULT '',
 			archived_at TEXT,
 			worktree_path TEXT NOT NULL DEFAULT '',
 			worktree_base_head TEXT NOT NULL DEFAULT '',
@@ -1048,14 +1045,6 @@ func migrateSchema(db *sql.DB) error {
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
 			sort_order INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS pin_groups (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			sort_order INTEGER NOT NULL DEFAULT 0,
-			is_default INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
@@ -1600,15 +1589,13 @@ WHERE workflow_id = ''`); err != nil {
 	if err := addColumnIfMissing(db, "sessions", "folder_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
-	if err := addColumnIfMissing(db, "sessions", "pin_group_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+	// Pin groups are gone: pinned state lives solely in pinned_at. Drop the
+	// legacy table and column so old installs converge on the new schema.
+	if _, err := db.Exec(`DROP TABLE IF EXISTS pin_groups`); err != nil {
+		return fmt.Errorf("drop legacy pin groups: %w", err)
+	}
+	if err := dropColumnIfPresent(db, "sessions", "pin_group_id"); err != nil {
 		return err
-	}
-	now := timeText(time.Now().UTC())
-	if _, err := db.Exec(`INSERT OR IGNORE INTO pin_groups (id, name, sort_order, is_default, created_at, updated_at) VALUES (?, ?, 0, 1, ?, ?)`, DefaultPinGroupID, "Pinned", now, now); err != nil {
-		return fmt.Errorf("create default pin group: %w", err)
-	}
-	if _, err := db.Exec(`UPDATE sessions SET pin_group_id = ? WHERE pinned_at IS NOT NULL AND pin_group_id = ''`, DefaultPinGroupID); err != nil {
-		return fmt.Errorf("backfill default pin group: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_workspace_id ON sessions(workspace_id)`); err != nil {
 		return fmt.Errorf("migrate sessions database: %w", err)
@@ -1647,6 +1634,38 @@ func addColumnIfMissing(db *sql.DB, table, column, definition string) error {
 	return nil
 }
 
+func dropColumnIfPresent(db *sql.DB, table, column string) error {
+	rows, err := db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return fmt.Errorf("inspect %s columns: %w", table, err)
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("scan %s columns: %w", table, err)
+		}
+		if strings.EqualFold(name, column) {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("scan %s columns: %w", table, err)
+	}
+	if !found {
+		return nil
+	}
+	if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s DROP COLUMN %s`, table, column)); err != nil {
+		return fmt.Errorf("drop %s.%s column: %w", table, column, err)
+	}
+	return nil
+}
+
 func insertSessionTx(tx *sql.Tx, sess Session) error {
 	_, err := tx.Exec(insertSessionSQL(), sessionArgs(sess)...)
 	if err != nil {
@@ -1659,10 +1678,10 @@ func insertSessionSQL() string {
 	return `INSERT INTO sessions (
 		id, created_at, updated_at, title, summary, entries, cwd,
 		forked_from_id, forked_from_turn_id, forked_from_item_id,
-		pinned_at, folder_id, pin_group_id, archived_at, worktree_path, worktree_base_head, worktree_base_repo,
+		pinned_at, folder_id, archived_at, worktree_path, worktree_base_head, worktree_base_repo,
 		workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
 		provider, model, variant, effort, permission_mode, engine_id, engine_ref
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 }
 
 func updateSessionTx(tx *sql.Tx, sess Session) error {
@@ -1670,13 +1689,13 @@ func updateSessionTx(tx *sql.Tx, sess Session) error {
 UPDATE sessions
 SET created_at = ?, updated_at = ?, title = ?, summary = ?, entries = ?, cwd = ?,
     forked_from_id = ?, forked_from_turn_id = ?, forked_from_item_id = ?,
-    pinned_at = ?, folder_id = ?, pin_group_id = ?, archived_at = ?, worktree_path = ?, worktree_base_head = ?, worktree_base_repo = ?,
+    pinned_at = ?, folder_id = ?, archived_at = ?, worktree_path = ?, worktree_base_head = ?, worktree_base_repo = ?,
     workspace_id = ?, source = ?, owner = ?, visibility = ?, parent_id = ?, context_source = ?, creation_request_id = ?,
 	provider = ?, model = ?, variant = ?, effort = ?, permission_mode = ?, engine_id = ?, engine_ref = ?
 WHERE id = ?`,
 		timeText(sess.CreatedAt), timeText(sess.UpdatedAt), sess.Title, sess.Summary, sess.Entries, normalizeCWD(sess.CWD),
 		sess.ForkedFromID, sess.ForkedFromTurnID, sess.ForkedFromItemID,
-		nullableTimeText(sess.PinnedAt), strings.TrimSpace(sess.FolderID), strings.TrimSpace(sess.PinGroupID), nullableTimeText(sess.ArchivedAt),
+		nullableTimeText(sess.PinnedAt), strings.TrimSpace(sess.FolderID), nullableTimeText(sess.ArchivedAt),
 		normalizeCWD(sess.WorktreePath), sess.WorktreeBaseHEAD, normalizeCWD(sess.WorktreeBaseRepo),
 		strings.TrimSpace(sess.WorkspaceID), strings.TrimSpace(sess.Source),
 		strings.TrimSpace(sess.Owner), strings.TrimSpace(sess.Visibility), strings.TrimSpace(sess.ParentID), strings.TrimSpace(sess.ContextSource), strings.TrimSpace(sess.CreationRequestID),
@@ -1706,7 +1725,6 @@ func sessionArgs(sess Session) []any {
 		sess.ForkedFromItemID,
 		nullableTimeText(sess.PinnedAt),
 		strings.TrimSpace(sess.FolderID),
-		strings.TrimSpace(sess.PinGroupID),
 		nullableTimeText(sess.ArchivedAt),
 		normalizeCWD(sess.WorktreePath),
 		sess.WorktreeBaseHEAD,
@@ -1732,7 +1750,7 @@ func findSessionDB(db *sql.DB, id string) (Session, bool, error) {
 	row := db.QueryRow(`
 SELECT id, created_at, updated_at, title, summary, entries, cwd,
        forked_from_id, forked_from_turn_id, forked_from_item_id,
-       pinned_at, folder_id, pin_group_id, archived_at,
+       pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
 	       provider, model, variant, effort, permission_mode, engine_id, engine_ref
@@ -1745,7 +1763,7 @@ func findSessionTx(tx *sql.Tx, id string) (Session, bool, error) {
 	row := tx.QueryRow(`
 SELECT id, created_at, updated_at, title, summary, entries, cwd,
        forked_from_id, forked_from_turn_id, forked_from_item_id,
-       pinned_at, folder_id, pin_group_id, archived_at,
+       pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
 	       provider, model, variant, effort, permission_mode, engine_id, engine_ref
@@ -1776,7 +1794,7 @@ func scanSession(scanner interface {
 	if err := scanner.Scan(
 		&s.ID, &createdAt, &updatedAt, &s.Title, &s.Summary, &s.Entries, &s.CWD,
 		&s.ForkedFromID, &s.ForkedFromTurnID, &s.ForkedFromItemID,
-		&pinnedAt, &s.FolderID, &s.PinGroupID, &archivedAt,
+		&pinnedAt, &s.FolderID, &archivedAt,
 		&s.WorktreePath, &s.WorktreeBaseHEAD, &s.WorktreeBaseRepo,
 		&s.WorkspaceID, &s.Source, &s.Owner, &s.Visibility, &s.ParentID, &s.ContextSource, &s.CreationRequestID,
 		&s.Provider, &s.Model, &s.Variant, &s.Effort, &s.PermissionMode, &s.EngineID, &s.EngineRef,

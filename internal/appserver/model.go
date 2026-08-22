@@ -72,7 +72,6 @@ func (th *threadState) snapshotLocked() Thread {
 		Ephemeral:        th.Ephemeral,
 		Pinned:           th.PinnedAt != nil,
 		FolderID:         th.FolderID,
-		PinGroupID:       th.PinGroupID,
 		Archived:         th.ArchivedAt != nil,
 		ForkedFromID:     th.ForkedFromID,
 		ForkedFromTurnID: th.ForkedFromTurnID,

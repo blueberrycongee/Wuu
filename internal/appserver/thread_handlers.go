@@ -793,7 +793,6 @@ func (s *Server) handleThreadList(req Request) error {
 		if persisted, ok := entries[thread.ID]; ok {
 			entry.thread.Pinned = persisted.thread.Pinned
 			entry.thread.FolderID = persisted.thread.FolderID
-			entry.thread.PinGroupID = persisted.thread.PinGroupID
 			entry.thread.WorkspaceID = persisted.thread.WorkspaceID
 			entry.pinnedAt = persisted.pinnedAt
 			entries[thread.ID] = entry
@@ -868,7 +867,6 @@ func (s *Server) handleThreadListAll(req Request) error {
 		if persisted, ok := entries[thread.ID]; ok {
 			entry.thread.Pinned = persisted.thread.Pinned
 			entry.thread.FolderID = persisted.thread.FolderID
-			entry.thread.PinGroupID = persisted.thread.PinGroupID
 			entry.thread.WorkspaceID = persisted.thread.WorkspaceID
 			entry.pinnedAt = persisted.pinnedAt
 			thread = entry.thread
@@ -999,7 +997,7 @@ func (s *Server) handleThreadPin(req Request) error {
 	if id == "" {
 		return s.writeResponse(req.ID, nil, errors.New("thread_id is required"))
 	}
-	metadata, err := session.UpdatePinnedInGroup(s.rt.SessionDir, id, params.Pinned, params.PinGroupID)
+	metadata, err := session.UpdatePinned(s.rt.SessionDir, id, params.Pinned)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -1177,7 +1175,6 @@ func applySessionMetadata(th *threadState, metadata session.Session) {
 	th.WorkspaceID = metadata.WorkspaceID
 	th.PinnedAt = metadata.PinnedAt
 	th.FolderID = metadata.FolderID
-	th.PinGroupID = metadata.PinGroupID
 	th.ArchivedAt = metadata.ArchivedAt
 }
 
@@ -1255,7 +1252,6 @@ func threadEntryFromSession(sess session.Session, provider, model string) thread
 			Status:           ThreadStatusIdle,
 			Pinned:           sess.PinnedAt != nil,
 			FolderID:         sess.FolderID,
-			PinGroupID:       sess.PinGroupID,
 			Archived:         sess.ArchivedAt != nil,
 			ForkedFromID:     sess.ForkedFromID,
 			ForkedFromTurnID: sess.ForkedFromTurnID,
