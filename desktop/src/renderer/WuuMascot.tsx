@@ -99,7 +99,7 @@ export const WUU_MASCOT_EYES = {
   // Manga panic: the left eye goes almost round while the right stays taller
   // and slightly pinched. The uneven pair and inward lean read as startled
   // rather than sharing search's clean, symmetrical round-eye surprise.
-  panic: { esx: 1.55, esy: 0.58, tilt: -11, esx2: -0.24, esy2: 0.16, tilt2: 7 },
+  panic: { esx: 1.72, esy: 0.69, tilt: -11, esx2: -0.25, esy2: 0.18, tilt2: 7 },
 } as const satisfies Readonly<Record<string, MascotEyeStyle>>;
 
 export type WuuMascotAccessory =
