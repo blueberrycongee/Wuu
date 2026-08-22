@@ -71,8 +71,9 @@ const WUU_MASCOT_EYES = {
   // The authored long portrait capsules — the idle identity.
   long: { esx: 1, esy: 1 },
   // A circle: growing the width and shrinking the height by the authored aspect
-  // ratio leaves `rx === ry`.
-  round: { esx: 1.4, esy: 1.4 / WUU_MASCOT_EYE_ASPECT },
+  // ratio leaves `rx === ry`. 1.6 keeps the dot a touch larger than the long
+  // capsule reads, without crowding the pair.
+  round: { esx: 1.6, esy: 1.6 / WUU_MASCOT_EYE_ASPECT },
   // Wide flat arcs — the smiling squint.
   happy: { esx: 1.7, esy: 0.3, tilt: 8 },
   // Half-lidded and leaning together — smug.
