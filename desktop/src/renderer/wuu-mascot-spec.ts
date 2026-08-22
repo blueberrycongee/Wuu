@@ -4,9 +4,10 @@
  */
 export const WUU_MASCOT_NAME = "wuu";
 export const WUU_MASCOT_DEFAULT_HUE = 14;
-// Keep the mascot's signature eyes as long portrait capsules. Activity poses
-// may move and naturally foreshorten the pair, but both eyes start from the
-// same authored geometry and WuuMascot never squashes them into bars.
+// Keep the mascot's *authored* eyes as long portrait capsules, symmetric and
+// upright. `WuuMascot` can reshape that pair on top (round, squint, wink, and
+// so on) without adding new marks, but the identity geometry stays anchored
+// here.
 export const WUU_MASCOT_TRAITS = {
   shape: 0.2,
   "body.ratio": 0.5,

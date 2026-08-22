@@ -27,22 +27,61 @@ const WUU_MASCOT_LAYOUT = _layout(WUU_MASCOT_NAME, {
   traits: WUU_MASCOT_TRAITS,
 });
 
-function withLongMascotEyes(expression: Expression): Expression {
+// The mascot's authored eyes are portrait capsules: `WUU_MASCOT_TRAITS` pins
+// `eye.ratio` to the top of the vendored 1.9–2.8 range, so the drawn height is
+// 2.8 × the drawn width. Eye styles below reshape that capsule with the pose's
+// scale and tilt channels; nothing here adds a mouth or brows, only moves the
+// pair of capsule eyes the mascot already has.
+const WUU_MASCOT_EYE_ASPECT = 2.8;
+
+type MascotEyeStyle = {
+  /** Shared eye width, about each eye's own centre. */
+  esx: number;
+  /** Shared eye height, about each eye's own centre. */
+  esy: number;
+  /** Shared tilt, mirrored per side (left −tilt, right +tilt). */
+  tilt?: number;
+  /** Extra width on the right eye only. */
+  esx2?: number;
+  /** Extra height on the right eye only. */
+  esy2?: number;
+  /** Extra tilt on the right eye only, before the per-side mirroring. */
+  tilt2?: number;
+};
+
+function withMascotEyes(
+  expression: Expression,
+  eyes: MascotEyeStyle,
+): Expression {
   return {
     ...expression,
     p: {
       ...expression.p,
-      // Expressions may move the eyes and body, but the mascot should keep its
-      // long portrait eyes instead of morphing them into horizontal squints.
-      esx: 1,
-      esy: 1,
-      esx2: 0,
-      esy2: 0,
-      tilt: 0,
-      tilt2: 0,
+      esx: eyes.esx,
+      esy: eyes.esy,
+      esx2: eyes.esx2 ?? 0,
+      esy2: eyes.esy2 ?? 0,
+      tilt: eyes.tilt ?? 0,
+      tilt2: eyes.tilt2 ?? 0,
     },
   };
 }
+
+const WUU_MASCOT_EYES = {
+  // The authored long portrait capsules — the idle identity.
+  long: { esx: 1, esy: 1 },
+  // A circle: growing the width and shrinking the height by the authored aspect
+  // ratio leaves `rx === ry`.
+  round: { esx: 1.4, esy: 1.4 / WUU_MASCOT_EYE_ASPECT },
+  // Wide flat arcs — the smiling squint.
+  happy: { esx: 1.7, esy: 0.3, tilt: 8 },
+  // Half-lidded and leaning together — smug.
+  smug: { esx: 1.35, esy: 0.34, tilt: 18, tilt2: -36 },
+  // Level flat bars — sleepy / watching.
+  sleepy: { esx: 1.2, esy: 0.22 },
+  // One round eye, the other closed to a flat bar — a wink.
+  wink: { esx: 1.4, esy: 0.5, esx2: 0.2, esy2: -0.38 },
+} as const satisfies Readonly<Record<string, MascotEyeStyle>>;
 
 export type WuuMascotAccessory =
   | "none"
@@ -76,16 +115,18 @@ const WUU_MASCOT_ACTIVITY_EXPRESSIONS: Readonly<
   Record<WuuMascotActivity, Expression | undefined>
 > = {
   idle: undefined,
-  // Activity still changes gaze, spacing, and body position, while this shared
-  // wrapper keeps the eye silhouette consistently long everywhere Wuu appears.
-  compose: withLongMascotEyes(happy),
-  thinking: withLongMascotEyes(smug),
-  compact: withLongMascotEyes(smug),
-  search: withLongMascotEyes(surprised),
-  edit: withLongMascotEyes(happy),
-  command: withLongMascotEyes(happy),
-  read: withLongMascotEyes(smug),
-  tool: withLongMascotEyes(happy),
+  // Existing activities keep the long-eye identity they always had; nothing here
+  // changes their previous look. `WUU_MASCOT_EYES` holds additional eye states
+  // for when a caller wants one, and search already opts into the round surprise
+  // that was requested.
+  compose: withMascotEyes(happy, WUU_MASCOT_EYES.long),
+  thinking: withMascotEyes(smug, WUU_MASCOT_EYES.long),
+  compact: withMascotEyes(smug, WUU_MASCOT_EYES.long),
+  search: withMascotEyes(surprised, WUU_MASCOT_EYES.round),
+  edit: withMascotEyes(happy, WUU_MASCOT_EYES.long),
+  command: withMascotEyes(happy, WUU_MASCOT_EYES.long),
+  read: withMascotEyes(smug, WUU_MASCOT_EYES.long),
+  tool: withMascotEyes(happy, WUU_MASCOT_EYES.long),
 };
 
 type WuuMascotRuntime = {
