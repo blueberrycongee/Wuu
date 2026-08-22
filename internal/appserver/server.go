@@ -1216,6 +1216,10 @@ func sanitizeStreamEvent(ev providers.StreamEvent) StreamEventPayload {
 	if ev.TodoUpdate != nil {
 		out.TodoUpdate = ev.TodoUpdate
 	}
+	if ev.AgentActivity != nil {
+		activity := *ev.AgentActivity
+		out.AgentActivity = &activity
+	}
 	if ev.Lifecycle != nil {
 		out.Lifecycle = sanitizeStreamLifecycle(ev.Lifecycle)
 	}

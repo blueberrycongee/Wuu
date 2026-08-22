@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -414,6 +415,21 @@ type turnNotification struct {
 	params json.RawMessage
 }
 
+type codexAgentItem struct {
+	Type              string                         `json:"type"`
+	Tool              string                         `json:"tool"`
+	Status            string                         `json:"status"`
+	ReceiverThreadIDs []string                       `json:"receiverThreadIds"`
+	AgentsStates      map[string]codexAgentItemState `json:"agentsStates"`
+	Kind              string                         `json:"kind"`
+	AgentThreadID     string                         `json:"agentThreadId"`
+	AgentPath         string                         `json:"agentPath"`
+}
+
+type codexAgentItemState struct {
+	Status string `json:"status"`
+}
+
 // turnSubscription translates the notifications of one codex turn into Wuu
 // stream events and signals completion.
 type turnSubscription struct {
@@ -426,6 +442,7 @@ type turnSubscription struct {
 	mu     sync.Mutex
 	closed bool
 	unsubs []func()
+	labels map[string]string
 }
 
 func newTurnSubscription(client *Client, sink agentengine.EventSink, done chan turnOutcome) *turnSubscription {
@@ -434,11 +451,14 @@ func newTurnSubscription(client *Client, sink agentengine.EventSink, done chan t
 		sink:   sink,
 		done:   done,
 		events: make(chan turnNotification, 512),
+		labels: make(map[string]string),
 	}
 	handlers := map[string]struct{}{
 		NotifyAgentMessageDelta:     {},
 		NotifyReasoningTextDelta:    {},
 		NotifyReasoningSummaryDelta: {},
+		NotifyItemStarted:           {},
+		NotifyItemCompleted:         {},
 		NotifyTokenUsageUpdated:     {},
 		NotifyTurnCompleted:         {},
 		NotifyError:                 {},
@@ -514,6 +534,7 @@ func (sub *turnSubscription) run() {
 				Total TokenUsageBreakdown `json:"total"`
 				Last  TokenUsageBreakdown `json:"last"`
 			} `json:"tokenUsage"`
+			Item json.RawMessage `json:"item"`
 		}
 		if err := json.Unmarshal(notification.params, &envelope); err != nil {
 			continue
@@ -546,6 +567,8 @@ func (sub *turnSubscription) run() {
 					ProviderItemID: envelope.ItemID,
 				})
 			}
+		case NotifyItemStarted, NotifyItemCompleted:
+			sub.emitAgentActivities(envelope.Item)
 		case NotifyTokenUsageUpdated:
 			if envelope.TokenUsage != nil {
 				// "last" is this turn's increment; "total" is the thread
@@ -596,6 +619,116 @@ func (sub *turnSubscription) run() {
 	}
 	// Stream closed without a terminal notification.
 	sub.finish(agent.LoopResult{}, errors.New("codex turn stream closed before completion"))
+}
+
+func (sub *turnSubscription) emitAgentActivities(raw json.RawMessage) {
+	if len(raw) == 0 {
+		return
+	}
+	var item codexAgentItem
+	if err := json.Unmarshal(raw, &item); err != nil {
+		return
+	}
+	switch item.Type {
+	case "subAgentActivity":
+		id := strings.TrimSpace(item.AgentThreadID)
+		if id == "" {
+			return
+		}
+		state := providers.AgentActivityRunning
+		if item.Kind == "interrupted" {
+			state = providers.AgentActivityWaiting
+		}
+		sub.emitAgentActivity(id, codexAgentLabel(item.AgentPath), state)
+	case "collabAgentToolCall":
+		if len(item.AgentsStates) > 0 {
+			ids := make([]string, 0, len(item.AgentsStates))
+			for id := range item.AgentsStates {
+				ids = append(ids, id)
+			}
+			sort.Strings(ids)
+			for _, id := range ids {
+				sub.emitAgentActivity(id, "Codex agent", codexAgentState(item.AgentsStates[id].Status))
+			}
+			return
+		}
+		state, ok := codexCollabFallbackState(item.Tool, item.Status)
+		if !ok {
+			return
+		}
+		for _, id := range item.ReceiverThreadIDs {
+			if strings.TrimSpace(id) != "" {
+				sub.emitAgentActivity(id, "Codex agent", state)
+			}
+		}
+	}
+}
+
+func (sub *turnSubscription) emitAgentActivity(id, label string, state providers.AgentActivityState) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return
+	}
+	label = strings.TrimSpace(label)
+	if existing := sub.labels[id]; existing != "" && (label == "" || label == "Codex agent") {
+		label = existing
+	}
+	if label == "" {
+		label = "Codex agent"
+	}
+	if label != "Codex agent" {
+		sub.labels[id] = label
+	}
+	sub.emit(providers.StreamEvent{
+		Type: providers.EventAgentActivity,
+		AgentActivity: &providers.AgentActivity{
+			ID:     id,
+			Engine: "codex",
+			Label:  label,
+			State:  state,
+		},
+	})
+}
+
+func codexAgentState(status string) providers.AgentActivityState {
+	switch status {
+	case "pendingInit":
+		return providers.AgentActivityQueued
+	case "interrupted":
+		return providers.AgentActivityWaiting
+	case "completed", "shutdown":
+		return providers.AgentActivityCompleted
+	case "errored", "notFound":
+		return providers.AgentActivityFailed
+	default:
+		return providers.AgentActivityRunning
+	}
+}
+
+func codexCollabFallbackState(tool, status string) (providers.AgentActivityState, bool) {
+	if status == "failed" {
+		return providers.AgentActivityFailed, true
+	}
+	if tool == "closeAgent" && status == "completed" {
+		return providers.AgentActivityCompleted, true
+	}
+	switch tool {
+	case "spawnAgent", "resumeAgent", "sendInput":
+		return providers.AgentActivityRunning, true
+	default:
+		return "", false
+	}
+}
+
+func codexAgentLabel(path string) string {
+	label := strings.Trim(strings.TrimSpace(path), "/\\")
+	if index := strings.LastIndexAny(label, "/\\"); index >= 0 {
+		label = label[index+1:]
+	}
+	if label == "" {
+		return "Codex agent"
+	}
+	return label
 }
 
 func (sub *turnSubscription) emit(ev providers.StreamEvent) {

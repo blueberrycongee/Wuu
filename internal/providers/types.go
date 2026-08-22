@@ -393,6 +393,7 @@ const (
 	EventToolUseDelta    StreamEventType = "tool_use_delta"
 	EventToolUseEnd      StreamEventType = "tool_use_end"
 	EventTodoUpdate      StreamEventType = "todo_update"
+	EventAgentActivity   StreamEventType = "agent_activity"
 	EventRequestContext  StreamEventType = "request_context"
 	EventProviderState   StreamEventType = "provider_state"
 	EventUsage           StreamEventType = "usage"
@@ -403,6 +404,28 @@ const (
 	EventDone            StreamEventType = "done"
 	EventError           StreamEventType = "error"
 )
+
+// AgentActivityState is the provider-neutral lifecycle reported for an
+// external engine's native child agent. These observations do not imply that
+// Wuu owns, can resume, or can control the child session.
+type AgentActivityState string
+
+const (
+	AgentActivityQueued    AgentActivityState = "queued"
+	AgentActivityRunning   AgentActivityState = "running"
+	AgentActivityWaiting   AgentActivityState = "waiting"
+	AgentActivityFailed    AgentActivityState = "failed"
+	AgentActivityCompleted AgentActivityState = "completed"
+)
+
+// AgentActivity is a transient observation of one native child agent owned by
+// an external engine such as Codex or Claude.
+type AgentActivity struct {
+	ID     string             `json:"id"`
+	Engine string             `json:"engine"`
+	Label  string             `json:"label"`
+	State  AgentActivityState `json:"state"`
+}
 
 // CompactPhase identifies whether a compact event starts or finishes a
 // compaction pass. Empty is treated as completed for compatibility with
@@ -614,6 +637,7 @@ type StreamEvent struct {
 	// history; intentionally absent from the metadata-only attempt records.
 	CompactSummary string
 	TodoUpdate     *TodoUpdate
+	AgentActivity  *AgentActivity
 	RequestContext *RequestContextSummary
 	ProviderState  *ProviderStateSummary
 	Lifecycle      *StreamLifecycle

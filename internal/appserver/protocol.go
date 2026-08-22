@@ -2246,6 +2246,7 @@ type StreamEventPayload struct {
 	ToolResult       string                           `json:"tool_result,omitempty"`
 	ToolResultDetail *toolresult.Result               `json:"tool_result_detail,omitempty"`
 	TodoUpdate       *providers.TodoUpdate            `json:"todo_update,omitempty"`
+	AgentActivity    *providers.AgentActivity         `json:"agent_activity,omitempty"`
 	Lifecycle        *StreamLifecyclePayload          `json:"lifecycle,omitempty"`
 	RequestContext   *providers.RequestContextSummary `json:"request_context,omitempty"`
 	ProviderState    *providers.ProviderStateSummary  `json:"provider_state,omitempty"`

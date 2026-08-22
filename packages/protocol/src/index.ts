@@ -1993,8 +1993,16 @@ export type ProviderStatePayload = {
 
 export type StreamEventPayload = {
   type: string;
+  agent_activity?: ExternalAgentActivity;
   lifecycle?: StreamLifecyclePayload;
   provider_state?: ProviderStatePayload;
+};
+
+export type ExternalAgentActivity = {
+  id: string;
+  engine: "codex" | "claude";
+  label: string;
+  state: "queued" | "running" | "waiting" | "failed" | "completed";
 };
 
 export type TurnEventNotification = {

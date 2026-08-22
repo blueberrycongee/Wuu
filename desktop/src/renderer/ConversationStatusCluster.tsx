@@ -8,6 +8,7 @@ import type {
   RegisteredComposerStatusSource,
 } from "./plugins/PluginHost";
 import { useI18n } from "./i18n";
+import { externalAgentActivityStatusSource } from "./ExternalAgentActivityStore";
 
 const EMPTY_ITEMS: readonly ResolvedStatusItem[] = Object.freeze([]);
 const MAX_VISIBLE_ITEMS = 3;
@@ -41,11 +42,15 @@ export function ConversationStatusCluster({
     () => host.getComposerStatusSources(),
     () => host.getComposerStatusSources(),
   );
+  const allSources = useMemo<readonly RegisteredComposerStatusSource[]>(
+    () => Object.freeze([...sources, externalAgentActivityStatusSource]),
+    [sources],
+  );
   const context = useMemo<ComposerStatusContext>(
     () => Object.freeze({ threadId: visible ? threadId : undefined, mainConversation: true as const }),
     [threadId, visible],
   );
-  const store = useMemo(() => createComposerStatusStore(sources, context), [sources, context]);
+  const store = useMemo(() => createComposerStatusStore(allSources, context), [allSources, context]);
   const items = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const todoVisible = Boolean(
     todoUpdate

@@ -208,6 +208,7 @@ import { useSettingsRuntimeState } from "./SettingsRuntimeState";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { JumpToLatestPill } from "./JumpToLatestPill";
 import { ConversationStatusCluster } from "./ConversationStatusCluster";
+import { externalAgentActivityStore } from "./ExternalAgentActivityStore";
 import { SkillsCatalog } from "./SkillsCatalog";
 import { skillsAssistantPrompt, userVisibleThreads } from "./SkillsAssistant";
 import { runDebugPhaseForState } from "./RunDebugPanel";
@@ -1619,6 +1620,7 @@ export function App(): JSX.Element {
       // Keep them outside App state so provider events cannot re-render the
       // full desktop tree merely to advance the composer meters.
       turnTelemetryStore.ingest(event);
+      externalAgentActivityStore.ingest(event);
       if (serverEventCarriesActivitySessionUpdate(event)) {
         setActivitySessions((current) => reduceActivitySessionEvent(current, event));
       }

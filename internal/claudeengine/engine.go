@@ -319,17 +319,24 @@ type turnSubscription struct {
 	usage         providers.TokenUsage
 	tool          *pendingTool
 	toolBuffer    strings.Builder
+	agentTasks    map[string]observedAgentTask
 	lastRawResult json.RawMessage
 	finishOnce    sync.Once
 }
 
 type pendingTool struct {
-	id   string
-	name string
+	id            string
+	name          string
+	agentActivity bool
+}
+
+type observedAgentTask struct {
+	activityID string
+	label      string
 }
 
 func newTurnSubscription(sink agentengine.EventSink, done chan turnOutcome) *turnSubscription {
-	return &turnSubscription{sink: sink, done: done}
+	return &turnSubscription{sink: sink, done: done, agentTasks: make(map[string]observedAgentTask)}
 }
 
 func (sub *turnSubscription) attachTransport(t *Transport) {
@@ -356,6 +363,11 @@ type claudeLine struct {
 	StopReason   string          `json:"stop_reason"`
 	Usage        json.RawMessage `json:"usage"`
 	SessionID    string          `json:"session_id"`
+	TaskID       string          `json:"task_id"`
+	ToolUseID    string          `json:"tool_use_id"`
+	TaskType     string          `json:"task_type"`
+	Description  string          `json:"description"`
+	Status       string          `json:"status"`
 }
 
 // handleLine dispatches one stdout line. Unknown top-level types are
@@ -389,6 +401,7 @@ func (sub *turnSubscription) handleLine(line string) {
 				sub.mu.Unlock()
 			}
 		}
+		sub.handleTaskEvent(envelope)
 	case "assistant":
 		sub.handleAssistant(envelope.Message)
 	case "stream_event":
@@ -468,12 +481,10 @@ func (sub *turnSubscription) handleStreamEvent(envelope claudeLine) {
 func (sub *turnSubscription) startTool(block assistantContentBlock) {
 	if sub.tool != nil {
 		// A previous tool never completed; close it without arguments.
-		sub.emit(providers.StreamEvent{
-			Type:     providers.EventToolUseEnd,
-			ToolCall: &providers.ToolCall{ID: sub.tool.id, Name: sub.tool.name},
-		})
+		sub.finishTool(providers.AgentActivityCompleted)
 	}
-	sub.tool = &pendingTool{id: block.ID, name: block.Name}
+	agentActivity := isClaudeAgentTool(block.Name)
+	sub.tool = &pendingTool{id: block.ID, name: block.Name, agentActivity: agentActivity}
 	sub.toolBuffer.Reset()
 	sub.emit(providers.StreamEvent{
 		Type:     providers.EventToolUseStart,
@@ -484,6 +495,123 @@ func (sub *turnSubscription) startTool(block assistantContentBlock) {
 			sub.toolBuffer.Write(args)
 		}
 	}
+	if agentActivity {
+		sub.emitAgentActivity(block.ID, claudeAgentToolLabel(block.Input), providers.AgentActivityRunning)
+	}
+}
+
+func (sub *turnSubscription) handleTaskEvent(envelope claudeLine) {
+	taskID := strings.TrimSpace(envelope.TaskID)
+	if taskID == "" {
+		return
+	}
+	switch envelope.Subtype {
+	case "task_started":
+		if taskType := strings.TrimSpace(envelope.TaskType); taskType != "" && !strings.Contains(strings.ToLower(taskType), "agent") {
+			return
+		}
+		activityID := firstNonEmpty(envelope.ToolUseID, taskID)
+		label := strings.TrimSpace(envelope.Description)
+		if label == "" {
+			label = "Claude agent"
+		}
+		sub.agentTasks[taskID] = observedAgentTask{activityID: activityID, label: label}
+		sub.emitAgentActivity(activityID, label, providers.AgentActivityRunning)
+	case "task_progress":
+		task, ok := sub.agentTasks[taskID]
+		if !ok {
+			return
+		}
+		if label := strings.TrimSpace(envelope.Description); label != "" {
+			task.label = label
+			sub.agentTasks[taskID] = task
+		}
+		sub.emitAgentActivity(task.activityID, task.label, providers.AgentActivityRunning)
+	case "task_notification":
+		task, ok := sub.agentTasks[taskID]
+		if !ok {
+			return
+		}
+		state := claudeTaskTerminalState(envelope.Status)
+		sub.emitAgentActivity(task.activityID, task.label, state)
+		if state == providers.AgentActivityCompleted || state == providers.AgentActivityFailed {
+			delete(sub.agentTasks, taskID)
+		}
+	}
+}
+
+func (sub *turnSubscription) finishTool(agentState providers.AgentActivityState) {
+	if sub.tool == nil {
+		return
+	}
+	tool := sub.tool
+	sub.emit(providers.StreamEvent{
+		Type:     providers.EventToolUseEnd,
+		ToolCall: &providers.ToolCall{ID: tool.id, Name: tool.name, Arguments: sub.toolBuffer.String()},
+	})
+	if tool.agentActivity && !sub.tracksAgentActivity(tool.id) {
+		sub.emitAgentActivity(tool.id, "Claude agent", agentState)
+	}
+	sub.tool = nil
+	sub.toolBuffer.Reset()
+}
+
+func (sub *turnSubscription) tracksAgentActivity(activityID string) bool {
+	for _, task := range sub.agentTasks {
+		if task.activityID == activityID {
+			return true
+		}
+	}
+	return false
+}
+
+func (sub *turnSubscription) emitAgentActivity(id, label string, state providers.AgentActivityState) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return
+	}
+	sub.emit(providers.StreamEvent{
+		Type: providers.EventAgentActivity,
+		AgentActivity: &providers.AgentActivity{
+			ID:     id,
+			Engine: "claude",
+			Label:  firstNonEmpty(strings.TrimSpace(label), "Claude agent"),
+			State:  state,
+		},
+	})
+}
+
+func claudeTaskTerminalState(status string) providers.AgentActivityState {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "running", "in_progress":
+		return providers.AgentActivityRunning
+	case "failed", "error", "errored":
+		return providers.AgentActivityFailed
+	default:
+		return providers.AgentActivityCompleted
+	}
+}
+
+func isClaudeAgentTool(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "agent", "task":
+		return true
+	default:
+		return false
+	}
+}
+
+func claudeAgentToolLabel(input any) string {
+	fields, ok := input.(map[string]any)
+	if !ok {
+		return "Claude agent"
+	}
+	for _, key := range []string{"name", "description", "subagent_type"} {
+		if value, ok := fields[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return "Claude agent"
 }
 
 func (sub *turnSubscription) accumulateUsage(u tokenUsage) {
@@ -499,12 +627,11 @@ func (sub *turnSubscription) accumulateUsage(u tokenUsage) {
 func (sub *turnSubscription) handleResult(envelope claudeLine) {
 	// Close any in-flight tool rendering.
 	if sub.tool != nil {
-		args := sub.toolBuffer.String()
-		sub.emit(providers.StreamEvent{
-			Type:     providers.EventToolUseEnd,
-			ToolCall: &providers.ToolCall{ID: sub.tool.id, Name: sub.tool.name, Arguments: args},
-		})
-		sub.tool = nil
+		state := providers.AgentActivityCompleted
+		if envelope.IsError {
+			state = providers.AgentActivityFailed
+		}
+		sub.finishTool(state)
 	}
 	if envelope.IsError {
 		message := "claude turn failed"
