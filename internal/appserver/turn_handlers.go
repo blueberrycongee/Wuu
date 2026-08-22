@@ -1864,11 +1864,12 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	// build cannot host fails every turn with an explicit error instead of
 	// silently running the native loop.
 	engine := s.rt.EngineSessionForThread(ctx, threadRuntime, agentengine.ThreadBinding{
-		ThreadID:    th.ID,
-		RootDir:     firstNonEmpty(th.CWD, s.rt.RootDir),
-		Model:       th.Model,
-		Effort:      th.ModelEffort,
-		ExternalRef: th.EngineRef,
+		ThreadID:       th.ID,
+		RootDir:        firstNonEmpty(th.CWD, s.rt.RootDir),
+		Model:          th.Model,
+		Effort:         th.ModelEffort,
+		PermissionMode: th.PermissionMode,
+		ExternalRef:    th.EngineRef,
 		PersistRef: func(ref string) error {
 			return s.persistThreadEngineRef(th.ID, ref)
 		},

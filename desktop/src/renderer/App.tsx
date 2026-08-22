@@ -60,6 +60,7 @@ import {
   type CodexModelLoadState,
   type CodexRuntimeMenu,
   type ComposerVariant,
+  type PermissionMode,
 } from "./ComposerView";
 import {
   QueryHistoryPopover,
@@ -1146,12 +1147,15 @@ export function App(): JSX.Element {
     model: "",
     effort: "",
   });
+  const [draftPermissionMode, setDraftPermissionMode] = useState<PermissionMode | "">("");
   useEffect(() => {
     setDraftEngine("");
     setDraftEngineRuntime({ model: "", effort: "" });
+    setDraftPermissionMode("");
   }, [activeThreadID]);
   const selectDraftEngine = useCallback((id: string) => {
     setDraftEngine(id);
+    setDraftPermissionMode(id === "wuu" ? "" : "unconfined");
     setDraftEngineRuntime(
       id === "wuu"
         ? { model: "", effort: "" }
@@ -2694,6 +2698,17 @@ export function App(): JSX.Element {
           model: draftEngineRuntime.model || defaultEngineRuntime.model,
           effort: draftEngineRuntime.effort || defaultEngineRuntime.effort,
         };
+    const composerPermissionMode =
+      activeThread?.permission_mode
+      || (!activeThread && effectiveEngine !== "wuu"
+        ? draftPermissionMode || "unconfined"
+        : conversationRuntime?.permissions?.mode);
+    const composerRuntime = conversationRuntime && composerPermissionMode
+      ? {
+          ...conversationRuntime,
+          permissions: { ...conversationRuntime.permissions, mode: composerPermissionMode },
+        }
+      : conversationRuntime;
     return (
       <>
       <Composer
@@ -2731,7 +2746,7 @@ export function App(): JSX.Element {
             : streamStatus?.liveProgress
         }
         readOnly={activeThreadReadOnly}
-        initialized={visibleConversationRuntime}
+        initialized={composerRuntime}
         engines={engineInventory?.engines}
         activeEngine={effectiveEngine !== "wuu" ? effectiveEngine : ""}
         engineLocked={Boolean(activeThread)}
@@ -2805,9 +2820,14 @@ export function App(): JSX.Element {
         onSelectRuntimeEffort={(nextVariant) =>
           selectRuntimeEffort(nextVariant)
         }
-        onSelectPermissionMode={(mode) =>
-          void selectPermissionMode(mode)
-        }
+        onSelectPermissionMode={(mode) => {
+          if (!activeThread && effectiveEngine !== "wuu") {
+            setDraftPermissionMode(mode);
+            setAccessMenuOpen(false);
+            return;
+          }
+          void selectPermissionMode(mode);
+        }}
         onOpenSettings={() => {
           closeProjectMenus();
           setSettingsInitialPage("providers");
@@ -3931,7 +3951,12 @@ export function App(): JSX.Element {
         requireThread(
           await window.wuu.startThread({
             ...(draftEngine ? { engine: draftEngine } : {}),
-            ...(newThreadEngine !== "wuu" ? newThreadEngineRuntime : {}),
+            ...(newThreadEngine !== "wuu"
+              ? {
+                  ...newThreadEngineRuntime,
+                  permission_mode: draftPermissionMode || "unconfined",
+                }
+              : {}),
           }),
           "thread/start did not return a thread",
         );

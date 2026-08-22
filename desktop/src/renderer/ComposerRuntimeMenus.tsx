@@ -68,7 +68,7 @@ import {
 import { translateCurrent as translate, useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 
-type ChipTone = "neutral" | "danger";
+type ChipTone = "neutral" | "safe" | "warning" | "danger";
 
 // Agent engine display names. The engine abstraction stays out of the UI:
 // to the user these are agent choices on the same level as models.
@@ -158,29 +158,61 @@ type PermissionModeOption = {
   chipLabel: string;
   icon: LucideIcon;
   chipTone: ChipTone;
-  tone?: "danger";
+  tone: "safe" | "warning" | "danger";
 };
 
-function permissionModeOptions(): PermissionModeOption[] {
+function permissionModeLabels(engine?: string): Record<PermissionMode, { label: string; chipLabel: string }> {
+  switch (engine?.trim().toLowerCase()) {
+    case "codex":
+      return {
+        standard: { label: "Workspace Write", chipLabel: "Workspace Write" },
+        read_only: { label: "Read Only", chipLabel: "Read Only" },
+        unconfined: { label: "Danger Full Access", chipLabel: "Danger Full Access" }
+      };
+    case "claude":
+      return {
+        standard: { label: "Don't Ask", chipLabel: "Don't Ask" },
+        read_only: { label: "Plan", chipLabel: "Plan" },
+        unconfined: { label: "Bypass Permissions", chipLabel: "Bypass Permissions" }
+      };
+    default:
+      return {
+        standard: {
+          label: translate("runtime.permission.standardLabel"),
+          chipLabel: translate("runtime.permission.standard")
+        },
+        read_only: {
+          label: translate("runtime.permission.readOnly"),
+          chipLabel: translate("runtime.permission.readOnly")
+        },
+        unconfined: {
+          label: translate("runtime.permission.unconfined"),
+          chipLabel: translate("runtime.permission.unconfined")
+        }
+      };
+  }
+}
+
+function permissionModeOptions(engine?: string): PermissionModeOption[] {
+  const labels = permissionModeLabels(engine);
   return [
     {
       mode: "standard",
-      label: translate("runtime.permission.standardLabel"),
-      chipLabel: translate("runtime.permission.standard"),
+      ...labels.standard,
       icon: Shield,
-      chipTone: "neutral"
+      chipTone: "warning",
+      tone: "warning"
     },
     {
       mode: "read_only",
-      label: translate("runtime.permission.readOnly"),
-      chipLabel: translate("runtime.permission.readOnly"),
+      ...labels.read_only,
       icon: Eye,
-      chipTone: "neutral"
+      chipTone: "safe",
+      tone: "safe"
     },
     {
       mode: "unconfined",
-      label: translate("runtime.permission.unconfined"),
-      chipLabel: translate("runtime.permission.unconfined"),
+      ...labels.unconfined,
       icon: TriangleAlert,
       chipTone: "danger",
       tone: "danger"
@@ -206,8 +238,8 @@ export function permissionModeHasAdvancedOverrides(_permissions?: PermissionSumm
   return false;
 }
 
-export function permissionModeOption(mode: PermissionModeState): Omit<PermissionModeOption, "mode"> & { mode: PermissionModeState } {
-  const options = permissionModeOptions();
+export function permissionModeOption(mode: PermissionModeState, engine?: string): Omit<PermissionModeOption, "mode"> & { mode: PermissionModeState } {
+  const options = permissionModeOptions(engine);
   return options.find((option) => option.mode === mode) ?? options[0];
 }
 
@@ -1057,22 +1089,24 @@ export function SlashCommandIcon({ command }: { command: ComposerSlashCommand })
 
 export function AccessMenu({
   permissions,
+  engine,
   disabled,
   onSelect
 }: {
   permissions?: PermissionSummary;
+  engine?: string;
   disabled: boolean;
   onSelect: (mode: PermissionMode) => void;
 }): JSX.Element {
   useI18n();
   const mode = permissionModeFromSummary(permissions);
-  const options = permissionModeOptions();
+  const options = permissionModeOptions(engine);
   return (
     <div className="composer-context-menu access-menu" role="menu">
       {options.map((option) => (
         <button
           key={option.mode}
-          className={`permission-mode-option${option.tone === "danger" ? " danger" : ""}`}
+          className={`permission-mode-option ${option.tone}`}
           role="menuitemradio"
           aria-checked={mode === option.mode}
           aria-label={option.label}

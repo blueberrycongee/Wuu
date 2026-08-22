@@ -1589,6 +1589,7 @@ export type ThreadStartParams = {
   engine?: string;
   model?: string;
   effort?: string;
+  permission_mode?: string;
 };
 
 export type ThreadSearchResultItem = {

@@ -525,7 +525,7 @@ export function Composer({
   const slashCommands = slashCommandsOverride ?? builtinSlashCommands;
   const fastModelTarget = useMemo(() => runtimeFastModelTarget(initialized), [initialized]);
   const permissionMode = permissionModeFromSummary(initialized?.permissions);
-  const permissionOption = permissionModeOption(permissionMode);
+  const permissionOption = permissionModeOption(permissionMode, activeEngine);
   const permissionChipLabel = permissionOption.chipLabel;
   const projectPillLabel = heroProjectPillLabel(activeContext, activeProject);
   const projectPillTitle =
@@ -1200,6 +1200,7 @@ export function Composer({
                       >
                         <AccessMenu
                           permissions={initialized?.permissions}
+                          engine={activeEngine}
                           disabled={!initialized || readOnly || running}
                           onSelect={onSelectPermissionMode}
                         />

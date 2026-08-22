@@ -1219,8 +1219,9 @@ type ThreadStartParams struct {
 	Engine string `json:"engine,omitempty"`
 	// Model and Effort are engine-native runtime options for the new thread.
 	// Empty values inherit the current runtime selection.
-	Model  string `json:"model,omitempty"`
-	Effort string `json:"effort,omitempty"`
+	Model          string `json:"model,omitempty"`
+	Effort         string `json:"effort,omitempty"`
+	PermissionMode string `json:"permission_mode,omitempty"`
 }
 
 // EngineInfo describes one agent engine for the settings surface.

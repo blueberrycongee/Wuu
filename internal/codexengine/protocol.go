@@ -94,12 +94,12 @@ type InitializeResponse struct {
 }
 
 // ApprovalPolicy controls interactive approval routing. Wire values are
-// kebab-case (untrusted/onRequest/granular/never).
+// kebab-case (untrusted/on-request/granular/never).
 type ApprovalPolicy string
 
 const (
 	ApprovalUntrusted ApprovalPolicy = "untrusted"
-	ApprovalOnRequest ApprovalPolicy = "onRequest"
+	ApprovalOnRequest ApprovalPolicy = "on-request"
 	ApprovalGranular  ApprovalPolicy = "granular"
 	ApprovalNever     ApprovalPolicy = "never"
 )
@@ -111,6 +111,19 @@ const (
 	SandboxReadOnly       SandboxMode = "read-only"
 	SandboxWorkspaceWrite SandboxMode = "workspace-write"
 	SandboxDangerFull     SandboxMode = "danger-full-access"
+)
+
+// SandboxPolicy is the per-turn sandbox override. Codex uses camel-case type
+// discriminators here even though thread/start uses kebab-case SandboxMode.
+type SandboxPolicy struct {
+	Type          string   `json:"type"`
+	WritableRoots []string `json:"writableRoots,omitempty"`
+}
+
+const (
+	SandboxPolicyReadOnly       = "readOnly"
+	SandboxPolicyWorkspaceWrite = "workspaceWrite"
+	SandboxPolicyDangerFull     = "dangerFullAccess"
 )
 
 // ReasoningEffort mirrors codex reasoning effort values.
@@ -193,6 +206,8 @@ type TurnStartParams struct {
 	Input                 []UserInput     `json:"input"`
 	Model                 string          `json:"model,omitempty"`
 	ReasoningEffort       ReasoningEffort `json:"reasoningEffort,omitempty"`
+	ApprovalPolicy        ApprovalPolicy  `json:"approvalPolicy,omitempty"`
+	SandboxPolicy         *SandboxPolicy  `json:"sandboxPolicy,omitempty"`
 	RuntimeWorkspaceRoots []string        `json:"runtimeWorkspaceRoots,omitempty"`
 	Permissions           string          `json:"permissions,omitempty"`
 }

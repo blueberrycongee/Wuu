@@ -163,6 +163,8 @@ while the target thread runs.
 Creates a new persistent conversation thread backed by normal session storage.
 When called with `{"ephemeral": true}`, creates an in-memory thread that is not
 written to the session store and cannot be resumed after the server exits.
+The optional `permission_mode` selects `standard`, `read_only`, or `unconfined`.
+New external-engine threads default to `unconfined` when callers omit it.
 
 `thread/resume`
 

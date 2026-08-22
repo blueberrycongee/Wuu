@@ -65,24 +65,26 @@ func (e *Engine) Resume(ctx context.Context, req agentengine.ResumeRequest) (age
 // an empty ref means the first turn creates the codex thread lazily.
 func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.ThreadBinding) (agentengine.Session, error) {
 	return e.newSession(ctx, sessionOptions{
-		threadID:    binding.ThreadID,
-		rootDir:     binding.RootDir,
-		model:       binding.Model,
-		effort:      ReasoningEffort(binding.Effort),
-		externalRef: binding.ExternalRef,
-		persistRef:  binding.PersistRef,
-		approval:    binding.RequestApproval,
+		threadID:       binding.ThreadID,
+		rootDir:        binding.RootDir,
+		model:          binding.Model,
+		effort:         ReasoningEffort(binding.Effort),
+		permissionMode: binding.PermissionMode,
+		externalRef:    binding.ExternalRef,
+		persistRef:     binding.PersistRef,
+		approval:       binding.RequestApproval,
 	})
 }
 
 type sessionOptions struct {
-	threadID    string
-	rootDir     string
-	model       string
-	effort      ReasoningEffort
-	externalRef string
-	persistRef  func(string) error
-	approval    agentengine.ApprovalHandler
+	threadID       string
+	rootDir        string
+	model          string
+	effort         ReasoningEffort
+	permissionMode string
+	externalRef    string
+	persistRef     func(string) error
+	approval       agentengine.ApprovalHandler
 }
 
 func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengine.Session, error) {
@@ -98,15 +100,16 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 		approval = e.RequestApproval
 	}
 	return &Session{
-		engine:   e,
-		client:   client,
-		threadID: opts.threadID,
-		rootDir:  opts.rootDir,
-		model:    opts.model,
-		effort:   opts.effort,
-		ref:      opts.externalRef,
-		persist:  opts.persistRef,
-		approval: approval,
+		engine:         e,
+		client:         client,
+		threadID:       opts.threadID,
+		rootDir:        opts.rootDir,
+		model:          opts.model,
+		effort:         opts.effort,
+		permissionMode: opts.permissionMode,
+		ref:            opts.externalRef,
+		persist:        opts.persistRef,
+		approval:       approval,
 	}, nil
 }
 
@@ -118,10 +121,11 @@ type Session struct {
 	engine *Engine
 	client *Client
 
-	threadID string
-	rootDir  string
-	model    string
-	effort   ReasoningEffort
+	threadID       string
+	rootDir        string
+	model          string
+	effort         ReasoningEffort
+	permissionMode string
 
 	mu          sync.Mutex
 	ref         string
@@ -293,13 +297,12 @@ func (s *Session) ensureThread(ctx context.Context) error {
 		return nil
 	}
 	var resp ThreadStartResponse
+	sandbox, approval, _ := codexPermissionSettings(s.permissionMode)
 	err := s.client.Request(ctx, MethodThreadStart, ThreadStartParams{
-		Model: s.model,
-		CWD:   s.rootDir,
-		// Interactive approvals surface through the server request handlers;
-		// the engine's default decision policy applies when no handler is
-		// wired (deny).
-		ApprovalPolicy: ApprovalOnRequest,
+		Model:          s.model,
+		CWD:            s.rootDir,
+		ApprovalPolicy: approval,
+		Sandbox:        sandbox,
 	}, &resp)
 	if err != nil {
 		return fmt.Errorf("codex thread/start: %w", err)
@@ -323,13 +326,30 @@ func (s *Session) ensureThread(ctx context.Context) error {
 
 func (s *Session) startTurn(ctx context.Context, prompt string) (TurnStartResponse, error) {
 	var resp TurnStartResponse
+	_, approval, sandboxPolicy := codexPermissionSettings(s.permissionMode)
+	if sandboxPolicy.Type == SandboxPolicyWorkspaceWrite && strings.TrimSpace(s.rootDir) != "" {
+		sandboxPolicy.WritableRoots = []string{s.rootDir}
+	}
 	err := s.client.Request(ctx, MethodTurnStart, TurnStartParams{
-		ThreadID: s.ref,
-		Input:    []UserInput{{Type: "text", Text: prompt}},
+		ThreadID:        s.ref,
+		Input:           []UserInput{{Type: "text", Text: prompt}},
 		Model:           s.model,
 		ReasoningEffort: s.effort,
+		ApprovalPolicy:  approval,
+		SandboxPolicy:   &sandboxPolicy,
 	}, &resp)
 	return resp, err
+}
+
+func codexPermissionSettings(mode string) (SandboxMode, ApprovalPolicy, SandboxPolicy) {
+	switch strings.TrimSpace(mode) {
+	case "read_only":
+		return SandboxReadOnly, ApprovalNever, SandboxPolicy{Type: SandboxPolicyReadOnly}
+	case "unconfined":
+		return SandboxDangerFull, ApprovalNever, SandboxPolicy{Type: SandboxPolicyDangerFull}
+	default:
+		return SandboxWorkspaceWrite, ApprovalOnRequest, SandboxPolicy{Type: SandboxPolicyWorkspaceWrite}
+	}
 }
 
 func (s *Session) interrupt(ctx context.Context, turnID string) error {

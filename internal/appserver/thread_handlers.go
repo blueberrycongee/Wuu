@@ -86,6 +86,14 @@ func (s *Server) handleThreadStart(req Request) error {
 	if engineID != agentengine.EngineWuu {
 		selection.Provider = string(engineID)
 	}
+	if mode := strings.TrimSpace(params.PermissionMode); mode != "" {
+		selection.PermissionMode = config.NormalizePermissionMode(mode)
+	} else if engineID != agentengine.EngineWuu {
+		// External agents initially run without interactive approval friction.
+		// The persisted generic mode is later mapped to each engine's native
+		// full-access setting and remains visible in the composer.
+		selection.PermissionMode = config.PermissionModeUnconfined
+	}
 	workspaceKind := workspaceKindForCWD(s.rt.WuuHome, threadCWD)
 	threadSource := ""
 	if !params.Ephemeral {

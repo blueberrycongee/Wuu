@@ -87,22 +87,24 @@ func (e *Engine) Resume(ctx context.Context, req agentengine.ResumeRequest) (age
 // SessionForThread binds the claude engine to an existing thread runtime.
 func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.ThreadBinding) (agentengine.Session, error) {
 	return e.newSession(ctx, sessionOptions{
-		threadID:    binding.ThreadID,
-		rootDir:     firstNonEmpty(binding.RootDir, e.rootDir),
-		model:       binding.Model,
-		effort:      binding.Effort,
-		externalRef: binding.ExternalRef,
-		persistRef:  binding.PersistRef,
+		threadID:       binding.ThreadID,
+		rootDir:        firstNonEmpty(binding.RootDir, e.rootDir),
+		model:          binding.Model,
+		effort:         binding.Effort,
+		permissionMode: binding.PermissionMode,
+		externalRef:    binding.ExternalRef,
+		persistRef:     binding.PersistRef,
 	})
 }
 
 type sessionOptions struct {
-	threadID    string
-	rootDir     string
-	model       string
-	effort      string
-	externalRef string
-	persistRef  func(string) error
+	threadID       string
+	rootDir        string
+	model          string
+	effort         string
+	permissionMode string
+	externalRef    string
+	persistRef     func(string) error
 }
 
 func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengine.Session, error) {
@@ -110,12 +112,13 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 		return nil, errors.New("claude engine is not configured")
 	}
 	return &Session{
-		engine:  e,
-		rootDir: opts.rootDir,
-		model:   opts.model,
-		effort:  opts.effort,
-		ref:     opts.externalRef,
-		persist: opts.persistRef,
+		engine:         e,
+		rootDir:        opts.rootDir,
+		model:          opts.model,
+		effort:         opts.effort,
+		permissionMode: opts.permissionMode,
+		ref:            opts.externalRef,
+		persist:        opts.persistRef,
 	}, nil
 }
 
@@ -123,10 +126,11 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 // child is spawned lazily on the first turn and resumed on later turns via
 // --resume <session-id>.
 type Session struct {
-	engine  *Engine
-	rootDir string
-	model   string
-	effort  string
+	engine         *Engine
+	rootDir        string
+	model          string
+	effort         string
+	permissionMode string
 
 	mu      sync.Mutex
 	ref     string
@@ -232,9 +236,7 @@ func (s *Session) spawn(ctx context.Context, sub *turnSubscription) (*Transport,
 		"--output-format", "stream-json",
 		"--verbose",
 		"--include-partial-messages",
-		// Fail closed: without a wired approval handler the CLI must not
-		// wait for an interactive permission prompt that never arrives.
-		"--permission-mode", "dontAsk",
+		"--permission-mode", claudePermissionMode(s.permissionMode),
 	}
 	if model := strings.TrimSpace(s.model); model != "" {
 		args = append(args, "--model", model)
@@ -256,6 +258,19 @@ func (s *Session) spawn(ctx context.Context, sub *turnSubscription) (*Transport,
 	transport.OnLine(sub.handleLine)
 	sub.attachTransport(transport)
 	return transport, nil
+}
+
+func claudePermissionMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case "read_only":
+		return "plan"
+	case "unconfined":
+		return "bypassPermissions"
+	default:
+		// The headless stream-json transport has no Claude permission-prompt
+		// bridge yet, so standard mode denies requests instead of hanging.
+		return "dontAsk"
+	}
 }
 
 // turnPrompt extracts the user's latest message as the turn input.

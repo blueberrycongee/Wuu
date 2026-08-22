@@ -1453,10 +1453,28 @@
   color: var(--danger);
 }
 
+.permission-chip.tone-safe {
+  color: var(--success);
+}
+
+.permission-chip.tone-warning {
+  color: var(--warning);
+}
+
 .permission-chip.tone-neutral:hover,
 .permission-chip.tone-neutral[aria-expanded="true"] {
   background: var(--surface-2);
   color: var(--ink);
+}
+
+.permission-chip.tone-safe:hover,
+.permission-chip.tone-safe[aria-expanded="true"] {
+  background: var(--success-soft);
+}
+
+.permission-chip.tone-warning:hover,
+.permission-chip.tone-warning[aria-expanded="true"] {
+  background: var(--warning-soft);
 }
 
 .permission-chip.tone-danger:hover,
@@ -1857,6 +1875,23 @@
   background: transparent;
 }
 
+.permission-chip.tone-safe:hover::before,
+.permission-chip.tone-safe[aria-expanded="true"]::before {
+  background: var(--success-soft);
+}
+
+.permission-chip.tone-warning:hover::before,
+.permission-chip.tone-warning[aria-expanded="true"]::before {
+  background: var(--warning-soft);
+}
+
+.permission-chip.tone-safe:hover,
+.permission-chip.tone-safe[aria-expanded="true"],
+.permission-chip.tone-warning:hover,
+.permission-chip.tone-warning[aria-expanded="true"] {
+  background: transparent;
+}
+
 .permission-chip.tone-danger:hover::before,
 .permission-chip.tone-danger[aria-expanded="true"]::before {
   background: var(--danger-soft);
@@ -2221,6 +2256,14 @@
   color: var(--danger);
 }
 
+.permission-mode-option.safe strong {
+  color: var(--success);
+}
+
+.permission-mode-option.warning strong {
+  color: var(--warning);
+}
+
 .composer-context-menu .permission-mode-option[aria-checked="true"] {
   border-color: var(--surface-4);
   background: var(--surface-2);
@@ -2234,6 +2277,24 @@
 .composer-context-menu .permission-mode-option.danger[aria-checked="true"] {
   border-color: var(--composer-permission-mode-danger-border);
   background: var(--composer-permission-mode-danger-bg);
+}
+
+.composer-context-menu .permission-mode-option.safe:hover:not(:disabled),
+.composer-context-menu .permission-mode-option.safe[aria-checked="true"] {
+  background: var(--success-soft);
+}
+
+.composer-context-menu .permission-mode-option.safe[aria-checked="true"] {
+  border-color: color-mix(in srgb, var(--success) 32%, transparent);
+}
+
+.composer-context-menu .permission-mode-option.warning:hover:not(:disabled),
+.composer-context-menu .permission-mode-option.warning[aria-checked="true"] {
+  background: var(--warning-soft);
+}
+
+.composer-context-menu .permission-mode-option.warning[aria-checked="true"] {
+  border-color: var(--warning-border);
 }
 
 .composer-context-menu button svg {
