@@ -2,6 +2,7 @@ import { _layout, palette } from "blobatar";
 import {
   happy,
   idle as idleExpression,
+  scared,
   smug,
   surprised,
   type Expression,
@@ -95,6 +96,10 @@ export const WUU_MASCOT_EYES = {
   sleepy: { esx: 1.2, esy: 0.22 },
   // One round eye, the other closed to a flat bar — a wink.
   wink: { esx: 1.4, esy: 0.5, esx2: 0.2, esy2: -0.38 },
+  // Manga panic: the left eye goes almost round while the right stays taller
+  // and slightly pinched. The uneven pair and inward lean read as startled
+  // rather than sharing search's clean, symmetrical round-eye surprise.
+  panic: { esx: 1.55, esy: 0.58, tilt: -11, esx2: -0.24, esy2: 0.16, tilt2: 7 },
 } as const satisfies Readonly<Record<string, MascotEyeStyle>>;
 
 export type WuuMascotAccessory =
@@ -129,13 +134,12 @@ export const WUU_MASCOT_ACTIVITY_EXPRESSIONS: Readonly<
   Record<WuuMascotActivity, Expression | undefined>
 > = {
   idle: withMascotEyes(idleExpression, WUU_MASCOT_EYES.long),
-  // Existing activities keep the long-eye identity they always had; nothing here
-  // changes their previous look. `WUU_MASCOT_EYES` holds additional eye states
-  // for when a caller wants one, and search already opts into the round surprise
-  // that was requested.
+  // Most activities keep the long-eye identity. Search uses a clean round
+  // surprise, while compact deliberately breaks symmetry with the manga panic
+  // pair so the two busy states cannot be mistaken for each other.
   compose: withMascotEyes(happy, WUU_MASCOT_EYES.long),
   thinking: withMascotEyes(smug, WUU_MASCOT_EYES.long),
-  compact: withMascotEyes(smug, WUU_MASCOT_EYES.long),
+  compact: withMascotEyes(scared, WUU_MASCOT_EYES.panic),
   search: withMascotEyes(surprised, WUU_MASCOT_EYES.round),
   edit: withMascotEyes(happy, WUU_MASCOT_EYES.long),
   command: withMascotEyes(happy, WUU_MASCOT_EYES.long),
