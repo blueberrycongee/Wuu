@@ -1452,10 +1452,10 @@ describe("Composer send control", () => {
       /@container composer-toolbar[^{}]*{[^}]*(?:\.provider-pill|\.model-label)[^}]*display:\s*none/s,
     );
     expect(workspaceCSS).toMatch(
-      /\.codex-runtime-anchor\s*{[^}]*max-width:\s*280px;[^}]*flex:\s*0 0 auto;/,
+      /\.codex-runtime-anchor\s*{[^}]*max-width:\s*280px;[^}]*flex:\s*0 1 auto;/,
     );
     expect(responsiveDesignCSS).toMatch(
-      /@media \(max-width: 1120px\)[\s\S]*?\.codex-runtime-anchor\s*{[^}]*max-width:\s*240px;[^}]*flex:\s*0 1 220px;/,
+      /@media \(max-width: 1120px\)[\s\S]*?\.codex-runtime-anchor\s*{[^}]*max-width:\s*240px;[^}]*flex:\s*0 1 auto;/,
     );
   });
 
