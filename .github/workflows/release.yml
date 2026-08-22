@@ -41,7 +41,7 @@ jobs:
       - name: Check release version
         run: node ../scripts/release-version.mjs check "$GITHUB_REF_NAME"
 
-      - name: Check and test Go core
+      - name: Check and test Go packages
         run: make -C .. check-go test-go-uncached
 
       - name: Install

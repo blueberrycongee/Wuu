@@ -12,13 +12,15 @@ LDFLAGS := -s -w \
 	-X github.com/blueberrycongee/wuu/internal/version.Version=$(BUILD_VERSION) \
 	-X github.com/blueberrycongee/wuu/internal/version.Commit=$(COMMIT) \
 	-X github.com/blueberrycongee/wuu/internal/version.Date=$(DATE)
-GO_DIRS := cmd internal prompts
-GO_PACKAGES := ./cmd/... ./internal/... ./prompts/...
+GO_DIRS := cmd internal packages/plugin-go plugins prompts
+GO_PACKAGES := ./cmd/... ./internal/... ./packages/plugin-go/... ./plugins/... ./prompts/...
 
 setup:
 	npm ci --prefix desktop
 	npm ci --prefix clients/core
 	npm ci --prefix clients/mobile
+	npm ci --prefix clients/mobile-web
+	npm ci --prefix packages/plugin-sdk
 	npm ci --prefix packages/protocol
 	npm ci --prefix docs-site --no-audit --no-fund
 
@@ -63,8 +65,10 @@ check-desktop:
 
 check-clients:
 	npm --prefix packages/protocol run typecheck
+	npm --prefix packages/plugin-sdk run typecheck
 	npm --prefix clients/core run typecheck
 	npm --prefix clients/mobile run typecheck
+	npm --prefix clients/mobile-web run typecheck
 
 check-docs:
 	npm --prefix docs-site run check
@@ -81,8 +85,10 @@ test-desktop:
 	npm --prefix desktop test
 
 test-clients:
+	npm --prefix packages/plugin-sdk test
 	npm --prefix clients/core test
 	npm --prefix clients/mobile test
+	npm --prefix clients/mobile-web test
 
 test-native:
 	npm --prefix desktop run test:cua-mac
@@ -97,6 +103,7 @@ build-desktop:
 
 build-clients:
 	npm --prefix clients/mobile run export:web
+	npm --prefix clients/mobile-web run build
 
 build-docs:
 	npm --prefix docs-site run build

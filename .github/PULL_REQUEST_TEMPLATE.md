@@ -10,9 +10,8 @@ doc it implements.
 
 ## Test plan
 
-- [ ] Added or updated unit tests for the change
-- [ ] `go test ./...` passes
-- [ ] `cd desktop && npm test` passes
+- [ ] Added or updated behavior/contract tests when the change needs them
+- [ ] `make check test` passes, or failures unrelated to this change are noted below
 - [ ] Manually verified the behavior in the desktop shell (if applicable)
 
 ## Risk and rollback

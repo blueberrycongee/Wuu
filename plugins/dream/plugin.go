@@ -21,11 +21,11 @@ const (
 	// sessionMemoryService is the registry name dream resolves to read the
 	// current project memory before each run. The name is the contract; no
 	// provider-specific wiring exists on either side.
-	sessionMemoryService  = "memory.session"
-	stateStorageKey       = "dream.state"
-	defaultIntervalDays   = 7
-	defaultMinSessions    = 5
-	failureBackoff        = time.Hour
+	sessionMemoryService = "memory.session"
+	stateStorageKey      = "dream.state"
+	defaultIntervalDays  = 7
+	defaultMinSessions   = 5
+	failureBackoff       = time.Hour
 )
 
 type settings struct {

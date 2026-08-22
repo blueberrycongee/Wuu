@@ -5,10 +5,31 @@ import { resolve } from "node:path";
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: "jsdom",
-    globals: false,
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    setupFiles: ["src/renderer/test/setup.ts"],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "main",
+          environment: "node",
+          globals: false,
+          include: ["src/main/**/*.test.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "renderer",
+          environment: "jsdom",
+          globals: false,
+          include: [
+            "src/renderer/**/*.test.ts",
+            "src/renderer/**/*.test.tsx",
+            "src/shared/**/*.test.ts",
+          ],
+          setupFiles: ["src/renderer/test/setup.ts"],
+        },
+      },
+    ],
   },
   resolve: {
     alias: {
