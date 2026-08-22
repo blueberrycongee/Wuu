@@ -1,5 +1,6 @@
 import {
   Archive,
+  ChevronRight,
   Clock,
   FileText,
   Folder,
@@ -19,6 +20,9 @@ import {
 import {
   type PointerEvent as ReactPointerEvent,
   type DragEvent as ReactDragEvent,
+  type CSSProperties,
+  type HTMLAttributes,
+  type ReactNode,
   type RefObject,
   useCallback,
   useMemo,
@@ -30,6 +34,7 @@ import {
   closestCenter,
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -39,8 +44,11 @@ import {
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { ChannelRoom, DesktopProject } from "../shared/protocol";
 import {
   isThreadExecuting,
@@ -98,6 +106,67 @@ import { PluginSlot } from "./plugins/PluginSlot";
 export const SIDEBAR_SECTION_PINNED = "__wuu_pinned__";
 const FOLDER_REMOVE_DROP_TARGET = "__wuu_remove_from_folder__";
 const FOLDER_SORTABLE_PREFIX = "__wuu_folder_sort__:";
+const SIDEBAR_FUNCTIONAL_GROUP_ORDER_KEY = "wuu.desktop.sidebarFunctionalGroupOrder";
+const SIDEBAR_COLLAPSED_FUNCTIONAL_GROUPS_KEY = "wuu.desktop.sidebarCollapsedFunctionalGroups";
+const SIDEBAR_FUNCTIONAL_GROUP_IDS = ["folders", "workspace"] as const;
+type SidebarFunctionalGroupID = (typeof SIDEBAR_FUNCTIONAL_GROUP_IDS)[number];
+
+function loadSidebarFunctionalGroupOrder(): SidebarFunctionalGroupID[] {
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(SIDEBAR_FUNCTIONAL_GROUP_ORDER_KEY) ?? "[]",
+    );
+    if (!Array.isArray(parsed)) return [...SIDEBAR_FUNCTIONAL_GROUP_IDS];
+    const order = parsed.filter(
+      (id): id is SidebarFunctionalGroupID =>
+        typeof id === "string"
+        && SIDEBAR_FUNCTIONAL_GROUP_IDS.includes(id as SidebarFunctionalGroupID),
+    );
+    return order.length === SIDEBAR_FUNCTIONAL_GROUP_IDS.length
+      && new Set(order).size === SIDEBAR_FUNCTIONAL_GROUP_IDS.length
+      ? order
+      : [...SIDEBAR_FUNCTIONAL_GROUP_IDS];
+  } catch {
+    return [...SIDEBAR_FUNCTIONAL_GROUP_IDS];
+  }
+}
+
+function persistSidebarFunctionalGroupOrder(order: SidebarFunctionalGroupID[]): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_FUNCTIONAL_GROUP_ORDER_KEY, JSON.stringify(order));
+  } catch (reason) {
+    console.warn("sidebar functional group order persistence failed", reason);
+  }
+}
+
+function loadCollapsedSidebarFunctionalGroups(): Set<SidebarFunctionalGroupID> {
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(SIDEBAR_COLLAPSED_FUNCTIONAL_GROUPS_KEY) ?? "[]",
+    );
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter(
+      (id): id is SidebarFunctionalGroupID =>
+        typeof id === "string"
+        && SIDEBAR_FUNCTIONAL_GROUP_IDS.includes(id as SidebarFunctionalGroupID),
+    ));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistCollapsedSidebarFunctionalGroups(
+  collapsedIDs: Set<SidebarFunctionalGroupID>,
+): void {
+  try {
+    window.localStorage.setItem(
+      SIDEBAR_COLLAPSED_FUNCTIONAL_GROUPS_KEY,
+      JSON.stringify([...collapsedIDs]),
+    );
+  } catch (reason) {
+    console.warn("collapsed sidebar functional groups persistence failed", reason);
+  }
+}
 
 /**
  * Fixed-position 协作 (group chat) section. Like the pinned section it is
@@ -312,6 +381,13 @@ export function AppSidebar({
   }, [pinnedThreads, projectThreadsByProjectID]);
   const organization = useSessionOrganization(organizationSourceThreads);
   const [collapsedFolderIDs, setCollapsedFolderIDs] = useState<Set<string>>(() => new Set());
+  const [functionalGroupOrder, setFunctionalGroupOrder] = useState<SidebarFunctionalGroupID[]>(
+    loadSidebarFunctionalGroupOrder,
+  );
+  const [collapsedFunctionalGroupIDs, setCollapsedFunctionalGroupIDs] =
+    useState<Set<SidebarFunctionalGroupID>>(loadCollapsedSidebarFunctionalGroups);
+  const [draggingFunctionalGroupID, setDraggingFunctionalGroupID] =
+    useState<SidebarFunctionalGroupID>();
   const [groupContextMenu, setGroupContextMenu] = useState<{
     kind: "folder" | "pin";
     group: SessionGroup;
@@ -372,6 +448,7 @@ export function AppSidebar({
   // drag — matches SessionTabs so the two surfaces share a feel.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [draggingSectionID, setDraggingSectionID] = useState<string | undefined>();
   function handleDragStart(event: DragStartEvent): void {
@@ -427,6 +504,31 @@ export function AppSidebar({
   }
   function handleFolderDragCancel(): void {
     setDraggingFolderID(undefined);
+  }
+  function handleFunctionalGroupDragStart(event: DragStartEvent): void {
+    setDraggingFunctionalGroupID(String(event.active.id) as SidebarFunctionalGroupID);
+  }
+  function handleFunctionalGroupDragEnd(event: DragEndEvent): void {
+    const activeID = String(event.active.id);
+    const overID = event.over ? String(event.over.id) : undefined;
+    const next = reorderSidebarSections(functionalGroupOrder, activeID, overID);
+    if (next !== functionalGroupOrder) {
+      const nextOrder = next as SidebarFunctionalGroupID[];
+      setFunctionalGroupOrder(nextOrder);
+      persistSidebarFunctionalGroupOrder(nextOrder);
+    }
+    setDraggingFunctionalGroupID(undefined);
+  }
+  function handleFunctionalGroupDragCancel(): void {
+    setDraggingFunctionalGroupID(undefined);
+  }
+  function toggleFunctionalGroupCollapsed(groupID: SidebarFunctionalGroupID): void {
+    setCollapsedFunctionalGroupIDs((current) => {
+      const next = new Set(current);
+      if (next.has(groupID)) next.delete(groupID); else next.add(groupID);
+      persistCollapsedSidebarFunctionalGroups(next);
+      return next;
+    });
   }
   const pinnedRows = pinnedThreads;
   const hasPinnedRows = pinnedRows.length > 0;
@@ -609,16 +711,6 @@ export function AppSidebar({
   const pinnedCollapsed = collapsedSidebarSectionIDs.has(
     SIDEBAR_SECTION_PINNED,
   );
-  const functionalGroups = ([{
-    id: "workspace" as const,
-    label: t("sidebar.workspace"),
-    sectionIDs: sectionOrder,
-  }] satisfies Array<{
-    id: "workspace";
-    label: string;
-    sectionIDs: string[];
-  }>).filter((group) => group.sectionIDs.length > 0);
-
   const navigationNodes = useMemo<readonly NavigationSourceNode[]>(() => {
     const nodes: NavigationSourceNode[] = [
       {
@@ -699,12 +791,16 @@ export function AppSidebar({
       }
     }
 
+    const functionalGroupNodes: Record<SidebarFunctionalGroupID, NavigationSourceNode[]> = {
+      folders: [],
+      workspace: [],
+    };
     if (organization.folders.length > 0) {
-      nodes.push({ id: "section:folders", kind: "section", label: t("sidebar.folders"), icon: "folder", depth: 0 });
+      functionalGroupNodes.folders.push({ id: "section:folders", kind: "section", label: t("sidebar.folders"), icon: "folder", depth: 0 });
       for (const folder of organization.folders) {
         const parentID = `folder:${folder.id}`;
         const folderThreads = folderThreadsByID[folder.id] ?? [];
-        nodes.push({
+        functionalGroupNodes.folders.push({
           id: parentID,
           kind: "project",
           label: folder.name,
@@ -720,7 +816,7 @@ export function AppSidebar({
           )),
         });
         for (const thread of folderThreads) {
-          nodes.push(threadNavigationNode(
+          functionalGroupNodes.folders.push(threadNavigationNode(
             thread,
             parentID,
             activeThreadID,
@@ -733,7 +829,7 @@ export function AppSidebar({
     }
 
     if (sectionOrder.length > 0) {
-      nodes.push({
+      functionalGroupNodes.workspace.push({
         id: "section:workspace",
         kind: "section",
         label: t("sidebar.workspace"),
@@ -750,7 +846,7 @@ export function AppSidebar({
           ? sidebarScratchPseudoActive
           : projectID === (activeProjectID ?? state.activeProjectId)) &&
           !threads.some((thread) => thread.id === activeThreadID);
-        nodes.push({
+        functionalGroupNodes.workspace.push({
           id: `project:${projectID}`,
           kind: "project",
           label: isScratch ? t("sidebar.conversations") : project.name,
@@ -769,7 +865,7 @@ export function AppSidebar({
             : () => onSelectProjectWorkspace(projectID),
         });
         for (const thread of threads) {
-          nodes.push(threadNavigationNode(
+          functionalGroupNodes.workspace.push(threadNavigationNode(
             thread,
             `project:${projectID}`,
             activeThreadID,
@@ -779,6 +875,9 @@ export function AppSidebar({
           ));
         }
       }
+    }
+    for (const groupID of functionalGroupOrder) {
+      nodes.push(...functionalGroupNodes[groupID]);
     }
     if (pluginNavigationEntries.length > 0) {
       nodes.push({
@@ -821,7 +920,7 @@ export function AppSidebar({
     onTogglePinned, pendingThreadID, pinnedGroups, pinnedHasRunning,
     pinnedHasUnread, pinnedRows,
     visibleProjectThreadsByProjectID,
-    folderThreadsByID, organization.folders, organization.pinGroups,
+    folderThreadsByID, functionalGroupOrder, organization.folders, organization.pinGroups,
     searchOpen, sectionOrder, sidebarProjects, sidebarScratchPseudoActive,
     activePluginMainView, openPluginNavigation, pluginNavigationEntries,
     state.activeProjectId, state.initialized, state.lastViewedTurnByThreadID, t,
@@ -1011,43 +1110,69 @@ export function AppSidebar({
               </div>
             </div>
           </section>
-          <section className="sidebar-functional-group" aria-label={t("sidebar.folders")}>
-            <div
-              className={`sidebar-functional-heading sidebar-folder-heading${folderDragCanRemove ? " remove-drop-available" : ""}${folderDropTargetID === FOLDER_REMOVE_DROP_TARGET ? " drop-active" : ""}`}
-              data-folder-remove-drop={folderDragCanRemove || undefined}
-              onDragEnter={dragSessionOverFolderRemoval}
-              onDragOver={dragSessionOverFolderRemoval}
-              onDragLeave={(event) => leaveSessionFolderTarget(event, FOLDER_REMOVE_DROP_TARGET)}
-              onDrop={dropSessionOutOfFolder}
-            >
-              <span className="sidebar-functional-heading-label sidebar-folder-heading-label">
-                {folderDragCanRemove ? <FolderMinus aria-hidden="true" /> : null}
-                {t(folderDragCanRemove ? "sidebar.removeFromFolderDrop" : "sidebar.folders")}
-              </span>
-              {!folderDragCanRemove ? (
-                <button
-                  className="sidebar-functional-action"
-                  type="button"
-                  aria-label={t("sidebar.newFolder")}
-                  title={t("sidebar.newFolder")}
-                  onClick={() => createFolder()}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragStart={handleFunctionalGroupDragStart}
+            onDragEnd={handleFunctionalGroupDragEnd}
+            onDragCancel={handleFunctionalGroupDragCancel}
+          >
+            <SortableContext items={functionalGroupOrder} strategy={verticalListSortingStrategy}>
+              {functionalGroupOrder.map((groupID) => groupID === "folders" ? (
+                <SortableFunctionalGroup
+                  key={groupID}
+                  id={groupID}
+                  ariaLabel={t("sidebar.folders")}
+                  headingClassName={`sidebar-folder-heading${folderDragCanRemove ? " remove-drop-available" : ""}${folderDropTargetID === FOLDER_REMOVE_DROP_TARGET ? " drop-active" : ""}`}
+                  headingProps={{
+                    "data-folder-remove-drop": folderDragCanRemove || undefined,
+                    onDragEnter: dragSessionOverFolderRemoval,
+                    onDragOver: dragSessionOverFolderRemoval,
+                    onDragLeave: (event) => leaveSessionFolderTarget(event, FOLDER_REMOVE_DROP_TARGET),
+                    onDrop: dropSessionOutOfFolder,
+                  }}
+                  headingLabelClassName="sidebar-folder-heading-label"
+                  headingLabel={(
+                    <>
+                      {folderDragCanRemove ? <FolderMinus aria-hidden="true" /> : null}
+                      {t(folderDragCanRemove ? "sidebar.removeFromFolderDrop" : "sidebar.folders")}
+                    </>
+                  )}
+                  collapsed={collapsedFunctionalGroupIDs.has(groupID)}
+                  collapseLabel={t(
+                    collapsedFunctionalGroupIDs.has(groupID)
+                      ? "sidebar.expandSection"
+                      : "sidebar.collapseSection",
+                    { section: t("sidebar.folders") },
+                  )}
+                  onToggleCollapsed={() => toggleFunctionalGroupCollapsed(groupID)}
+                  collapseDisabled={folderDragCanRemove}
+                  dragDisabled={folderDragCanRemove}
+                  action={!folderDragCanRemove ? (
+                    <button
+                      className="sidebar-functional-action"
+                      type="button"
+                      aria-label={t("sidebar.newFolder")}
+                      title={t("sidebar.newFolder")}
+                      onClick={() => createFolder()}
+                    >
+                      <Plus aria-hidden="true" />
+                    </button>
+                  ) : undefined}
                 >
-                  <Plus aria-hidden="true" />
-                </button>
-              ) : null}
-            </div>
-            <div
-              className="sidebar-functional-group-body session-folder-list"
-              data-folder-dragging={folderDragThreadID !== undefined || undefined}
-            >
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                modifiers={[restrictToVerticalAxis]}
-                onDragStart={handleFolderDragStart}
-                onDragEnd={handleFolderDragEnd}
-                onDragCancel={handleFolderDragCancel}
-              >
+                  <div
+                    className="sidebar-functional-group-body session-folder-list"
+                    data-folder-dragging={folderDragThreadID !== undefined || undefined}
+                  >
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      modifiers={[restrictToVerticalAxis]}
+                      onDragStart={handleFolderDragStart}
+                      onDragEnd={handleFolderDragEnd}
+                      onDragCancel={handleFolderDragCancel}
+                    >
                 <SortableContext items={folderSortableIDs} strategy={verticalListSortingStrategy}>
                   {organization.folders.map((folder) => {
                     const collapsed = collapsedFolderIDs.has(folder.id);
@@ -1125,10 +1250,52 @@ export function AppSidebar({
                 <DragOverlay>
                   {draggingFolderInfo ? <SidebarSectionDragPreview info={draggingFolderInfo} /> : null}
                 </DragOverlay>
-              </DndContext>
-            </div>
-          </section>
-          {sectionOrder.length > 0 ? (
+                    </DndContext>
+                  </div>
+                </SortableFunctionalGroup>
+              ) : (
+                <SortableFunctionalGroup
+                  key={groupID}
+                  id={groupID}
+                  ariaLabel={t("sidebar.workspace")}
+                  headingLabel={t("sidebar.workspace")}
+                  collapsed={collapsedFunctionalGroupIDs.has(groupID)}
+                  collapseLabel={t(
+                    collapsedFunctionalGroupIDs.has(groupID)
+                      ? "sidebar.expandSection"
+                      : "sidebar.collapseSection",
+                    { section: t("sidebar.workspace") },
+                  )}
+                  onToggleCollapsed={() => toggleFunctionalGroupCollapsed(groupID)}
+                  action={(
+                    <div className="sidebar-add-workspace" ref={projectMenuRef}>
+                      <button
+                        className="sidebar-functional-action"
+                        type="button"
+                        aria-label={t("sidebar.addWorkspace")}
+                        title={t("sidebar.addWorkspace")}
+                        aria-haspopup="menu"
+                        aria-expanded={projectMenuOpen}
+                        onClick={onToggleProjectMenu}
+                      >
+                        <Plus aria-hidden="true" />
+                      </button>
+                      {projectMenuOpen ? (
+                        <div className="project-add-menu" role="menu">
+                          <button role="menuitem" onClick={onCreateProject}>
+                            <FolderPlus className="icon-xl" />
+                            <span>{t("sidebar.newBlankProject")}</span>
+                          </button>
+                          <button role="menuitem" onClick={onOpenProjectFolder}>
+                            <FolderOpen className="icon-xl" />
+                            <span>{t("sidebar.useExistingFolder")}</span>
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                >
+                  {sectionOrder.length > 0 ? (
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -1141,49 +1308,8 @@ export function AppSidebar({
                 items={sectionOrder}
                 strategy={verticalListSortingStrategy}
               >
-                {functionalGroups.map((group) => (
-                  <section
-                    key={group.id}
-                    className="sidebar-functional-group"
-                    aria-label={group.label}
-                  >
-                    <div className="sidebar-functional-heading">
-                      <span className="sidebar-functional-heading-label">
-                        {group.label}
-                      </span>
-                      {group.id === "workspace" ? (
-                        <div
-                          className="sidebar-add-workspace"
-                          ref={projectMenuRef}
-                        >
-                          <button
-                            className="sidebar-functional-action"
-                            type="button"
-                            aria-label={t("sidebar.addWorkspace")}
-                            title={t("sidebar.addWorkspace")}
-                            aria-haspopup="menu"
-                            aria-expanded={projectMenuOpen}
-                            onClick={onToggleProjectMenu}
-                          >
-                            <Plus aria-hidden="true" />
-                          </button>
-                          {projectMenuOpen ? (
-                            <div className="project-add-menu" role="menu">
-                              <button role="menuitem" onClick={onCreateProject}>
-                                <FolderPlus className="icon-xl" />
-                                <span>{t("sidebar.newBlankProject")}</span>
-                              </button>
-                              <button role="menuitem" onClick={onOpenProjectFolder}>
-                                <FolderOpen className="icon-xl" />
-                                <span>{t("sidebar.useExistingFolder")}</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="sidebar-functional-group-body">
-                      {group.sectionIDs.map((key) => {
+                <div className="sidebar-functional-group-body">
+                  {sectionOrder.map((key) => {
             // For SCRATCH_PSEUDO_PROJECT_ID or any real project id, look up
             // the synthetic DesktopProject (App.tsx prepends the scratch
             // pseudo so `sidebarProjects` contains every key).
@@ -1243,10 +1369,8 @@ export function AppSidebar({
                 />
               </SortableSidebarSection>
             );
-                      })}
-                    </div>
-                  </section>
-                ))}
+                  })}
+                </div>
               </SortableContext>
               <DragOverlay
                 dropAnimation={{
@@ -1260,6 +1384,24 @@ export function AppSidebar({
               </DragOverlay>
             </DndContext>
           ) : null}
+                </SortableFunctionalGroup>
+              ))}
+            </SortableContext>
+            <DragOverlay
+              dropAnimation={{
+                duration: 150,
+                easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+            >
+              {draggingFunctionalGroupID ? (
+                <div className="sidebar-functional-group-drag-overlay">
+                  <span>
+                    {t(draggingFunctionalGroupID === "folders" ? "sidebar.folders" : "sidebar.workspace")}
+                  </span>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         </div>
         <PluginSlot
           host={pluginHost}
@@ -1360,6 +1502,101 @@ export function AppSidebar({
   );
   return (
     <NavigationPresentation nodes={navigationNodes} fallback={organizedSidebar} />
+  );
+}
+
+function SortableFunctionalGroup({
+  id,
+  ariaLabel,
+  headingClassName = "",
+  headingProps,
+  headingLabel,
+  headingLabelClassName = "",
+  action,
+  collapsed,
+  collapseLabel,
+  onToggleCollapsed,
+  collapseDisabled = false,
+  dragDisabled = false,
+  children,
+}: {
+  id: SidebarFunctionalGroupID;
+  ariaLabel: string;
+  headingClassName?: string;
+  headingProps?: HTMLAttributes<HTMLDivElement> & {
+    "data-folder-remove-drop"?: boolean;
+  };
+  headingLabel: ReactNode;
+  headingLabelClassName?: string;
+  action?: ReactNode;
+  collapsed: boolean;
+  collapseLabel: string;
+  onToggleCollapsed: () => void;
+  collapseDisabled?: boolean;
+  dragDisabled?: boolean;
+  children: ReactNode;
+}): JSX.Element {
+  const {
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled: dragDisabled });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  return (
+    <section
+      ref={setNodeRef}
+      className="sidebar-functional-group sidebar-functional-group-sortable"
+      aria-label={ariaLabel}
+      data-functional-group-id={id}
+      data-dragging={isDragging || undefined}
+      data-drag-disabled={dragDisabled || undefined}
+      style={style}
+    >
+      <div
+        {...headingProps}
+        ref={setActivatorNodeRef}
+        onPointerDown={(event) => listeners?.onPointerDown?.(event)}
+        className={`sidebar-functional-heading ${headingClassName}`.trim()}
+      >
+        <button
+          className="sidebar-functional-heading-toggle"
+          type="button"
+          aria-expanded={!collapsed}
+          aria-label={collapseLabel}
+          title={collapseLabel}
+          disabled={collapseDisabled}
+          onClick={() => {
+            if (!isDragging) onToggleCollapsed();
+          }}
+        >
+          <ChevronRight
+            className="sidebar-functional-heading-chevron"
+            data-expanded={!collapsed || undefined}
+            aria-hidden="true"
+          />
+          <span
+            className={`sidebar-functional-heading-label ${headingLabelClassName}`.trim()}
+          >
+            {headingLabel}
+          </span>
+        </button>
+        {action ? (
+          <div
+            className="sidebar-functional-heading-action"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            {action}
+          </div>
+        ) : null}
+      </div>
+      {!collapsed ? children : null}
+    </section>
   );
 }
 

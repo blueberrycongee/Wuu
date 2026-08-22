@@ -1124,6 +1124,86 @@
   white-space: nowrap;
 }
 
+.sidebar-functional-heading-toggle {
+  display: flex;
+  min-width: 0;
+  min-height: 24px;
+  flex: 1;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebar-functional-heading-toggle:focus-visible {
+  outline: 0;
+  box-shadow: var(--sidebar-row-icon-focus-shadow);
+}
+
+.sidebar-functional-heading-toggle:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.sidebar-functional-heading-chevron {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: var(--ink-muted);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.sidebar-functional-heading-chevron[data-expanded="true"] {
+  transform: rotate(90deg);
+}
+
+.sidebar-functional-heading-action {
+  display: contents;
+}
+
+.sidebar-functional-group-sortable[data-dragging="true"] {
+  opacity: 0.32;
+}
+
+.sidebar-functional-group-sortable > .sidebar-functional-heading,
+.sidebar-functional-group-sortable > .sidebar-functional-heading .sidebar-functional-heading-toggle {
+  cursor: grab;
+}
+
+.sidebar-functional-group-sortable[data-dragging="true"] > .sidebar-functional-heading,
+.sidebar-functional-group-sortable[data-dragging="true"] > .sidebar-functional-heading .sidebar-functional-heading-toggle {
+  cursor: grabbing;
+}
+
+.sidebar-functional-group-sortable[data-drag-disabled="true"] > .sidebar-functional-heading,
+.sidebar-functional-group-sortable[data-drag-disabled="true"] > .sidebar-functional-heading .sidebar-functional-heading-toggle {
+  cursor: default;
+}
+
+.sidebar-functional-group-drag-overlay {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--sidebar-row-pad-x);
+  border: 1px solid color-mix(in srgb, var(--sidebar-accent) 24%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--sidebar-bg);
+  box-shadow: var(--menu-shadow);
+  color: var(--ink);
+  font-size: var(--font-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.sidebar-functional-group-drag-overlay > span {
+  flex: 1;
+}
+
 .sidebar-folder-heading {
   border-radius: var(--radius-sm);
   transition:
