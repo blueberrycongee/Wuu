@@ -93,6 +93,14 @@
   --ink-overlay-12: rgba(31, 35, 40, 0.12);
   --ink-overlay-18: rgba(31, 35, 40, 0.18);
 
+  /* Shadow colors are not ink overlays. They happen to share the same dark
+     ingredient in light mode, but must stay black when the text ramp flips in
+     dark mode; otherwise every soft drop shadow becomes a pale glow. */
+  --shadow-color-subtle: color-mix(in srgb, var(--wuu-color-text, #1f2328) 8%, transparent);
+  --shadow-color-medium: color-mix(in srgb, var(--wuu-color-text, #1f2328) 12%, transparent);
+  --shadow-color-strong: color-mix(in srgb, var(--wuu-color-text, #1f2328) 18%, transparent);
+  --shadow-color-heavy: color-mix(in srgb, var(--wuu-color-text, #1f2328) 24%, transparent);
+
   /* Shared backdrop for standard modal surfaces. Immersive viewers can keep
      their own treatment, but dialogs and command palettes use this one layer. */
   --modal-backdrop-bg: var(--wuu-color-overlay-backdrop, rgba(38, 42, 46, 0.24));

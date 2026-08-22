@@ -62,6 +62,10 @@
   --ink-overlay-8: rgba(220, 228, 235, 0.09);
   --ink-overlay-12: rgba(220, 228, 235, 0.13);
   --ink-overlay-18: rgba(220, 228, 235, 0.2);
+  --shadow-color-subtle: rgba(0, 0, 0, 0.24);
+  --shadow-color-medium: rgba(0, 0, 0, 0.32);
+  --shadow-color-strong: rgba(0, 0, 0, 0.4);
+  --shadow-color-heavy: rgba(0, 0, 0, 0.5);
   --modal-backdrop-bg: var(--wuu-color-overlay-backdrop, rgba(0, 0, 0, 0.5));
 
   /* Dark elevation needs two signals: a restrained light keyline to preserve
@@ -120,6 +124,9 @@
 
   /* workspace.css */
   --workspace-panel-title-icon: var(--wuu-color-text-muted, #9aa0a5);
+  --workspace-document-drawer-shadow: rgba(0, 0, 0, 0.24);
+  --workspace-document-drawer-shadow-hover: rgba(0, 0, 0, 0.3);
+  --workspace-document-drawer-shadow-expanded: rgba(0, 0, 0, 0.34);
   --workspace-tool-tab-text: var(--wuu-color-text-muted, #a2a8ad);
   --workspace-tab-highlight: rgba(255, 255, 255, 0.07);
   --workspace-tab-active-border: rgba(228, 232, 235, 0.22);

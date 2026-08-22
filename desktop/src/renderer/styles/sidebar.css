@@ -132,7 +132,7 @@
   grid-row: auto;
   border-left: none;
   /* Elevation: the sheet is a layer over the workspace, not a column of it. */
-  box-shadow: -16px 0 40px var(--ink-overlay-12);
+  box-shadow: -16px 0 40px var(--shadow-color-medium);
 }
 
 /* arming/docking are one-frame teleport states: they place the sheet without
@@ -395,13 +395,13 @@
   :is(.titlebar, .settings-titlebar)
   .sidebar-toggle-button {
   background-color: var(--surface-3);
-  box-shadow: 0 4px 12px var(--ink-overlay-8);
+  box-shadow: 0 4px 12px var(--shadow-color-subtle);
   color: var(--ink);
 }
 
 .sidebar-drawer-docking :is(.titlebar, .settings-titlebar) .sidebar-toggle-button {
   background-color: var(--surface-3);
-  box-shadow: 0 4px 12px var(--ink-overlay-8);
+  box-shadow: 0 4px 12px var(--shadow-color-subtle);
   color: var(--ink);
 }
 

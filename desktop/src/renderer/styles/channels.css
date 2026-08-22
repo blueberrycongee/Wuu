@@ -1299,7 +1299,7 @@
   border-radius: 50%;
   background: var(--bg-primary);
   color: var(--text-secondary);
-  box-shadow: 0 1px 4px var(--ink-overlay-18);
+  box-shadow: 0 1px 4px var(--shadow-color-strong);
 }
 
 .channel-agent-detail-avatar .icon {
@@ -1484,7 +1484,7 @@
   top: 12px;
   right: 14px;
   background: var(--bg-primary);
-  box-shadow: 0 3px 12px var(--ink-overlay-8);
+  box-shadow: 0 3px 12px var(--shadow-color-subtle);
 }
 
 .channel-agent-graph-canvas {
@@ -1595,7 +1595,7 @@
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--bg-primary);
-  box-shadow: 0 10px 32px var(--ink-overlay-12);
+  box-shadow: 0 10px 32px var(--shadow-color-medium);
   animation: channel-agent-preview-in 140ms ease-out;
 }
 
@@ -1760,7 +1760,7 @@
   border: 1px solid var(--border-default);
   border-radius: 10px;
   background: var(--bg-primary);
-  box-shadow: 0 8px 28px var(--ink-overlay-10);
+  box-shadow: 0 8px 28px var(--shadow-color-medium);
 }
 
 .channel-agent-graph-settings > label:not(.channel-agent-graph-check) {
@@ -1805,7 +1805,7 @@
   border: 1px solid var(--border-default);
   border-radius: 8px;
   background: var(--bg-primary);
-  box-shadow: 0 3px 12px var(--ink-overlay-8);
+  box-shadow: 0 3px 12px var(--shadow-color-subtle);
 }
 
 .channel-agent-graph-controls button {

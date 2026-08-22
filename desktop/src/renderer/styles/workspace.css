@@ -81,6 +81,9 @@
   --skill-mark-default-a: var(--wuu-skill-mark-default-a, #ff8a52);
   --skill-mark-default-b: var(--wuu-skill-mark-default-b, #ee4d74);
   --skill-mark-default-c: var(--wuu-skill-mark-default-c, #8d4de8);
+  --workspace-document-drawer-shadow: color-mix(in srgb, var(--wuu-color-text, #1f2328) 7%, transparent);
+  --workspace-document-drawer-shadow-hover: color-mix(in srgb, var(--wuu-color-text, #1f2328) 10%, transparent);
+  --workspace-document-drawer-shadow-expanded: color-mix(in srgb, var(--wuu-color-text, #1f2328) 11%, transparent);
   --hljs-keyword: var(--wuu-syntax-keyword, #2f6ea5);
   --hljs-function: var(--wuu-syntax-function, #7a4b9d);
   --hljs-string: var(--wuu-syntax-string, #2f7d5c);
@@ -575,7 +578,7 @@
   opacity: 0.98;
   pointer-events: none;
   transform: scale(1.025);
-  box-shadow: 0 9px 24px var(--ink-overlay-12);
+  box-shadow: 0 9px 24px var(--shadow-color-medium);
 }
 
 .workspace-tool-tab-drag-overlay .workspace-tool-tab-close {
@@ -1065,7 +1068,7 @@ html.resizing-workspace-file-split * {
   border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
-  box-shadow: 0 -6px 24px color-mix(in srgb, var(--ink) 7%, transparent);
+  box-shadow: 0 -6px 24px var(--workspace-document-drawer-shadow);
   -webkit-backdrop-filter: blur(24px) saturate(1.18);
   backdrop-filter: blur(24px) saturate(1.18);
   pointer-events: auto;
@@ -1084,7 +1087,7 @@ html.resizing-workspace-file-split * {
   translate: 0 -6px;
   border-radius: 16px 16px 0 0;
   border-color: color-mix(in srgb, var(--ink) 16%, transparent);
-  box-shadow: 0 -10px 34px color-mix(in srgb, var(--ink) 11%, transparent);
+  box-shadow: 0 -10px 34px var(--workspace-document-drawer-shadow-expanded);
 }
 
 .workspace-document-turn-drawer:not(.expanded):hover,
@@ -1092,7 +1095,7 @@ html.resizing-workspace-file-split * {
   z-index: 3;
   translate: 0 -2px;
   border-color: color-mix(in srgb, var(--ink) 14%, transparent);
-  box-shadow: 0 -8px 28px color-mix(in srgb, var(--ink) 10%, transparent);
+  box-shadow: 0 -8px 28px var(--workspace-document-drawer-shadow-hover);
 }
 
 .workspace-document-turn-summary {
@@ -4668,7 +4671,7 @@ html.resizing-workspace-terminal-split * {
 
 .codex-runtime-menu .runtime-agent-option[aria-checked="true"] {
   background: var(--menu-bg);
-  box-shadow: 0 1px 3px var(--ink-overlay-12);
+  box-shadow: 0 1px 3px var(--shadow-color-medium);
   color: var(--ink);
   font-weight: var(--weight-semibold);
 }

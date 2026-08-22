@@ -444,7 +444,7 @@
   height: 16px;
   border-radius: var(--radius-pill, 999px);
   background: var(--wuu-color-canvas, var(--paper));
-  box-shadow: 0 1px 2px var(--ink-overlay-18, rgba(0, 0, 0, 0.3));
+  box-shadow: 0 1px 2px var(--shadow-color-strong, rgba(0, 0, 0, 0.3));
   transition: transform var(--wuu-motion-duration-base, var(--motion-base)) var(--wuu-motion-easing-standard, var(--ease-out));
 }
 

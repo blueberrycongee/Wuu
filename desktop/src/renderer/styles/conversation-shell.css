@@ -452,7 +452,7 @@
   opacity: 0.98;
   pointer-events: none;
   transform: scale(1.025);
-  box-shadow: 0 9px 24px var(--ink-overlay-12);
+  box-shadow: 0 9px 24px var(--shadow-color-medium);
 }
 
 .session-tab-drag-overlay .session-tab-close {
