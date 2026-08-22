@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
-const { resolve } = require("node:path");
+const { join, resolve } = require("node:path");
 const packageJSON = require("../package.json");
 const {
   launchEnvironment,
@@ -71,15 +71,15 @@ assert.equal(
 );
 assert.equal(
   helperPathForApp("/repo/desktop/build/dev-host/Wuu Dev.app"),
-  resolve("/repo/desktop/build/dev-host/Wuu Dev.app", "Contents", "Resources", "bin", "wuu-cua-mac"),
+  join("/repo/desktop/build/dev-host/Wuu Dev.app", "Contents", "Resources", "bin", "wuu-cua-mac"),
 );
 assert.equal(
   pipHelperPathForApp("/repo/desktop/build/dev-host/Wuu Dev.app"),
-  resolve("/repo/desktop/build/dev-host/Wuu Dev.app", "Contents", "Resources", "bin", "wuu-cua-mac-pip"),
+  join("/repo/desktop/build/dev-host/Wuu Dev.app", "Contents", "Resources", "bin", "wuu-cua-mac-pip"),
 );
 assert.equal(
   speechHelperPathForApp("/repo/desktop/build/dev-host/Wuu Dev.app"),
-  resolve("/repo/desktop/build/dev-host/Wuu Dev.app", "Contents", "Resources", "bin", "wuu-speech-mac"),
+  join("/repo/desktop/build/dev-host/Wuu Dev.app", "Contents", "Resources", "bin", "wuu-speech-mac"),
 );
 assert.equal(
   sourceHashFromBuildInfo({ sourceHash: "a".repeat(64) }, () => "fallback"),

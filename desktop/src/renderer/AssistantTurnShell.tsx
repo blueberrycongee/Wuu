@@ -732,7 +732,7 @@ function turnProcessTitle(
   if (turn.status === "completed" || turn.status === "interrupted") {
     if (!hasKnownDuration) {
       return turn.status === "interrupted"
-        ? translate("error.cancelledTitle")
+        ? turnProgressContent(turn, elapsedMs, hasFinalText).label
         : translate("task.status.completed");
     }
     return taskFinishedLabel(elapsedMs);

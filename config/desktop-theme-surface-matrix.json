@@ -445,7 +445,7 @@
     {
       "name": "unanchored:composer.css",
       "synthetic": true,
-      "rows": 222
+      "rows": 234
     },
     {
       "name": "unanchored:conversation-shell.css",
@@ -535,7 +535,7 @@
     {
       "name": "unanchored:workspace.css",
       "synthetic": true,
-      "rows": 445
+      "rows": 451
     },
     {
       "name": "unanchored:wuu-mascot.css",
@@ -945,6 +945,8 @@
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".composer-context-menu","prop":"box-shadow","variable":"--menu-shadow","status":"bridged","tokens":["--wuu-elevation-overlay"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".composer-context-menu .permission-mode-option.danger[aria-checked=\"true\"]","prop":"background","variable":"--composer-permission-mode-danger-bg","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".composer-context-menu .permission-mode-option.danger[aria-checked=\"true\"]","prop":"border-color","variable":"--composer-permission-mode-danger-border","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".composer-context-menu .permission-mode-option.safe[aria-checked=\"true\"]","prop":"border-color","variable":"--success","status":"bridged","tokens":["--wuu-color-success"]},
+    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".composer-context-menu .permission-mode-option.warning[aria-checked=\"true\"]","prop":"border-color","variable":"--warning-border","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".composer-context-menu .permission-mode-option[aria-checked=\"true\"]","prop":"background","variable":"--surface-2","status":"bridged","tokens":["--wuu-color-surface-muted"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".composer-context-menu .permission-mode-option[aria-checked=\"true\"]","prop":"border-color","variable":"--surface-4","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".composer-context-menu .permission-mode-option[aria-checked=\"true\"]","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
@@ -1044,8 +1046,12 @@
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".mention-menu","prop":"box-shadow","variable":"--shadow-pop","status":"bridged","tokens":["--wuu-elevation-overlay"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".permission-chip","prop":"color","variable":"--ink-muted","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".permission-chip.tone-danger","prop":"color","variable":"--danger","status":"bridged","tokens":["--wuu-color-danger"]},
+    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".permission-chip.tone-safe","prop":"color","variable":"--success","status":"bridged","tokens":["--wuu-color-success"]},
+    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".permission-chip.tone-warning","prop":"color","variable":"--warning","status":"bridged","tokens":["--wuu-color-warning"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".permission-mode-option strong","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".permission-mode-option.danger strong","prop":"color","variable":"--danger","status":"bridged","tokens":["--wuu-color-danger"]},
+    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".permission-mode-option.safe strong","prop":"color","variable":"--success","status":"bridged","tokens":["--wuu-color-success"]},
+    {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".permission-mode-option.warning strong","prop":"color","variable":"--warning","status":"bridged","tokens":["--wuu-color-warning"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".project-picker-divider","prop":"background","variable":"--surface-3","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".project-picker-empty","prop":"color","variable":"--ink-muted","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:composer.css","state":"default","file":"composer.css","selector":".project-search","prop":"background","variable":"--composer-project-search-bg","status":"bridged","tokens":["--wuu-control-field-background"]},
@@ -1091,6 +1097,8 @@
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".composer-collapsed-prompt-remove:hover","prop":"background","variable":"--composer-file-attachment-button-hover-bg","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".composer-collapsed-prompt-remove:hover","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".composer-context-menu .permission-mode-option.danger:hover:not(:disabled)","prop":"background","variable":"--danger-soft","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".composer-context-menu .permission-mode-option.safe:hover:not(:disabled), .composer-context-menu .permission-mode-option.safe[aria-checked=\"true\"]","prop":"background","variable":"--success-soft","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".composer-context-menu .permission-mode-option.warning:hover:not(:disabled), .composer-context-menu .permission-mode-option.warning[aria-checked=\"true\"]","prop":"background","variable":"--warning-soft","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".composer-context-menu button:hover:not(:disabled)","prop":"background","variable":"--menu-hover","status":"bridged","tokens":["--wuu-color-surface-muted"]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".composer-convert-task-button:hover","prop":"background","variable":"--surface-2","status":"bridged","tokens":["--wuu-color-surface-muted"]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".composer-convert-task-button:hover","prop":"border-color","variable":"--info","status":"bridged","tokens":["--wuu-color-info"]},
@@ -1135,6 +1143,10 @@
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".permission-chip.tone-danger:hover::before, .permission-chip.tone-danger[aria-expanded=\"true\"]::before","prop":"background","variable":"--danger-soft","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".permission-chip.tone-neutral:hover, .permission-chip.tone-neutral[aria-expanded=\"true\"]","prop":"background","variable":"--surface-2","status":"bridged","tokens":["--wuu-color-surface-muted"]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".permission-chip.tone-neutral:hover, .permission-chip.tone-neutral[aria-expanded=\"true\"]","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
+    {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".permission-chip.tone-safe:hover, .permission-chip.tone-safe[aria-expanded=\"true\"]","prop":"background","variable":"--success-soft","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".permission-chip.tone-safe:hover::before, .permission-chip.tone-safe[aria-expanded=\"true\"]::before","prop":"background","variable":"--success-soft","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".permission-chip.tone-warning:hover, .permission-chip.tone-warning[aria-expanded=\"true\"]","prop":"background","variable":"--warning-soft","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".permission-chip.tone-warning:hover::before, .permission-chip.tone-warning[aria-expanded=\"true\"]::before","prop":"background","variable":"--warning-soft","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".user-question-actions .user-question-cancel:hover:not(:disabled)","prop":"background","variable":"--ink-overlay-6","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".user-question-actions .user-question-cancel:hover:not(:disabled)","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:composer.css","state":"hover","file":"composer.css","selector":".user-question-option:hover","prop":"background","variable":"--ink-overlay-6","status":"unbridged","tokens":[]},
@@ -2436,6 +2448,9 @@
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".codex-runtime-menu","prop":"background","variable":"--menu-bg","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".codex-runtime-menu","prop":"border","variable":"--menu-border","status":"bridged","tokens":["--wuu-color-border-subtle"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".codex-runtime-menu","prop":"box-shadow","variable":"--menu-shadow","status":"bridged","tokens":["--wuu-elevation-overlay"]},
+    {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".codex-runtime-menu .runtime-agent-option[aria-checked=\"true\"]","prop":"background","variable":"--menu-bg","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
+    {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".codex-runtime-menu .runtime-agent-option[aria-checked=\"true\"]","prop":"box-shadow","variable":"--ink-overlay-12","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".codex-runtime-menu .runtime-agent-option[aria-checked=\"true\"]","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".codex-runtime-menu button","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".codex-runtime-trigger","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".codex-runtime-trigger svg","prop":"color","variable":"--codex-runtime-trigger-icon","status":"bridged","tokens":["--wuu-color-text-muted"]},
@@ -2505,6 +2520,8 @@
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".rich-code .hljs-number, .workspace-file-code .hljs-number","prop":"color","variable":"--hljs-number","status":"bridged","tokens":["--hljs-number","--wuu-syntax-number"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".rich-code .hljs-string, .workspace-file-code .hljs-string","prop":"color","variable":"--hljs-string","status":"bridged","tokens":["--hljs-string","--wuu-syntax-string"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".right-panel-open .workspace-right-panel","prop":"border-left-color","variable":"--surface-3","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
+    {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".runtime-agent-options","prop":"background","variable":"--ink-overlay-6","status":"unbridged","tokens":[]},
+    {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".runtime-agent-section","prop":"border-bottom","variable":"--menu-border","status":"bridged","tokens":["--wuu-color-border-subtle"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".skill-artwork","prop":"background","variable":"--skill-artwork-neutral-bg","status":"bridged","tokens":["--wuu-color-surface-muted"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".skill-artwork","prop":"border","variable":"--skill-artwork-border","status":"bridged","tokens":["--wuu-color-border-subtle"]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".skill-artwork","prop":"box-shadow","variable":"--skill-artwork-shadow","status":"unbridged","tokens":[]},
@@ -2800,6 +2817,7 @@
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".workspace-tree-context-menu","prop":"box-shadow","variable":"--ink-overlay-8","status":"unbridged","tokens":[]},
     {"anchor":"unanchored:workspace.css","state":"default","file":"workspace.css","selector":".workspace-tree-context-menu-item","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:workspace.css","state":"disabled","file":"workspace.css","selector":".workspace-browser-nav:disabled","prop":"color","variable":"--browser-nav-disabled","status":"bridged","tokens":["--wuu-color-text-muted"]},
+    {"anchor":"unanchored:workspace.css","state":"hover","file":"workspace.css","selector":".codex-runtime-menu .runtime-agent-option:hover:not(:disabled)","prop":"background","variable":"--menu-bg","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
     {"anchor":"unanchored:workspace.css","state":"hover","file":"workspace.css","selector":".codex-runtime-menu button:hover","prop":"background","variable":"--menu-hover","status":"bridged","tokens":["--wuu-color-surface-muted"]},
     {"anchor":"unanchored:workspace.css","state":"hover","file":"workspace.css","selector":".codex-runtime-trigger:hover, .codex-runtime-trigger[aria-expanded=\"true\"]","prop":"background","variable":"--surface-3","status":"bridged","tokens":["--wuu-color-surface-elevated"]},
     {"anchor":"unanchored:workspace.css","state":"hover","file":"workspace.css","selector":".codex-runtime-trigger:hover, .codex-runtime-trigger[aria-expanded=\"true\"]","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},

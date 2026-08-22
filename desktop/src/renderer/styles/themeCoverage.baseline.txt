@@ -41,6 +41,9 @@ composer.css .composer-collapsed-prompt-remove:hover background --composer-file-
 composer.css .composer-context-menu .permission-mode-option.danger:hover:not(:disabled) background --danger-soft
 composer.css .composer-context-menu .permission-mode-option.danger[aria-checked="true"] background --composer-permission-mode-danger-bg
 composer.css .composer-context-menu .permission-mode-option.danger[aria-checked="true"] border-color --composer-permission-mode-danger-border
+composer.css .composer-context-menu .permission-mode-option.safe:hover:not(:disabled), .composer-context-menu .permission-mode-option.safe[aria-checked="true"] background --success-soft
+composer.css .composer-context-menu .permission-mode-option.warning:hover:not(:disabled), .composer-context-menu .permission-mode-option.warning[aria-checked="true"] background --warning-soft
+composer.css .composer-context-menu .permission-mode-option.warning[aria-checked="true"] border-color --warning-border
 composer.css .composer-expand-button:focus-visible outline --ink-overlay-18
 composer.css .composer-expand-button:hover:not(:disabled), .composer-expand-button[aria-pressed="true"] background-color --ink-overlay-8
 composer.css .composer-file-attachment button:hover background --composer-file-attachment-button-hover-bg
@@ -61,6 +64,10 @@ composer.css .group-members-capsule:hover, .group-members-capsule:focus-visible 
 composer.css .hero-project-pill:focus-visible outline --ink-overlay-18
 composer.css .permission-chip.tone-danger:hover, .permission-chip.tone-danger[aria-expanded="true"] background --danger-soft
 composer.css .permission-chip.tone-danger:hover::before, .permission-chip.tone-danger[aria-expanded="true"]::before background --danger-soft
+composer.css .permission-chip.tone-safe:hover, .permission-chip.tone-safe[aria-expanded="true"] background --success-soft
+composer.css .permission-chip.tone-safe:hover::before, .permission-chip.tone-safe[aria-expanded="true"]::before background --success-soft
+composer.css .permission-chip.tone-warning:hover, .permission-chip.tone-warning[aria-expanded="true"] background --warning-soft
+composer.css .permission-chip.tone-warning:hover::before, .permission-chip.tone-warning[aria-expanded="true"]::before background --warning-soft
 composer.css .user-question-actions .user-question-cancel:hover:not(:disabled) background --ink-overlay-6
 composer.css .user-question-card border --ink-overlay-8
 composer.css .user-question-custom border --ink-overlay-8
@@ -374,6 +381,7 @@ workspace.css .codex-effort-capsule:focus-within box-shadow --ink-overlay-8
 workspace.css .codex-effort-knob box-shadow --ink-overlay-18
 workspace.css .codex-effort-knob box-shadow --ink-overlay-6
 workspace.css .codex-effort-stop box-shadow --ink-overlay-12
+workspace.css .codex-runtime-menu .runtime-agent-option[aria-checked="true"] box-shadow --ink-overlay-12
 workspace.css .conversation-split-resizer:hover::before, .conversation-split-resizer:focus-visible::before, .resizing-split .conversation-split-resizer::before background --sidebar-resizer-hover-bg
 workspace.css .conversation-split-resizer:hover::before, .conversation-split-resizer:focus-visible::before, .resizing-split .conversation-split-resizer::before box-shadow --sidebar-resizer-hover-ring
 workspace.css .extension-status-danger background --danger-soft
@@ -386,6 +394,7 @@ workspace.css .plugin-detail-notice.is-error background --danger-soft
 workspace.css .plugin-detail-status.extension-status-danger background --danger-soft
 workspace.css .plugin-detail-status.extension-status-good background --success-soft
 workspace.css .plugin-detail-status.extension-status-warning background --warning-soft
+workspace.css .runtime-agent-options background --ink-overlay-6
 workspace.css .skill-artwork box-shadow --skill-artwork-shadow
 workspace.css .skill-mark-highlight-fill fill --skill-mark-highlight
 workspace.css .skill-row-button:focus-visible box-shadow --ink-overlay-12
