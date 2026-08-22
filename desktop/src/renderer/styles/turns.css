@@ -66,6 +66,11 @@
   --artifact-preview-shell-border: rgba(255, 255, 255, 0.14);
   --artifact-preview-shell-shadow: rgba(0, 0, 0, 0.36);
   --artifact-preview-frame-bg: #fff;
+  --turn-output-summary-bg: var(--paper);
+  --turn-output-summary-border: var(--surface-3);
+  --turn-output-summary-header-bg: var(--surface-1);
+  --turn-output-summary-divider: var(--surface-2);
+  --turn-output-summary-shadow: var(--wuu-elevation-panel, 0 2px 10px var(--shadow-color-subtle));
 }
 
 .turn {
@@ -4589,10 +4594,10 @@ pre {
   min-width: 0;
   box-sizing: border-box;
   overflow: hidden;
-  border: 1px solid var(--surface-3);
+  border: 1px solid var(--turn-output-summary-border);
   border-radius: var(--radius-md);
-  background: var(--paper);
-  box-shadow: 0 2px 10px var(--shadow-color-subtle);
+  background: var(--turn-output-summary-bg);
+  box-shadow: var(--turn-output-summary-shadow);
 }
 
 .turn-output-summary-header {
@@ -4601,8 +4606,8 @@ pre {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--surface-2);
-  background: var(--surface-1);
+  border-bottom: 1px solid var(--turn-output-summary-divider);
+  background: var(--turn-output-summary-header-bg);
 }
 
 .turn-output-summary-title {

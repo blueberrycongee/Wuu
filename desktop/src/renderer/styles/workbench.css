@@ -1,3 +1,8 @@
+:root {
+  --plugin-ui-panel-bg: var(--wuu-color-canvas, var(--paper));
+  --plugin-ui-card-bg: var(--wuu-color-canvas, var(--paper));
+}
+
 .plugin-workbench-view {
   position: absolute;
   inset: 0;
@@ -136,7 +141,14 @@
   min-width: 0;
   border: var(--wuu-border-subtle, 1px solid var(--wuu-color-border-subtle, var(--hairline)));
   border-radius: var(--wuu-radius-panel, var(--radius-md));
-  background: var(--wuu-color-canvas, var(--paper));
+}
+
+.plugin-ui-panel {
+  background: var(--plugin-ui-panel-bg);
+}
+
+.plugin-ui-card {
+  background: var(--plugin-ui-card-bg);
 }
 
 .plugin-ui-panel {

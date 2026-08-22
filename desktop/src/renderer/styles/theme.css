@@ -19,22 +19,22 @@
    *     ramp in base.css: 0-350 surfaces/hairlines (deeper = further
    *     from the reader), 400-650 text grays, 800-900 strong text. --- */
   --gray-0: #1d2024;
-  --gray-50: #141618;
-  --gray-100: #1b1e21;
-  --gray-150: #24282c;
-  --gray-200: #2c3136;
-  --gray-250: #2e3237;
-  --gray-300: #33383d;
-  --gray-350: #3a4046;
-  --gray-400: #565c62;
-  --gray-450: #6a7076;
-  --gray-500: #7d8388;
-  --gray-550: #8a9096;
-  --gray-600: #989ea3;
-  --gray-650: #a9aeb3;
-  --gray-700: #c6cacd;
-  --gray-800: #e4e6e8;
-  --gray-900: #f2f3f4;
+  --gray-50: #23262a;
+  --gray-100: #272b30;
+  --gray-150: #2c3137;
+  --gray-200: #333940;
+  --gray-250: #353b42;
+  --gray-300: #3b424a;
+  --gray-350: #454d55;
+  --gray-400: #5d646b;
+  --gray-450: #70777e;
+  --gray-500: #858c93;
+  --gray-550: #9299a0;
+  --gray-600: #a1a8ae;
+  --gray-650: #afb5ba;
+  --gray-700: #bec3c8;
+  --gray-800: #d2d5d8;
+  --gray-900: #e5e7e9;
 
   /* --- Ink scale: light text on dark paper --- */
   --ink-strong: var(--wuu-color-text, var(--gray-900));
@@ -45,7 +45,9 @@
   --ink-muted: var(--wuu-color-text-muted, var(--gray-500));
   --ink-faint: var(--wuu-color-text-muted, var(--gray-400));
 
-  /* --- Paper & surfaces: elevation gets lighter, not darker --- */
+  /* --- Paper & surfaces: a monotonic elevation ladder. The previous dark
+     surface-1 was darker than the canvas, so cards and section headers either
+     disappeared into the page or became near-black bands. --- */
   --paper: var(--wuu-color-canvas, var(--gray-0));
   --surface-1: var(--wuu-color-surface, var(--gray-50));
   --surface-2: var(--wuu-color-surface-muted, var(--gray-100));
@@ -315,6 +317,13 @@
   --responsive-secondary-button-bg: var(--wuu-control-secondary-background, #2b2f34);
   --responsive-secondary-button-text: var(--wuu-color-text, #ccd1d5);
 
+  /* workbench.css / task-cards.css — host primitives still resolve through
+     public theme tokens, so extension themes remain authoritative. */
+  --plugin-ui-panel-bg: var(--wuu-color-surface, var(--surface-1));
+  --plugin-ui-card-bg: var(--wuu-color-surface-elevated, var(--surface-3));
+  --task-card-bg: var(--wuu-color-surface-elevated, var(--surface-3));
+  --task-card-border: var(--wuu-color-border-strong, var(--hairline-strong));
+
   /* sidebar.css */
   /* macOS's `under-window` vibrancy material can remain light even when the
      renderer is dark. Keep a little wallpaper depth from the native material,
@@ -411,6 +420,10 @@
   --diff-delete-text-color: var(--wuu-color-danger, #f0857a);
   --turn-source-icon-color-fallback: rgba(255, 255, 255, 0.85);
   --turn-source-icon-hover-shadow: rgba(0, 0, 0, 0.45);
+  --turn-output-summary-bg: var(--wuu-color-surface-elevated, var(--surface-3));
+  --turn-output-summary-border: var(--wuu-color-border-strong, var(--hairline-strong));
+  --turn-output-summary-header-bg: var(--wuu-color-surface, var(--surface-1));
+  --turn-output-summary-divider: var(--wuu-color-border-subtle, var(--hairline));
 
   /* conversation-shell.css */
   --shell-process-control-color: var(--wuu-color-text-muted, var(--gray-400));

@@ -1,3 +1,8 @@
+:root {
+  --task-card-bg: var(--paper);
+  --task-card-border: var(--hairline);
+}
+
 .task-card {
   display: grid;
   width: min(100%, 760px);
@@ -5,9 +10,9 @@
   gap: 10px;
   margin: 4px 0 18px;
   padding: 14px 16px;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--task-card-border);
   border-radius: var(--radius-md);
-  background: var(--paper);
+  background: var(--task-card-bg);
   color: var(--ink);
   font-size: var(--font-body);
   line-height: var(--line-ui);
