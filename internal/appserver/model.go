@@ -1098,6 +1098,7 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 	var pendingCompactions []ThreadItem
 	itemOrigins := make(map[historyItemAddress]historyItemOrigin)
 	turnSpans := make(map[string]historyItemOrigin)
+	turnStartedAt := make(map[string]time.Time)
 	nextItemID := func(turnID string) string {
 		itemIndex++
 		return fmt.Sprintf("%s-item-%d", turnID, itemIndex)
@@ -1146,6 +1147,9 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 			continue
 		}
 		if strings.EqualFold(strings.TrimSpace(rec.Role), "meta") {
+			if current != nil && rec.Content == "token_usage" {
+				setProjectedTurnTiming(current, turnStartedAt[current.ID], rec.At)
+			}
 			if current != nil && rec.Content == turnTerminalHistoryRecord && (strings.TrimSpace(rec.ClientID) == "" || rec.ClientID == current.ID) {
 				status, ok := parseTurnTerminalStatus(rec.StopReason)
 				if !ok {
@@ -1165,7 +1169,7 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 				current.Items = items
 				current.Status = status
 				current.Error = nil
-				current.CompletedAt = &at
+				setProjectedTurnTiming(current, turnStartedAt[current.ID], at)
 				if status == TurnStatusCompleted {
 					continue
 				}
@@ -1215,6 +1219,7 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 				ItemsView: TurnItemsViewFull,
 				Status:    TurnStatusCompleted,
 			}
+			turnStartedAt[turnID] = rec.At
 			userItem := chatMessageItem(nextItemID(turnID), msg)
 			turn.Items = append(turn.Items, userItem)
 			for _, item := range pendingCompactions {
@@ -1311,6 +1316,22 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 		}
 	}
 	return historyProjection{Turns: turns, ItemOrigins: itemOrigins, TurnSpans: turnSpans}
+}
+
+func setProjectedTurnTiming(turn *Turn, startedAt, completedAt time.Time) {
+	if turn == nil || completedAt.IsZero() {
+		return
+	}
+	completed := completedAt
+	turn.CompletedAt = &completed
+	turn.StartedAt = nil
+	turn.DurationMS = nil
+	if !startedAt.IsZero() && !completed.Before(startedAt) {
+		started := startedAt
+		turn.StartedAt = &started
+		duration := completed.Sub(started).Milliseconds()
+		turn.DurationMS = &duration
+	}
 }
 
 func parseTurnTerminalStatus(raw string) (TurnStatus, bool) {

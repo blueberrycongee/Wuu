@@ -278,10 +278,16 @@ function TurnProcessFold({
     Number.isFinite(parsedStartedAt) && Number.isFinite(parsedCompletedAt)
       ? Math.max(0, parsedCompletedAt - parsedStartedAt)
       : undefined;
-  const completedDuration =
+  const reportedDuration =
     typeof turn.duration_ms === "number" && Number.isFinite(turn.duration_ms)
       ? Math.max(0, turn.duration_ms)
-      : timestampDuration;
+      : undefined;
+  // Both values describe the same boundary, so prefer the larger valid value.
+  // This also prevents a stale explicit 0 from masking usable timestamps.
+  const completedDuration =
+    reportedDuration !== undefined && timestampDuration !== undefined
+      ? Math.max(reportedDuration, timestampDuration)
+      : reportedDuration ?? timestampDuration;
   const liveDuration =
     completedDuration === undefined &&
     turn.status === "in_progress";
@@ -302,6 +308,7 @@ function TurnProcessFold({
   const processLabel = turnProcessTitle(
     turn,
     elapsedMs,
+    completedDuration !== undefined,
     collapseRequested,
   );
   const metaParts = turnProcessMetaParts(turn, elapsedMs);
@@ -719,9 +726,15 @@ function ReasoningFold({
 function turnProcessTitle(
   turn: Turn,
   elapsedMs: number,
+  hasKnownDuration: boolean,
   hasFinalText: boolean,
 ): string {
   if (turn.status === "completed" || turn.status === "interrupted") {
+    if (!hasKnownDuration) {
+      return turn.status === "interrupted"
+        ? translate("error.cancelledTitle")
+        : translate("task.status.completed");
+    }
     return taskFinishedLabel(elapsedMs);
   }
   return turnProgressContent(turn, elapsedMs, hasFinalText).label;

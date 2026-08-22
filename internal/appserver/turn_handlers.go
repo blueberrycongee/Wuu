@@ -2214,7 +2214,6 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	var historyErr error
 	var persistErr error
 	turnKind := th.currentTurnKind
-	turnResumed := th.currentTurnResumed
 	// Retain every valid message the loop produced, including partial assistant
 	// output and paired tool calls/results from failed or interrupted turns.
 	persistNewMessages := err == nil || len(res.NewMessages) > 0
@@ -2299,7 +2298,11 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		ThreadID: th.ID, TurnID: turnID, StartedAt: startedAt, CompletedAt: now,
 		Succeeded: err == nil, InputTokens: res.InputTokens, OutputTokens: res.OutputTokens,
 	}
-	shouldPersistTerminal := status != TurnStatusCompleted || (turnKind == TurnKindUser && turnResumed)
+	// Persist a terminal boundary for every user turn, including ordinary
+	// successes. History projection uses this durable timestamp to restore the
+	// elapsed duration after restart instead of fabricating a sub-second result.
+	// Internal successful continuations are still folded into the visible turn.
+	shouldPersistTerminal := status != TurnStatusCompleted || turnKind == TurnKindUser
 	var terminalErr error
 	if shouldPersistTerminal {
 		terminalErr = s.persistTurnTerminal(th, turnID, turnKind, status, err, now)
