@@ -73,9 +73,54 @@ type MermaidState =
 // private-use character appended to live text. It must never reach the
 // Mermaid parser, so any occurrence is stripped from extracted diagram code.
 const STREAM_CURSOR_SENTINEL_PATTERN = /\uE000/g;
-// While the diagram source is still streaming, render attempts are debounced
-// so the layout recomputes on a calm cadence instead of on every chunk.
+// While the diagram source is still streaming, render attempts are paced: a
+// debounce rides out chunk bursts, and a minimum interval between renders
+// keeps a fast stream from replacing the whole SVG on every chunk (each
+// replacement re-runs the layout, which reads as flicker).
 const STREAM_MERMAID_RENDER_DEBOUNCE_MS = 300;
+const STREAM_MERMAID_RENDER_INTERVAL_MS = 500;
+// Rendered SVGs are cached by (theme, code) so a diagram that moves from the
+// streaming tail into a stable block (fence closed + blank line) remounts
+// with its picture already committed instead of flashing the placeholder.
+// Only streaming renders populate the cache; settled messages always render.
+const mermaidSvgCache = new Map<string, string>();
+const MERMAID_SVG_CACHE_LIMIT = 64;
+
+function cacheMermaidSvg(key: string, svg: string): void {
+  mermaidSvgCache.delete(key);
+  mermaidSvgCache.set(key, svg);
+  if (mermaidSvgCache.size > MERMAID_SVG_CACHE_LIMIT) {
+    const oldest = mermaidSvgCache.keys().next().value;
+    if (oldest !== undefined) {
+      mermaidSvgCache.delete(oldest);
+    }
+  }
+}
+
+/**
+ * The code actually fed to the renderer. While the fence is still open the
+ * source may end with a partial line that keeps growing; feeding it to the
+ * parser would fail on every chunk. When the last line is not
+ * newline-terminated it is unfinished, so only the completed lines are
+ * rendered and the diagram grows line by line. A trailing newline (kept by
+ * the caller while streaming) means the last line is complete and must be
+ * included.
+ */
+function mermaidCodeToRender(code: string, streaming: boolean): string {
+  let codeToRender = code;
+  if (streaming && !code.endsWith("\n")) {
+    const lastLineBreak = code.lastIndexOf("\n");
+    codeToRender = lastLineBreak < 0 ? "" : code.slice(0, lastLineBreak + 1);
+  }
+  if (codeToRender.endsWith("\n")) {
+    codeToRender = codeToRender.slice(0, -1);
+  }
+  return codeToRender;
+}
+
+function mermaidRenderKey(theme: AppliedTheme, codeToRender: string): string {
+  return `${theme}\u0000${codeToRender}`;
+}
 
 const IMAGE_MARKDOWN_PATTERN = /!\[([^\]\n]*)\]\(([^)\n]+)\)/g;
 const IMAGE_FILE_PATTERN = /\.(apng|avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i;
@@ -1548,10 +1593,24 @@ function MermaidDiagram({
   const reactID = useId();
   const diagramID = useMemo(() => `wuu-mermaid-${reactID.replace(/[^a-zA-Z0-9_-]/g, "")}-${hashString(code)}`, [code, reactID]);
   const [theme, setTheme] = useState<AppliedTheme>(currentAppliedTheme);
-  const [state, setState] = useState<MermaidState>({ status: "rendering" });
+  // Mount-time snapshot only: if the same (theme, code) diagram was already
+  // rendered while streaming, start with that picture committed instead of
+  // the placeholder. Refs below mirror the snapshot so the first effect run
+  // skips the identical render instead of flashing.
+  const mountKey = mermaidRenderKey(
+    currentAppliedTheme(),
+    mermaidCodeToRender(code, streaming),
+  );
+  const [state, setState] = useState<MermaidState>(() => {
+    const svg = mermaidSvgCache.get(mountKey);
+    return svg ? { status: "rendered", svg } : { status: "rendering" };
+  });
   const renderAttemptRef = useRef(0);
-  const hasRenderedRef = useRef(false);
-  const lastRenderedKeyRef = useRef("");
+  const hasRenderedRef = useRef(mermaidSvgCache.has(mountKey));
+  const lastRenderedKeyRef = useRef(
+    mermaidSvgCache.has(mountKey) ? mountKey : "",
+  );
+  const lastRenderStartedAtRef = useRef(0);
 
   useEffect(() => observeAppliedTheme(setTheme), []);
 
@@ -1559,21 +1618,8 @@ function MermaidDiagram({
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
-    // While the fence is still open the code may end with a partial line
-    // that keeps growing; feeding it to the parser would fail on every
-    // chunk. When the last line is not newline-terminated it is unfinished,
-    // so render only the completed lines and let the diagram grow line by
-    // line. A trailing newline (kept by the caller while streaming) means
-    // the last line is complete and must be included.
-    let codeToRender = code;
-    if (streaming && !code.endsWith("\n")) {
-      const lastLineBreak = code.lastIndexOf("\n");
-      codeToRender = lastLineBreak < 0 ? "" : code.slice(0, lastLineBreak + 1);
-    }
-    if (codeToRender.endsWith("\n")) {
-      codeToRender = codeToRender.slice(0, -1);
-    }
-    const renderKey = `${theme}\u0000${codeToRender}`;
+    const codeToRender = mermaidCodeToRender(code, streaming);
+    const renderKey = mermaidRenderKey(theme, codeToRender);
     if (renderKey === lastRenderedKeyRef.current) {
       // An identical diagram is already committed (e.g. chunks that only
       // changed the partial line, or a settle with the same source).
@@ -1585,6 +1631,7 @@ function MermaidDiagram({
     }
 
     const renderDiagram = async (): Promise<void> => {
+      lastRenderStartedAtRef.current = performance.now();
       const attempt = renderAttemptRef.current + 1;
       renderAttemptRef.current = attempt;
       try {
@@ -1603,6 +1650,12 @@ function MermaidDiagram({
         }
         hasRenderedRef.current = true;
         lastRenderedKeyRef.current = renderKey;
+        if (streaming) {
+          // Only streaming renders populate the cache: a later remount of
+          // the same diagram (tail → stable block promotion) can reuse the
+          // picture. Settled messages always render fresh.
+          cacheMermaidSvg(renderKey, result.svg);
+        }
         setState({ status: "rendered", svg: result.svg });
       } catch (error) {
         if (cancelled || attempt !== renderAttemptRef.current) {
@@ -1623,11 +1676,17 @@ function MermaidDiagram({
     };
 
     if (streaming) {
-      // Offscreen partial render while the source keeps growing; the debounce
-      // paces re-layouts instead of firing on every provider chunk.
+      // Offscreen partial render while the source keeps growing. The debounce
+      // rides out chunk bursts; the minimum interval guarantees at most one
+      // whole-SVG replacement per interval so fast streams stay calm.
+      const elapsed = performance.now() - lastRenderStartedAtRef.current;
+      const delay = Math.max(
+        STREAM_MERMAID_RENDER_DEBOUNCE_MS,
+        STREAM_MERMAID_RENDER_INTERVAL_MS - elapsed,
+      );
       timer = setTimeout(() => {
         void renderDiagram();
-      }, STREAM_MERMAID_RENDER_DEBOUNCE_MS);
+      }, delay);
     } else {
       // Keep the last committed diagram visible while the final render is in
       // flight so settling never flashes the placeholder.
