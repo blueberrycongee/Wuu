@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/storagecodec"
 	"github.com/blueberrycongee/wuu/internal/stringutil"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
 )
@@ -604,7 +605,11 @@ func saveSearchCursor(path string, records any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	stored, err := storagecodec.Encode(data)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, stored, 0o644)
 }
 
 func loadSearchCursor[T any](path string) ([]T, bool) {
@@ -612,6 +617,10 @@ func loadSearchCursor[T any](path string) ([]T, bool) {
 		return nil, false
 	}
 	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	data, err = storagecodec.Decode(data)
 	if err != nil {
 		return nil, false
 	}

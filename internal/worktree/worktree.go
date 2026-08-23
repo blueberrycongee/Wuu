@@ -485,6 +485,40 @@ func (m *Manager) CleanupIfClean(wt *Worktree) (kept bool, err error) {
 	return false, nil
 }
 
+// CleanupSessionIfClean removes each clean worktree in a session group while
+// preserving any worktree with user changes or an unreadable Git status.
+func (m *Manager) CleanupSessionIfClean(sessionID string) (kept bool, err error) {
+	sessionID, err = validIdentityPart("sessionID", sessionID)
+	if err != nil {
+		return false, err
+	}
+	worktrees, err := m.List(sessionID)
+	if err != nil {
+		return false, err
+	}
+	for _, wt := range worktrees {
+		preserved, cleanupErr := m.CleanupIfClean(wt)
+		if cleanupErr != nil {
+			// A failed status or cleanup check is a reason to keep data, not to
+			// fall through to the force-removal path.
+			return true, cleanupErr
+		}
+		kept = kept || preserved
+	}
+	if kept {
+		return true, nil
+	}
+	dir := filepath.Join(m.rootDir, sessionID)
+	if err := os.Remove(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		// A concurrently created or otherwise unlisted worktree keeps the group.
+		return true, nil
+	}
+	return false, m.withPrelaunchLock(func() error {
+		manifestDir := filepath.Join(m.rootDir, prelaunchManifestDir, sessionID)
+		return os.RemoveAll(manifestDir)
+	})
+}
+
 // CleanupSession removes all worktrees belonging to a session.
 func (m *Manager) CleanupSession(sessionID string) error {
 	var err error

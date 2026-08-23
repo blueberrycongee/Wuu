@@ -1003,6 +1003,7 @@ func sqliteDSN(path string) string {
 
 func configureDB(db *sql.DB) error {
 	pragmas := []string{
+		`PRAGMA auto_vacuum = INCREMENTAL`,
 		`PRAGMA journal_mode = WAL`,
 		`PRAGMA synchronous = NORMAL`,
 		`PRAGMA busy_timeout = 5000`,

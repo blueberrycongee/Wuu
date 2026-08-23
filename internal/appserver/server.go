@@ -31,6 +31,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/sidethread"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 	"github.com/blueberrycongee/wuu/internal/subagent"
+	"github.com/blueberrycongee/wuu/internal/tools"
 )
 
 var (
@@ -254,6 +255,8 @@ type Server struct {
 	pluginLifecycleReplayPending atomic.Bool
 	refreshExtensionsForTest     func(config.Config) error
 	presenceLease                *session.AppServerPresenceLease
+	bootOwner                    bool
+	storageMaintenanceCancel     context.CancelFunc
 	startupErr                   error
 
 	// sideThreadStore persists side threads (1:<=1 binding per main
@@ -345,6 +348,7 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		}
 		s.presenceLease = lease
 		bootOwner = first
+		s.bootOwner = first
 	}
 	if rt != nil && strings.TrimSpace(rt.SessionDir) != "" {
 		s.sideThreadStore = sidethread.NewStore(filepath.Join(rt.SessionDir, "sidethreads"))
@@ -398,6 +402,61 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 	s.startPluginGenerationWatch()
 	s.startConfigWatch()
 	return s
+}
+
+const sessionStorageMaintenanceInterval = 6 * time.Hour
+
+func (s *Server) maintainSessionStorage(ctx context.Context) {
+	ticker := time.NewTicker(sessionStorageMaintenanceInterval)
+	defer ticker.Stop()
+	for {
+		s.maintainSessionStoragePass(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *Server) maintainSessionStoragePass(ctx context.Context) {
+	if s == nil || s.rt == nil || strings.TrimSpace(s.rt.SessionDir) == "" {
+		return
+	}
+	result, err := session.MaintainModelInputReceipts(ctx, s.rt.SessionDir, time.Now().UTC())
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		providers.DebugLogf("session storage maintenance: %v", err)
+	} else if result.Deleted > 0 || result.Compressed > 0 {
+		providers.DebugLogf(
+			"session storage maintenance: deleted=%d compressed=%d bytes_before=%d bytes_after=%d migration_done=%t",
+			result.Deleted,
+			result.Compressed,
+			result.BytesBefore,
+			result.BytesAfter,
+			result.CompressionDone,
+		)
+	}
+	cursors, err := tools.MaintainSearchCursorStorage(s.rt.StateDir, time.Now().UTC())
+	if err != nil {
+		providers.DebugLogf("search cursor storage maintenance: %v", err)
+	} else if cursors.Deleted > 0 || cursors.Compressed > 0 {
+		providers.DebugLogf(
+			"search cursor storage maintenance: deleted=%d compressed=%d bytes_before=%d bytes_after=%d",
+			cursors.Deleted,
+			cursors.Compressed,
+			cursors.BytesBefore,
+			cursors.BytesAfter,
+		)
+	}
+	orphanWorktrees, err := s.cleanupOrphanWorktrees()
+	if err != nil {
+		providers.DebugLogf("worktree storage maintenance: %v", err)
+	} else if orphanWorktrees > 0 {
+		providers.DebugLogf("worktree storage maintenance: removed %d orphan owner group(s)", orphanWorktrees)
+	}
 }
 
 // settleOnBoot reconciles orphaned provider operations without starting a turn.
@@ -627,6 +686,10 @@ func (s *Server) Close() {
 	}
 	s.closeOnce.Do(func() {
 		s.closed.Store(true)
+		if s.storageMaintenanceCancel != nil {
+			s.storageMaintenanceCancel()
+			s.storageMaintenanceCancel = nil
+		}
 		if s.pluginTurnUnbind != nil {
 			s.pluginTurnUnbind()
 			s.pluginTurnUnbind = nil
@@ -869,6 +932,14 @@ func RunStdioForDevice(ctx context.Context, rt *runtime.Session, in io.Reader, o
 	defer s.Close()
 	if s.startupErr != nil {
 		return s.startupErr
+	}
+	if s.bootOwner && strings.TrimSpace(rt.WuuHome) != "" {
+		maintenanceCtx, cancel := context.WithCancel(context.Background())
+		s.storageMaintenanceCancel = cancel
+		if !s.startBackground(func() { s.maintainSessionStorage(maintenanceCtx) }) {
+			cancel()
+			s.storageMaintenanceCancel = nil
+		}
 	}
 	return runStdioScanner(ctx, s, in)
 }
