@@ -1,4 +1,4 @@
-import { Children, cloneElement, isValidElement, memo, useEffect, useId, useMemo, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, memo, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { FileText, Github, Globe2, Mail } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform, type Components, type UrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -68,6 +68,14 @@ type MermaidState =
   | { status: "rendering" }
   | { status: "rendered"; svg: string }
   | { status: "error"; message: string };
+
+// The streaming cursor sentinel (CURSOR_SENTINEL in StreamingMarkdown) is a
+// private-use character appended to live text. It must never reach the
+// Mermaid parser, so any occurrence is stripped from extracted diagram code.
+const STREAM_CURSOR_SENTINEL_PATTERN = /\uE000/g;
+// While the diagram source is still streaming, render attempts are debounced
+// so the layout recomputes on a calm cadence instead of on every chunk.
+const STREAM_MERMAID_RENDER_DEBOUNCE_MS = 300;
 
 const IMAGE_MARKDOWN_PATTERN = /!\[([^\]\n]*)\]\(([^)\n]+)\)/g;
 const IMAGE_FILE_PATTERN = /\.(apng|avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i;
@@ -195,6 +203,7 @@ function MarkdownContentView({
   renderText,
   onOpenFile,
   renderMermaid = true,
+  mermaidStreaming = false,
   allowRawHtml = false
 }: {
   text: string;
@@ -202,11 +211,14 @@ function MarkdownContentView({
   renderText?: RichTextRenderer;
   onOpenFile?: (path: string) => void;
   renderMermaid?: boolean;
+  /** The diagram source is still streaming: render offscreen and commit only
+   * successful results (see MermaidDiagram). */
+  mermaidStreaming?: boolean;
   allowRawHtml?: boolean;
 }): JSX.Element {
   const components = useMemo(
-    () => markdownComponents(cwd, renderText, renderMermaid, onOpenFile),
-    [cwd, renderText, renderMermaid, onOpenFile]
+    () => markdownComponents(cwd, renderText, renderMermaid, mermaidStreaming, onOpenFile),
+    [cwd, renderText, renderMermaid, mermaidStreaming, onOpenFile]
   );
   return (
     <ReactMarkdown
@@ -385,6 +397,7 @@ function markdownComponents(
   cwd: string | undefined,
   renderText: RichTextRenderer | undefined,
   renderMermaid: boolean,
+  mermaidStreaming: boolean,
   onOpenFile: ((path: string) => void) | undefined
 ): Components {
   const richTextOptions: RichTextRenderOptions = {
@@ -492,7 +505,19 @@ function markdownComponents(
       if (isValidElement<CodeElementProps>(child)) {
         const language = languageFromClassName(child.props.className);
         if (language === "mermaid" && renderMermaid) {
-          return <MermaidDiagram code={reactNodeText(child.props.children).replace(/\n$/, "")} />;
+          const diagramCode = reactNodeText(child.props.children).replace(
+            STREAM_CURSOR_SENTINEL_PATTERN,
+            "",
+          );
+          return (
+            <MermaidDiagram
+              // Keep the trailing newline while streaming: it is the only
+              // signal that the last line is complete, which lets the
+              // partial-line render skip just the truly unfinished line.
+              code={mermaidStreaming ? diagramCode : diagramCode.replace(/\n$/, "")}
+              streaming={mermaidStreaming}
+            />
+          );
         }
         const displayedCode = reactNodeText(child.props.children);
         const code = displayedCode.replace(/\n$/, "");
@@ -1503,21 +1528,65 @@ function base64URL(value: string): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function MermaidDiagram({ code }: { code: string }): JSX.Element {
+function MermaidDiagram({
+  code,
+  streaming = false,
+}: {
+  code: string;
+  /**
+   * While the diagram source is still streaming (an open fence in the live
+   * tail), render attempts happen offscreen on a debounced cadence and only
+   * successful results are committed to the visible tree. Failed partial
+   * renders are dropped silently so the last coherent diagram stays visible
+   * and no error flashes into the stream; once this flips off, the final
+   * render runs immediately and errors are surfaced as before.
+   */
+  streaming?: boolean;
+}): JSX.Element {
   const { locale, t } = useI18n();
   const { openPreview } = useImagePreview();
   const reactID = useId();
   const diagramID = useMemo(() => `wuu-mermaid-${reactID.replace(/[^a-zA-Z0-9_-]/g, "")}-${hashString(code)}`, [code, reactID]);
   const [theme, setTheme] = useState<AppliedTheme>(currentAppliedTheme);
   const [state, setState] = useState<MermaidState>({ status: "rendering" });
+  const renderAttemptRef = useRef(0);
+  const hasRenderedRef = useRef(false);
+  const lastRenderedKeyRef = useRef("");
 
   useEffect(() => observeAppliedTheme(setTheme), []);
 
   useEffect(() => {
     let cancelled = false;
-    setState({ status: "rendering" });
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    void (async () => {
+    // While the fence is still open the code may end with a partial line
+    // that keeps growing; feeding it to the parser would fail on every
+    // chunk. When the last line is not newline-terminated it is unfinished,
+    // so render only the completed lines and let the diagram grow line by
+    // line. A trailing newline (kept by the caller while streaming) means
+    // the last line is complete and must be included.
+    let codeToRender = code;
+    if (streaming && !code.endsWith("\n")) {
+      const lastLineBreak = code.lastIndexOf("\n");
+      codeToRender = lastLineBreak < 0 ? "" : code.slice(0, lastLineBreak + 1);
+    }
+    if (codeToRender.endsWith("\n")) {
+      codeToRender = codeToRender.slice(0, -1);
+    }
+    const renderKey = `${theme}\u0000${codeToRender}`;
+    if (renderKey === lastRenderedKeyRef.current) {
+      // An identical diagram is already committed (e.g. chunks that only
+      // changed the partial line, or a settle with the same source).
+      return;
+    }
+    if (!codeToRender) {
+      // Nothing renderable yet; keep the placeholder until lines complete.
+      return;
+    }
+
+    const renderDiagram = async (): Promise<void> => {
+      const attempt = renderAttemptRef.current + 1;
+      renderAttemptRef.current = attempt;
       try {
         const mermaid = (await import("./MermaidRuntime")).default;
         mermaid.initialize({
@@ -1526,25 +1595,55 @@ function MermaidDiagram({ code }: { code: string }): JSX.Element {
           theme: "base",
           themeVariables: mermaidThemeVariables(theme),
         });
-        const result = await mermaid.render(`${diagramID}-${theme}`, code);
-        if (!cancelled) {
-          setState({ status: "rendered", svg: result.svg });
+        // A fresh id per attempt keeps a failed render's internal DOM from
+        // colliding with the next attempt's.
+        const result = await mermaid.render(`${diagramID}-${theme}-${attempt}`, codeToRender);
+        if (cancelled || attempt !== renderAttemptRef.current) {
+          return;
         }
+        hasRenderedRef.current = true;
+        lastRenderedKeyRef.current = renderKey;
+        setState({ status: "rendered", svg: result.svg });
       } catch (error) {
-        if (!cancelled) {
-          setState({
-            status: "error",
-            message:
-              error instanceof Error ? error.message : t("rich.mermaidFailed"),
-          });
+        if (cancelled || attempt !== renderAttemptRef.current) {
+          return;
         }
+        if (streaming) {
+          // Partial/invalid source: keep the last committed diagram (or the
+          // placeholder if nothing has rendered yet). Never record the key,
+          // so the settle-time render still re-attempts this source.
+          return;
+        }
+        setState({
+          status: "error",
+          message:
+            error instanceof Error ? error.message : t("rich.mermaidFailed"),
+        });
       }
-    })();
+    };
+
+    if (streaming) {
+      // Offscreen partial render while the source keeps growing; the debounce
+      // paces re-layouts instead of firing on every provider chunk.
+      timer = setTimeout(() => {
+        void renderDiagram();
+      }, STREAM_MERMAID_RENDER_DEBOUNCE_MS);
+    } else {
+      // Keep the last committed diagram visible while the final render is in
+      // flight so settling never flashes the placeholder.
+      if (!hasRenderedRef.current) {
+        setState({ status: "rendering" });
+      }
+      void renderDiagram();
+    }
 
     return () => {
       cancelled = true;
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
     };
-  }, [code, diagramID, locale, theme]);
+  }, [code, diagramID, locale, streaming, theme]);
 
   if (state.status === "rendered") {
     return (

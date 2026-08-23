@@ -185,11 +185,12 @@ export function StreamingMarkdown({
     () => createCursorTextRenderer(false),
     [],
   );
-  // Mermaid is expensive; do not flip the markdown renderer at settle for
-  // ordinary text. Only messages that actually contain a Mermaid fence enter
-  // the diagram renderer after streaming ends.
-  const renderMermaid =
-    phase === "settled" && containsMermaidFence(visibleText);
+  // Mermaid is expensive; do not flip the markdown renderer for ordinary
+  // text. The diagram renderer is enabled as soon as a Mermaid fence appears
+  // (not only after streaming ends) so the open fence in the tail can render
+  // progressively offscreen while its source grows; messages without a
+  // Mermaid fence never enter the diagram renderer at all.
+  const renderMermaid = containsMermaidFence(visibleText);
 
   // Split the visible text into stable blocks + an open tail. Every
   // stable block is its own memoized markdown surface, so promoting a
@@ -232,8 +233,14 @@ export function StreamingMarkdown({
     !endsWithFenceCloser(lastStableBlock.trimEnd())
       ? lastStableBlockIndex
       : -1;
+  // An open Mermaid fence in the tail cannot accept the inline cursor
+  // sentinel — it would leak into the diagram source and break parsing — so
+  // it uses the zero-flow-height sibling cursor like closed fences do.
+  const tailHasOpenMermaidFence =
+    split.inFence && split.openFenceLanguage?.toLowerCase() === "mermaid";
   const cursorNeedsBlockTail = showCursor && (
     endsWithFenceCloser(split.tail) ||
+    tailHasOpenMermaidFence ||
     (tailIsEmpty && lastStableBlockIndex >= 0 && cursorStableBlockIndex < 0)
   );
   const tailText = showCursor && !cursorNeedsBlockTail && cursorStableBlockIndex < 0
@@ -274,6 +281,7 @@ export function StreamingMarkdown({
         onOpenFile={onOpenFile}
         renderText={cursorTextRenderer}
         renderMermaid={renderMermaid}
+        mermaidStreaming={isLive && tailHasOpenMermaidFence}
       />
       {cursorNeedsBlockTail ? (
         <span
@@ -484,6 +492,8 @@ type StableBlockScanState = StableBlockSplit & {
   scanOffset: number;
   blockStart: number;
   inFence: boolean;
+  /** Info string of the currently open fenced code block, if any. */
+  openFenceLanguage: string | undefined;
 };
 
 function useIncrementalStableBlocks(
@@ -491,7 +501,7 @@ function useIncrementalStableBlocks(
   sourceKey: string,
   replacementVersion: number,
   appendOnly: boolean,
-): StableBlockSplit {
+): StableBlockScanState {
   const committedScanRef = useRef<StableBlockScanState | undefined>(undefined);
   const scan = useMemo(() => {
     const previous = committedScanRef.current;
@@ -525,6 +535,7 @@ function scanStableBlocks(
   const previousBlocks = blocks;
   let blocksCopied = false;
   let inFence = previous?.inFence ?? false;
+  let openFenceLanguage = previous?.openFenceLanguage;
   let blockStart = previous?.blockStart ?? 0;
   let scanOffset = previous?.scanOffset ?? 0;
 
@@ -557,6 +568,7 @@ function scanStableBlocks(
     if (startsBacktickFence) {
       if (!inFence) {
         inFence = true;
+        openFenceLanguage = text.slice(fenceStart + 3, lineEnd).trim();
       } else {
         let isCloser = true;
         for (let index = fenceStart + 3; index < lineEnd; index += 1) {
@@ -568,6 +580,7 @@ function scanStableBlocks(
         }
         if (isCloser) {
           inFence = false;
+          openFenceLanguage = undefined;
         }
       }
     }
@@ -590,6 +603,7 @@ function scanStableBlocks(
     scanOffset,
     blockStart,
     inFence,
+    openFenceLanguage,
     blocks,
     tail: text.slice(blockStart),
   };
