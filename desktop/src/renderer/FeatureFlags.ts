@@ -11,14 +11,12 @@ export const ENABLE_REMOTE_CONTROL =
   import.meta.env.VITE_ENABLE_REMOTE_CONTROL === "true";
 
 /**
- * Collaboration remains experimental while its product model is aligned with
- * the plugin architecture. Development builds enable it by default for
- * dogfooding; release builds keep it out until that ownership boundary is
- * settled. A release-style build can still opt in explicitly with
- * `VITE_ENABLE_GROUP_CHAT=true npm run build`.
+ * Collaboration is part of the default desktop product in development and
+ * release builds. Keep a build-time opt-out for emergency rollback without
+ * maintaining a separate release-only product surface.
  */
 export const ENABLE_GROUP_CHAT =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_GROUP_CHAT === "true";
+  import.meta.env.VITE_ENABLE_GROUP_CHAT !== "false";
 
 /**
  * Voice input and its optional BYOK text polish are hidden while the native
