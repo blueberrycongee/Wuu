@@ -1368,7 +1368,9 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 	runner.PromptCacheKey = strings.TrimSpace(id)
 	runner.InferenceJournal = s.InferenceJournalForOwner(id)
 	runner.DriverCheckpointStore = sessionDriverCheckpointStore{sessDir: s.SessionDir, sessionID: id}
-	runner.ModelInputReceiptStore = sessionModelInputReceiptStore{sessDir: s.SessionDir, sessionID: id}
+	// Exact model-input receipts have no production consumer and duplicate the
+	// cumulative conversation on every step. Keep the optional runner contract
+	// available for explicit diagnostics, but do not persist receipts by default.
 	runner.BeforeRequestContext = RuntimeContextInjector(agentControl, agentthread.RootPath, toolkitContextBlockProvider(kit))
 	runner.BeforeModelStep = pluginPreStepInjector(s.PluginHost, s.ProviderName, s.Model, id, threadRoot)
 	runner.BeforeRequest = pluginRequestInterceptor(s.PluginHost, s.ProviderName, id, threadRoot)
