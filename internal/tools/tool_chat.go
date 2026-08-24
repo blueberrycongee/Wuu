@@ -22,8 +22,8 @@ func (t *ChatCheckTool) IsConcurrencySafe() bool { return false }
 func (t *ChatCheckTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "chat_check",
-		Description: "Check this named agent's group-chat inbox. Returns compact unread indexes and current room/thread sequences. " +
-			"This advances chat cursors, marks returned indexes pulled, and clears the current wake; call chat_read for message bodies.",
+		Description: "Check this agent's chat and private collaboration inboxes. Returns compact unread indexes, full private collaboration messages, and current room/thread sequences. " +
+			"This advances chat cursors, marks returned items pulled, and clears the current wake; call chat_read for shared message bodies.",
 		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
 	}
 }
@@ -207,6 +207,53 @@ func (t *ChatSendTool) Execute(ctx context.Context, argsJSON string) (string, er
 		return mustJSON(map[string]any{"status": result.Status, "draft": result.Draft, "delta": result.Delta})
 	}
 	return mustJSON(map[string]any{"status": result.Status, "message": result.Message})
+}
+
+type CollaborationSendTool struct{ env *Env }
+
+func NewCollaborationSendTool(env *Env) *CollaborationSendTool {
+	return &CollaborationSendTool{env: env}
+}
+func (t *CollaborationSendTool) Name() string            { return "collaboration_send" }
+func (t *CollaborationSendTool) IsReadOnly() bool        { return false }
+func (t *CollaborationSendTool) IsConcurrencySafe() bool { return false }
+func (t *CollaborationSendTool) Definition() providers.ToolDefinition {
+	return providers.ToolDefinition{
+		Name: "collaboration_send",
+		Description: "Send a private orchestration message to another agent in the same room. " +
+			"Use this for delegating work and returning results; it does not post to the shared room transcript.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"room_id":     map[string]any{"type": "string"},
+				"to_agent_id": map[string]any{"type": "string"},
+				"body":        map[string]any{"type": "string", "maxLength": channels.MaxMessageRunes},
+				"reply_to":    map[string]any{"type": "string"},
+			},
+			"required": []string{"room_id", "to_agent_id", "body"},
+		},
+	}
+}
+func (t *CollaborationSendTool) Execute(ctx context.Context, argsJSON string) (string, error) {
+	if t == nil || t.env == nil || t.env.ChatAgent == nil {
+		return "", errors.New("collaboration_send is available only in a named-agent session")
+	}
+	var args struct {
+		RoomID  string `json:"room_id"`
+		ToAgent string `json:"to_agent_id"`
+		Body    string `json:"body"`
+		ReplyTo string `json:"reply_to"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", err
+	}
+	message, err := t.env.ChatAgent.SendCollaboration(ctx, channels.CollaborationSendParams{
+		RoomID: args.RoomID, ToAgentID: args.ToAgent, Body: args.Body, ReplyTo: args.ReplyTo,
+	})
+	if err != nil {
+		return "", err
+	}
+	return mustJSON(message)
 }
 
 type ChatDraftTool struct{ env *Env }

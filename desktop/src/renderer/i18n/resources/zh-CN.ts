@@ -177,7 +177,7 @@ export const zhCN = {
   "channels.noAgents": "没有可选的 Agent",
   "channels.noMatchingAgents": "没有匹配的 Agent",
   "channels.noMatchingConversations": "没有匹配的群聊",
-  "channels.groups": "群聊",
+  "channels.groups": "房间",
   "channels.mentionPicker": "选择要提及的成员",
   "channels.mentionAgent": "提及 {name}",
   "channels.addMember": "新增成员",

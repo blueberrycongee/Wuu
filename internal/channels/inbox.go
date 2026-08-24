@@ -110,6 +110,48 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 			return CheckResult{}, fmt.Errorf("mark chat check inbox pulled: %w", err)
 		}
 	}
+	collaboration := make([]CollaborationMessage, 0, checkLimit)
+	collaborationIDs := make([]string, 0, checkLimit)
+	rows, err = tx.QueryContext(ctx, `
+		SELECT id, room_id, from_type, from_id, to_agent_id, body,
+			COALESCE(source_message_id, ''), COALESCE(reply_to, ''), created_at
+		FROM collaboration_messages
+		WHERE to_agent_id = ? AND pulled_at IS NULL
+		ORDER BY created_at, rowid LIMIT ?`, agentID, checkLimit+1)
+	if err != nil {
+		return CheckResult{}, fmt.Errorf("query collaboration inbox: %w", err)
+	}
+	rowCount = 0
+	for rows.Next() {
+		var message CollaborationMessage
+		var createdAt int64
+		if err := rows.Scan(
+			&message.ID, &message.RoomID, &message.FromType, &message.FromID, &message.ToAgentID,
+			&message.Body, &message.SourceMessageID, &message.ReplyTo, &createdAt,
+		); err != nil {
+			rows.Close()
+			return CheckResult{}, fmt.Errorf("scan collaboration inbox: %w", err)
+		}
+		rowCount++
+		if rowCount > checkLimit {
+			hasMore = true
+			continue
+		}
+		message.CreatedAt = fromMillis(createdAt)
+		collaboration = append(collaboration, message)
+		collaborationIDs = append(collaborationIDs, message.ID)
+	}
+	if err := rows.Close(); err != nil {
+		return CheckResult{}, fmt.Errorf("close collaboration inbox: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return CheckResult{}, fmt.Errorf("iterate collaboration inbox: %w", err)
+	}
+	for _, id := range collaborationIDs {
+		if _, err := tx.ExecContext(ctx, `UPDATE collaboration_messages SET pulled_at = ? WHERE id = ? AND to_agent_id = ?`, toMillis(checkedAt), id, agentID); err != nil {
+			return CheckResult{}, fmt.Errorf("mark collaboration message pulled: %w", err)
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE room_cursors
 		SET last_read_seq = COALESCE((SELECT MAX(message.seq) FROM room_messages message WHERE message.room_id = room_cursors.room_id), 0)
@@ -128,7 +170,7 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 	if err := tx.Commit(); err != nil {
 		return CheckResult{}, fmt.Errorf("commit chat check: %w", err)
 	}
-	return CheckResult{Items: items, Reminders: reminders, Scopes: scopes, HasMore: hasMore, CheckedAt: checkedAt}, nil
+	return CheckResult{Items: items, Collaboration: collaboration, Reminders: reminders, Scopes: scopes, HasMore: hasMore, CheckedAt: checkedAt}, nil
 }
 
 func (s *Service) ReadInboxMessages(ctx context.Context, agentID, token string, itemIDs []string) ([]Message, error) {

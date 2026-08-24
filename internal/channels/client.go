@@ -65,6 +65,15 @@ func (c *AgentClient) Send(ctx context.Context, params AgentSendParams) (SendRes
 	return c.service.SendAgent(ctx, params)
 }
 
+func (c *AgentClient) SendCollaboration(ctx context.Context, params CollaborationSendParams) (CollaborationMessage, error) {
+	if c == nil || c.service == nil {
+		return CollaborationMessage{}, errors.New("chat agent is not bound")
+	}
+	params.AgentID = c.agentID
+	params.Token = c.token
+	return c.service.SendCollaboration(ctx, params)
+}
+
 func (c *AgentClient) ListDrafts(ctx context.Context) ([]Draft, error) {
 	if c == nil || c.service == nil {
 		return nil, errors.New("chat agent is not bound")

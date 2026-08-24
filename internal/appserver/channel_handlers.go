@@ -227,6 +227,28 @@ func (s *Server) attachLocalHumanUnreadCounts(ctx context.Context, rooms []chann
 	}
 	for index := range rooms {
 		rooms[index].UnreadCount = byRoom[rooms[index].ID]
+		if rooms[index].AgentID == "" {
+			continue
+		}
+		rooms[index].ActivityStatus = "idle"
+		agent, getErr := s.channelService.GetNamedAgent(ctx, rooms[index].AgentID)
+		if getErr != nil {
+			return getErr
+		}
+		threadID := namedAgentSessionID(agent)
+		if thread := s.thread(threadID); thread != nil && threadIsRunning(thread) {
+			rooms[index].ActivityStatus = "thinking"
+			continue
+		}
+		if s.rt != nil {
+			active, activeErr := session.ThreadExecutionActive(s.rt.SessionDir, threadID)
+			if activeErr != nil {
+				return activeErr
+			}
+			if active {
+				rooms[index].ActivityStatus = "thinking"
+			}
+		}
 	}
 	return nil
 }

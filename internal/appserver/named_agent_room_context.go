@@ -36,6 +36,8 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 		return nil
 	}
 	ctx := context.Background()
+	currentAgent, currentAgentErr := s.channelService.GetNamedAgent(ctx, agentID)
+	roomAgent := currentAgentErr == nil && currentAgent.Kind == "room"
 	rooms, err := s.channelService.ListRooms(ctx)
 	if err != nil {
 		providers.DebugLogf("read named agent room context for %q: %v", agentID, err)
@@ -77,7 +79,11 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 			if roomName == "" {
 				roomName = "Unnamed room"
 			}
-			fmt.Fprintf(&content, "- %s (%s)\n", roomName, room.Kind)
+			if roomAgent {
+				fmt.Fprintf(&content, "- %s (%s, room_id: %s)\n", roomName, room.Kind, room.ID)
+			} else {
+				fmt.Fprintf(&content, "- %s (%s)\n", roomName, room.Kind)
+			}
 			members := append([]channels.RoomMember(nil), room.Members...)
 			sort.Slice(members, func(i, j int) bool {
 				if members[i].MemberType != members[j].MemberType {
@@ -97,7 +103,11 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 				if member.MemberType == channels.MemberAgent && member.MemberID == agentID {
 					you = ", you"
 				}
-				fmt.Fprintf(&content, "  - %s (%s%s)\n", name, member.MemberType, you)
+				if roomAgent {
+					fmt.Fprintf(&content, "  - %s (%s%s, member_id: %s)\n", name, member.MemberType, you, member.MemberID)
+				} else {
+					fmt.Fprintf(&content, "  - %s (%s%s)\n", name, member.MemberType, you)
+				}
 			}
 		}
 	}
@@ -110,6 +120,9 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 }
 
 func roomContainsAgent(room channels.Room, agentID string) bool {
+	if room.AgentID == agentID {
+		return true
+	}
 	for _, member := range room.Members {
 		if member.MemberType == channels.MemberAgent && member.MemberID == agentID {
 			return true

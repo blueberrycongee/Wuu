@@ -66,6 +66,8 @@ const (
 type NamedAgent struct {
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
+	Kind             string    `json:"kind,omitempty"`
+	RoomID           string    `json:"room_id,omitempty"`
 	MemoryDir        string    `json:"memory_dir"`
 	AvatarKey        string    `json:"avatar_key"`
 	AvatarImage      string    `json:"avatar_image,omitempty"`
@@ -116,14 +118,17 @@ type RoomMember struct {
 }
 
 type Room struct {
-	ID          string       `json:"id"`
-	Kind        RoomKind     `json:"kind"`
-	Name        string       `json:"name"`
-	AvatarImage string       `json:"avatar_image,omitempty"`
-	CreatedBy   string       `json:"created_by"`
-	CreatedAt   time.Time    `json:"created_at"`
-	Members     []RoomMember `json:"members"`
-	UnreadCount int          `json:"unread_count"`
+	ID             string       `json:"id"`
+	Kind           RoomKind     `json:"kind"`
+	Name           string       `json:"name"`
+	AgentID        string       `json:"agent_id,omitempty"`
+	AvatarKey      string       `json:"avatar_key,omitempty"`
+	AvatarImage    string       `json:"avatar_image,omitempty"`
+	CreatedBy      string       `json:"created_by"`
+	CreatedAt      time.Time    `json:"created_at"`
+	Members        []RoomMember `json:"members"`
+	UnreadCount    int          `json:"unread_count"`
+	ActivityStatus string       `json:"activity_status,omitempty"`
 }
 
 type CreateRoomParams struct {
@@ -295,11 +300,33 @@ type ScopeSequence struct {
 }
 
 type CheckResult struct {
-	Items     []CheckItem     `json:"items"`
-	Reminders []Reminder      `json:"reminders"`
-	Scopes    []ScopeSequence `json:"scopes"`
-	HasMore   bool            `json:"has_more"`
-	CheckedAt time.Time       `json:"checked_at"`
+	Items         []CheckItem            `json:"items"`
+	Collaboration []CollaborationMessage `json:"collaboration,omitempty"`
+	Reminders     []Reminder             `json:"reminders"`
+	Scopes        []ScopeSequence        `json:"scopes"`
+	HasMore       bool                   `json:"has_more"`
+	CheckedAt     time.Time              `json:"checked_at"`
+}
+
+type CollaborationMessage struct {
+	ID              string     `json:"id"`
+	RoomID          string     `json:"room_id"`
+	FromType        MemberType `json:"from_type"`
+	FromID          string     `json:"from_id"`
+	ToAgentID       string     `json:"to_agent_id"`
+	Body            string     `json:"body"`
+	SourceMessageID string     `json:"source_message_id,omitempty"`
+	ReplyTo         string     `json:"reply_to,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+}
+
+type CollaborationSendParams struct {
+	AgentID   string
+	Token     string
+	RoomID    string
+	ToAgentID string
+	Body      string
+	ReplyTo   string
 }
 
 type WakeState struct {

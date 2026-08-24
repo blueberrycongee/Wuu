@@ -471,6 +471,42 @@ func evaluateTriggersTx(ctx context.Context, tx *sql.Tx, message Message, mentio
 	if err != nil {
 		return nil, err
 	}
+	var roomKind RoomKind
+	var roomAgentID string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT room.kind, COALESCE(agent.id, '')
+		FROM rooms room
+		LEFT JOIN named_agents agent ON agent.room_id = room.id AND agent.kind = 'room'
+		WHERE room.id = ?`, message.RoomID).Scan(&roomKind, &roomAgentID); err != nil {
+		return nil, fmt.Errorf("resolve room orchestration: %w", err)
+	}
+	if roomKind == RoomChannel && roomAgentID != "" {
+		for _, mention := range mentions {
+			if mention.MemberType != MemberHuman {
+				continue
+			}
+			if err := insertInboxTx(ctx, tx, MemberHuman, mention.MemberID, message.RoomID, message.ID, InboxMention, now); err != nil {
+				return nil, err
+			}
+		}
+		if suppressed || (message.AuthorType == MemberAgent && message.AuthorID == roomAgentID) {
+			return nil, nil
+		}
+		if _, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
+			RoomID: message.RoomID, FromType: message.AuthorType, FromID: message.AuthorID,
+			ToAgentID: roomAgentID, Body: message.Body, SourceMessageID: message.ID, CreatedAt: fromMillis(now),
+		}); err != nil {
+			return nil, err
+		}
+		requested, err := requestWakeTx(ctx, tx, roomAgentID, now)
+		if err != nil {
+			return nil, fmt.Errorf("request room agent wake: %w", err)
+		}
+		if requested {
+			return []string{roomAgentID}, nil
+		}
+		return nil, nil
+	}
 	agentSignals := make(map[string]InboxKind)
 	rows, err := tx.QueryContext(ctx, `SELECT member_id FROM room_members WHERE room_id = ? AND member_type = 'agent'`, message.RoomID)
 	if err != nil {

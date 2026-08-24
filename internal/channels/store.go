@@ -80,6 +80,10 @@ func Open(dir string, wake WakeSink) (*Service, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := service.ensureRoomAgents(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if err := service.ensureNamedAgentMemoryIndexes(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -171,6 +175,8 @@ func (s *Service) migrate() error {
 		`CREATE TABLE IF NOT EXISTS named_agents (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL COLLATE NOCASE,
+			kind TEXT NOT NULL DEFAULT 'named' CHECK (kind IN ('named', 'room')),
+			room_id TEXT,
 			memory_dir TEXT NOT NULL,
 			avatar_key TEXT NOT NULL DEFAULT '',
 			avatar_image TEXT NOT NULL DEFAULT '',
@@ -181,7 +187,6 @@ func (s *Service) migrate() error {
 			autostart INTEGER NOT NULL DEFAULT 0 CHECK (autostart IN (0, 1)),
 			created_at INTEGER NOT NULL
 		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_named_agents_name ON named_agents(name)`,
 		`CREATE TABLE IF NOT EXISTS rooms (
 			id TEXT PRIMARY KEY,
 			kind TEXT NOT NULL CHECK (kind IN ('channel', 'dm')),
@@ -261,6 +266,23 @@ func (s *Service) migrate() error {
 			updated_at INTEGER NOT NULL,
 			FOREIGN KEY (agent_id) REFERENCES named_agents(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS collaboration_messages (
+			id TEXT PRIMARY KEY,
+			room_id TEXT NOT NULL,
+			from_type TEXT NOT NULL CHECK (from_type IN ('human', 'agent')),
+			from_id TEXT NOT NULL,
+			to_agent_id TEXT NOT NULL,
+			body TEXT NOT NULL,
+			source_message_id TEXT,
+			reply_to TEXT,
+			created_at INTEGER NOT NULL,
+			pulled_at INTEGER,
+			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+			FOREIGN KEY (to_agent_id) REFERENCES named_agents(id) ON DELETE CASCADE,
+			FOREIGN KEY (source_message_id) REFERENCES room_messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (reply_to) REFERENCES collaboration_messages(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_collaboration_inbox ON collaboration_messages(to_agent_id, pulled_at, created_at)`,
 		`CREATE TABLE IF NOT EXISTS drafts (
 			id TEXT PRIMARY KEY,
 			agent_id TEXT NOT NULL,
@@ -302,6 +324,9 @@ func (s *Service) migrate() error {
 		}
 	}
 	if err := s.ensureNamedAgentProviderColumn(); err != nil {
+		return err
+	}
+	if err := s.ensureNamedAgentKindColumns(); err != nil {
 		return err
 	}
 	if err := s.ensureLegacyColumns(); err != nil {
@@ -346,6 +371,36 @@ func (s *Service) ensureNamedAgentProviderColumn() error {
 	}
 	if _, err := s.db.Exec(`ALTER TABLE named_agents ADD COLUMN provider_override TEXT`); err != nil {
 		return fmt.Errorf("add named agent provider override: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) ensureNamedAgentKindColumns() error {
+	for _, column := range []struct {
+		name       string
+		definition string
+	}{
+		{name: "kind", definition: "TEXT NOT NULL DEFAULT 'named'"},
+		{name: "room_id", definition: "TEXT"},
+	} {
+		exists, err := s.tableHasColumn("named_agents", column.name)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if _, err := s.db.Exec(fmt.Sprintf(`ALTER TABLE named_agents ADD COLUMN %s %s`, column.name, column.definition)); err != nil {
+				return fmt.Errorf("add named_agents.%s column: %w", column.name, err)
+			}
+		}
+	}
+	for _, statement := range []string{
+		`DROP INDEX IF EXISTS idx_named_agents_name`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_named_agents_name ON named_agents(name) WHERE kind = 'named'`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_named_agents_room ON named_agents(room_id) WHERE kind = 'room'`,
+	} {
+		if _, err := s.db.Exec(statement); err != nil {
+			return fmt.Errorf("migrate named agent role indexes: %w", err)
+		}
 	}
 	return nil
 }
@@ -587,6 +642,10 @@ func (s *Service) migrateInboxItems() error {
 }
 
 func (s *Service) CreateNamedAgent(ctx context.Context, params CreateNamedAgentParams) (AgentCredential, error) {
+	return s.createAgent(ctx, params, "named", "")
+}
+
+func (s *Service) createAgent(ctx context.Context, params CreateNamedAgentParams, kind, roomID string) (AgentCredential, error) {
 	if s == nil || s.db == nil {
 		return AgentCredential{}, errors.New("channels service is not configured")
 	}
@@ -632,6 +691,8 @@ func (s *Service) CreateNamedAgent(ctx context.Context, params CreateNamedAgentP
 	agent := NamedAgent{
 		ID:               id,
 		Name:             name,
+		Kind:             kind,
+		RoomID:           roomID,
 		MemoryDir:        filepath.Join(s.dir, "agents", id, "memory"),
 		AvatarKey:        avatarKey,
 		AvatarImage:      avatarImage,
@@ -659,9 +720,9 @@ func (s *Service) CreateNamedAgent(ctx context.Context, params CreateNamedAgentP
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO named_agents (id, name, memory_dir, avatar_key, avatar_image, provider_override, model_override, effort_override, token_hash, autostart, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		agent.ID, agent.Name, agent.MemoryDir, agent.AvatarKey, agent.AvatarImage, nullableString(agent.ProviderOverride), nullableString(agent.ModelOverride), nullableString(agent.EffortOverride), tokenHash(token), boolInt(agent.Autostart), toMillis(now),
+		INSERT INTO named_agents (id, name, kind, room_id, memory_dir, avatar_key, avatar_image, provider_override, model_override, effort_override, token_hash, autostart, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		agent.ID, agent.Name, agent.Kind, nullableString(agent.RoomID), agent.MemoryDir, agent.AvatarKey, agent.AvatarImage, nullableString(agent.ProviderOverride), nullableString(agent.ModelOverride), nullableString(agent.EffortOverride), tokenHash(token), boolInt(agent.Autostart), toMillis(now),
 	)
 	if err != nil {
 		if isUniqueConstraint(err) {
@@ -686,14 +747,26 @@ func (s *Service) GetNamedAgent(ctx context.Context, id string) (NamedAgent, err
 		return NamedAgent{}, errors.New("named agent id is required")
 	}
 	return scanNamedAgent(s.db.QueryRowContext(ctx, `
-		SELECT id, name, memory_dir, avatar_key, avatar_image, COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at
+		SELECT id, name, kind, COALESCE(room_id, ''), memory_dir, avatar_key, avatar_image, COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at
 		FROM named_agents WHERE id = ?`, id))
 }
 
 func (s *Service) ListNamedAgents(ctx context.Context) ([]NamedAgent, error) {
+	return s.listAgents(ctx, true)
+}
+
+func (s *Service) ListAgentRuntimes(ctx context.Context) ([]NamedAgent, error) {
+	return s.listAgents(ctx, false)
+}
+
+func (s *Service) listAgents(ctx context.Context, namedOnly bool) ([]NamedAgent, error) {
+	where := ""
+	if namedOnly {
+		where = "WHERE kind = 'named'"
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, memory_dir, avatar_key, avatar_image, COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at
-		FROM named_agents ORDER BY created_at, id`)
+		SELECT id, name, kind, COALESCE(room_id, ''), memory_dir, avatar_key, avatar_image, COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at
+		FROM named_agents `+where+` ORDER BY created_at, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list named agents: %w", err)
 	}
@@ -735,6 +808,9 @@ func (s *Service) UpdateNamedAgent(ctx context.Context, params UpdateNamedAgentP
 	if err != nil {
 		return NamedAgent{}, err
 	}
+	if current.Kind != "named" {
+		return NamedAgent{}, ErrNotFound
+	}
 	if avatarKey == "" {
 		avatarKey = current.AvatarKey
 	}
@@ -769,6 +845,14 @@ func (s *Service) DeleteNamedAgent(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	if agent.Kind != "named" {
+		return ErrNotFound
+	}
+	return s.deleteAgent(ctx, agent)
+}
+
+func (s *Service) deleteAgent(ctx context.Context, agent NamedAgent) error {
+	id := agent.ID
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -809,9 +893,9 @@ func (s *Service) AuthenticateAgent(ctx context.Context, agentID, token string) 
 	var autostart int
 	var createdAt int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, memory_dir, avatar_key, avatar_image, COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at, token_hash
+		SELECT id, name, kind, COALESCE(room_id, ''), memory_dir, avatar_key, avatar_image, COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at, token_hash
 		FROM named_agents WHERE id = ?`, agentID,
-	).Scan(&agent.ID, &agent.Name, &agent.MemoryDir, &agent.AvatarKey, &agent.AvatarImage, &agent.ProviderOverride, &agent.ModelOverride, &agent.EffortOverride, &autostart, &createdAt, &storedHash)
+	).Scan(&agent.ID, &agent.Name, &agent.Kind, &agent.RoomID, &agent.MemoryDir, &agent.AvatarKey, &agent.AvatarImage, &agent.ProviderOverride, &agent.ModelOverride, &agent.EffortOverride, &autostart, &createdAt, &storedHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return NamedAgent{}, ErrUnauthorized
 	}
@@ -880,6 +964,23 @@ func (s *Service) CreateRoom(ctx context.Context, params CreateRoomParams) (Room
 		members[index].JoinedAt = now
 	}
 	room.Members = members
+	keepRoomAgent := true
+	if room.Kind == RoomChannel {
+		credential, err := s.createAgent(ctx, CreateNamedAgentParams{Name: roomAgentName(room.Name), Autostart: true}, "room", room.ID)
+		if err != nil {
+			return Room{}, fmt.Errorf("create room agent: %w", err)
+		}
+		room.AgentID = credential.Agent.ID
+		room.AvatarKey = credential.Agent.AvatarKey
+		keepRoomAgent = false
+		defer func() {
+			if !keepRoomAgent {
+				if agent, err := s.GetNamedAgent(context.Background(), room.AgentID); err == nil {
+					_ = s.deleteAgent(context.Background(), agent)
+				}
+			}
+		}()
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -896,7 +997,7 @@ func (s *Service) CreateRoom(ctx context.Context, params CreateRoomParams) (Room
 	for _, member := range room.Members {
 		if member.MemberType == MemberAgent {
 			var exists int
-			if err := tx.QueryRowContext(ctx, `SELECT 1 FROM named_agents WHERE id = ?`, member.MemberID).Scan(&exists); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT 1 FROM named_agents WHERE id = ? AND kind = 'named'`, member.MemberID).Scan(&exists); err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
 					return Room{}, fmt.Errorf("%w: named agent %q", ErrNotFound, member.MemberID)
 				}
@@ -913,10 +1014,84 @@ func (s *Service) CreateRoom(ctx context.Context, params CreateRoomParams) (Room
 			return Room{}, fmt.Errorf("initialize room cursor: %w", err)
 		}
 	}
+	if room.AgentID != "" {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO room_members (room_id, member_type, member_id, joined_at) VALUES (?, 'agent', ?, ?)`,
+			room.ID, room.AgentID, toMillis(now)); err != nil {
+			return Room{}, fmt.Errorf("insert room agent member: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO room_cursors (room_id, member_type, member_id, last_read_seq) VALUES (?, 'agent', ?, 0)`,
+			room.ID, room.AgentID); err != nil {
+			return Room{}, fmt.Errorf("initialize room agent cursor: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return Room{}, fmt.Errorf("commit room create: %w", err)
 	}
+	keepRoomAgent = true
 	return room, nil
+}
+
+func roomAgentName(roomName string) string {
+	runes := []rune(strings.TrimSpace(roomName))
+	if len(runes) > 64 {
+		runes = runes[:64]
+	}
+	return string(runes)
+}
+
+func (s *Service) ensureRoomAgents(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT room.id, room.name, COALESCE(agent.id, '')
+		FROM rooms room
+		LEFT JOIN named_agents agent ON agent.room_id = room.id AND agent.kind = 'room'
+		WHERE room.kind = 'channel'
+		ORDER BY room.created_at, room.id`)
+	if err != nil {
+		return fmt.Errorf("list room agents: %w", err)
+	}
+	type roomAgentRecord struct{ id, name, agentID string }
+	records := make([]roomAgentRecord, 0)
+	for rows.Next() {
+		var record roomAgentRecord
+		if err := rows.Scan(&record.id, &record.name, &record.agentID); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan room agent: %w", err)
+		}
+		records = append(records, record)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close room agents: %w", err)
+	}
+	for _, record := range records {
+		created := false
+		if record.agentID == "" {
+			credential, err := s.createAgent(ctx, CreateNamedAgentParams{Name: roomAgentName(record.name), Autostart: true}, "room", record.id)
+			if err != nil {
+				return fmt.Errorf("backfill room agent: %w", err)
+			}
+			record.agentID = credential.Agent.ID
+			created = true
+		}
+		joinedAt := toMillis(s.now())
+		if _, err := s.db.ExecContext(ctx, `
+			INSERT OR IGNORE INTO room_members (room_id, member_type, member_id, joined_at) VALUES (?, 'agent', ?, ?)`,
+			record.id, record.agentID, joinedAt); err != nil {
+			if created {
+				if agent, getErr := s.GetNamedAgent(context.Background(), record.agentID); getErr == nil {
+					_ = s.deleteAgent(context.Background(), agent)
+				}
+			}
+			return fmt.Errorf("backfill room agent membership: %w", err)
+		}
+		if _, err := s.db.ExecContext(ctx, `
+			INSERT OR IGNORE INTO room_cursors (room_id, member_type, member_id, last_read_seq) VALUES (?, 'agent', ?, 0)`,
+			record.id, record.agentID); err != nil {
+			return fmt.Errorf("backfill room agent cursor: %w", err)
+		}
+	}
+	return nil
 }
 
 // OpenDirectMessage returns the one persistent DM shared by a human and a
@@ -935,6 +1110,13 @@ func (s *Service) OpenDirectMessage(ctx context.Context, humanID, agentID string
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	var agentName string
+	if err := s.db.QueryRowContext(ctx, `SELECT name FROM named_agents WHERE id = ? AND kind = 'named'`, agentID).Scan(&agentName); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Room{}, fmt.Errorf("%w: named agent %q", ErrNotFound, agentID)
+		}
+		return Room{}, fmt.Errorf("load direct message agent: %w", err)
+	}
 	var roomID string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT room_id FROM direct_messages WHERE human_id = ? AND agent_id = ?`, humanID, agentID,
@@ -977,13 +1159,6 @@ func (s *Service) OpenDirectMessage(ctx context.Context, humanID, agentID string
 		return Room{}, fmt.Errorf("find legacy direct message: %w", err)
 	}
 
-	var agentName string
-	if err := s.db.QueryRowContext(ctx, `SELECT name FROM named_agents WHERE id = ?`, agentID).Scan(&agentName); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Room{}, fmt.Errorf("%w: named agent %q", ErrNotFound, agentID)
-		}
-		return Room{}, fmt.Errorf("load direct message agent: %w", err)
-	}
 	id, err := randomID("room", 12)
 	if err != nil {
 		return Room{}, err
@@ -1047,8 +1222,12 @@ func (s *Service) GetRoom(ctx context.Context, id string) (Room, error) {
 	var room Room
 	var createdAt int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, kind, name, avatar_image, created_by, created_at FROM rooms WHERE id = ?`, id,
-	).Scan(&room.ID, &room.Kind, &room.Name, &room.AvatarImage, &room.CreatedBy, &createdAt)
+		SELECT room.id, room.kind, room.name, room.avatar_image, room.created_by, room.created_at,
+			COALESCE(agent.id, ''), COALESCE(agent.avatar_key, '')
+		FROM rooms room
+		LEFT JOIN named_agents agent ON agent.room_id = room.id AND agent.kind = 'room'
+		WHERE room.id = ?`, id,
+	).Scan(&room.ID, &room.Kind, &room.Name, &room.AvatarImage, &room.CreatedBy, &createdAt, &room.AgentID, &room.AvatarKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Room{}, fmt.Errorf("%w: room %q", ErrNotFound, id)
 	}
@@ -1057,8 +1236,11 @@ func (s *Service) GetRoom(ctx context.Context, id string) (Room, error) {
 	}
 	room.CreatedAt = fromMillis(createdAt)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT member_type, member_id, joined_at FROM room_members
-		WHERE room_id = ? ORDER BY joined_at, member_type, member_id`, id)
+		SELECT member.member_type, member.member_id, member.joined_at
+		FROM room_members member
+		LEFT JOIN named_agents agent ON member.member_type = 'agent' AND agent.id = member.member_id
+		WHERE member.room_id = ? AND COALESCE(agent.kind, 'named') != 'room'
+		ORDER BY member.joined_at, member.member_type, member.member_id`, id)
 	if err != nil {
 		return Room{}, fmt.Errorf("list room members: %w", err)
 	}
@@ -1168,6 +1350,11 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 		if _, err := tx.ExecContext(ctx, `UPDATE rooms SET name = ? WHERE id = ?`, name, id); err != nil {
 			return Room{}, fmt.Errorf("update room name: %w", err)
 		}
+		if kind == RoomChannel {
+			if _, err := tx.ExecContext(ctx, `UPDATE named_agents SET name = ? WHERE kind = 'room' AND room_id = ?`, roomAgentName(name), id); err != nil {
+				return Room{}, fmt.Errorf("update room agent name: %w", err)
+			}
+		}
 	}
 	if params.Members != nil {
 		members, err := normalizeMembers(*params.Members, createdBy)
@@ -1183,7 +1370,7 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 				continue
 			}
 			var exists int
-			if err := tx.QueryRowContext(ctx, `SELECT 1 FROM named_agents WHERE id = ?`, member.MemberID).Scan(&exists); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT 1 FROM named_agents WHERE id = ? AND kind = 'named'`, member.MemberID).Scan(&exists); err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
 					return Room{}, fmt.Errorf("%w: named agent %q", ErrNotFound, member.MemberID)
 				}
@@ -1192,7 +1379,11 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 			desiredAgents[member.MemberID] = struct{}{}
 		}
 
-		rows, err := tx.QueryContext(ctx, `SELECT member_id FROM room_members WHERE room_id = ? AND member_type = 'agent'`, id)
+		rows, err := tx.QueryContext(ctx, `
+			SELECT member.member_id
+			FROM room_members member
+			JOIN named_agents agent ON agent.id = member.member_id
+			WHERE member.room_id = ? AND member.member_type = 'agent' AND agent.kind = 'named'`, id)
 		if err != nil {
 			return Room{}, fmt.Errorf("list room agent members for update: %w", err)
 		}
@@ -1260,6 +1451,9 @@ func (s *Service) EnsureBootstrap(ctx context.Context, humanID string) (Bootstra
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return BootstrapResult{}, fmt.Errorf("read channel bootstrap state: %w", err)
 	}
+	if err := s.ensureRoomAgents(ctx); err != nil {
+		return BootstrapResult{}, err
+	}
 	agents, err := s.ListNamedAgents(ctx)
 	if err != nil {
 		return BootstrapResult{}, err
@@ -1307,12 +1501,24 @@ func (s *Service) DeleteRoom(ctx context.Context, id string) error {
 	if id == "" {
 		return errors.New("room id is required")
 	}
+	var roomAgentID string
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM named_agents WHERE kind = 'room' AND room_id = ?`, id).Scan(&roomAgentID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("find room agent for delete: %w", err)
+	}
 	result, err := s.db.ExecContext(ctx, `DELETE FROM rooms WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete room: %w", err)
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		return ErrNotFound
+	}
+	if roomAgentID != "" {
+		if agent, err := s.GetNamedAgent(ctx, roomAgentID); err == nil {
+			if err := s.deleteAgent(ctx, agent); err != nil {
+				return fmt.Errorf("delete room agent: %w", err)
+			}
+		}
 	}
 	return nil
 }
@@ -1361,7 +1567,7 @@ func scanNamedAgent(row scanner) (NamedAgent, error) {
 	var agent NamedAgent
 	var autostart int
 	var createdAt int64
-	if err := row.Scan(&agent.ID, &agent.Name, &agent.MemoryDir, &agent.AvatarKey, &agent.AvatarImage, &agent.ProviderOverride, &agent.ModelOverride, &agent.EffortOverride, &autostart, &createdAt); err != nil {
+	if err := row.Scan(&agent.ID, &agent.Name, &agent.Kind, &agent.RoomID, &agent.MemoryDir, &agent.AvatarKey, &agent.AvatarImage, &agent.ProviderOverride, &agent.ModelOverride, &agent.EffortOverride, &autostart, &createdAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return NamedAgent{}, ErrNotFound
 		}

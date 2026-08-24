@@ -621,9 +621,25 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
   const roomIncludesCurrentUser = selectedRoom?.members.some(
     (member) => member.member_type === "human" && member.member_id === "local-user",
   ) ?? false;
+  const messageAgents = useMemo(() => {
+    const roomAgents = rooms.flatMap((room): NamedAgent[] => room.agent_id ? [{
+      id: room.agent_id,
+      name: room.name,
+      kind: "room",
+      room_id: room.id,
+      memory_dir: "",
+      avatar_key: room.avatar_key ?? "abstract-1",
+      avatar_image: room.avatar_image,
+      autostart: true,
+      created_at: room.created_at,
+      activity_status: room.activity_status,
+      activity_room_ids: [room.id],
+    }] : []);
+    return [...agents, ...roomAgents];
+  }, [agents, rooms]);
   const agentNames = useMemo(
-    () => new Map(agents.map((agent) => [agent.id, agent.name])),
-    [agents],
+    () => new Map(messageAgents.map((agent) => [agent.id, agent.name])),
+    [messageAgents],
   );
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent.id === selectedAgentID),
@@ -1492,7 +1508,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                     <HumanAvatarMark />
                   </span>
                 ) : !grouped ? (() => {
-                  const agent = agents.find((candidate) => candidate.id === message.author_id);
+                  const agent = messageAgents.find((candidate) => candidate.id === message.author_id);
                   const status = activityFor(agent);
                   return <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
                 })() : null}
@@ -1532,7 +1548,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                   {threadReplies.length ? (
                     <ChannelThreadDigest
                       replies={threadReplies}
-                      agents={agents}
+                      agents={messageAgents}
                       onOpen={() => openThread(message)}
                       onMention={(name) => roomComposerRef.current?.insertMention(name)}
                     />
@@ -1602,7 +1618,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                         <HumanAvatarMark />
                       </span>
                     ) : !grouped ? (() => {
-                      const agent = agents.find((candidate) => candidate.id === message.author_id);
+                      const agent = messageAgents.find((candidate) => candidate.id === message.author_id);
                       const status = activityFor(agent);
                       return <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
                     })() : null}

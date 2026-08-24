@@ -179,7 +179,7 @@ export const enUS = {
   "channels.noAgents": "No agents available",
   "channels.noMatchingAgents": "No matching agents",
   "channels.noMatchingConversations": "No matching groups",
-  "channels.groups": "Groups",
+  "channels.groups": "Rooms",
   "channels.mentionPicker": "Mention someone",
   "channels.mentionAgent": "Mention {name}",
   "channels.addMember": "Add member",
