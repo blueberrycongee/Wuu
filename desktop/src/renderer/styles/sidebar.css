@@ -564,6 +564,18 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
   border-right: 1px solid var(--sidebar-drawer-edge);
   box-shadow: 10px 0 24px var(--ink-overlay-8);
+  overflow: hidden;
+}
+
+/* The desktop drawer keeps its content at --sidebar-open-width so the rail is
+ * clipped rather than squeezed during dock/collapse animation. On phones that
+ * stored width can exceed 80vw, making the content layer bleed past the modal
+ * drawer's visible edge. Compact navigation has no width animation, so bind
+ * the inner layer to the drawer instead. */
+.app-shell.compact-navigation.sidebar-collapsed:is(.sidebar-drawer-open, .sidebar-drawer-closing)
+  .sidebar-content {
+  width: 100%;
+  min-width: 0;
 }
 
 .compact-session-switcher-backdrop,
