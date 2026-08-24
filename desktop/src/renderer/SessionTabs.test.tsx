@@ -327,6 +327,28 @@ describe("SessionTabStrip pending indicators", () => {
     expect(tabs[1]?.classList.contains("has-unread")).toBe(true);
   });
 
+  it("renders unread from global state even when the tab is active", () => {
+    const context: RuntimeContext = {
+      kind: "project",
+      project_id: "project-1",
+      cwd: "/tmp/project",
+    };
+    const thread = {
+      ...makeThread("thread-a", "Thread A"),
+      latest_completed_turn_id: "turn-a-1",
+    };
+    renderTabs({
+      ...initialState,
+      activeContext: context,
+      thread,
+      activeSessionTabID: threadSessionTabID(thread.id),
+      sessionTabs: [createThreadSessionTab(thread, context)],
+      threads: [thread],
+    });
+
+    expect(container.querySelector(".session-tab")?.classList.contains("has-unread")).toBe(true);
+  });
+
   it("restores keyboard focus to the next active conversation after close", () => {
     const context: RuntimeContext = {
       kind: "project",
@@ -403,6 +425,7 @@ describe("SessionTabStrip pending indicators", () => {
         createThreadSessionTab(threadB, context),
       ],
       threads: [threadA, threadB],
+      lastViewedTurnByThreadID: { "thread-a": "turn-a-1" },
     });
 
     const tabs = Array.from(container.querySelectorAll(".session-tab"));

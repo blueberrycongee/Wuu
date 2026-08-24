@@ -2020,25 +2020,26 @@ type Thread struct {
 	// EngineID is the agent engine the thread is bound to ("wuu" for the
 	// built-in engine; external engines like Claude or Codex will carry
 	// their own ids).
-	EngineID         string        `json:"engine_id,omitempty"`
-	CWD              string        `json:"cwd"`
-	WorkspaceID      string        `json:"workspace_id,omitempty"`
-	WorkspaceKind    WorkspaceKind `json:"workspace_kind,omitempty"`
-	Status           ThreadStatus  `json:"status"`
-	TreeInterrupted  bool          `json:"orchestration_interrupted,omitempty"`
-	ReadOnly         bool          `json:"read_only,omitempty"`
-	Ephemeral        bool          `json:"ephemeral,omitempty"`
-	Pinned           bool          `json:"pinned,omitempty"`
-	FolderID         string        `json:"folder_id,omitempty"`
-	Archived         bool          `json:"archived,omitempty"`
-	ForkedFromID     string        `json:"forked_from_id,omitempty"`
-	ForkedFromTurnID string        `json:"forked_from_turn_id,omitempty"`
-	ForkedFromItemID string        `json:"forked_from_item_id,omitempty"`
-	Worktree         *WorktreeInfo `json:"worktree,omitempty"`
-	CreatedAt        time.Time     `json:"created_at"`
-	UpdatedAt        time.Time     `json:"updated_at"`
-	Turns            []Turn        `json:"turns"`
-	ChildAgents      []Agent       `json:"child_agents,omitempty"`
+	EngineID              string        `json:"engine_id,omitempty"`
+	CWD                   string        `json:"cwd"`
+	WorkspaceID           string        `json:"workspace_id,omitempty"`
+	WorkspaceKind         WorkspaceKind `json:"workspace_kind,omitempty"`
+	Status                ThreadStatus  `json:"status"`
+	TreeInterrupted       bool          `json:"orchestration_interrupted,omitempty"`
+	ReadOnly              bool          `json:"read_only,omitempty"`
+	Ephemeral             bool          `json:"ephemeral,omitempty"`
+	Pinned                bool          `json:"pinned,omitempty"`
+	FolderID              string        `json:"folder_id,omitempty"`
+	Archived              bool          `json:"archived,omitempty"`
+	ForkedFromID          string        `json:"forked_from_id,omitempty"`
+	ForkedFromTurnID      string        `json:"forked_from_turn_id,omitempty"`
+	ForkedFromItemID      string        `json:"forked_from_item_id,omitempty"`
+	Worktree              *WorktreeInfo `json:"worktree,omitempty"`
+	CreatedAt             time.Time     `json:"created_at"`
+	UpdatedAt             time.Time     `json:"updated_at"`
+	LatestCompletedTurnID string        `json:"latest_completed_turn_id,omitempty"`
+	Turns                 []Turn        `json:"turns"`
+	ChildAgents           []Agent       `json:"child_agents,omitempty"`
 }
 
 type WorktreeInfo struct {

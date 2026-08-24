@@ -163,6 +163,7 @@ export function threadListsEquivalent(
     return (
       candidate?.id === thread.id &&
       candidate.updated_at === thread.updated_at &&
+      candidate.latest_completed_turn_id === thread.latest_completed_turn_id &&
       candidate.status === thread.status &&
       candidate.pinned === thread.pinned &&
       candidate.archived === thread.archived

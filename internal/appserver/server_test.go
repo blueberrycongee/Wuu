@@ -6611,6 +6611,11 @@ func TestServerThreadListUsesSessionIndexMetadata(t *testing.T) {
 	if err := session.UpdateIndex(rt.SessionDir, "old-thread", 2, "old summary"); err != nil {
 		t.Fatal(err)
 	}
+	if err := session.AppendHistoryRecord(rt.SessionDir, "old-thread", session.HistoryRecord{
+		Role: "meta", Content: turnTerminalHistoryRecord, ClientID: "old-thread-turn-0001", StopReason: string(TurnStatusCompleted),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := session.SetRuntimeSelection(rt.SessionDir, "old-thread", session.RuntimeSelection{
 		Provider:       "anthropic",
 		Model:          "claude-sonnet-4-6",
@@ -6652,6 +6657,9 @@ func TestServerThreadListUsesSessionIndexMetadata(t *testing.T) {
 	}
 	if result.Threads[0].ID != "old-thread" || !result.Threads[0].Pinned || result.Threads[0].Preview != "old summary" {
 		t.Fatalf("expected pinned old thread first, got %+v", result.Threads)
+	}
+	if result.Threads[0].LatestCompletedTurnID != "old-thread-turn-0001" || len(result.Threads[0].Turns) != 0 {
+		t.Fatalf("expected lightweight completed-turn summary, got %+v", result.Threads[0])
 	}
 	if result.Threads[0].ModelProvider != "anthropic" || result.Threads[0].Model != "claude-sonnet-4-6" || result.Threads[0].ModelVariant != "high" {
 		t.Fatalf("persisted model selection not restored: %+v", result.Threads[0])

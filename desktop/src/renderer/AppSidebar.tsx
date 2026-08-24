@@ -894,8 +894,6 @@ export function AppSidebar({
   const pinnedHasUnread = pinnedRows.some((thread) =>
     sidebarThreadUnread(
       thread,
-      activeThreadID,
-      pendingThreadID,
       state.lastViewedTurnByThreadID,
     ),
   );
@@ -1141,8 +1139,6 @@ export function AppSidebar({
     const folderHasRunning = folderThreads.some((thread) => isThreadExecuting(thread));
     const folderHasUnread = folderThreads.some((thread) => sidebarThreadUnread(
       thread,
-      activeThreadID,
-      pendingThreadID,
       state.lastViewedTurnByThreadID,
     ));
     return (
@@ -1353,8 +1349,6 @@ export function AppSidebar({
           running: threads.some((thread) => isThreadExecuting(thread)),
           unread: threads.some((thread) => sidebarThreadUnread(
             thread,
-            activeThreadID,
-            pendingThreadID,
             state.lastViewedTurnByThreadID,
           )),
           disabled: project ? onSelectProjectWorkspace === undefined : undefined,
@@ -1392,8 +1386,6 @@ export function AppSidebar({
           running: folderThreads.some((thread) => isThreadExecuting(thread)),
           unread: folderThreads.some((thread) => sidebarThreadUnread(
             thread,
-            activeThreadID,
-            pendingThreadID,
             state.lastViewedTurnByThreadID,
           )),
         });
@@ -2149,14 +2141,7 @@ function threadNavigationNode(
 
 function sidebarThreadUnread(
   thread: ThreadSummary,
-  activeThreadID: string | undefined,
-  pendingThreadID: string | undefined,
   lastViewedTurnByThreadID: Readonly<Record<string, string>>,
 ): boolean {
-  return (
-    !isThreadExecuting(thread) &&
-    thread.id !== activeThreadID &&
-    thread.id !== pendingThreadID &&
-    isThreadUnread(thread, lastViewedTurnByThreadID[thread.id])
-  );
+  return isThreadUnread(thread, lastViewedTurnByThreadID[thread.id]);
 }

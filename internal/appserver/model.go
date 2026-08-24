@@ -68,19 +68,29 @@ func (th *threadState) snapshotLocked() Thread {
 		TreeInterrupted: th.workerTreeFrozen,
 		// Plugin-visible sessions remain writable by their owning plugin, but the
 		// user-facing conversation is an inspector and must not expose a composer.
-		ReadOnly:         th.ReadOnly || th.Visibility == pluginhost.SessionVisibilityPlugin,
-		Ephemeral:        th.Ephemeral,
-		Pinned:           th.PinnedAt != nil,
-		FolderID:         th.FolderID,
-		Archived:         th.ArchivedAt != nil,
-		ForkedFromID:     th.ForkedFromID,
-		ForkedFromTurnID: th.ForkedFromTurnID,
-		ForkedFromItemID: th.ForkedFromItemID,
-		Worktree:         threadWorktreeInfo(th.WorktreePath, th.WorktreeBaseHEAD, th.WorktreeBaseRepo),
-		CreatedAt:        th.CreatedAt,
-		UpdatedAt:        th.UpdatedAt,
-		Turns:            cloneTurns(th.Turns),
+		ReadOnly:              th.ReadOnly || th.Visibility == pluginhost.SessionVisibilityPlugin,
+		Ephemeral:             th.Ephemeral,
+		Pinned:                th.PinnedAt != nil,
+		FolderID:              th.FolderID,
+		Archived:              th.ArchivedAt != nil,
+		ForkedFromID:          th.ForkedFromID,
+		ForkedFromTurnID:      th.ForkedFromTurnID,
+		ForkedFromItemID:      th.ForkedFromItemID,
+		Worktree:              threadWorktreeInfo(th.WorktreePath, th.WorktreeBaseHEAD, th.WorktreeBaseRepo),
+		CreatedAt:             th.CreatedAt,
+		UpdatedAt:             th.UpdatedAt,
+		LatestCompletedTurnID: latestCompletedTurnID(th.Turns),
+		Turns:                 cloneTurns(th.Turns),
 	}
+}
+
+func latestCompletedTurnID(turns []Turn) string {
+	for index := len(turns) - 1; index >= 0; index-- {
+		if turns[index].Status != TurnStatusInProgress {
+			return turns[index].ID
+		}
+	}
+	return ""
 }
 
 func threadWorktreeInfo(path, baseHEAD, baseRepo string) *WorktreeInfo {

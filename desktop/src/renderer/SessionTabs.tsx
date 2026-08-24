@@ -240,16 +240,14 @@ export function SessionTabStrip({
                   tab.kind === "channel-room" &&
                   (channelUnreadByRoomID[tab.roomID] ?? 0) > 0;
                 const unread =
-                  !active &&
-                  (channelUnread ||
-                    (!running &&
-                      !pendingSwitch &&
-                      isThreadUnread(
-                        tabThread,
-                        tabThread
-                          ? state.lastViewedTurnByThreadID[tabThread.id]
-                          : undefined,
-                      )));
+                  channelUnread ||
+                  (!running &&
+                    isThreadUnread(
+                      tabThread,
+                      tabThread
+                        ? state.lastViewedTurnByThreadID[tabThread.id]
+                        : undefined,
+                    ));
                 const label = sessionTabLabel(tab, state);
                 const closeLabel = tab.kind === "draft"
                   ? t("tabs.closeNewConversation")
@@ -342,8 +340,7 @@ export function SessionTabStrip({
                     : false
                 }
                 unread={
-                  draggingTab.id !== state.activeSessionTabID &&
-                  (draggingTab.kind === "channel-room"
+                  draggingTab.kind === "channel-room"
                     ? (channelUnreadByRoomID[draggingTab.roomID] ?? 0) > 0
                     : draggingTab.kind === "thread" &&
                       !isThreadExecuting(
@@ -353,7 +350,7 @@ export function SessionTabStrip({
                       isThreadUnread(
                         threadForTab(tabState, draggingTab.threadID),
                         state.lastViewedTurnByThreadID[draggingTab.threadID],
-                      ))
+                      )
                 }
                 width={draggingTabWidth}
               />

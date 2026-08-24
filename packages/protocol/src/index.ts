@@ -1575,6 +1575,7 @@ export type Thread = {
   worktree?: WorktreeInfo;
   created_at: string;
   updated_at: string;
+  latest_completed_turn_id?: string;
   turns: Turn[];
   child_agents?: Agent[];
 };

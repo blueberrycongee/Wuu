@@ -2348,6 +2348,16 @@ describe("AppState unread tracking", () => {
     expect(latestCompletedTurnID(thread)).toBeUndefined();
   });
 
+  it("latestCompletedTurnID uses the global summary when turns are not loaded", () => {
+    const thread = {
+      ...makeThreadWithTurns("thread-1", []),
+      latest_completed_turn_id: "turn-global-2",
+    };
+    expect(latestCompletedTurnID(thread)).toBe("turn-global-2");
+    expect(isThreadUnread(thread, undefined)).toBe(true);
+    expect(isThreadUnread(thread, "turn-global-2")).toBe(false);
+  });
+
   it("isThreadUnread returns true for a thread with a new completed turn", () => {
     const thread = makeThreadWithTurns("thread-1", [
       { id: "turn-1", status: "completed" },

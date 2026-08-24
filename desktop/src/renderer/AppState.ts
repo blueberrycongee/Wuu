@@ -1598,6 +1598,7 @@ function summarizeThreadForSidebar(
     worktree: thread.worktree,
     created_at: thread.created_at,
     updated_at: thread.updated_at,
+    latest_completed_turn_id: thread.latest_completed_turn_id,
     turns: thread.turns.map(summarizeTurnForSidebar),
     turn_count: thread.turns.length,
     child_agents: thread.child_agents?.map(summarizeAgentForSidebar),
@@ -2694,8 +2695,12 @@ export function agentRunning(
 }
 
 function latestCompletedTurnID(thread: {
+  latest_completed_turn_id?: string;
   turns: Array<Pick<Turn, "id" | "status">>;
 }): string | undefined {
+  if (thread.latest_completed_turn_id) {
+    return thread.latest_completed_turn_id;
+  }
   // Walk newest → oldest. Most threads end with a non-in_progress turn so the
   // first hit is the answer; we still guard against an in_progress tail so a
   // thread that was reset to running does not get pinned to a stale ID.
@@ -2711,6 +2716,7 @@ function latestCompletedTurnID(thread: {
 
 function isThreadUnread(
   thread: (ThreadRunningCandidate & {
+    latest_completed_turn_id?: string;
     turns: Array<Pick<Turn, "id" | "status">>;
   }) | undefined,
   lastViewedTurnID: string | undefined,
@@ -2814,6 +2820,10 @@ function threadWithTurnSummary(thread: Thread, turn: Turn): Thread {
   return {
     ...thread,
     preview,
+    latest_completed_turn_id:
+      turn.status === "in_progress"
+        ? thread.latest_completed_turn_id
+        : turn.id,
     updated_at: laterTimestamp(
       thread.updated_at,
       turn.completed_at ?? turn.started_at,

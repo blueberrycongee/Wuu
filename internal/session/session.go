@@ -34,26 +34,27 @@ var (
 
 // Session represents one conversation session.
 type Session struct {
-	ID                string    `json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at,omitempty"`
-	Title             string    `json:"title,omitempty"`
-	Summary           string    `json:"summary,omitempty"`
-	Entries           int       `json:"entries"`
-	CWD               string    `json:"cwd,omitempty"`
-	Source            string    `json:"source,omitempty"`
-	Owner             string    `json:"owner,omitempty"`
-	Visibility        string    `json:"visibility,omitempty"`
-	ParentID          string    `json:"parent_id,omitempty"`
-	ContextSource     string    `json:"context_source,omitempty"`
-	CreationRequestID string    `json:"creation_request_id,omitempty"`
-	Provider          string    `json:"provider,omitempty"`
-	Model             string    `json:"model,omitempty"`
-	Variant           string    `json:"variant,omitempty"`
-	Effort            string    `json:"effort,omitempty"`
-	PermissionMode    string    `json:"permission_mode,omitempty"`
-	Instructions      string    `json:"instructions,omitempty"`
-	ToolPolicyJSON    string    `json:"tool_policy_json,omitempty"`
+	ID                    string    `json:"id"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at,omitempty"`
+	Title                 string    `json:"title,omitempty"`
+	Summary               string    `json:"summary,omitempty"`
+	Entries               int       `json:"entries"`
+	LatestCompletedTurnID string    `json:"latest_completed_turn_id,omitempty"`
+	CWD                   string    `json:"cwd,omitempty"`
+	Source                string    `json:"source,omitempty"`
+	Owner                 string    `json:"owner,omitempty"`
+	Visibility            string    `json:"visibility,omitempty"`
+	ParentID              string    `json:"parent_id,omitempty"`
+	ContextSource         string    `json:"context_source,omitempty"`
+	CreationRequestID     string    `json:"creation_request_id,omitempty"`
+	Provider              string    `json:"provider,omitempty"`
+	Model                 string    `json:"model,omitempty"`
+	Variant               string    `json:"variant,omitempty"`
+	Effort                string    `json:"effort,omitempty"`
+	PermissionMode        string    `json:"permission_mode,omitempty"`
+	Instructions          string    `json:"instructions,omitempty"`
+	ToolPolicyJSON        string    `json:"tool_policy_json,omitempty"`
 	// EngineID is the agent engine the thread is bound to. Empty reads as
 	// the built-in wuu engine, which is the legacy default for sessions
 	// persisted before engine binding existed.
@@ -300,7 +301,11 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-	       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json
+	       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json,
+	       COALESCE((SELECT m.client_id FROM session_messages m
+	                 WHERE m.session_id = sessions.id AND m.role = 'meta'
+	                   AND m.content = 'turn_terminal' AND m.client_id <> ''
+	                 ORDER BY m.seq DESC LIMIT 1), '')
 FROM sessions`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
@@ -478,7 +483,11 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json
+       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json,
+       COALESCE((SELECT m.client_id FROM session_messages m
+                 WHERE m.session_id = sessions.id AND m.role = 'meta'
+                   AND m.content = 'turn_terminal' AND m.client_id <> ''
+                 ORDER BY m.seq DESC LIMIT 1), '')
 FROM sessions
 WHERE owner = ? AND creation_request_id = ?`, owner, requestID)
 	sess, err := scanSession(row)
@@ -1797,7 +1806,11 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-	       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json
+	       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json,
+	       COALESCE((SELECT m.client_id FROM session_messages m
+	                 WHERE m.session_id = sessions.id AND m.role = 'meta'
+	                   AND m.content = 'turn_terminal' AND m.client_id <> ''
+	                 ORDER BY m.seq DESC LIMIT 1), '')
 FROM sessions
 WHERE id = ?`, id)
 	return scanSessionRow(row)
@@ -1810,7 +1823,11 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-	       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json
+	       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json,
+	       COALESCE((SELECT m.client_id FROM session_messages m
+	                 WHERE m.session_id = sessions.id AND m.role = 'meta'
+	                   AND m.content = 'turn_terminal' AND m.client_id <> ''
+	                 ORDER BY m.seq DESC LIMIT 1), '')
 FROM sessions
 WHERE id = ?`, id)
 	return scanSessionRow(row)
@@ -1842,6 +1859,7 @@ func scanSession(scanner interface {
 		&s.WorktreePath, &s.WorktreeBaseHEAD, &s.WorktreeBaseRepo,
 		&s.WorkspaceID, &s.Source, &s.Owner, &s.Visibility, &s.ParentID, &s.ContextSource, &s.CreationRequestID,
 		&s.Provider, &s.Model, &s.Variant, &s.Effort, &s.PermissionMode, &s.EngineID, &s.EngineRef, &s.Instructions, &s.ToolPolicyJSON,
+		&s.LatestCompletedTurnID,
 	); err != nil {
 		return Session{}, err
 	}
