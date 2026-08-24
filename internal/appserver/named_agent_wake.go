@@ -83,7 +83,11 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 		if th.Source != "" && th.Source != namedAgentSessionSource+agent.ID {
 			return nil, fmt.Errorf("session %q is not owned by named agent %q", threadID, agent.ID)
 		}
-		needsNamedAgentRuntime := th.execRuntime == nil || th.NamedAgentID != agent.ID
+		needsNamedAgentRuntime := th.execRuntime == nil ||
+			th.NamedAgentID != agent.ID ||
+			th.execRuntime.StreamRunner == nil ||
+			th.execRuntime.Toolkit == nil ||
+			!th.execRuntime.Toolkit.SupportsTool("chat_check")
 		th.NamedAgentID = agent.ID
 		th.Source = namedAgentSessionSource + agent.ID
 		th.CWD = filepath.Dir(agent.MemoryDir)

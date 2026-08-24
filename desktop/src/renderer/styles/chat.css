@@ -47,7 +47,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   font-size: 12px;
 }
 

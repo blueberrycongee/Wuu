@@ -269,7 +269,12 @@ export function CollaborationSidebar({
                               onClick={() => onSelectAgent(agent.id)}
                             >
                               <span className="collaboration-contact-avatar" aria-hidden="true">
-                                <AgentAvatarMark seed={agent.id} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} />
+                                <AgentAvatarMark
+                                  seed={agent.id}
+                                  avatarKey={agent.avatar_key}
+                                  avatarImage={agent.avatar_image}
+                                  status={agent.activity_status === "thinking" ? "thinking" : "idle"}
+                                />
                               </span>
                               <span className="collaboration-contact-copy"><strong>{agent.name}</strong></span>
                               {unread > 0 ? <span className="collaboration-contact-unread">{formatChannelUnreadCount(unread)}</span> : null}

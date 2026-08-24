@@ -44,10 +44,19 @@ type InferenceJournalRuntime struct {
 	sessDir        string
 	workspaceScope string
 	runtimeID      string
-	heartbeatOnce  sync.Once
-	heartbeatStop  chan struct{}
-	heartbeatDone  chan struct{}
-	closeOnce      sync.Once
+	// db is configured and migrated once, then retained for the runtime
+	// lifetime. Provider submissions synchronously checkpoint through this
+	// runtime, so reopening the store on every write turns filesystem or schema
+	// probe stalls into user-visible first-token latency.
+	db            *sql.DB
+	heartbeatOnce sync.Once
+	heartbeatStop chan struct{}
+	heartbeatDone chan struct{}
+	closeOnce     sync.Once
+	lifecycleMu   sync.Mutex
+	closing       bool
+	activeWG      sync.WaitGroup
+	closeErr      error
 
 	// Streaming submission progress is coalesced by submission id and flushed
 	// off the caller's goroutine by a single background writer, so a fast token
@@ -94,13 +103,11 @@ INSERT INTO inference_journal_runtimes (
 		db.Close()
 		return nil, fmt.Errorf("register inference journal runtime: %w", registerErr)
 	}
-	if err := db.Close(); err != nil {
-		return nil, fmt.Errorf("close inference journal: %w", err)
-	}
 	runtime := &InferenceJournalRuntime{
 		sessDir:        sessDir,
 		workspaceScope: workspaceScope,
 		runtimeID:      runtimeID,
+		db:             db,
 		heartbeatStop:  make(chan struct{}),
 		heartbeatDone:  make(chan struct{}),
 		progressStop:   make(chan struct{}),
@@ -118,6 +125,21 @@ func (r *InferenceJournalRuntime) RuntimeID() string {
 	return r.runtimeID
 }
 
+func (r *InferenceJournalRuntime) beginUse() (*sql.DB, func(), error) {
+	if r == nil {
+		return nil, nil, errors.New("inference journal runtime is not initialized")
+	}
+	r.lifecycleMu.Lock()
+	if r.closing || r.db == nil {
+		r.lifecycleMu.Unlock()
+		return nil, nil, errors.New("inference journal runtime is closed")
+	}
+	r.activeWG.Add(1)
+	db := r.db
+	r.lifecycleMu.Unlock()
+	return db, r.activeWG.Done, nil
+}
+
 func (r *InferenceJournalRuntime) startHeartbeat() {
 	if r == nil {
 		return
@@ -125,19 +147,13 @@ func (r *InferenceJournalRuntime) startHeartbeat() {
 	r.heartbeatOnce.Do(func() {
 		go func() {
 			defer close(r.heartbeatDone)
-			db, err := openStore(r.sessDir)
-			if err != nil {
-				providers.DebugLogf("inference journal heartbeat open: %v", err)
-				return
-			}
-			defer db.Close()
 			ticker := time.NewTicker(inferenceJournalHeartbeatInterval)
 			defer ticker.Stop()
 			for {
 				select {
 				case at := <-ticker.C:
 					storeWriteMu.Lock()
-					_, heartbeatErr := db.Exec(`
+					_, heartbeatErr := r.db.Exec(`
 UPDATE inference_journal_runtimes SET heartbeat_at = ?
 WHERE id = ? AND closed_at = 0`, at.UTC().UnixMilli(), r.runtimeID)
 					storeWriteMu.Unlock()
@@ -158,8 +174,12 @@ func (r *InferenceJournalRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var closeErr error
 	r.closeOnce.Do(func() {
+		r.lifecycleMu.Lock()
+		r.closing = true
+		r.lifecycleMu.Unlock()
+		r.activeWG.Wait()
+
 		close(r.heartbeatStop)
 		<-r.heartbeatDone
 		// Drain any coalesced streaming progress while the runtime lease is
@@ -168,23 +188,24 @@ func (r *InferenceJournalRuntime) Close() error {
 			close(r.progressStop)
 			<-r.progressDone
 		}
-		db, err := openStore(r.sessDir)
-		if err != nil {
-			closeErr = fmt.Errorf("close inference journal runtime: %w", err)
-			return
-		}
-		defer db.Close()
 		storeWriteMu.Lock()
-		_, err = db.Exec(`
+		_, err := r.db.Exec(`
 UPDATE inference_journal_runtimes
 SET heartbeat_at = ?, closed_at = ?
 WHERE id = ?`, time.Now().UTC().UnixMilli(), time.Now().UTC().UnixMilli(), r.runtimeID)
 		storeWriteMu.Unlock()
+		dbErr := r.db.Close()
 		if err != nil {
-			closeErr = fmt.Errorf("close inference journal runtime: %w", err)
+			r.closeErr = fmt.Errorf("close inference journal runtime: %w", err)
 		}
+		if dbErr != nil {
+			r.closeErr = errors.Join(r.closeErr, fmt.Errorf("close inference journal database: %w", dbErr))
+		}
+		r.lifecycleMu.Lock()
+		r.db = nil
+		r.lifecycleMu.Unlock()
 	})
-	return closeErr
+	return r.closeErr
 }
 
 func (r *InferenceJournalRuntime) ForOwner(ownerID string) providers.InferenceJournal {
@@ -213,9 +234,9 @@ func (r *InferenceJournalRuntime) startProgressFlusher() {
 			for {
 				select {
 				case <-ticker.C:
-					r.flushSubmissionProgress()
+					r.flushSubmissionProgress(false)
 				case <-r.progressStop:
-					r.flushSubmissionProgress()
+					r.flushSubmissionProgress(true)
 					return
 				}
 			}
@@ -230,6 +251,11 @@ func (r *InferenceJournalRuntime) enqueueSubmissionProgress(j *inferenceJournal,
 	if r == nil || j == nil {
 		return
 	}
+	_, done, err := r.beginUse()
+	if err != nil {
+		return
+	}
+	defer done()
 	id := strings.TrimSpace(record.ID)
 	if id == "" {
 		return
@@ -248,9 +274,26 @@ func (r *InferenceJournalRuntime) enqueueSubmissionProgress(j *inferenceJournal,
 // under progressMu. A failure is recorded and the batch dropped: these are
 // best-effort in-flight estimates, and terminal cost is anchored by the
 // synchronous CompleteAttempt write that follows the barrier.
-func (r *InferenceJournalRuntime) flushSubmissionProgress() {
+func (r *InferenceJournalRuntime) flushSubmissionProgress(allowClosing bool) {
 	if r == nil {
 		return
+	}
+	var db *sql.DB
+	var done func()
+	var err error
+	if allowClosing {
+		r.lifecycleMu.Lock()
+		db = r.db
+		r.lifecycleMu.Unlock()
+		if db == nil {
+			return
+		}
+	} else {
+		db, done, err = r.beginUse()
+		if err != nil {
+			return
+		}
+		defer done()
 	}
 	r.progressMu.Lock()
 	if len(r.progress) == 0 {
@@ -261,7 +304,7 @@ func (r *InferenceJournalRuntime) flushSubmissionProgress() {
 	r.progress = make(map[string]pendingSubmissionProgress)
 	r.progressMu.Unlock()
 
-	if err := r.writeSubmissionProgressBatch(batch); err != nil {
+	if err := r.writeSubmissionProgressBatch(db, batch); err != nil {
 		r.progressMu.Lock()
 		r.progressErr = err
 		r.progressMu.Unlock()
@@ -269,12 +312,7 @@ func (r *InferenceJournalRuntime) flushSubmissionProgress() {
 	}
 }
 
-func (r *InferenceJournalRuntime) writeSubmissionProgressBatch(batch map[string]pendingSubmissionProgress) error {
-	db, err := openStore(r.sessDir)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
+func (r *InferenceJournalRuntime) writeSubmissionProgressBatch(db *sql.DB, batch map[string]pendingSubmissionProgress) error {
 	storeWriteMu.Lock()
 	defer storeWriteMu.Unlock()
 	tx, err := db.BeginTx(context.Background(), nil)
@@ -711,7 +749,7 @@ func (j *inferenceJournal) CompleteAttempt(record providers.InferenceAttemptTerm
 	}
 	// Durability barrier: land this attempt's coalesced streaming estimates
 	// before we record the attempt terminal, so the two never disagree on crash.
-	j.runtime.flushSubmissionProgress()
+	j.runtime.flushSubmissionProgress(false)
 	stamp := journalTime(record.At)
 	return j.write("complete inference attempt", func(tx *sql.Tx) error {
 		if err := j.assertOperationTx(tx, record.OperationID, false); err != nil {
@@ -826,7 +864,7 @@ func (j *inferenceJournal) CompleteOperation(record providers.InferenceOperation
 	}
 	// Durability barrier: land coalesced streaming estimates before the
 	// operation terminal so cost accounting is complete at the boundary.
-	j.runtime.flushSubmissionProgress()
+	j.runtime.flushSubmissionProgress(false)
 	stamp := journalTime(record.At)
 	return j.write("complete inference operation", func(tx *sql.Tx) error {
 		if err := j.assertOperationTx(tx, record.OperationID, false); err != nil {
@@ -1233,12 +1271,11 @@ func (j *inferenceJournal) writeContext(ctx context.Context, action string, fn f
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	j.runtime.startHeartbeat()
-	db, err := openStore(j.runtime.sessDir)
+	db, done, err := j.runtime.beginUse()
 	if err != nil {
 		return fmt.Errorf("%s: %w", action, err)
 	}
-	defer db.Close()
+	defer done()
 	storeWriteMu.Lock()
 	defer storeWriteMu.Unlock()
 	tx, err := db.BeginTx(ctx, nil)
@@ -1279,11 +1316,11 @@ func (r *InferenceJournalRuntime) ReconcileOrphans(now time.Time) ([]InferenceCr
 	if r == nil {
 		return nil, nil
 	}
-	db, err := openStore(r.sessDir)
+	db, done, err := r.beginUse()
 	if err != nil {
 		return nil, fmt.Errorf("reconcile inference journal: %w", err)
 	}
-	defer db.Close()
+	defer done()
 	storeWriteMu.Lock()
 	defer storeWriteMu.Unlock()
 	tx, err := db.Begin()
@@ -1404,11 +1441,11 @@ func (r *InferenceJournalRuntime) Prune(now time.Time) (int64, error) {
 	if r == nil {
 		return 0, nil
 	}
-	db, err := openStore(r.sessDir)
+	db, done, err := r.beginUse()
 	if err != nil {
 		return 0, fmt.Errorf("prune inference journal: %w", err)
 	}
-	defer db.Close()
+	defer done()
 	storeWriteMu.Lock()
 	defer storeWriteMu.Unlock()
 	cutoff := journalTime(now.Add(-inferenceJournalRetention))

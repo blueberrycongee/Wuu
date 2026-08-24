@@ -205,7 +205,7 @@ func TestInferenceJournalCoalescesStreamingProgressAndFlushesAtBarrier(t *testin
 	}
 	// Deterministically flush the coalesced batch (the background ticker would
 	// otherwise do this within inferenceJournalProgressFlushInterval).
-	runtime.flushSubmissionProgress()
+	runtime.flushSubmissionProgress(false)
 
 	outputBytes, outcome, costState := readInferenceSubmissionProgress(t, dir, submissionID)
 	if outcome != string(providers.InferenceSubmissionInFlight) || costState != string(providers.InferenceCostEstimated) || outputBytes != 64 {
@@ -1015,12 +1015,17 @@ func TestInferenceJournalCrossProcessBudgetWorker(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+	db, err := openStore(candidate.SessDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
 	runtime := &InferenceJournalRuntime{
-		sessDir: candidate.SessDir, workspaceScope: candidate.Scope, runtimeID: candidate.RuntimeID,
+		sessDir: candidate.SessDir, workspaceScope: candidate.Scope, runtimeID: candidate.RuntimeID, db: db,
 	}
 	runtime.heartbeatOnce.Do(func() {})
 	journal := &inferenceJournal{runtime: runtime, ownerID: candidate.OwnerID}
-	var err error
+	err = nil
 	switch candidate.Action {
 	case "attempt":
 		err = journal.PrepareAttempt(providers.InferenceAttemptJournalRecord{
@@ -1795,6 +1800,16 @@ func crashInferenceRuntimeForTest(t *testing.T, runtime *InferenceJournalRuntime
 	runtime.closeOnce.Do(func() {
 		close(runtime.heartbeatStop)
 		<-runtime.heartbeatDone
+		if runtime.progressStop != nil {
+			close(runtime.progressStop)
+			<-runtime.progressDone
+		}
+		if runtime.db != nil {
+			if err := runtime.db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			runtime.db = nil
+		}
 	})
 	db, err := openStore(runtime.sessDir)
 	if err != nil {

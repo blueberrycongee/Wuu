@@ -26,7 +26,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 0 10px;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--control-boundary);
   border-radius: var(--radius-sm);
   background: var(--paper);
   color: var(--ink);
@@ -47,8 +47,8 @@
 
 .select-menu-trigger:focus-visible {
   outline: 0;
-  border-color: var(--hairline-strong);
-  box-shadow: 0 0 0 3px var(--ink-overlay-8);
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .select-menu-trigger[aria-expanded="true"] {
@@ -69,7 +69,7 @@
 }
 
 .select-menu-trigger[data-placeholder] .select-menu-value {
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
 }
 
 .select-menu-chevron {
@@ -115,7 +115,7 @@
 }
 
 .minute-clock-face:focus-visible {
-  box-shadow: 0 0 0 3px var(--ink-overlay-8);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .minute-clock-hand {
@@ -206,20 +206,20 @@
 .select-menu-trigger.settings-select-trigger {
   height: 32px;
   padding: 0 12px;
-  border-color: transparent;
+  border-color: var(--control-boundary);
   background: var(--wuu-control-field-background, var(--surface-1));
   font-weight: 400;
 }
 
 .select-menu-trigger.settings-select-trigger:hover:not(:disabled) {
   background: var(--wuu-control-field-background, var(--surface-2));
-  border-color: transparent;
+  border-color: var(--control-boundary);
 }
 
 .select-menu-trigger.settings-select-trigger:focus-visible,
 .select-menu-trigger.settings-select-trigger[aria-expanded="true"] {
   background: var(--paper);
-  border-color: var(--ink-overlay-18);
+  border-color: var(--focus-ring);
 }
 
 /* ---- panel (the open option list) ---------------------------------- */

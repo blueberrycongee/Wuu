@@ -7,7 +7,7 @@
   --workspace-tab-active-border: rgba(17, 19, 21, 0.18);
   --workspace-tab-close-icon: var(--wuu-color-text-muted, #8b9095);
   --workspace-tab-hover-border: rgba(17, 19, 21, 0.14);
-  --workspace-tab-focus-ring: var(--wuu-color-focus, rgba(17, 19, 21, 0.28));
+  --workspace-tab-focus-ring: var(--focus-ring);
   --workspace-menu-item-hover-bg: #ebebe8;
   --workspace-bottom-title-text: var(--wuu-color-text-muted, #747a7f);
   --workspace-tool-card-text: var(--wuu-color-text, #272b2f);
@@ -18,8 +18,8 @@
   --workspace-terminal-restart-hover-bg: #e2e2df;
   --browser-nav-disabled: var(--wuu-color-text-muted, #c1c5c8);
   --browser-url-border: var(--wuu-color-border-subtle, #e1e3e0);
-  --browser-url-focus-border: var(--wuu-color-focus, #b8d4ff);
-  --browser-url-focus-ring: var(--wuu-color-focus, rgba(184, 212, 255, 0.32));
+  --browser-url-focus-border: var(--focus-ring);
+  --browser-url-focus-ring: var(--focus-ring);
   --browser-url-error-ring: rgba(243, 167, 160, 0.32);
   --browser-url-icon: var(--wuu-color-text-muted, #9099a0);
   --browser-url-error-icon: var(--wuu-color-danger, #c33b2e);
@@ -3302,7 +3302,7 @@ html.resizing-workspace-terminal-split * {
 
 .skill-row-button:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 3px var(--ink-overlay-12);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .environment-modal-backdrop:has(.skill-preview-dialog) {
@@ -4744,7 +4744,7 @@ html.resizing-workspace-terminal-split * {
 }
 
 .codex-effort-capsule:focus-within {
-  box-shadow: 0 0 0 3px var(--ink-overlay-8);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .codex-effort-capsule-fill {

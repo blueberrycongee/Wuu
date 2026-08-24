@@ -77,6 +77,8 @@ export function buildAssistantTurnDisplay(
   let sawAssistantWork = false;
   let hasAnswer = false;
   const isInProgress = turn.status === "in_progress";
+  const keepsEmptyProcessShell =
+    isInProgress || turn.status === "interrupted";
   const turnHasReasoning = turn.items.some((item) => item.type === "reasoning");
   let firstTextItemRendered = false;
 
@@ -195,13 +197,11 @@ export function buildAssistantTurnDisplay(
     });
   }
 
-  // For an in_progress turn we always return a display so TurnView keeps
-  // the AssistantTurnShell (process row + live elapsed timer) mounted
-  // even when the turn has no items yet — both the optimistic placeholder
-  // before the server's first item and the brief window between the real
-  // turn arriving and the first agent_message delta would otherwise
-  // flicker through an undefined display.
-  if (!sawAssistantWork && !isInProgress) {
+  // Keep the process shell mounted before the first assistant item, including
+  // when the user interrupts in that window. Dropping the display as soon as
+  // status changes from in_progress to interrupted removes the entire
+  // "正在处理 + elapsed" row and shifts the conversation layout.
+  if (!sawAssistantWork && !keepsEmptyProcessShell) {
     return undefined;
   }
 
@@ -212,7 +212,7 @@ export function buildAssistantTurnDisplay(
   if (
     entries.length === 0 &&
     !latestProcessPreview &&
-    !isInProgress
+    !keepsEmptyProcessShell
   ) {
     return undefined;
   }

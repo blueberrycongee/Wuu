@@ -56,6 +56,10 @@ const (
 	HostServiceSessionSend            = "host.session.send"
 	HostServiceSessionList            = "host.session.list"
 	HostServiceSessionCancel          = "host.session.cancel"
+	HostServiceSessionInspect         = "host.session.inspect"
+	HostServiceWorkspaceStatus        = "host.workspace.status"
+	HostServiceWorkspaceApply         = "host.workspace.apply"
+	HostServiceWorkspaceDiscard       = "host.workspace.discard"
 	HostServiceStorageCompareExchange = "host.storage.compare_exchange"
 	HostServiceSettingsGet            = "host.settings.get"
 	HostServiceSettingsList           = "host.settings.list"
@@ -66,6 +70,8 @@ const (
 	SessionIfRunningSteer             = "steer"
 	SessionListScopeOwned             = "owned"
 	SessionListScopeShared            = "shared"
+	SessionInspectWaitNone            = "none"
+	SessionInspectWaitTerminal        = "terminal"
 )
 
 const (
@@ -85,6 +91,10 @@ const (
 	KernelSessionSendService            = "host.session.send"
 	KernelSessionListService            = "host.session.list"
 	KernelSessionCancelService          = "host.session.cancel"
+	KernelSessionInspectService         = "host.session.inspect"
+	KernelWorkspaceStatusService        = "host.workspace.status"
+	KernelWorkspaceApplyService         = "host.workspace.apply"
+	KernelWorkspaceDiscardService       = "host.workspace.discard"
 	KernelUserQuestionAskService        = "host.user-question.ask"
 	KernelArtifactImportService         = "host.artifact.import"
 	KernelServiceMethod                 = "call"
@@ -435,16 +445,23 @@ type SettingsListResult struct {
 	Entries map[string]json.RawMessage `json:"entries"`
 }
 
+type SessionToolPolicy struct {
+	Allow []string `json:"allow,omitempty"`
+	Deny  []string `json:"deny,omitempty"`
+}
+
 type SessionCreateParams struct {
-	RequestID       string `json:"request_id"`
-	Name            string `json:"name,omitempty"`
-	Visibility      string `json:"visibility"`
-	ParentSessionID string `json:"parent_session_id,omitempty"`
-	ContextSource   string `json:"context_source"`
-	Workspace       string `json:"workspace,omitempty"`
-	WorkspaceID     string `json:"workspace_id,omitempty"`
-	WorkspaceRoot   string `json:"workspace_root,omitempty"`
-	ModelAlias      string `json:"model_alias,omitempty"`
+	RequestID       string             `json:"request_id"`
+	Name            string             `json:"name,omitempty"`
+	Visibility      string             `json:"visibility"`
+	ParentSessionID string             `json:"parent_session_id,omitempty"`
+	ContextSource   string             `json:"context_source"`
+	Workspace       string             `json:"workspace,omitempty"`
+	WorkspaceID     string             `json:"workspace_id,omitempty"`
+	WorkspaceRoot   string             `json:"workspace_root,omitempty"`
+	ModelAlias      string             `json:"model_alias,omitempty"`
+	Instructions    string             `json:"instructions,omitempty"`
+	ToolPolicy      *SessionToolPolicy `json:"tool_policy,omitempty"`
 }
 
 type SessionCreateResult struct {
@@ -461,9 +478,10 @@ type SessionInput struct {
 }
 
 type SessionInputPresentation struct {
-	Kind string `json:"kind"`
-	Text string `json:"text"`
-	Name string `json:"name,omitempty"`
+	Kind             string `json:"kind"`
+	Text             string `json:"text"`
+	Name             string `json:"name,omitempty"`
+	RelatedSessionID string `json:"related_session_id,omitempty"`
 }
 
 type SessionSendParams struct {
@@ -516,6 +534,75 @@ type SessionCancelResult struct {
 	TurnID    string `json:"turn_id,omitempty"`
 	QueueID   string `json:"queue_id,omitempty"`
 	Cancelled bool   `json:"cancelled"`
+}
+
+type SessionInspectParams struct {
+	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
+	Wait      string `json:"wait,omitempty"`
+	TimeoutMS int    `json:"timeout_ms,omitempty"`
+}
+
+type SessionTurnInspection struct {
+	RequestID    string `json:"request_id,omitempty"`
+	State        string `json:"state"`
+	TurnID       string `json:"turn_id,omitempty"`
+	QueueID      string `json:"queue_id,omitempty"`
+	Error        string `json:"error,omitempty"`
+	StartedAt    string `json:"started_at,omitempty"`
+	CompletedAt  string `json:"completed_at,omitempty"`
+	InputTokens  int    `json:"input_tokens,omitempty"`
+	OutputTokens int    `json:"output_tokens,omitempty"`
+	FinalOutput  string `json:"final_output,omitempty"`
+}
+
+type SessionWorkspaceSummary struct {
+	Kind         string   `json:"kind"`
+	Dirty        bool     `json:"dirty,omitempty"`
+	ChangedFiles []string `json:"changed_files,omitempty"`
+}
+
+type SessionInspectResult struct {
+	Session   SessionSummary           `json:"session"`
+	Turn      *SessionTurnInspection   `json:"turn,omitempty"`
+	Workspace *SessionWorkspaceSummary `json:"workspace,omitempty"`
+	TimedOut  bool                     `json:"timed_out,omitempty"`
+}
+
+type WorkspaceStatusParams struct {
+	SessionID string `json:"session_id"`
+}
+
+type WorkspaceStatusResult struct {
+	SessionID     string   `json:"session_id"`
+	Dirty         bool     `json:"dirty"`
+	ChangedFiles  []string `json:"changed_files,omitempty"`
+	Porcelain     []string `json:"porcelain,omitempty"`
+	Diff          string   `json:"diff,omitempty"`
+	CanApply      bool     `json:"can_apply"`
+	ConflictFiles []string `json:"conflict_files,omitempty"`
+	Error         string   `json:"error,omitempty"`
+}
+
+type WorkspaceApplyParams struct {
+	SessionID string `json:"session_id"`
+}
+
+type WorkspaceApplyResult struct {
+	SessionID    string   `json:"session_id"`
+	Applied      bool     `json:"applied"`
+	ChangedFiles []string `json:"changed_files,omitempty"`
+	Discarded    bool     `json:"discarded"`
+}
+
+type WorkspaceDiscardParams struct {
+	SessionID string `json:"session_id"`
+}
+
+type WorkspaceDiscardResult struct {
+	SessionID string `json:"session_id"`
+	Discarded bool   `json:"discarded"`
 }
 
 type AgentTurnInterruptedInput struct {
@@ -634,6 +721,9 @@ func kernelServiceForLegacyMethod(method string) (string, bool) {
 		HostServiceSettingsGet:            KernelSettingsGetService, HostServiceSettingsList: KernelSettingsListService,
 		HostServiceSessionCreate: KernelSessionCreateService, HostServiceSessionSend: KernelSessionSendService,
 		HostServiceSessionList: KernelSessionListService, HostServiceSessionCancel: KernelSessionCancelService,
+		HostServiceSessionInspect:  KernelSessionInspectService,
+		HostServiceWorkspaceStatus: KernelWorkspaceStatusService, HostServiceWorkspaceApply: KernelWorkspaceApplyService,
+		HostServiceWorkspaceDiscard: KernelWorkspaceDiscardService,
 	}
 	service, ok := services[method]
 	return service, ok

@@ -49,6 +49,7 @@ type persistedMessage struct {
 	OriginID            string                             `json:"origin_id,omitempty"`
 	Cause               string                             `json:"cause,omitempty"`
 	PresentationKind    string                             `json:"presentation_kind,omitempty"`
+	RelatedSessionID    string                             `json:"related_session_id,omitempty"`
 	ReadOnly            bool                               `json:"read_only,omitempty"`
 	Phase               string                             `json:"phase,omitempty"`
 	ProviderItemID      string                             `json:"provider_item_id,omitempty"`
@@ -131,6 +132,7 @@ func chatMessagesFromPersistedMessages(records []persistedMessage) []providers.C
 			OriginID:             rec.OriginID,
 			Cause:                rec.Cause,
 			PresentationKind:     rec.PresentationKind,
+			RelatedSessionID:     rec.RelatedSessionID,
 			ReadOnly:             rec.ReadOnly,
 			Phase:                providers.NormalizeMessagePhase(rec.Phase),
 			Hidden:               rec.Hidden,
@@ -299,6 +301,7 @@ func persistedMessageFromChatMessage(msg providers.ChatMessage) persistedMessage
 		OriginID:          msg.OriginID,
 		Cause:             msg.Cause,
 		PresentationKind:  msg.PresentationKind,
+		RelatedSessionID:  msg.RelatedSessionID,
 		ReadOnly:          msg.ReadOnly,
 		Phase:             string(msg.Phase),
 		Hidden:            msg.Hidden,
@@ -460,6 +463,7 @@ func historyRecordFromPersistedMessage(rec persistedMessage) sessionstore.Histor
 		OriginID:            rec.OriginID,
 		Cause:               rec.Cause,
 		PresentationKind:    rec.PresentationKind,
+		RelatedSessionID:    rec.RelatedSessionID,
 		ReadOnly:            rec.ReadOnly,
 		Phase:               rec.Phase,
 		ProviderItemID:      rec.ProviderItemID,
@@ -505,6 +509,7 @@ func persistedMessageFromHistoryRecord(rec sessionstore.HistoryRecord) (persiste
 		OriginID:            rec.OriginID,
 		Cause:               rec.Cause,
 		PresentationKind:    rec.PresentationKind,
+		RelatedSessionID:    rec.RelatedSessionID,
 		ReadOnly:            rec.ReadOnly,
 		Phase:               rec.Phase,
 		ProviderItemID:      rec.ProviderItemID,

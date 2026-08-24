@@ -392,7 +392,10 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		})
 	}
 	if rt != nil && rt.PluginSessionRouter != nil {
-		s.pluginTurnUnbind = rt.PluginSessionRouter.Bind(s.createPluginSession, s.sendPluginSession, s.listPluginSessions, s.cancelPluginSession)
+		s.pluginTurnUnbind = rt.PluginSessionRouter.BindExtended(
+			s.createPluginSession, s.sendPluginSession, s.listPluginSessions, s.cancelPluginSession,
+			s.inspectPluginSession, s.statusPluginWorkspace, s.applyPluginWorkspace, s.discardPluginWorkspace,
+		)
 		s.startBackground(s.replayPendingPluginTurnLifecycles)
 	}
 	s.startInferenceJournalMaintenance()
@@ -975,7 +978,18 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 	case MethodConfigGeneralUpdate:
 		return s.handleConfigGeneralUpdate(req)
 	case MethodEngineList:
-		return s.handleEngineList(req)
+		// Engine discovery asks the external Codex host for its model list and
+		// can take several seconds. The composer refreshes this inventory when
+		// its model picker opens; running it on the serial stdio loop would make
+		// the model/effort update clicked next wait behind discovery.
+		if !s.startBackground(func() {
+			if err := s.handleEngineList(req); err != nil {
+				log.Printf("wuu: engine/list: %v", err)
+			}
+		}) {
+			return s.writeResponse(req.ID, nil, errServerClosed)
+		}
+		return nil
 	case MethodEngineUpdate:
 		return s.handleEngineUpdate(req)
 	case MethodExtensionCatalogRefresh:

@@ -92,6 +92,7 @@ func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.Threa
 		model:          binding.Model,
 		effort:         binding.Effort,
 		permissionMode: binding.PermissionMode,
+		instructions:   binding.Instructions,
 		externalRef:    binding.ExternalRef,
 		persistRef:     binding.PersistRef,
 	})
@@ -103,6 +104,7 @@ type sessionOptions struct {
 	model          string
 	effort         string
 	permissionMode string
+	instructions   string
 	externalRef    string
 	persistRef     func(string) error
 }
@@ -117,6 +119,7 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 		model:          opts.model,
 		effort:         opts.effort,
 		permissionMode: opts.permissionMode,
+		instructions:   opts.instructions,
 		ref:            opts.externalRef,
 		persist:        opts.persistRef,
 	}, nil
@@ -131,6 +134,7 @@ type Session struct {
 	model          string
 	effort         string
 	permissionMode string
+	instructions   string
 
 	mu      sync.Mutex
 	ref     string
@@ -237,6 +241,9 @@ func (s *Session) spawn(ctx context.Context, sub *turnSubscription) (*Transport,
 		"--verbose",
 		"--include-partial-messages",
 		"--permission-mode", claudePermissionMode(s.permissionMode),
+	}
+	if instructions := strings.TrimSpace(s.instructions); instructions != "" {
+		args = append(args, "--append-system-prompt", instructions)
 	}
 	if model := strings.TrimSpace(s.model); model != "" {
 		args = append(args, "--model", model)

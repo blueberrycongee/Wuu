@@ -2,6 +2,7 @@ package appserver
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -122,13 +123,11 @@ func TestStreamTitleText_HonorsContentReplaceAndMessageEvents(t *testing.T) {
 func TestStreamTitleText_PropagatesStreamError(t *testing.T) {
 	t.Parallel()
 	ch := make(chan providers.StreamEvent, 2)
-	boom := strings.NewReader("boom") // any non-nil error
-	_ = boom
-	ch <- providers.StreamEvent{Type: providers.EventError, Error: context.DeadlineExceeded}
+	ch <- providers.StreamEvent{Type: providers.EventError, Error: context.Canceled}
 	close(ch)
 	_, err := streamTitleText(context.Background(), staticStreamClient{events: ch}, providers.ChatRequest{})
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context canceled", err)
 	}
 }
 

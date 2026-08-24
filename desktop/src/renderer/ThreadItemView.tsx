@@ -57,17 +57,6 @@ import { desktopPluginHost, desktopWorkbenchController } from "./plugins/Desktop
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginSlot } from "./plugins/PluginSlot";
 
-// Subagent completions embed the child session id in the delivered text as
-// "（session <id>）". Extracting it lets the details action open that session
-// in the conversation split instead of the auxiliary panel.
-const DELIVERY_SESSION_ID_PATTERN = /session\s+(\d{8}-\d{6}-[0-9a-f]{16})/;
-
-function deliverySessionIDFromInputText(inputText: string | undefined): string | undefined {
-  const text = inputText?.trim();
-  if (!text) return undefined;
-  return DELIVERY_SESSION_ID_PATTERN.exec(text)?.[1];
-}
-
 interface ThreadItemViewProps {
   turnID: string;
   turnStatus: Turn["status"];
@@ -248,13 +237,10 @@ function BuiltInThreadItemView({
       );
       const editActionVisible = editable;
       // Plugin wake messages can hide the real delivered prompt behind a
-      // generic query bubble. Subagent completions embed the child session
-      // id ("session <id>") in the delivered text: the details action then
-      // splits the conversation and opens that session in the secondary
-      // pane. Other deliveries fall back to the delivery inspector in the
-      // auxiliary panel.
+      // generic query bubble. A durable related session opens in the
+      // conversation split; other deliveries use the delivery inspector.
       const deliveryText = item.input_text?.trim() ?? "";
-      const deliverySessionID = deliverySessionIDFromInputText(deliveryText);
+      const deliverySessionID = item.related_session_id?.trim() || undefined;
       // input_text equals the bubble for ordinary messages (or would, if a
       // stale server projection ever leaks it); only hidden deliveries get
       // a details action.

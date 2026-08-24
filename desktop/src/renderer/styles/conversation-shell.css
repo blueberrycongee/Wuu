@@ -4,7 +4,7 @@
   --shell-process-control-color: var(--wuu-color-text-muted, #BCBCBD);
   --shell-session-tab-hover-border: rgba(17, 19, 21, 0.14);
   --shell-session-tab-active-border: rgba(17, 19, 21, 0.18);
-  --shell-session-tab-main-focus-shadow: var(--wuu-color-focus, rgba(17, 19, 21, 0.18));
+  --shell-session-tab-main-focus-shadow: var(--focus-ring);
   --shell-session-tab-status-default: rgba(17, 19, 21, 0.22);
   --shell-session-tab-status-running-notch: rgba(17, 19, 21, 0.18);
   --shell-session-tab-pending-count-bg: rgba(17, 19, 21, 0.1);
@@ -38,7 +38,7 @@
   --conversation-floating-surface-highlight: color-mix(in srgb, var(--wuu-color-canvas, #fff) 42%, transparent);
   --conversation-floating-surface-hover-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 88%, transparent);
   --conversation-floating-surface-hover-border: color-mix(in srgb, var(--wuu-color-border-strong, #afb8c1) 72%, transparent);
-  --conversation-floating-surface-focus: color-mix(in srgb, var(--wuu-color-focus, #57606a) 38%, transparent);
+  --conversation-floating-surface-focus: var(--focus-ring);
   --shell-jump-pill-bg: var(--conversation-floating-surface-bg);
   --shell-jump-pill-border: var(--conversation-floating-surface-border);
   --shell-jump-pill-top-highlight: var(--conversation-floating-surface-highlight);

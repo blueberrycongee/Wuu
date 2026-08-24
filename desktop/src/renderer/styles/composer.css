@@ -148,7 +148,7 @@
 }
 
 .user-question-custom::placeholder {
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
 }
 
 .user-question-custom:focus {
@@ -194,7 +194,7 @@
 }
 
 .user-question-actions .user-question-submit {
-  color: var(--wuu-color-on-accent, #fff);
+  color: var(--ink-on-accent);
   background: var(--wuu-accent);
 }
 
@@ -431,7 +431,7 @@
 }
 
 .composer-expand-button:focus-visible {
-  outline: 2px solid var(--ink-overlay-18);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -699,7 +699,7 @@
 }
 
 .composer-input-header-action:focus-visible {
-  outline: 2px solid var(--ink-overlay-18);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -739,7 +739,7 @@
 }
 
 .composer-queue-index {
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -767,7 +767,7 @@
 }
 
 .composer-queue-preview:focus-visible {
-  outline: 2px solid var(--ink-overlay-18);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   border-radius: var(--radius-xs);
 }
@@ -1051,7 +1051,7 @@
 
 .composer-collapsed-prompt-main:focus-visible,
 .composer-collapsed-prompt-remove:focus-visible {
-  outline: 2px solid var(--ink-overlay-18);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -1238,7 +1238,7 @@
 }
 
 .composer-voice-button:focus-visible {
-  outline: 2px solid var(--ink-overlay-18);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -1287,7 +1287,7 @@
 }
 
 .composer-voice-recording:focus-visible {
-  outline: 2px solid var(--ink-overlay-18);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -1783,7 +1783,7 @@
 }
 
 .hero-project-pill:focus-visible {
-  outline: 2px solid var(--ink-overlay-18);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 

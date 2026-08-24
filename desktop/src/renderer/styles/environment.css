@@ -368,7 +368,7 @@
 }
 
 .environment-side-label {
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   font-size: var(--font-body);
   font-weight: var(--weight-semibold);
   padding: 6px 8px 8px;

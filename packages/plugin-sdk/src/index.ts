@@ -523,6 +523,10 @@ export const HOST_SERVICE_METHODS = [
   "host.session.send",
   "host.session.list",
   "host.session.cancel",
+  "host.session.inspect",
+  "host.workspace.status",
+  "host.workspace.apply",
+  "host.workspace.discard",
   "host.service.call",
 ] as const;
 
@@ -548,6 +552,10 @@ export const KERNEL_SERVICE_NAMES = {
   "host.session.send": "host.session.send",
   "host.session.list": "host.session.list",
   "host.session.cancel": "host.session.cancel",
+  "host.session.inspect": "host.session.inspect",
+  "host.workspace.status": "host.workspace.status",
+  "host.workspace.apply": "host.workspace.apply",
+  "host.workspace.discard": "host.workspace.discard",
 } as const satisfies Record<Exclude<HostServiceMethod, "host.service.call">, string>;
 
 export type KernelHostServiceMethod = keyof typeof KERNEL_SERVICE_NAMES;
@@ -929,9 +937,13 @@ export interface HostServiceContracts {
       parent_session_id?: string;
       context_source: "fresh" | "fork";
       workspace?: "shared" | "worktree";
+      workspace_id?: string;
+      workspace_root?: string;
       model_alias?: string;
+      instructions?: string;
+      tool_policy?: { allow?: string[]; deny?: string[] };
     };
-    result: { session_id: string; created: boolean };
+    result: { session_id: string; created: boolean; workspace_root?: string };
   };
   "host.session.send": {
     params: {
@@ -941,14 +953,14 @@ export interface HostServiceContracts {
         prompt: string;
         context_blocks?: Array<{ kind?: string; title?: string; source?: string; content: string }>;
       };
-      presentation?: { kind: "query_bubble"; text: string; name?: string };
+      presentation?: { kind: "query_bubble"; text: string; name?: string; related_session_id?: string };
       cause?: string;
       if_running?: "queue" | "steer";
     };
     result: { state: string; session_id: string; turn_id?: string; queue_id?: string; steered?: boolean };
   };
   "host.session.list": {
-    params: { parent_session_id?: string };
+    params: { parent_session_id?: string; scope?: "owned" | "shared" };
     result: {
       sessions: Array<{
         session_id: string;
@@ -956,6 +968,7 @@ export interface HostServiceContracts {
         parent_session_id?: string;
         visibility: "user" | "plugin";
         state: string;
+        workspace_id?: string;
         created_at?: string;
         updated_at?: string;
       }>;
@@ -964,6 +977,62 @@ export interface HostServiceContracts {
   "host.session.cancel": {
     params: { session_id: string; turn_id?: string; queue_id?: string };
     result: { session_id: string; turn_id?: string; queue_id?: string; cancelled: boolean };
+  };
+  "host.session.inspect": {
+    params: {
+      session_id: string;
+      turn_id?: string;
+      request_id?: string;
+      wait?: "none" | "terminal";
+      timeout_ms?: number;
+    };
+    result: {
+      session: {
+        session_id: string;
+        name?: string;
+        parent_session_id?: string;
+        visibility: "user" | "plugin";
+        state: string;
+        workspace_id?: string;
+        created_at?: string;
+        updated_at?: string;
+      };
+      turn?: {
+        request_id?: string;
+        state: string;
+        turn_id?: string;
+        queue_id?: string;
+        error?: string;
+        started_at?: string;
+        completed_at?: string;
+        input_tokens?: number;
+        output_tokens?: number;
+        final_output?: string;
+      };
+      workspace?: { kind: "shared" | "worktree"; dirty?: boolean; changed_files?: string[] };
+      timed_out?: boolean;
+    };
+  };
+  "host.workspace.status": {
+    params: { session_id: string };
+    result: {
+      session_id: string;
+      dirty: boolean;
+      changed_files?: string[];
+      porcelain?: string[];
+      diff?: string;
+      can_apply: boolean;
+      conflict_files?: string[];
+      error?: string;
+    };
+  };
+  "host.workspace.apply": {
+    params: { session_id: string };
+    result: { session_id: string; applied: boolean; changed_files?: string[]; discarded: boolean };
+  };
+  "host.workspace.discard": {
+    params: { session_id: string };
+    result: { session_id: string; discarded: boolean };
   };
   "host.service.call": {
     params: { service: string; method: string; execution_id?: string; params?: unknown };

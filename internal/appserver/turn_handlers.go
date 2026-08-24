@@ -824,7 +824,7 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	// External-engine threads (codex, later claude) carry no native
 	// StreamRunner: the engine session drives the turn in the external
 	// process. Only the engine stamp is needed on the runtime handle.
-	if agentengine.NormalizeEngineID(th.EngineID) != agentengine.EngineWuu {
+	if agentengine.NormalizeEngineID(th.EngineID) != agentengine.EngineWuu && strings.TrimSpace(th.NamedAgentID) == "" {
 		th.mu.Lock()
 		if th.execRuntime != nil {
 			rt := th.execRuntime
@@ -840,6 +840,10 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 				Effort:         th.ModelEffort,
 				PermissionMode: th.PermissionMode,
 			},
+		}
+		if err := s.configureSessionToolPolicy(th.ID, rt); err != nil {
+			th.mu.Unlock()
+			return nil, err
 		}
 		th.execRuntime = rt
 		th.mu.Unlock()
@@ -876,6 +880,7 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	modelVariant := th.ModelVariant
 	modelEffort := th.ModelEffort
 	permissionMode := th.PermissionMode
+	namedAgentID := strings.TrimSpace(th.NamedAgentID)
 	th.mu.Unlock()
 	if detached.runtime != nil || detached.subscription != nil {
 		releaseDetachedThreadRuntime(detached)
@@ -887,33 +892,61 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 		return nil, errors.New("runtime session is required")
 	}
 	browserWorkdir := firstNonEmpty(rootDir, s.rt.RootDir)
-	threadRuntime, err := s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, runtime.ThreadModelSelection{
+	selection := runtime.ThreadModelSelection{
 		Provider:       modelProvider,
 		Model:          model,
 		Variant:        modelVariant,
 		Effort:         modelEffort,
 		PermissionMode: permissionMode,
-	})
+	}
+	var threadRuntime *runtime.ThreadRuntime
+	var err error
+	if namedAgentID != "" {
+		namedAgent, agentErr := s.channelService.GetNamedAgent(context.Background(), namedAgentID)
+		if agentErr != nil {
+			return nil, agentErr
+		}
+		threadRuntime, err = s.newNamedAgentRuntime(th.ID, namedAgent, selection)
+	} else {
+		threadRuntime, err = s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, selection)
+	}
 	if errors.Is(err, runtime.ErrThreadProviderUnavailable) {
 		// The pinned provider was removed from config after this session
 		// selected it. Self-heal the dead provider/model pair to the
 		// workspace defaults so the turn proceeds instead of every send
 		// failing on the dead pin.
 		healed := s.healThreadSelectionForRemovedProvider(th)
-		threadRuntime, err = s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, runtime.ThreadModelSelection{
+		healedSelection := runtime.ThreadModelSelection{
 			Provider:       healed.Provider,
 			Model:          healed.Model,
 			Variant:        healed.Variant,
 			Effort:         healed.Effort,
 			PermissionMode: healed.PermissionMode,
-		})
+		}
+		if namedAgentID != "" {
+			namedAgent, agentErr := s.channelService.GetNamedAgent(context.Background(), namedAgentID)
+			if agentErr != nil {
+				return nil, agentErr
+			}
+			threadRuntime, err = s.newNamedAgentRuntime(th.ID, namedAgent, healedSelection)
+		} else {
+			threadRuntime, err = s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, healedSelection)
+		}
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := s.configureSessionToolPolicy(th.ID, threadRuntime); err != nil {
 		return nil, err
 	}
 	// Stamp the engine the thread is bound to onto the runtime. A cached
 	// runtime keeps its original stamp; threads never silently switch.
 	threadRuntime.EngineID = agentengine.NormalizeEngineID(th.EngineID)
+	if namedAgentID != "" {
+		// Persistent collaboration agents depend on Wuu-owned chat tools and
+		// therefore always execute through the built-in engine.
+		threadRuntime.EngineID = agentengine.EngineWuu
+	}
 	if threadRuntime.Toolkit != nil {
 		// Inject the embedded-browser bridge for every thread here. The bridge
 		// closure must carry this thread's id + workdir so tab operations route
@@ -1863,12 +1896,17 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	// the native runner selected above; a thread bound to an engine this
 	// build cannot host fails every turn with an explicit error instead of
 	// silently running the native loop.
+	sessionInstructions := ""
+	if metadata, ok, err := session.Find(s.rt.SessionDir, th.ID); err == nil && ok {
+		sessionInstructions = metadata.Instructions
+	}
 	engine := s.rt.EngineSessionForThread(ctx, threadRuntime, agentengine.ThreadBinding{
 		ThreadID:       th.ID,
 		RootDir:        firstNonEmpty(th.CWD, s.rt.RootDir),
 		Model:          th.Model,
 		Effort:         th.ModelEffort,
 		PermissionMode: th.PermissionMode,
+		Instructions:   sessionInstructions,
 		ExternalRef:    th.EngineRef,
 		PersistRef: func(ref string) error {
 			return s.persistThreadEngineRef(th.ID, ref)

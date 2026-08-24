@@ -18,6 +18,7 @@ import (
 
 const (
 	defaultResponsesWebSocketCacheTTL = 30 * time.Minute
+	responsesWebSocketPrewarmTTL      = 2 * time.Minute
 	// Fallback pins prevent every request in a hot session from immediately
 	// retrying a broken websocket path. Transient failures re-probe quickly,
 	// connection pressure backs off longer, and stable compatibility/auth
@@ -68,6 +69,8 @@ type responsesWebSocketSession struct {
 	continuation  *responsesWebSocketContinuation
 	fallback      responsesWebSocketFallbackState
 	idleTimer     *time.Timer
+	prewarmDone   chan struct{}
+	warmOnly      bool
 }
 
 type responsesWebSocketContinuation struct {
@@ -145,6 +148,77 @@ func (c *Client) responsesStreamChatWebSocket(ctx context.Context, payload respo
 	return c.responsesStreamChatWebSocketAttempt(ctx, payload, transport)
 }
 
+// PrewarmResponsesWebSocket establishes and retains a session-scoped
+// connection without submitting a response.create request. Authentication,
+// DNS, TLS, and the WebSocket upgrade can therefore finish while the user is
+// composing the first message. The first real request remains the only model
+// submission and owns all journal/coordinator accounting.
+func (c *Client) PrewarmResponsesWebSocket(ctx context.Context, sessionID string) error {
+	if c == nil || c.responsesWSCache == nil || !responsesTransportUsesWebSocket(c.responsesTransport) {
+		return nil
+	}
+	if ctx == nil {
+		return errors.New("responses websocket prewarm context is nil")
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("responses websocket prewarm session id is empty")
+	}
+	wsURL, err := resolveCodexWebSocketURL(c.baseURL)
+	if err != nil {
+		return err
+	}
+	session := c.responsesWSCache.session(sessionID)
+	session.mu.Lock()
+	if session.fallbackActiveLocked(time.Now()) || session.busy || session.prewarmDone != nil {
+		session.mu.Unlock()
+		return nil
+	}
+	c.responsesWebSocketCancelIdleTimerLocked(session)
+	if session.conn != nil && session.wsURL == wsURL {
+		c.responsesWebSocketScheduleIdleExpiryLocked(session)
+		session.mu.Unlock()
+		return nil
+	}
+	if session.conn != nil {
+		c.responsesWebSocketInvalidateConnectionLocked(session, websocket.StatusNormalClosure, "prewarm_reconnect")
+	}
+	prewarmDone := make(chan struct{})
+	session.prewarmDone = prewarmDone
+	session.mu.Unlock()
+
+	headers := map[string]string{
+		"session-id":          sessionID,
+		"x-client-request-id": sessionID,
+	}
+	conn, dialErr := c.responsesWebSocketDial(ctx, wsURL, headers)
+	session.mu.Lock()
+	if session.prewarmDone == prewarmDone {
+		session.prewarmDone = nil
+	}
+	close(prewarmDone)
+	if dialErr != nil {
+		session.mu.Unlock()
+		return dialErr
+	}
+	// A concurrent real request uses a transient connection while prewarm is
+	// dialing. If it changed canonical session state, do not overwrite it.
+	if session.conn != nil || session.fallbackActiveLocked(time.Now()) {
+		session.mu.Unlock()
+		_ = conn.Close(websocket.StatusNormalClosure, "prewarm_superseded")
+		return nil
+	}
+	session.conn = conn
+	session.wsURL = wsURL
+	session.generation++
+	session.warmOnly = true
+	generation := session.generation
+	c.responsesWebSocketScheduleIdleExpiryLocked(session)
+	session.mu.Unlock()
+	go c.responsesWebSocketReadPump(session, conn, generation)
+	return nil
+}
+
 func (c *Client) responsesStreamChatWebSocketAttempt(ctx context.Context, payload responsesRequest, transport providers.StreamTransportMode) (<-chan providers.StreamEvent, error) {
 	if c.responsesWSCache == nil {
 		return nil, errors.New("responses websocket cache is nil")
@@ -157,6 +231,17 @@ func (c *Client) responsesStreamChatWebSocketAttempt(ctx context.Context, payloa
 	if err != nil {
 		return nil, err
 	}
+	session := c.responsesWSCache.session(sessionID)
+	session.mu.Lock()
+	prewarmDone := session.prewarmDone
+	session.mu.Unlock()
+	if prewarmDone != nil {
+		select {
+		case <-prewarmDone:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	// Admission may wait on a shared cooldown. Do it before taking the
 	// session mutex so one rate-limited account cannot freeze connection
 	// cleanup, fallback state, or another session's cancellation.
@@ -164,7 +249,6 @@ func (c *Client) responsesStreamChatWebSocketAttempt(ctx context.Context, payloa
 	if err != nil {
 		return nil, err
 	}
-	session := c.responsesWSCache.session(sessionID)
 	session.mu.Lock()
 	now := time.Now()
 	if session.fallbackActiveLocked(now) {
@@ -198,6 +282,7 @@ func (c *Client) responsesStreamChatWebSocketWithSessionLocked(ctx context.Conte
 	if reused {
 		conn = session.conn
 		generation = session.generation
+		session.warmOnly = false
 	} else if session.conn != nil {
 		c.responsesWebSocketInvalidateConnectionLocked(session, websocket.StatusNormalClosure, "reconnect")
 	}
@@ -856,7 +941,11 @@ func (c *Client) responsesWebSocketScheduleIdleExpiryLocked(session *responsesWe
 	c.responsesWebSocketCancelIdleTimerLocked(session)
 	cache := session.cache
 	sessionID := session.id
-	session.idleTimer = time.AfterFunc(cache.idleTTL, func() {
+	ttl := cache.idleTTL
+	if session.warmOnly && (ttl <= 0 || ttl > responsesWebSocketPrewarmTTL) {
+		ttl = responsesWebSocketPrewarmTTL
+	}
+	session.idleTimer = time.AfterFunc(ttl, func() {
 		cache.expireIdleSession(sessionID, session)
 	})
 }

@@ -184,6 +184,10 @@ type ThreadBinding struct {
 	// PermissionMode is the host's engine-neutral access selection. External
 	// engines map it to their native sandbox or permission mode.
 	PermissionMode string
+	// Instructions are durable, host-selected instructions for this session.
+	// Engines map them to their native instruction surface; they are not user
+	// prompt text and must not be silently discarded.
+	Instructions string
 	// ExternalRef is the engine's persisted native session reference (for
 	// example a codex thread id); empty means the engine must create one.
 	ExternalRef string

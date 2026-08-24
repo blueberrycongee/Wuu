@@ -38,12 +38,15 @@ func (s *Server) refreshConfigIfChanged() error {
 	if s == nil || s.rt == nil || s.closed.Load() {
 		return nil
 	}
+	s.configRefreshMu.Lock()
+	defer s.configRefreshMu.Unlock()
+	// Compute under the same lock used to apply an interactive config update.
+	// Computing first could leave `next` stale while waiting for the lock, then
+	// hot-apply the interactive update a second time after it completed.
 	next, err := s.effectiveConfigFingerprint()
 	if err != nil {
 		return err
 	}
-	s.configRefreshMu.Lock()
-	defer s.configRefreshMu.Unlock()
 	if next == s.configFingerprint {
 		return nil
 	}

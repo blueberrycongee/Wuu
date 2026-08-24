@@ -52,6 +52,8 @@ type Session struct {
 	Variant           string    `json:"variant,omitempty"`
 	Effort            string    `json:"effort,omitempty"`
 	PermissionMode    string    `json:"permission_mode,omitempty"`
+	Instructions      string    `json:"instructions,omitempty"`
+	ToolPolicyJSON    string    `json:"tool_policy_json,omitempty"`
 	// EngineID is the agent engine the thread is bound to. Empty reads as
 	// the built-in wuu engine, which is the legacy default for sessions
 	// persisted before engine binding existed.
@@ -112,6 +114,7 @@ type HistoryRecord struct {
 	OriginID            string          `json:"origin_id,omitempty"`
 	Cause               string          `json:"cause,omitempty"`
 	PresentationKind    string          `json:"presentation_kind,omitempty"`
+	RelatedSessionID    string          `json:"related_session_id,omitempty"`
 	ReadOnly            bool            `json:"read_only,omitempty"`
 	Phase               string          `json:"phase,omitempty"`
 	ProviderItemID      string          `json:"provider_item_id,omitempty"`
@@ -297,7 +300,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-	       provider, model, variant, effort, permission_mode, engine_id, engine_ref
+	       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json
 FROM sessions`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
@@ -475,7 +478,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-       provider, model, variant, effort, permission_mode, engine_id, engine_ref
+       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json
 FROM sessions
 WHERE owner = ? AND creation_request_id = ?`, owner, requestID)
 	sess, err := scanSession(row)
@@ -707,6 +710,18 @@ func Delete(sessDir, id string) (Session, error) {
 	}
 	if !ok {
 		return Session{}, fmt.Errorf("%w: %q", ErrSessionNotFound, id)
+	}
+	if _, err := tx.Exec(`DELETE FROM plugin_turn_lifecycle_outbox
+		WHERE EXISTS (
+			SELECT 1 FROM plugin_turn_lifecycle retained
+			WHERE retained.plugin_id = plugin_turn_lifecycle_outbox.plugin_id
+				AND retained.request_id = plugin_turn_lifecycle_outbox.request_id
+				AND retained.session_id = ?
+		)`, id); err != nil {
+		return Session{}, fmt.Errorf("delete session lifecycle outbox: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM plugin_turn_lifecycle WHERE session_id = ?`, id); err != nil {
+		return Session{}, fmt.Errorf("delete retained session lifecycle: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM sessions WHERE id = ?`, id); err != nil {
 		return Session{}, fmt.Errorf("delete session: %w", err)
@@ -1040,7 +1055,9 @@ func migrateSchema(db *sql.DB) error {
 			visibility TEXT NOT NULL DEFAULT '',
 			parent_id TEXT NOT NULL DEFAULT '',
 			context_source TEXT NOT NULL DEFAULT '',
-			creation_request_id TEXT NOT NULL DEFAULT ''
+			creation_request_id TEXT NOT NULL DEFAULT '',
+			instructions TEXT NOT NULL DEFAULT '',
+			tool_policy_json TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS session_folders (
 			id TEXT PRIMARY KEY,
@@ -1061,6 +1078,7 @@ func migrateSchema(db *sql.DB) error {
 				origin_id TEXT NOT NULL DEFAULT '',
 				cause TEXT NOT NULL DEFAULT '',
 				presentation_kind TEXT NOT NULL DEFAULT '',
+				related_session_id TEXT NOT NULL DEFAULT '',
 				read_only INTEGER NOT NULL DEFAULT 0,
 				phase TEXT NOT NULL DEFAULT '',
 				provider_item_id TEXT NOT NULL DEFAULT '',
@@ -1104,6 +1122,18 @@ func migrateSchema(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_plugin_turn_lifecycle_outbox_updated
 			ON plugin_turn_lifecycle_outbox(updated_at, plugin_id, request_id)`,
+		`CREATE TABLE IF NOT EXISTS plugin_turn_lifecycle (
+			plugin_id TEXT NOT NULL,
+			request_id TEXT NOT NULL,
+			session_id TEXT NOT NULL DEFAULT '',
+			turn_id TEXT NOT NULL DEFAULT '',
+			queue_id TEXT NOT NULL DEFAULT '',
+			payload_json TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY(plugin_id, request_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_plugin_turn_lifecycle_session
+			ON plugin_turn_lifecycle(plugin_id, session_id, updated_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS held_user_work (
 				session_id TEXT NOT NULL,
 				position INTEGER NOT NULL,
@@ -1492,6 +1522,9 @@ WHERE workflow_id = ''`); err != nil {
 	if err := addColumnIfMissing(db, "session_messages", "presentation_kind", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := addColumnIfMissing(db, "session_messages", "related_session_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if err := addColumnIfMissing(db, "session_messages", "read_only", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
@@ -1585,6 +1618,12 @@ WHERE workflow_id = ''`); err != nil {
 		return err
 	}
 	if err := addColumnIfMissing(db, "sessions", "engine_ref", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "sessions", "instructions", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "sessions", "tool_policy_json", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := addColumnIfMissing(db, "sessions", "folder_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -1681,8 +1720,8 @@ func insertSessionSQL() string {
 		forked_from_id, forked_from_turn_id, forked_from_item_id,
 		pinned_at, folder_id, archived_at, worktree_path, worktree_base_head, worktree_base_repo,
 		workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-		provider, model, variant, effort, permission_mode, engine_id, engine_ref
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 }
 
 func updateSessionTx(tx *sql.Tx, sess Session) error {
@@ -1692,7 +1731,7 @@ SET created_at = ?, updated_at = ?, title = ?, summary = ?, entries = ?, cwd = ?
     forked_from_id = ?, forked_from_turn_id = ?, forked_from_item_id = ?,
     pinned_at = ?, folder_id = ?, archived_at = ?, worktree_path = ?, worktree_base_head = ?, worktree_base_repo = ?,
     workspace_id = ?, source = ?, owner = ?, visibility = ?, parent_id = ?, context_source = ?, creation_request_id = ?,
-	provider = ?, model = ?, variant = ?, effort = ?, permission_mode = ?, engine_id = ?, engine_ref = ?
+	provider = ?, model = ?, variant = ?, effort = ?, permission_mode = ?, engine_id = ?, engine_ref = ?, instructions = ?, tool_policy_json = ?
 WHERE id = ?`,
 		timeText(sess.CreatedAt), timeText(sess.UpdatedAt), sess.Title, sess.Summary, sess.Entries, normalizeCWD(sess.CWD),
 		sess.ForkedFromID, sess.ForkedFromTurnID, sess.ForkedFromItemID,
@@ -1704,6 +1743,8 @@ WHERE id = ?`,
 		strings.TrimSpace(sess.Effort), strings.TrimSpace(sess.PermissionMode),
 		strings.TrimSpace(sess.EngineID),
 		strings.TrimSpace(sess.EngineRef),
+		sess.Instructions,
+		strings.TrimSpace(sess.ToolPolicyJSON),
 		sess.ID,
 	)
 	if err != nil {
@@ -1744,6 +1785,8 @@ func sessionArgs(sess Session) []any {
 		strings.TrimSpace(sess.PermissionMode),
 		strings.TrimSpace(sess.EngineID),
 		strings.TrimSpace(sess.EngineRef),
+		sess.Instructions,
+		strings.TrimSpace(sess.ToolPolicyJSON),
 	}
 }
 
@@ -1754,7 +1797,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-	       provider, model, variant, effort, permission_mode, engine_id, engine_ref
+	       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json
 FROM sessions
 WHERE id = ?`, id)
 	return scanSessionRow(row)
@@ -1767,7 +1810,7 @@ SELECT id, created_at, updated_at, title, summary, entries, cwd,
        pinned_at, folder_id, archived_at,
        worktree_path, worktree_base_head, worktree_base_repo,
        workspace_id, source, owner, visibility, parent_id, context_source, creation_request_id,
-	       provider, model, variant, effort, permission_mode, engine_id, engine_ref
+	       provider, model, variant, effort, permission_mode, engine_id, engine_ref, instructions, tool_policy_json
 FROM sessions
 WHERE id = ?`, id)
 	return scanSessionRow(row)
@@ -1798,7 +1841,7 @@ func scanSession(scanner interface {
 		&pinnedAt, &s.FolderID, &archivedAt,
 		&s.WorktreePath, &s.WorktreeBaseHEAD, &s.WorktreeBaseRepo,
 		&s.WorkspaceID, &s.Source, &s.Owner, &s.Visibility, &s.ParentID, &s.ContextSource, &s.CreationRequestID,
-		&s.Provider, &s.Model, &s.Variant, &s.Effort, &s.PermissionMode, &s.EngineID, &s.EngineRef,
+		&s.Provider, &s.Model, &s.Variant, &s.Effort, &s.PermissionMode, &s.EngineID, &s.EngineRef, &s.Instructions, &s.ToolPolicyJSON,
 	); err != nil {
 		return Session{}, err
 	}
@@ -1850,17 +1893,17 @@ func appendHistoryRecordTx(tx *sql.Tx, id string, rec HistoryRecord) (int, error
 func insertHistoryRecordTx(tx *sql.Tx, id string, seq int, rec HistoryRecord) error {
 	_, err := tx.Exec(`
 			INSERT INTO session_messages (
-				session_id, seq, role, content, display_content, origin, origin_id, cause, presentation_kind, read_only, phase, provider_item_id, provider_item_model, client_id, hidden, steered, reasoning_content,
+				session_id, seq, role, content, display_content, origin, origin_id, cause, presentation_kind, related_session_id, read_only, phase, provider_item_id, provider_item_model, client_id, hidden, steered, reasoning_content,
 				reasoning_blocks_json, content_parts_json, images_json, files_json, tool_calls_json, discovered_tools_json,
 				tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens,
 				provider, model
 			) VALUES (
-				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 				?, ?, ?, ?, ?, ?,
 				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			)`,
 		id, seq, strings.ToLower(strings.TrimSpace(rec.Role)), rec.Content, rec.DisplayContent,
-		strings.TrimSpace(rec.Origin), strings.TrimSpace(rec.OriginID), strings.TrimSpace(rec.Cause), strings.TrimSpace(rec.PresentationKind), boolInt(rec.ReadOnly),
+		strings.TrimSpace(rec.Origin), strings.TrimSpace(rec.OriginID), strings.TrimSpace(rec.Cause), strings.TrimSpace(rec.PresentationKind), strings.TrimSpace(rec.RelatedSessionID), boolInt(rec.ReadOnly),
 		strings.TrimSpace(rec.Phase), strings.TrimSpace(rec.ProviderItemID), strings.TrimSpace(rec.ProviderItemModel), rec.ClientID, boolInt(rec.Hidden), boolInt(rec.Steered), rec.ReasoningContent,
 		rawJSONText(rec.ReasoningBlocks), rawJSONText(rec.ContentParts), rawJSONText(rec.Images), rawJSONText(rec.Files), rawJSONText(rec.ToolCalls), rawJSONText(rec.DiscoveredTools),
 		rec.ToolCallID, rec.ToolInvocationID, rec.ToolResultKind, rawJSONText(rec.ToolResult), rec.FinishReason, rec.StopReason, boolInt(rec.Truncated), rec.Name, nullableValueTimeText(rec.At), rec.InputTokens, rec.OutputTokens, rec.ContextTokens, rec.CacheCreationTokens, rec.CacheReadTokens,
@@ -1906,7 +1949,7 @@ WHERE owner_id = ? AND status = 'settled'
 }
 
 const historyRecordsSelect = `
-	SELECT seq, role, content, display_content, origin, origin_id, cause, presentation_kind, read_only, phase, client_id, hidden, steered, reasoning_content,
+	SELECT seq, role, content, display_content, origin, origin_id, cause, presentation_kind, related_session_id, read_only, phase, client_id, hidden, steered, reasoning_content,
 	       provider_item_id, provider_item_model,
 	       reasoning_blocks_json, content_parts_json, images_json, files_json, tool_calls_json, discovered_tools_json,
 	       tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens,
@@ -1939,7 +1982,7 @@ func scanHistoryRecords(rows *sql.Rows) ([]HistoryRecord, error) {
 		var at sql.NullString
 		if err := rows.Scan(
 			&rec.Seq,
-			&rec.Role, &rec.Content, &rec.DisplayContent, &rec.Origin, &rec.OriginID, &rec.Cause, &rec.PresentationKind, &readOnly, &rec.Phase, &rec.ClientID, &hidden, &steered, &rec.ReasoningContent,
+			&rec.Role, &rec.Content, &rec.DisplayContent, &rec.Origin, &rec.OriginID, &rec.Cause, &rec.PresentationKind, &rec.RelatedSessionID, &readOnly, &rec.Phase, &rec.ClientID, &hidden, &steered, &rec.ReasoningContent,
 			&rec.ProviderItemID, &rec.ProviderItemModel,
 			&reasoningBlocks, &contentParts, &images, &files, &toolCalls, &discoveredTools,
 			&rec.ToolCallID, &rec.ToolInvocationID, &rec.ToolResultKind, &toolResult, &rec.FinishReason, &rec.StopReason, &truncated, &rec.Name, &at, &rec.InputTokens, &rec.OutputTokens, &rec.ContextTokens, &rec.CacheCreationTokens, &rec.CacheReadTokens,

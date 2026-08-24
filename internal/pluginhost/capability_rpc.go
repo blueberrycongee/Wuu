@@ -184,10 +184,17 @@ const (
 
 	// Sessions. Creation and input delivery are separate so ownership,
 	// visibility, provenance, and idempotency remain explicit.
-	HostServiceSessionCreate HostServiceMethod = "host.session.create"
-	HostServiceSessionSend   HostServiceMethod = "host.session.send"
-	HostServiceSessionList   HostServiceMethod = "host.session.list"
-	HostServiceSessionCancel HostServiceMethod = "host.session.cancel"
+	HostServiceSessionCreate  HostServiceMethod = "host.session.create"
+	HostServiceSessionSend    HostServiceMethod = "host.session.send"
+	HostServiceSessionList    HostServiceMethod = "host.session.list"
+	HostServiceSessionCancel  HostServiceMethod = "host.session.cancel"
+	HostServiceSessionInspect HostServiceMethod = "host.session.inspect"
+
+	// Workspaces. These methods operate only on an isolated workspace owned by
+	// a plugin-created session; callers never supply filesystem paths.
+	HostServiceWorkspaceStatus  HostServiceMethod = "host.workspace.status"
+	HostServiceWorkspaceApply   HostServiceMethod = "host.workspace.apply"
+	HostServiceWorkspaceDiscard HostServiceMethod = "host.workspace.discard"
 )
 
 const (
@@ -212,18 +219,30 @@ const (
 	SessionPresentationQueryBubble = "query_bubble"
 	SessionIfRunningQueue          = "queue"
 	SessionIfRunningSteer          = "steer"
+	SessionInspectWaitNone         = "none"
+	SessionInspectWaitTerminal     = "terminal"
 )
 
+// SessionToolPolicy can only remove tools from the child session's ordinary
+// tool surface. Allow, when non-empty, is an allow-list; Deny is then applied
+// on top. It never grants a tool or bypasses the host permission system.
+type SessionToolPolicy struct {
+	Allow []string `json:"allow,omitempty"`
+	Deny  []string `json:"deny,omitempty"`
+}
+
 type SessionCreateParams struct {
-	RequestID       string `json:"request_id"`
-	Name            string `json:"name,omitempty"`
-	Visibility      string `json:"visibility"`
-	ParentSessionID string `json:"parent_session_id,omitempty"`
-	ContextSource   string `json:"context_source"`
-	Workspace       string `json:"workspace,omitempty"`
-	WorkspaceID     string `json:"workspace_id,omitempty"`
-	WorkspaceRoot   string `json:"workspace_root,omitempty"`
-	ModelAlias      string `json:"model_alias,omitempty"`
+	RequestID       string             `json:"request_id"`
+	Name            string             `json:"name,omitempty"`
+	Visibility      string             `json:"visibility"`
+	ParentSessionID string             `json:"parent_session_id,omitempty"`
+	ContextSource   string             `json:"context_source"`
+	Workspace       string             `json:"workspace,omitempty"`
+	WorkspaceID     string             `json:"workspace_id,omitempty"`
+	WorkspaceRoot   string             `json:"workspace_root,omitempty"`
+	ModelAlias      string             `json:"model_alias,omitempty"`
+	Instructions    string             `json:"instructions,omitempty"`
+	ToolPolicy      *SessionToolPolicy `json:"tool_policy,omitempty"`
 }
 
 type SessionCreateResult struct {
@@ -240,9 +259,10 @@ type SessionInput struct {
 }
 
 type SessionInputPresentation struct {
-	Kind string `json:"kind"`
-	Text string `json:"text"`
-	Name string `json:"name,omitempty"`
+	Kind             string `json:"kind"`
+	Text             string `json:"text"`
+	Name             string `json:"name,omitempty"`
+	RelatedSessionID string `json:"related_session_id,omitempty"`
 }
 
 type SessionSendParams struct {
@@ -299,6 +319,75 @@ type SessionCancelResult struct {
 	TurnID    string `json:"turn_id,omitempty"`
 	QueueID   string `json:"queue_id,omitempty"`
 	Cancelled bool   `json:"cancelled"`
+}
+
+type SessionInspectParams struct {
+	SessionID string `json:"session_id"`
+	TurnID    string `json:"turn_id,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
+	Wait      string `json:"wait,omitempty"`
+	TimeoutMS int    `json:"timeout_ms,omitempty"`
+}
+
+type SessionInspectResult struct {
+	Session   SessionSummary           `json:"session"`
+	Turn      *SessionTurnInspection   `json:"turn,omitempty"`
+	Workspace *SessionWorkspaceSummary `json:"workspace,omitempty"`
+	TimedOut  bool                     `json:"timed_out,omitempty"`
+}
+
+type SessionTurnInspection struct {
+	RequestID    string     `json:"request_id,omitempty"`
+	State        string     `json:"state"`
+	TurnID       string     `json:"turn_id,omitempty"`
+	QueueID      string     `json:"queue_id,omitempty"`
+	Error        string     `json:"error,omitempty"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	InputTokens  int        `json:"input_tokens,omitempty"`
+	OutputTokens int        `json:"output_tokens,omitempty"`
+	FinalOutput  string     `json:"final_output,omitempty"`
+}
+
+type SessionWorkspaceSummary struct {
+	Kind         string   `json:"kind"`
+	Dirty        bool     `json:"dirty,omitempty"`
+	ChangedFiles []string `json:"changed_files,omitempty"`
+}
+
+type WorkspaceStatusParams struct {
+	SessionID string `json:"session_id"`
+}
+
+type WorkspaceStatusResult struct {
+	SessionID     string   `json:"session_id"`
+	Dirty         bool     `json:"dirty"`
+	ChangedFiles  []string `json:"changed_files,omitempty"`
+	Porcelain     []string `json:"porcelain,omitempty"`
+	Diff          string   `json:"diff,omitempty"`
+	CanApply      bool     `json:"can_apply"`
+	ConflictFiles []string `json:"conflict_files,omitempty"`
+	Error         string   `json:"error,omitempty"`
+}
+
+type WorkspaceApplyParams struct {
+	SessionID string `json:"session_id"`
+}
+
+type WorkspaceApplyResult struct {
+	SessionID    string   `json:"session_id"`
+	Applied      bool     `json:"applied"`
+	ChangedFiles []string `json:"changed_files,omitempty"`
+	Discarded    bool     `json:"discarded"`
+}
+
+type WorkspaceDiscardParams struct {
+	SessionID string `json:"session_id"`
+}
+
+type WorkspaceDiscardResult struct {
+	SessionID string `json:"session_id"`
+	Discarded bool   `json:"discarded"`
 }
 
 const (

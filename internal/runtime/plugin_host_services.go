@@ -130,6 +130,58 @@ func (s *pluginHostServices) invoke(ctx context.Context, method pluginhost.HostS
 			return nil, err
 		}
 		return marshalServiceResult(result)
+	case pluginhost.HostServiceSessionInspect:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "session service is unavailable")
+		}
+		var params pluginhost.SessionInspectParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := s.turnRouter.Inspect(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
+	case pluginhost.HostServiceWorkspaceStatus:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "workspace service is unavailable")
+		}
+		var params pluginhost.WorkspaceStatusParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := s.turnRouter.WorkspaceStatus(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
+	case pluginhost.HostServiceWorkspaceApply:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "workspace service is unavailable")
+		}
+		var params pluginhost.WorkspaceApplyParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := s.turnRouter.WorkspaceApply(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
+	case pluginhost.HostServiceWorkspaceDiscard:
+		if s.turnRouter == nil {
+			return nil, serviceError("service_unavailable", "workspace service is unavailable")
+		}
+		var params pluginhost.WorkspaceDiscardParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := s.turnRouter.WorkspaceDiscard(ctx, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
 	case pluginhost.HostServiceSettingsGet:
 		return s.settingsGet(raw)
 	case pluginhost.HostServiceSettingsList:
@@ -259,7 +311,8 @@ func kernelServiceReadOnly(method pluginhost.HostServiceMethod) bool {
 	switch method {
 	case pluginhost.HostServiceStorageGet, pluginhost.HostServiceStorageKeys,
 		pluginhost.HostServiceSettingsGet, pluginhost.HostServiceSettingsList,
-		pluginhost.HostServiceSessionList:
+		pluginhost.HostServiceSessionList, pluginhost.HostServiceSessionInspect,
+		pluginhost.HostServiceWorkspaceStatus:
 		return true
 	default:
 		return false
@@ -349,7 +402,9 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 		pluginhost.HostServiceStorageCompareExchange, pluginhost.HostServiceSettingsGet,
 		pluginhost.HostServiceSettingsList, pluginhost.HostServiceSessionCreate,
 		pluginhost.HostServiceSessionSend, pluginhost.HostServiceSessionList,
-		pluginhost.HostServiceSessionCancel,
+		pluginhost.HostServiceSessionCancel, pluginhost.HostServiceSessionInspect,
+		pluginhost.HostServiceWorkspaceStatus, pluginhost.HostServiceWorkspaceApply,
+		pluginhost.HostServiceWorkspaceDiscard,
 	}
 	registrations := make([]pluginhost.ServiceRegistration, 0, len(descriptors)+8)
 	for index, descriptor := range descriptors {

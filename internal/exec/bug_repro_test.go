@@ -60,6 +60,11 @@ func (b *bugReproProvider) StreamChat(ctx context.Context, req providers.ChatReq
 // turn_interrupted (not turn_failed).
 func TestCancellationEmitsTurnInterrupted(t *testing.T) {
 	root := t.TempDir()
+	// This test exercises a real local app-server controller, which persists
+	// sessions. Keep its user-level state out of the developer's actual ~/.wuu;
+	// otherwise every run leaks a "do work" session into the Desktop's
+	// projectless conversation list.
+	t.Setenv("WUU_HOME", filepath.Join(root, ".wuu"))
 	configPath := filepath.Join(root, ".wuu.json")
 	if err := writeMinimalConfig(configPath); err != nil {
 		t.Fatalf("write config: %v", err)

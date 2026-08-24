@@ -145,6 +145,24 @@ func (c *Client) StreamChat(ctx context.Context, req providers.ChatRequest) (<-c
 	return out, nil
 }
 
+// PrewarmSession resolves/caches OAuth credentials and, when configured,
+// establishes the session's reusable Responses WebSocket. It deliberately does
+// not submit response.create, so blank threads consume no model capacity.
+func (c *Client) PrewarmSession(ctx context.Context, sessionID string) error {
+	client, _, err := c.openAIClient(ctx, false)
+	if err != nil {
+		return err
+	}
+	switch c.streamTransport {
+	case providers.StreamTransportAuto,
+		providers.StreamTransportWebSocket,
+		providers.StreamTransportWebSocketCached:
+		return client.PrewarmResponsesWebSocket(ctx, sessionID)
+	default:
+		return nil
+	}
+}
+
 func (c *Client) PrepareInferenceRequest(_ context.Context, req providers.ChatRequest) (providers.ChatRequest, error) {
 	return codexRequest(req), nil
 }

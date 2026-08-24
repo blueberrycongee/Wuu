@@ -26,7 +26,7 @@
   --sidebar-dev-fixture-nav-border: var(--ink-overlay-12);
   --sidebar-dev-fixture-button-color: var(--ink-tertiary);
   --sidebar-nav-item-hover-ring: var(--wuu-nav-item-hover-ring, rgba(255, 255, 255, 0.42));
-  --sidebar-nav-item-focus-shadow: var(--ink-overlay-18);
+  --sidebar-nav-item-focus-shadow: var(--focus-ring);
   --sidebar-row-selected-bg: var(--ink-overlay-6);
   --sidebar-project-row-pending-bg: rgba(255, 255, 255, 0.24);
   --sidebar-project-loading-notch: rgba(95, 126, 104, 0.22);
@@ -338,6 +338,7 @@
   --sidebar-session-status-bg: transparent;
   --sidebar-session-status-scale: 0.75;
   --sidebar-session-status-unread-bg: var(--info);
+  --sidebar-session-status-unread-fg: var(--ink-on-info);
   --sidebar-session-status-unread-scale: 1;
   --sidebar-session-spinner-size: 9px;
   --sidebar-session-spinner-border-width: 1.5px;
@@ -889,7 +890,7 @@
   border-radius: 999px;
   padding: 2px 5px;
   background: var(--info);
-  color: var(--ink-on-accent);
+  color: var(--sidebar-session-status-unread-fg);
   font-size: 10px;
   font-weight: var(--weight-semibold);
   text-align: center;
@@ -1018,7 +1019,7 @@
   border: 0;
   border-radius: var(--radius-pill);
   background: var(--sidebar-session-status-unread-bg);
-  color: var(--ink-on-accent);
+  color: var(--sidebar-session-status-unread-fg);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
   font-weight: var(--weight-semibold);

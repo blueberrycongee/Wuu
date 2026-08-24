@@ -1,6 +1,7 @@
 package appserver
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 	"github.com/blueberrycongee/wuu/internal/subagent"
@@ -135,6 +137,7 @@ func (s *Server) handleThreadStart(req Request) error {
 	s.mu.Lock()
 	s.threads[id] = th
 	s.mu.Unlock()
+	s.startThreadPrewarm(th)
 
 	th.mu.Lock()
 	thread := th.snapshotLocked()
@@ -147,6 +150,37 @@ func (s *Server) handleThreadStart(req Request) error {
 	}
 	s.pruneCachedThreads(thread.ID)
 	return nil
+}
+
+const threadPrewarmTimeout = 30 * time.Second
+
+// startThreadPrewarm moves provider auth and transport setup into the gap
+// between opening a blank thread and sending its first message. It deliberately
+// avoids constructing the thread runtime; that would start tool/worker
+// lifecycle state just to warm a connection. A failed prewarm is retried by the
+// normal request path.
+func (s *Server) startThreadPrewarm(th *threadState) {
+	if s == nil || th == nil {
+		return
+	}
+	s.startBackground(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), threadPrewarmTimeout)
+		defer cancel()
+		th.mu.Lock()
+		selection := runtime.ThreadModelSelection{
+			Provider:       th.ModelProvider,
+			Model:          th.Model,
+			Variant:        th.ModelVariant,
+			Effort:         th.ModelEffort,
+			PermissionMode: th.PermissionMode,
+		}
+		engineID := agentengine.NormalizeEngineID(th.EngineID)
+		threadID := th.ID
+		th.mu.Unlock()
+		if err := s.rt.PrewarmThreadProvider(ctx, threadID, engineID, selection); err != nil && !errors.Is(err, context.Canceled) {
+			providers.DebugLogf("thread provider prewarm %q: %v", th.ID, err)
+		}
+	})
 }
 
 func (s *Server) handleThreadResume(req Request) error {

@@ -201,6 +201,7 @@ type ChatMessage struct {
 	OriginID         string
 	Cause            string
 	PresentationKind string
+	RelatedSessionID string
 	ReadOnly         bool
 	Phase            MessagePhase
 	// Hidden marks model-visible context that should be omitted from
@@ -655,4 +656,11 @@ type StreamEvent struct {
 type StreamClient interface {
 	Client
 	StreamChat(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error)
+}
+
+// SessionPrewarmer is an optional provider capability for moving cold
+// authentication and transport setup ahead of a conversation's first request.
+// Implementations must not generate model output or mutate conversation state.
+type SessionPrewarmer interface {
+	PrewarmSession(ctx context.Context, sessionID string) error
 }

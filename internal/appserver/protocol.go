@@ -2148,6 +2148,7 @@ type ThreadItem struct {
 	OriginID         string                     `json:"origin_id,omitempty"`
 	Cause            string                     `json:"cause,omitempty"`
 	PresentationKind string                     `json:"presentation_kind,omitempty"`
+	RelatedSessionID string                     `json:"related_session_id,omitempty"`
 	Arguments        string                     `json:"arguments,omitempty"`
 	Display          *providers.ToolCallDisplay `json:"display,omitempty"`
 	Result           string                     `json:"result,omitempty"`

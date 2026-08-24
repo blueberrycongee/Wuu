@@ -43,6 +43,10 @@ const (
 	KernelSessionSendService            = "host.session.send"
 	KernelSessionListService            = "host.session.list"
 	KernelSessionCancelService          = "host.session.cancel"
+	KernelSessionInspectService         = "host.session.inspect"
+	KernelWorkspaceStatusService        = "host.workspace.status"
+	KernelWorkspaceApplyService         = "host.workspace.apply"
+	KernelWorkspaceDiscardService       = "host.workspace.discard"
 	KernelUserQuestionAskService        = "host.user-question.ask"
 	KernelArtifactImportService         = "host.artifact.import"
 
@@ -73,7 +77,8 @@ func KernelServiceDescriptors() []ServiceDescriptor {
 		KernelStorageKeysService, KernelStorageCompareExchangeService,
 		KernelSettingsGetService, KernelSettingsListService,
 		KernelSessionCreateService, KernelSessionSendService, KernelSessionListService,
-		KernelSessionCancelService,
+		KernelSessionCancelService, KernelSessionInspectService,
+		KernelWorkspaceStatusService, KernelWorkspaceApplyService, KernelWorkspaceDiscardService,
 	}
 	descriptors := make([]ServiceDescriptor, 0, len(names))
 	for _, name := range names {
@@ -98,7 +103,7 @@ func KernelPreflightRequirements() []ServiceRequirement {
 	return KernelServiceRequirements(
 		KernelStorageGetService, KernelStorageKeysService,
 		KernelSettingsGetService, KernelSettingsListService,
-		KernelSessionListService,
+		KernelSessionListService, KernelSessionInspectService, KernelWorkspaceStatusService,
 	)
 }
 

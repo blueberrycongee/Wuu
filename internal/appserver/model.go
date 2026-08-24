@@ -1380,6 +1380,7 @@ func chatMessageItem(id string, msg providers.ChatMessage) ThreadItem {
 			OriginID:         strings.TrimSpace(msg.OriginID),
 			Cause:            strings.TrimSpace(msg.Cause),
 			PresentationKind: strings.TrimSpace(msg.PresentationKind),
+			RelatedSessionID: strings.TrimSpace(msg.RelatedSessionID),
 		}
 	case "assistant":
 		if strings.TrimSpace(msg.Content) != "" {
@@ -1433,6 +1434,7 @@ func chatMessageFromPersistedMessage(rec persistedMessage) providers.ChatMessage
 		OriginID:             rec.OriginID,
 		Cause:                rec.Cause,
 		PresentationKind:     rec.PresentationKind,
+		RelatedSessionID:     rec.RelatedSessionID,
 		ReadOnly:             rec.ReadOnly,
 		Phase:                providers.NormalizeMessagePhase(rec.Phase),
 		Hidden:               rec.Hidden,

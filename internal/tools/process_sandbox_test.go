@@ -39,7 +39,7 @@ func TestProcessSandboxPolicyMapsWorkspaceBoundary(t *testing.T) {
 		}
 		normalized[candidate] = true
 	}
-	if !normalized[wantRoot] || !normalized[wantTemp] {
+	if len(policy.WritableRoots) != 2 || len(normalized) != 2 || !normalized[wantRoot] || !normalized[wantTemp] {
 		t.Fatalf("writable roots = %#v, want workspace %q and temp %q", policy.WritableRoots, wantRoot, wantTemp)
 	}
 	if runtime.GOOS != "windows" {
@@ -85,6 +85,12 @@ func TestProcessSandboxPolicyFailsClosedWithoutBackend(t *testing.T) {
 	policy, tempDir, err := env.processSandboxPolicyWithBuiltIn(context.Background(), false)
 	if !errors.Is(err, processsandbox.ErrUnavailable) || policy != nil || tempDir != "" {
 		t.Fatalf("missing backend = policy %#v temp %q error %v", policy, tempDir, err)
+	}
+	if !processsandbox.Supported() {
+		policy, tempDir, err = env.processSandboxPolicy(context.Background())
+		if !errors.Is(err, processsandbox.ErrUnavailable) || policy != nil || tempDir != "" {
+			t.Fatalf("platform probe = policy %#v temp %q error %v, want unavailable", policy, tempDir, err)
+		}
 	}
 
 	env.Unconfined = true

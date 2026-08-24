@@ -71,6 +71,7 @@ func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.Threa
 		model:          binding.Model,
 		effort:         ReasoningEffort(binding.Effort),
 		permissionMode: binding.PermissionMode,
+		instructions:   binding.Instructions,
 		externalRef:    binding.ExternalRef,
 		persistRef:     binding.PersistRef,
 		approval:       binding.RequestApproval,
@@ -83,6 +84,7 @@ type sessionOptions struct {
 	model          string
 	effort         ReasoningEffort
 	permissionMode string
+	instructions   string
 	externalRef    string
 	persistRef     func(string) error
 	approval       agentengine.ApprovalHandler
@@ -108,6 +110,7 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 		model:          opts.model,
 		effort:         opts.effort,
 		permissionMode: opts.permissionMode,
+		instructions:   opts.instructions,
 		ref:            opts.externalRef,
 		persist:        opts.persistRef,
 		approval:       approval,
@@ -127,6 +130,7 @@ type Session struct {
 	model          string
 	effort         ReasoningEffort
 	permissionMode string
+	instructions   string
 
 	mu          sync.Mutex
 	ref         string
@@ -300,10 +304,11 @@ func (s *Session) ensureThread(ctx context.Context) error {
 	var resp ThreadStartResponse
 	sandbox, approval, _ := codexPermissionSettings(s.permissionMode)
 	err := s.client.Request(ctx, MethodThreadStart, ThreadStartParams{
-		Model:          s.model,
-		CWD:            s.rootDir,
-		ApprovalPolicy: approval,
-		Sandbox:        sandbox,
+		Model:              s.model,
+		CWD:                s.rootDir,
+		DeveloperInstructs: strings.TrimSpace(s.instructions),
+		ApprovalPolicy:     approval,
+		Sandbox:            sandbox,
 	}, &resp)
 	if err != nil {
 		return fmt.Errorf("codex thread/start: %w", err)

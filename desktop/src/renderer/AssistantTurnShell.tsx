@@ -26,8 +26,11 @@ import { TurnEventNotice } from "./TurnNotice";
 import { turnEventForItem } from "./TurnEvents";
 import { parseTurnTimestampMs } from "./RunDebugPanel";
 import {
+  clearPausedTurnElapsed,
   formatChineseDuration,
   formatDuration,
+  pausedTurnElapsed,
+  recordPausedTurnElapsed,
   useLiveNow,
 } from "./TurnProgress";
 import { ProcessSurface, ProcessSurfaceMascot } from "./ProcessSurface";
@@ -159,6 +162,7 @@ export function AssistantTurnShell({
     processEntries.length > 0 ||
     Boolean(display.latestProcessPreview) ||
     turn.status === "in_progress" ||
+    turn.status === "interrupted" ||
     hasAnswer;
   const answerHandoffRequested = answerEntries.some(
     (entry) =>
@@ -303,15 +307,39 @@ function TurnProcessFold({
     recoveredTurnStartedAt.delete(turn.id);
   }
   const liveNow = useLiveNow(liveDuration && renderActive);
-  const elapsedMs =
-    completedDuration ?? (liveDuration ? Math.max(0, liveNow - startedAt) : 0);
+  const liveElapsedMs = liveDuration
+    ? Math.max(0, liveNow - startedAt)
+    : undefined;
+  // Keep the last live elapsed value outside the component lifecycle. A
+  // paused turn settles as "interrupted" and its server snapshot usually
+  // carries no duration, which would otherwise drop the running timer to
+  // nothing; the frozen value lets the paused turn keep showing how long it
+  // had been processing (and survives session-tab unmounts like the
+  // recovered started_at above).
+  if (liveElapsedMs !== undefined) {
+    recordPausedTurnElapsed(turn.id, liveElapsedMs);
+  } else if (completedDuration !== undefined) {
+    clearPausedTurnElapsed(turn.id);
+  }
+  // Only the frozen value is meaningful for a paused turn: when the server
+  // provides a real duration the title already reports it ("用时 …"), so the
+  // meta chip would be redundant there.
+  const pausedElapsedMs =
+    turn.status === "interrupted" && completedDuration === undefined
+      ? pausedTurnElapsed(turn.id)
+      : undefined;
+  const elapsedMs = completedDuration ?? liveElapsedMs ?? pausedElapsedMs ?? 0;
   const processLabel = turnProcessTitle(
     turn,
     elapsedMs,
     completedDuration !== undefined,
     collapseRequested,
   );
-  const metaParts = turnProcessMetaParts(turn, elapsedMs);
+  const metaParts = turnProcessMetaParts(
+    turn,
+    elapsedMs,
+    pausedElapsedMs !== undefined,
+  );
 
   // A confirmed non-empty final answer is the handoff edge: process work
   // yields immediately so the answer becomes the primary reading surface.
@@ -745,9 +773,15 @@ function taskFinishedLabel(elapsedMs: number): string {
   return translate("process.finishedIn", { duration: formatChineseDuration(elapsedMs) });
 }
 
-function turnProcessMetaParts(turn: Turn, elapsedMs: number): string[] {
+function turnProcessMetaParts(
+  turn: Turn,
+  elapsedMs: number,
+  showPausedElapsed: boolean,
+): string[] {
   const parts: string[] = [];
   if (turn.status === "in_progress") {
+    parts.push(formatDuration(elapsedMs));
+  } else if (turn.status === "interrupted" && showPausedElapsed) {
     parts.push(formatDuration(elapsedMs));
   }
   return parts;

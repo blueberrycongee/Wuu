@@ -35,6 +35,7 @@ export type RuntimeSettingsActionsDeps = {
   setBranchMenuOpen: (open: boolean) => void;
   setCodexRuntimeMenu: (update: SetStateAction<CodexRuntimeMenu>) => void;
   clearThreadPendingComposerMessages: (threadID: string) => void;
+  markOptimisticTurnInterrupted?: (threadID: string) => void;
   variantByModel: Map<string, string>;
 };
 
@@ -519,6 +520,7 @@ export function createRuntimeSettingsActions(
     if (!thread) {
       return;
     }
+    deps.markOptimisticTurnInterrupted?.(thread.id);
     await window.wuu.interruptTurn(thread.id);
   }
 
@@ -527,6 +529,7 @@ export function createRuntimeSettingsActions(
     if (!thread) {
       return;
     }
+    deps.markOptimisticTurnInterrupted?.(thread.id);
     await window.wuu.interruptTurn(thread.id);
   }
 

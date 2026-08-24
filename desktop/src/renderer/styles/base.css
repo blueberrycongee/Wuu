@@ -65,9 +65,13 @@
   --ink: var(--wuu-color-text, var(--gray-800));
   --ink-soft: var(--wuu-color-text-muted, var(--gray-650));
   --wuu-color-live-highlight: rgba(255, 255, 255, 0.95);
-  --ink-tertiary: var(--wuu-color-text-muted, var(--gray-600));
-  --ink-muted: var(--wuu-color-text-muted, var(--gray-500));
-  --ink-faint: var(--wuu-color-text-muted, var(--gray-400));
+  /* Extension themes expose one muted-text endpoint. Derive the quieter host
+     roles from that endpoint and the themed canvas instead of mapping every
+     role directly to --wuu-color-text-muted, which would collapse the whole
+     hierarchy as soon as a plugin theme supplies the public token. */
+  --ink-tertiary: color-mix(in srgb, var(--ink-soft) 90%, var(--paper));
+  --ink-muted: color-mix(in srgb, var(--ink-soft) 70%, var(--paper));
+  --ink-faint: color-mix(in srgb, var(--ink-soft) 45%, var(--paper));
 
   --paper: var(--wuu-color-canvas, var(--gray-0));
   --surface-1: var(--wuu-color-surface, var(--gray-50));
@@ -122,7 +126,17 @@
   --danger-soft: #fff0ef;
   --danger-border: #f1c2bf;
   --info: var(--wuu-color-info, #0969da);
-  --ink-on-accent: var(--wuu-color-on-accent, #ffffff);
+  /* Filled chromatic surfaces need theme-aware content colors. A theme can
+     provide the explicit public on-accent pair; otherwise its canvas color is
+     the safest adaptive opposite for the host's dark-on-bright / light-on-dark
+     defaults. Info badges derive locally so the public API stays small. */
+  --ink-on-accent: var(--wuu-color-on-accent, var(--wuu-color-canvas, var(--gray-0)));
+  --ink-on-info: var(--wuu-color-canvas, var(--gray-0));
+  /* Focus and functional control boundaries are semantic interaction tokens,
+     not decorative ink overlays. Plugin themes can replace them through the
+     existing public focus and strong-border contract. */
+  --focus-ring: var(--wuu-color-focus, var(--info));
+  --control-boundary: var(--wuu-color-border-strong, var(--gray-500));
   --accent-warm: var(--wuu-color-accent, #ef5b18);
   --selection-bg: rgba(64, 133, 216, 0.3);
 

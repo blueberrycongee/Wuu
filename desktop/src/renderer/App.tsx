@@ -44,6 +44,9 @@ import {
   failOptimisticCompactTurn,
   inputFilesFromComposer,
   inputImagesFromComposer,
+  interruptLatestOptimisticTurn,
+  interruptOptimisticTurn,
+  isOptimisticTurnInterrupted,
   replaceOptimisticTurn,
   type QueuedComposerMessage,
 } from "./ComposerMessages";
@@ -215,6 +218,7 @@ import { runDebugPhaseForState } from "./RunDebugPanel";
 import { useBrowserVisibility } from "./BrowserVisibility";
 import { useSideThreadController } from "./SideThreadController";
 import {
+  isCancellationMessage,
   rawErrorMessage,
   statusMessageForError,
 } from "./UserFacingErrors";
@@ -980,6 +984,12 @@ export function App(): JSX.Element {
   const runtimeVariantByModelRef = useRef(new Map<string, string>());
   const cachedThreadPaneHistoryRef = useRef<string[]>([]);
   const draftSessionTabCounterRef = useRef(0);
+  const draftThreadStartsRef = useRef(
+    new Map<
+      string,
+      { selectionKey: string; promise: Promise<Thread | undefined> }
+    >(),
+  );
   const currentSessionTab = activeSessionTab(state);
   const activeChannelRooms = useMemo(
     () => [
@@ -3030,6 +3040,96 @@ export function App(): JSX.Element {
     );
   }
 
+  function materializeDraftThread(
+    tab: Extract<SessionTab, { kind: "draft" }>,
+  ): Promise<Thread | undefined> {
+    const selectedEngine =
+      draftEngine || engineInventory?.settings?.default_engine || "wuu";
+    const externalRuntime = defaultEngineRuntimeSelection(
+      engineInventory?.engines.find((engine) => engine.id === selectedEngine),
+    );
+    const selectionKey = JSON.stringify({
+      engine: selectedEngine,
+      model: draftEngineRuntime.model || externalRuntime.model,
+      effort: draftEngineRuntime.effort || externalRuntime.effort,
+      permissionMode: draftPermissionMode,
+    });
+    const existing = draftThreadStartsRef.current.get(tab.id);
+    if (existing?.selectionKey === selectionKey) {
+      return existing.promise;
+    }
+    if (existing) {
+      draftThreadStartsRef.current.delete(tab.id);
+      void existing.promise.then((thread) =>
+        thread ? window.wuu.deleteThread(thread.id).catch(() => undefined) : undefined,
+      );
+    }
+    const pending = window.wuu
+      .startThread({
+        ...(draftEngine ? { engine: draftEngine } : {}),
+        ...(selectedEngine !== "wuu"
+          ? {
+              model: draftEngineRuntime.model || externalRuntime.model,
+              effort: draftEngineRuntime.effort || externalRuntime.effort,
+              permission_mode: draftPermissionMode || "unconfined",
+            }
+          : {}),
+      })
+      .then((result) => {
+        return requireThread(
+          result,
+          "thread/start did not return a thread",
+        );
+      })
+      .catch(() => {
+        if (draftThreadStartsRef.current.get(tab.id)?.promise === pending) {
+          draftThreadStartsRef.current.delete(tab.id);
+        }
+        return undefined;
+      });
+    draftThreadStartsRef.current.set(tab.id, { selectionKey, promise: pending });
+    return pending;
+  }
+
+  useEffect(() => {
+    const current = appStateRef.current;
+    const tab = activeSessionTab(current);
+    if (!current.initialized || !tab || tab.kind !== "draft") {
+      return;
+    }
+    void materializeDraftThread(tab);
+  }, [
+    state.activeSessionTabID,
+    state.initialized,
+    draftEngine,
+    draftEngineRuntime.effort,
+    draftEngineRuntime.model,
+    draftPermissionMode,
+    engineInventory,
+  ]);
+
+  useEffect(() => {
+    const liveDraftIDs = new Set(
+      state.sessionTabs
+        .filter(
+          (tab): tab is Extract<SessionTab, { kind: "draft" }> =>
+            tab.kind === "draft",
+        )
+        .map((tab) => tab.id),
+    );
+    for (const draftID of draftThreadStartsRef.current.keys()) {
+      if (!liveDraftIDs.has(draftID)) {
+        const prepared = draftThreadStartsRef.current.get(draftID);
+        draftThreadStartsRef.current.delete(draftID);
+        if (prepared) {
+          void prepared.promise.then((thread) =>
+            thread ? window.wuu.deleteThread(thread.id).catch(() => undefined) : undefined,
+          );
+        }
+      }
+    }
+  }, [state.sessionTabs]);
+
   const {
     selectProjectForNewThread,
     startNewThreadForProject,
@@ -3457,6 +3557,21 @@ export function App(): JSX.Element {
     setBranchMenuOpen,
     setCodexRuntimeMenu,
     clearThreadPendingComposerMessages,
+    markOptimisticTurnInterrupted: (threadID) => {
+      const interruptedAt = Date.now();
+      appStateRef.current = updateThreadByID(
+        appStateRef.current,
+        threadID,
+        (thread) => interruptLatestOptimisticTurn(thread, interruptedAt),
+      );
+      setState((current) =>
+        updateThreadByID(
+          current,
+          threadID,
+          (thread) => interruptLatestOptimisticTurn(thread, interruptedAt),
+        ),
+      );
+    },
     variantByModel: runtimeVariantByModelRef.current,
   });
 
@@ -3938,6 +4053,9 @@ export function App(): JSX.Element {
     }));
     let optimisticTurnID: string | undefined;
     let optimisticThreadID: string | undefined;
+    const activeDraftTab = !targetThread
+      ? activeSessionTab(currentState)
+      : undefined;
     // Render a tab-scoped optimistic turn before a new thread exists. Once
     // thread/start returns, the same turn moves into normal thread state.
     const optimisticTurn = createOptimisticTurn(message, sendClickedAtMs);
@@ -3948,8 +4066,16 @@ export function App(): JSX.Element {
       });
     }
     try {
+      const prestartedThread =
+        activeDraftTab?.kind === "draft"
+          ? await materializeDraftThread(activeDraftTab)
+          : undefined;
+      if (prestartedThread && activeDraftTab?.kind === "draft") {
+        draftThreadStartsRef.current.delete(activeDraftTab.id);
+      }
       const thread =
         targetThread ??
+        prestartedThread ??
         requireThread(
           await window.wuu.startThread({
             ...(draftEngine ? { engine: draftEngine } : {}),
@@ -4028,6 +4154,21 @@ export function App(): JSX.Element {
         message.activeDocument,
         ...(message.contentParts === undefined ? [] : [message.contentParts] as const),
       );
+      const interruptedBeforeAcceptance = isOptimisticTurnInterrupted(
+        appStateRef.current.threads.find((candidate) => candidate.id === thread.id),
+        optimisticTurnID,
+      );
+      if (interruptedBeforeAcceptance && result.turn.status === "in_progress") {
+        try {
+          await window.wuu.interruptTurn(thread.id);
+        } catch {
+          // Keep the explicit local stop visible. A later server snapshot can
+          // still reconcile the accepted turn to its terminal state.
+        }
+      }
+      const acceptedTurn: Turn = interruptedBeforeAcceptance
+        ? { ...result.turn, status: "interrupted" }
+        : result.turn;
       setState((current) =>
         updateThreadByID(
           setThreadForPane(current, targetPane, thread),
@@ -4036,7 +4177,7 @@ export function App(): JSX.Element {
             replaceOptimisticTurn(
               currentThread,
               optimisticTurnID ?? result.turn.id,
-              result.turn,
+              acceptedTurn,
               upsertTurn,
             ),
         ),
@@ -4053,11 +4194,19 @@ export function App(): JSX.Element {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       const noModelConfigured = isNoModelConfiguredError(rawMessage);
+      const interrupted =
+        isCancellationMessage(rawMessage.toLowerCase()) ||
+        isOptimisticTurnInterrupted(
+          appStateRef.current.threads.find(
+            (candidate) => candidate.id === optimisticThreadID,
+          ),
+          optimisticTurnID,
+        );
       appendRunDebugEvent({
         source: "client",
-        method: "turn/start failed",
+        method: interrupted ? "turn/start interrupted" : "turn/start failed",
         detail: rawMessage,
-        tone: "error",
+        tone: interrupted ? "warning" : "error",
         threadID: targetThread?.id,
       });
       const droppedState =
@@ -4066,7 +4215,9 @@ export function App(): JSX.Element {
               appStateRef.current,
               optimisticThreadID,
               (currentThread) =>
-                dropOptimisticTurn(currentThread, optimisticTurnID),
+                interrupted
+                  ? interruptOptimisticTurn(currentThread, optimisticTurnID, Date.now())
+                  : dropOptimisticTurn(currentThread, optimisticTurnID),
             )
           : appStateRef.current;
       appStateRef.current = {
@@ -4074,7 +4225,7 @@ export function App(): JSX.Element {
         running: false,
         // A missing model configuration is announced via the onboarding
         // toast; do not also flag the composer status row with the error.
-        status: noModelConfigured ? "" : errorMessage,
+        status: noModelConfigured || interrupted ? "" : errorMessage,
       };
       setState((current) => ({
         ...(optimisticTurnID && optimisticThreadID
@@ -4082,11 +4233,13 @@ export function App(): JSX.Element {
               current,
               optimisticThreadID,
               (currentThread) =>
-                dropOptimisticTurn(currentThread, optimisticTurnID),
+                interrupted
+                  ? interruptOptimisticTurn(currentThread, optimisticTurnID, Date.now())
+                  : dropOptimisticTurn(currentThread, optimisticTurnID),
             )
           : current),
         running: false,
-        status: noModelConfigured ? "" : errorMessage,
+        status: noModelConfigured || interrupted ? "" : errorMessage,
       }));
       setPendingNewThreadTurn((current) =>
         current?.turn.id === optimisticTurn.id ? undefined : current,
@@ -4094,12 +4247,12 @@ export function App(): JSX.Element {
       if (noModelConfigured) {
         showNoModelConfiguredToast();
       }
-      if (restoreDraftOnError) {
+      if (restoreDraftOnError && !interrupted) {
         setPrompt(message.text);
         setComposerImages(message.images);
         setComposerFiles(message.files);
       }
-      return false;
+      return interrupted;
     }
     return true;
   }
@@ -4243,6 +4396,22 @@ export function App(): JSX.Element {
         message.activeDocument,
         ...(message.contentParts === undefined ? [] : [message.contentParts] as const),
       );
+      const interruptedBeforeAcceptance = isOptimisticTurnInterrupted(
+        appStateRef.current.threads.find(
+          (candidate) => candidate.id === targetThread.id,
+        ),
+        optimisticTurnID,
+      );
+      if (interruptedBeforeAcceptance && result.turn.status === "in_progress") {
+        try {
+          await window.wuu.interruptTurn(targetThread.id);
+        } catch {
+          // Keep the explicit local stop visible until server state catches up.
+        }
+      }
+      const acceptedTurn: Turn = interruptedBeforeAcceptance
+        ? { ...result.turn, status: "interrupted" }
+        : result.turn;
       setState((current) =>
         updateThreadByID(
           { ...current, activePane: pane },
@@ -4251,7 +4420,7 @@ export function App(): JSX.Element {
             replaceOptimisticTurn(
               thread,
               optimisticTurnID ?? result.turn.id,
-              result.turn,
+              acceptedTurn,
               upsertTurn,
             ),
         ),
@@ -4268,18 +4437,29 @@ export function App(): JSX.Element {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       const noModelConfigured = isNoModelConfiguredError(rawMessage);
+      const interrupted =
+        isCancellationMessage(rawMessage.toLowerCase()) ||
+        isOptimisticTurnInterrupted(
+          appStateRef.current.threads.find(
+            (candidate) => candidate.id === targetThread.id,
+          ),
+          optimisticTurnID,
+        );
       appendRunDebugEvent({
         source: "client",
-        method: "turn/start failed",
+        method: interrupted ? "turn/start interrupted" : "turn/start failed",
         detail: rawMessage,
-        tone: "error",
+        tone: interrupted ? "warning" : "error",
         threadID: targetThread.id,
       });
       const droppedState = optimisticTurnID
         ? updateThreadByID(
             appStateRef.current,
             targetThread.id,
-            (thread) => dropOptimisticTurn(thread, optimisticTurnID),
+            (thread) =>
+              interrupted
+                ? interruptOptimisticTurn(thread, optimisticTurnID, Date.now())
+                : dropOptimisticTurn(thread, optimisticTurnID),
           )
         : appStateRef.current;
       appStateRef.current = {
@@ -4288,24 +4468,27 @@ export function App(): JSX.Element {
         running: false,
         // A missing model configuration is announced via the onboarding
         // toast; do not also flag the composer status row with the error.
-        status: noModelConfigured ? "" : errorMessage,
+        status: noModelConfigured || interrupted ? "" : errorMessage,
       };
       setState((current) => ({
         ...(optimisticTurnID
           ? updateThreadByID(
               current,
               targetThread.id,
-              (thread) => dropOptimisticTurn(thread, optimisticTurnID),
+              (thread) =>
+                interrupted
+                  ? interruptOptimisticTurn(thread, optimisticTurnID, Date.now())
+                  : dropOptimisticTurn(thread, optimisticTurnID),
             )
           : current),
         activePane: pane,
         running: false,
-        status: noModelConfigured ? "" : errorMessage,
+        status: noModelConfigured || interrupted ? "" : errorMessage,
       }));
       if (noModelConfigured) {
         showNoModelConfiguredToast();
       }
-      return false;
+      return interrupted;
     }
     return true;
   }
@@ -4381,6 +4564,22 @@ export function App(): JSX.Element {
         message.activeDocument,
         ...(message.contentParts === undefined ? [] : [message.contentParts] as const),
       );
+      const interruptedBeforeAcceptance = isOptimisticTurnInterrupted(
+        appStateRef.current.threads.find(
+          (candidate) => candidate.id === targetThread.id,
+        ),
+        optimisticTurnID,
+      );
+      if (interruptedBeforeAcceptance && result.turn.status === "in_progress") {
+        try {
+          await window.wuu.interruptTurn(targetThread.id);
+        } catch {
+          // Keep the explicit local stop visible until server state catches up.
+        }
+      }
+      const acceptedTurn: Turn = interruptedBeforeAcceptance
+        ? { ...result.turn, status: "interrupted" }
+        : result.turn;
       setState((current) =>
         updateThreadByID(
           current,
@@ -4389,7 +4588,7 @@ export function App(): JSX.Element {
             replaceOptimisticTurn(
               thread,
               optimisticTurnID ?? result.turn.id,
-              result.turn,
+              acceptedTurn,
               upsertTurn,
             ),
           targetIsActive ? { running: true } : {},
@@ -4408,12 +4607,20 @@ export function App(): JSX.Element {
     } catch (error) {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
+      const interrupted =
+        isCancellationMessage(rawMessage.toLowerCase()) ||
+        isOptimisticTurnInterrupted(
+          appStateRef.current.threads.find(
+            (candidate) => candidate.id === targetThread.id,
+          ),
+          optimisticTurnID,
+        );
       if (targetIsActive) {
         appendRunDebugEvent({
           source: "client",
-          method: "turn/start failed",
+          method: interrupted ? "turn/start interrupted" : "turn/start failed",
           detail: rawMessage,
-          tone: "error",
+          tone: interrupted ? "warning" : "error",
           threadID: targetThread.id,
         });
       }
@@ -4421,26 +4628,32 @@ export function App(): JSX.Element {
         ? updateThreadByID(
             appStateRef.current,
             targetThread.id,
-            (thread) => dropOptimisticTurn(thread, optimisticTurnID),
+            (thread) =>
+              interrupted
+                ? interruptOptimisticTurn(thread, optimisticTurnID, Date.now())
+                : dropOptimisticTurn(thread, optimisticTurnID),
           )
         : appStateRef.current;
       appStateRef.current = {
         ...droppedState,
         running: targetIsActive ? false : appStateRef.current.running,
-        status: errorMessage,
+        status: interrupted ? "" : errorMessage,
       };
       setState((current) => ({
         ...(optimisticTurnID
           ? updateThreadByID(
               current,
               targetThread.id,
-              (thread) => dropOptimisticTurn(thread, optimisticTurnID),
+              (thread) =>
+                interrupted
+                  ? interruptOptimisticTurn(thread, optimisticTurnID, Date.now())
+                  : dropOptimisticTurn(thread, optimisticTurnID),
             )
           : current),
         running: targetIsActive ? false : current.running,
-        status: errorMessage,
+        status: interrupted ? "" : errorMessage,
       }));
-      return false;
+      return interrupted;
     }
     return true;
   }

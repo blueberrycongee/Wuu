@@ -10,7 +10,7 @@
   --context-meter-tooltip-bg: var(--paper);
   --context-meter-tooltip-border: var(--wuu-border-subtle, rgba(15, 17, 21, 0.08));
   --context-meter-tooltip-shadow: 0 6px 22px rgba(15, 17, 21, 0.12);
-  --composer-context-meter-focus-outline: var(--wuu-color-focus, rgba(95, 99, 104, 0.55));
+  --composer-context-meter-focus-outline: var(--focus-ring);
   --composer-context-meter-tooltip-divider: var(--wuu-border-subtle, rgba(15, 17, 21, 0.08));
 }
 

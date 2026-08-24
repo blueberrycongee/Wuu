@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/authstorage"
@@ -42,6 +43,11 @@ type OAuthSource struct {
 	home                  string
 	httpClient            *http.Client
 	reuseCodexCredentials bool
+	// mu also provides refresh singleflight: only one caller reloads or refreshes
+	// credentials while concurrent requests reuse the resulting memory cache.
+	mu        sync.Mutex
+	cached    credentials
+	hasCached bool
 }
 
 type credentials struct {
@@ -82,7 +88,21 @@ func (s *OAuthSource) Credentials(ctx context.Context, forceRefresh bool) (crede
 	if strings.TrimSpace(s.home) == "" {
 		return credentials{}, errors.New("home directory is required for Codex OAuth")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return credentials{}, err
+	}
+	if !forceRefresh && s.hasCached && strings.TrimSpace(s.cached.accessToken) != "" &&
+		!tokenExpiring(s.cached.accessToken, refreshSkew) {
+		return s.cached, nil
+	}
 
+	// Reload durable state before refreshing. Another Wuu/Codex process may
+	// have rotated the token since this source populated its memory cache.
 	store, err := authstorage.ForHome(s.home)
 	if err != nil {
 		return credentials{}, err
@@ -118,6 +138,8 @@ func (s *OAuthSource) Credentials(ctx context.Context, forceRefresh bool) (crede
 			creds.refreshToken = state.RefreshToken
 			creds.accountID = firstNonEmpty(state.AccountID, accountIDFromToken(state.AccessToken))
 		}
+		s.cached = creds
+		s.hasCached = true
 		return creds, nil
 	}
 
@@ -132,13 +154,16 @@ func (s *OAuthSource) Credentials(ctx context.Context, forceRefresh bool) (crede
 	if tokenExpiring(cliState.AccessToken, 0) {
 		return credentials{}, errors.New("Codex CLI credentials are expired; run `codex` to refresh them before using openai-codex")
 	}
-	return credentials{
+	creds := credentials{
 		accessToken:  strings.TrimSpace(cliState.AccessToken),
 		refreshToken: strings.TrimSpace(cliState.RefreshToken),
 		accountID:    firstNonEmpty(cliState.AccountID, accountIDFromToken(cliState.AccessToken)),
 		source:       "codex-cli-readonly",
 		refreshable:  false,
-	}, nil
+	}
+	s.cached = creds
+	s.hasCached = true
+	return creds, nil
 }
 
 // LocalOAuthStatus reports whether wuu can use local ChatGPT/Codex OAuth

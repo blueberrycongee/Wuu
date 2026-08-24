@@ -2118,8 +2118,6 @@ func drainStreamProviderStates(ch <-chan providers.StreamEvent) ([]providers.Pro
 
 func TestResponsesStreamChatWebSocket_IdleWatchdogAbortsSilentStream(t *testing.T) {
 	connClosed := make(chan struct{})
-	testDone := make(chan struct{})
-	defer close(testDone)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 		if err != nil {
@@ -2127,7 +2125,7 @@ func TestResponsesStreamChatWebSocket_IdleWatchdogAbortsSilentStream(t *testing.
 			return
 		}
 		defer close(connClosed)
-		defer conn.Close(websocket.StatusNormalClosure, "")
+		defer conn.CloseNow()
 
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
@@ -2135,10 +2133,10 @@ func TestResponsesStreamChatWebSocket_IdleWatchdogAbortsSilentStream(t *testing.
 		writeWSEvent(t, ctx, conn, `{"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}`)
 		// Go silent: never send another frame, never close. The client-side
 		// idle watchdog must abort; without it this stream hangs forever.
-		select {
-		case <-ctx.Done():
-		case <-testDone:
-		}
+		// Keep reading only so the server observes the close frame immediately;
+		// waiting on the handler context would turn a 150 ms watchdog check into
+		// a fixed 10 second test.
+		_, _, _ = conn.Read(ctx)
 	}))
 	defer server.Close()
 

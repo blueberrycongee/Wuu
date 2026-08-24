@@ -2027,6 +2027,9 @@ export type ThreadItem = {
   // bubble text (for example a plugin-generated wake message with a generic
   // query bubble but a specific delivered prompt).
   input_text?: string;
+  // Durable relation selected by the message producer, such as the child
+  // session represented by an orchestration completion.
+  related_session_id?: string;
   images?: InputImage[];
   files?: InputFile[];
   name?: string;

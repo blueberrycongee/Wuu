@@ -82,7 +82,7 @@ siblings like `config/read`, `config/model/update`, `config/general/update`,
 `thread/archive`, `thread/edit-message`, `thread/context-composition`,
 `thread/organization/update`, `thread/regenerate-title`, `thread/rename`),
 session organization methods (`sessionOrganization/list`,
-`sessionFolder/create|update|reorder|delete`, `pinGroup/create|update|reorder|delete`), all the `turn/*` methods
+`sessionFolder/create|update|reorder|delete`), all the `turn/*` methods
 (`turn/queue`, `turn/update-queued`, `turn/dequeue`, `turn/steer`,
 `turn/unsteer`), `process/list`, `process/stop`, the `mcp/*` methods
 (`mcp/list`, `mcp/connect`, `mcp/disconnect`, `mcp/refresh`), and

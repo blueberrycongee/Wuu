@@ -7,6 +7,11 @@ import type {
   Turn,
 } from "../shared/protocol";
 import { formatCurrentNumber, translateCurrent } from "./i18n";
+import {
+  clearPausedTurnElapsed,
+  recordPausedTurnElapsed,
+  transferPausedTurnElapsed,
+} from "./TurnProgress";
 
 // Renderer-side image compression runs on the Electron canvas before the
 // bytes cross the IPC boundary. It is a fast-path optimization, not the
@@ -499,6 +504,63 @@ export function createOptimisticTurn(
   };
 }
 
+/**
+ * Freeze a locally-created turn when the user interrupts before turn/start
+ * has returned. The placeholder remains in the timeline as an interrupted
+ * turn so the process row keeps its space instead of being deleted.
+ */
+export function interruptOptimisticTurn<T extends { turns: Turn[] }>(
+  thread: T,
+  optimisticTurnID: string | undefined,
+  nowMs: number,
+): T {
+  if (!optimisticTurnID) {
+    return thread;
+  }
+  let changed = false;
+  const turns = thread.turns.map((turn) => {
+    if (turn.id !== optimisticTurnID || turn.status !== "in_progress") {
+      return turn;
+    }
+    const startedAtMs = turn.started_at ? Date.parse(turn.started_at) : Number.NaN;
+    recordPausedTurnElapsed(
+      turn.id,
+      Number.isFinite(startedAtMs) ? Math.max(0, nowMs - startedAtMs) : 0,
+    );
+    changed = true;
+    return { ...turn, status: "interrupted" as const };
+  });
+  return changed ? { ...thread, turns } : thread;
+}
+
+export function interruptLatestOptimisticTurn<T extends { turns: Turn[] }>(
+  thread: T,
+  nowMs: number,
+): T {
+  for (let index = thread.turns.length - 1; index >= 0; index -= 1) {
+    const turn = thread.turns[index];
+    if (
+      turn.status === "in_progress" &&
+      turn.id.startsWith(OPTIMISTIC_TURN_ID_PREFIX)
+    ) {
+      return interruptOptimisticTurn(thread, turn.id, nowMs);
+    }
+  }
+  return thread;
+}
+
+export function isOptimisticTurnInterrupted(
+  thread: { turns: Turn[] } | undefined,
+  optimisticTurnID: string | undefined,
+): boolean {
+  return Boolean(
+    optimisticTurnID &&
+    thread?.turns.some(
+      (turn) => turn.id === optimisticTurnID && turn.status === "interrupted",
+    ),
+  );
+}
+
 export function createOptimisticCompactTurn(nowMs: number): Turn {
   const id = nextOptimisticTurnID();
   return {
@@ -582,6 +644,9 @@ export function dropOptimisticTurn<T extends { turns: Turn[] }>(
   if (!optimisticTurnID) {
     return thread;
   }
+  // A dropped placeholder never becomes a real turn, so its frozen elapsed
+  // (if any) is dead bookkeeping.
+  clearPausedTurnElapsed(optimisticTurnID);
   return {
     ...thread,
     turns: thread.turns.filter((turn) => turn.id !== optimisticTurnID),
@@ -628,5 +693,9 @@ export function replaceOptimisticTurn<T extends { turns: Turn[] }>(
     started_at:
       earlierStartedAt(optimisticStartedAt, realTurn.started_at) ?? null,
   };
+  // The placeholder carried the live timer under its client-minted id; move
+  // any frozen elapsed to the real server id so a turn that was paused
+  // before this swap keeps showing its elapsed time.
+  transferPausedTurnElapsed(optimisticTurnID, merged.id);
   return upsertTurn({ ...thread, turns: turnsWithoutOptimistic }, merged);
 }

@@ -7,8 +7,9 @@
  * reads from one signal, and the signal is label-plus-whitespace.
  *
  * Color budget: paper canvas, the --ink-* text ramp, controls filled from
- * the --surface-1/2 steps (hover one step deeper, paper + hairline on
- * focus). Semantic colors only carry state (success/danger/accent). No
+ * the --surface-1/2 steps (hover one step deeper, paper + the shared
+ * accessible focus ring on focus). Semantic colors otherwise only carry
+ * state (success/danger/accent). No
  * local hex values — the usage heatmap is the sanctioned data-viz
  * exception.
  *
@@ -177,7 +178,7 @@
 
 .settings-nav-group-label {
   padding: 0 12px 6px;
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   font-size: var(--font-sm);
   font-weight: var(--weight-medium);
   line-height: 1.3;
@@ -486,7 +487,7 @@
 .settings-select {
   width: 100%;
   height: 32px;
-  border: 1px solid transparent;
+  border: 1px solid var(--control-boundary);
   border-radius: var(--radius-sm);
   background: var(--wuu-control-field-background, var(--surface-1));
   color: var(--ink);
@@ -500,7 +501,7 @@
 }
 
 .settings-input::placeholder {
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
 }
 
 .settings-input:hover:not(:disabled),
@@ -514,8 +515,8 @@
 .settings-select:focus-visible {
   outline: 0;
   background: var(--paper);
-  border-color: var(--gray-350);
-  box-shadow: 0 0 0 3px var(--ink-overlay-8);
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .settings-input:disabled,
@@ -654,7 +655,7 @@
 
 .settings-button:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 3px var(--ink-overlay-12);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .settings-button:disabled {
@@ -1191,7 +1192,7 @@
 
 .settings-usage-chart-header > span {
   flex: none;
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   font-size: var(--font-xs);
   font-variant-numeric: tabular-nums;
 }
@@ -1236,7 +1237,7 @@
   display: flex;
   justify-content: space-between;
   margin-top: 7px;
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
@@ -1545,7 +1546,7 @@
 }
 
 .settings-skill-usage-rank {
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   font-size: var(--font-xs);
   font-variant-numeric: tabular-nums;
 }
@@ -1590,7 +1591,7 @@
   grid-template-columns: repeat(var(--heatmap-cols, 12), 1fr);
   width: 100%;
   min-height: 14px;
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   font-size: 10px;
   font-weight: var(--weight-medium);
   user-select: none;
@@ -1659,7 +1660,7 @@
   gap: 4px;
   margin-top: 4px;
   margin-left: auto;
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   font-size: 10px;
   font-weight: var(--weight-medium);
   user-select: none;
@@ -1927,7 +1928,8 @@
 }
 
 /* Archive toolbar controls share the settings input chrome: a surface-1
- * box at rest, one step deeper on hover, paper + hairline on focus. */
+ * box with a functional boundary at rest, one step deeper on hover, and the
+ * shared focus ring on focus. */
 .settings-archive-search {
   display: flex;
   min-width: 0;
@@ -1935,10 +1937,10 @@
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  border: 1px solid transparent;
+  border: 1px solid var(--control-boundary);
   border-radius: var(--radius-sm);
   background: var(--wuu-control-field-background, var(--surface-1));
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
   transition:
     background var(--motion-fast) var(--menu-enter-easing),
     border-color var(--motion-fast) var(--menu-enter-easing),
@@ -1951,8 +1953,8 @@
 
 .settings-archive-search:focus-within {
   background: var(--paper);
-  border-color: var(--gray-350);
-  box-shadow: 0 0 0 3px var(--ink-overlay-8);
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .settings-archive-search input {
@@ -1967,18 +1969,18 @@
 }
 
 .settings-archive-search input::placeholder {
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
 }
 
 .select-menu-trigger.settings-archive-filter-trigger {
   height: 32px;
-  border-color: transparent;
+  border-color: var(--control-boundary);
   border-radius: var(--radius-sm);
   background: var(--wuu-control-field-background, var(--surface-1));
 }
 
 .select-menu-trigger.settings-archive-filter-trigger:hover:not(:disabled) {
-  border-color: transparent;
+  border-color: var(--control-boundary);
   background: var(--wuu-control-field-background, var(--surface-2));
 }
 

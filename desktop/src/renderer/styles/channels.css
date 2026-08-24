@@ -1430,7 +1430,7 @@
 
 .channel-agent-memory-link:focus-visible {
   border-radius: 3px;
-  outline: 2px solid var(--wuu-color-focus, color-mix(in srgb, var(--rich-link-color) 40%, transparent));
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -1960,7 +1960,7 @@
   width: 100%;
   min-width: 0;
   height: 34px;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--control-boundary);
   border-radius: var(--radius-sm);
   outline: 0;
   background: var(--paper);
@@ -1971,12 +1971,12 @@
 }
 
 .channel-form-field input::placeholder {
-  color: var(--ink-faint);
+  color: var(--ink-tertiary);
 }
 
 .channel-form-field input:focus {
-  border-color: var(--hairline-strong);
-  box-shadow: 0 0 0 3px var(--ink-overlay-8);
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .channel-form-section {

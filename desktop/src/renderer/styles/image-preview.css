@@ -11,7 +11,7 @@
   --image-preview-zoom-text: rgba(243, 244, 245, 0.88);
   --image-preview-status-text: rgba(243, 244, 245, 0.78);
   --image-preview-status-error: var(--wuu-color-danger, rgba(255, 188, 188, 0.9));
-  --image-preview-outline-focus: var(--wuu-color-focus, #5b8def);
+  --image-preview-outline-focus: var(--focus-ring);
 }
 
 .image-preview-overlay {
@@ -170,7 +170,7 @@
 .rich-image:focus-visible,
 .composer-image-attachment img:focus-visible,
 .message-image:focus-visible {
-  outline: 2px solid var(--accent, var(--image-preview-outline-focus));
+  outline: 2px solid var(--image-preview-outline-focus);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }

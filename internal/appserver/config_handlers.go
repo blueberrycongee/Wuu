@@ -1377,6 +1377,11 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 			return s.writeResponse(req.ID, nil, err)
 		}
 	}
+	// Serialize the persisted write with the config watcher. Otherwise the
+	// watcher can observe this interactive model/effort change and hot-apply it
+	// again while (or just after) this handler is applying it itself.
+	s.configRefreshMu.Lock()
+	defer s.configRefreshMu.Unlock()
 	if creatingProvider {
 		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
 	} else {
@@ -1385,8 +1390,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	s.configRefreshMu.Lock()
-	defer s.configRefreshMu.Unlock()
 	previousRuntimeProvider := s.rt.ProviderName
 	roleSelections, err := modelroles.Resolve(cfg, modelroles.ResolveOptions{
 		ProviderName:   resolvedName,
@@ -1459,6 +1462,15 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		if err := s.updateThreadRuntimeForModelUpdate(targetThread, threadProvider, threadModel, threadVariant, threadEffort, threadPermission); err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
+	}
+	// The RPC response is the notification path for this in-process mutation.
+	// Mark the just-applied file revision as observed so the periodic watcher
+	// does not rebuild the runtime and notify the renderer again on its next
+	// 500 ms tick.
+	if fingerprint, fingerprintErr := s.effectiveConfigFingerprint(); fingerprintErr == nil {
+		s.configFingerprint = fingerprint
+	} else {
+		providers.DebugLogf("record model update config fingerprint: %v", fingerprintErr)
 	}
 
 	modelProfile, toolSurface := s.currentModelSurfaceSummaries()

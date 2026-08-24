@@ -2,6 +2,7 @@ package appserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
+	"github.com/blueberrycongee/wuu/internal/worktree"
 )
 
 type pluginTurnReference struct {
@@ -58,6 +60,7 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	params.WorkspaceID = strings.TrimSpace(params.WorkspaceID)
 	params.WorkspaceRoot = strings.TrimSpace(params.WorkspaceRoot)
 	params.ModelAlias = strings.TrimSpace(params.ModelAlias)
+	params.Instructions = strings.TrimSpace(params.Instructions)
 	if pluginID == "" {
 		return pluginhost.SessionCreateResult{}, errors.New("plugin owner is required")
 	}
@@ -66,6 +69,9 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	}
 	if len([]byte(params.RequestID)) > pluginhost.MaxSessionSendRequestIDBytes {
 		return pluginhost.SessionCreateResult{}, fmt.Errorf("request_id exceeds %d bytes", pluginhost.MaxSessionSendRequestIDBytes)
+	}
+	if len([]byte(params.Instructions)) > pluginhost.MaxSessionSendContextBlockBytes {
+		return pluginhost.SessionCreateResult{}, fmt.Errorf("instructions exceeds %d bytes", pluginhost.MaxSessionSendContextBlockBytes)
 	}
 	if params.Visibility != pluginhost.SessionVisibilityUser && params.Visibility != pluginhost.SessionVisibilityPlugin {
 		return pluginhost.SessionCreateResult{}, errors.New("visibility must be user or plugin")
@@ -81,6 +87,13 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	}
 	if params.Workspace != "shared" && params.Workspace != "worktree" {
 		return pluginhost.SessionCreateResult{}, errors.New("workspace must be shared or worktree")
+	}
+	if params.ToolPolicy != nil {
+		normalized, err := normalizeSessionToolPolicy(*params.ToolPolicy)
+		if err != nil {
+			return pluginhost.SessionCreateResult{}, err
+		}
+		params.ToolPolicy = &normalized
 	}
 	// A worktree session runs in its own git worktree based on the fork
 	// parent's directory, or on the project root for fresh context.
@@ -151,6 +164,272 @@ func (s *Server) listPluginSessions(_ context.Context, pluginID string, params p
 		result.Sessions = append(result.Sessions, pluginhost.SessionSummary{SessionID: item.ID, Name: item.Title, ParentSessionID: item.ParentID, Visibility: item.Visibility, State: state, WorkspaceID: item.WorkspaceID, CreatedAt: item.CreatedAt.Format(time.RFC3339Nano), UpdatedAt: item.UpdatedAt.Format(time.RFC3339Nano)})
 	}
 	return result, nil
+}
+
+func (s *Server) inspectPluginSession(ctx context.Context, pluginID string, params pluginhost.SessionInspectParams) (pluginhost.SessionInspectResult, error) {
+	params.SessionID = strings.TrimSpace(params.SessionID)
+	params.TurnID = strings.TrimSpace(params.TurnID)
+	params.RequestID = strings.TrimSpace(params.RequestID)
+	params.Wait = strings.TrimSpace(params.Wait)
+	if params.Wait == "" {
+		params.Wait = pluginhost.SessionInspectWaitNone
+	}
+	if params.SessionID == "" || strings.TrimSpace(pluginID) == "" {
+		return pluginhost.SessionInspectResult{}, errors.New("plugin owner and session_id are required")
+	}
+	if params.Wait != pluginhost.SessionInspectWaitNone && params.Wait != pluginhost.SessionInspectWaitTerminal {
+		return pluginhost.SessionInspectResult{}, errors.New("wait must be none or terminal")
+	}
+	if params.TimeoutMS < 0 || params.TimeoutMS > 300000 {
+		return pluginhost.SessionInspectResult{}, errors.New("timeout_ms must be between 0 and 300000")
+	}
+	inspect := func() (pluginhost.SessionInspectResult, error) {
+		return s.inspectPluginSessionOnce(pluginID, params)
+	}
+	result, err := inspect()
+	if err != nil || params.Wait == pluginhost.SessionInspectWaitNone || result.Turn == nil || terminalPluginTurnState(result.Turn.State) {
+		return result, err
+	}
+	timeout := time.Duration(params.TimeoutMS) * time.Millisecond
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return pluginhost.SessionInspectResult{}, ctx.Err()
+		case <-timer.C:
+			result.TimedOut = true
+			return result, nil
+		case <-ticker.C:
+			result, err = inspect()
+			if err != nil || result.Turn == nil || terminalPluginTurnState(result.Turn.State) {
+				return result, err
+			}
+		}
+	}
+}
+
+func (s *Server) inspectPluginSessionOnce(pluginID string, params pluginhost.SessionInspectParams) (pluginhost.SessionInspectResult, error) {
+	metadata, ok, err := session.Find(s.rt.SessionDir, params.SessionID)
+	if err != nil {
+		return pluginhost.SessionInspectResult{}, err
+	}
+	if !ok {
+		return pluginhost.SessionInspectResult{}, session.ErrSessionNotFound
+	}
+	if metadata.Owner != "plugin:"+strings.TrimSpace(pluginID) {
+		return pluginhost.SessionInspectResult{}, errors.New("plugin does not own the session")
+	}
+	th, err := s.ensureThreadLoaded(params.SessionID)
+	if err != nil {
+		return pluginhost.SessionInspectResult{}, err
+	}
+	requestID := params.RequestID
+	if requestID == "" {
+		requestID = latestPluginRequestID(th, pluginID, params.TurnID)
+	}
+	state := pluginhost.TurnLifecycleCompleted
+	if th != nil {
+		th.mu.Lock()
+		if th.running {
+			state = pluginhost.TurnLifecycleRunning
+		}
+		th.mu.Unlock()
+	}
+	s.queuedTurnMu.Lock()
+	if len(s.pendingQueuedTurns[params.SessionID]) > 0 {
+		state = pluginhost.TurnLifecycleQueued
+	}
+	s.queuedTurnMu.Unlock()
+	result := pluginhost.SessionInspectResult{Session: pluginhost.SessionSummary{
+		SessionID: metadata.ID, Name: metadata.Title, ParentSessionID: metadata.ParentID,
+		Visibility: metadata.Visibility, State: state, WorkspaceID: metadata.WorkspaceID,
+		CreatedAt: metadata.CreatedAt.Format(time.RFC3339Nano), UpdatedAt: metadata.UpdatedAt.Format(time.RFC3339Nano),
+	}}
+	if metadata.WorktreePath != "" {
+		summary := &pluginhost.SessionWorkspaceSummary{Kind: "worktree"}
+		if manager, managerErr := s.worktreeManager(metadata.WorktreeBaseRepo); managerErr == nil {
+			if status, statusErr := manager.Status(metadata.WorktreePath); statusErr == nil {
+				summary.Dirty = status.Dirty
+				summary.ChangedFiles = status.ChangedFiles
+			}
+		}
+		result.Workspace = summary
+	} else {
+		result.Workspace = &pluginhost.SessionWorkspaceSummary{Kind: "shared"}
+	}
+	entry, found, err := session.FindPluginTurnLifecycle(s.rt.SessionDir, pluginID, requestID, params.SessionID, params.TurnID)
+	if err != nil {
+		return pluginhost.SessionInspectResult{}, err
+	}
+	if found {
+		var lifecycle pluginhost.AgentTurnLifecycleInput
+		if err := json.Unmarshal(entry.Payload, &lifecycle); err != nil {
+			return pluginhost.SessionInspectResult{}, fmt.Errorf("decode plugin lifecycle state: %w", err)
+		}
+		result.Turn = &pluginhost.SessionTurnInspection{
+			RequestID: lifecycle.RequestID, State: lifecycle.State, TurnID: lifecycle.TurnID, QueueID: lifecycle.QueueID,
+			Error: lifecycle.Error, StartedAt: lifecycle.StartedAt, CompletedAt: lifecycle.CompletedAt,
+			InputTokens: lifecycle.InputTokens, OutputTokens: lifecycle.OutputTokens, FinalOutput: lifecycle.FinalOutput,
+		}
+		result.Session.State = lifecycle.State
+		return result, nil
+	}
+	if requestID != "" {
+		if live, ok := s.findPluginSessionRequest(th, pluginSessionRequestClientID(pluginID, requestID)); ok {
+			if params.TurnID == "" || live.TurnID == params.TurnID {
+				result.Turn = &pluginhost.SessionTurnInspection{RequestID: requestID, State: live.State, TurnID: live.TurnID, QueueID: live.QueueID}
+				result.Session.State = live.State
+			}
+		}
+	}
+	return result, nil
+}
+
+func latestPluginRequestID(th *threadState, pluginID, turnID string) string {
+	if th == nil {
+		return ""
+	}
+	th.mu.Lock()
+	defer th.mu.Unlock()
+	for turnIndex := len(th.Turns) - 1; turnIndex >= 0; turnIndex-- {
+		turn := th.Turns[turnIndex]
+		if turnID != "" && turn.ID != turnID {
+			continue
+		}
+		for itemIndex := len(turn.Items) - 1; itemIndex >= 0; itemIndex-- {
+			owner, requestID, ok := pluginSessionRequestFromClientID(turn.Items[itemIndex].SourceID)
+			if ok && owner == pluginID {
+				return requestID
+			}
+		}
+	}
+	if turnID != "" {
+		return ""
+	}
+	for index := len(th.History) - 1; index >= 0; index-- {
+		owner, requestID, ok := pluginSessionRequestFromClientID(th.History[index].ClientID)
+		if ok && owner == pluginID {
+			return requestID
+		}
+	}
+	return ""
+}
+
+func terminalPluginTurnState(state string) bool {
+	switch strings.TrimSpace(state) {
+	case pluginhost.TurnLifecycleCompleted, pluginhost.TurnLifecycleFailed, pluginhost.TurnLifecycleInterrupted, pluginhost.TurnLifecycleDiscarded:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) statusPluginWorkspace(_ context.Context, pluginID string, params pluginhost.WorkspaceStatusParams) (pluginhost.WorkspaceStatusResult, error) {
+	metadata, manager, target, err := s.pluginWorkspaceTarget(pluginID, params.SessionID)
+	if err != nil {
+		return pluginhost.WorkspaceStatusResult{}, err
+	}
+	status, err := manager.Status(target)
+	if err != nil {
+		return pluginhost.WorkspaceStatusResult{}, err
+	}
+	diff, err := manager.Diff(target)
+	if err != nil {
+		return pluginhost.WorkspaceStatusResult{}, err
+	}
+	preview := manager.MergePreview(target, metadata.WorktreeBaseRepo)
+	return pluginhost.WorkspaceStatusResult{
+		SessionID: metadata.ID, Dirty: status.Dirty, ChangedFiles: status.ChangedFiles,
+		Porcelain: status.Porcelain, Diff: diff, CanApply: preview.CanApply,
+		ConflictFiles: preview.ConflictFiles, Error: preview.Error,
+	}, nil
+}
+
+func (s *Server) applyPluginWorkspace(_ context.Context, pluginID string, params pluginhost.WorkspaceApplyParams) (pluginhost.WorkspaceApplyResult, error) {
+	metadata, manager, target, err := s.pluginWorkspaceTarget(pluginID, params.SessionID)
+	if err != nil {
+		return pluginhost.WorkspaceApplyResult{}, err
+	}
+	if err := s.requirePluginWorkspaceIdle(metadata.ID); err != nil {
+		return pluginhost.WorkspaceApplyResult{}, err
+	}
+	applied, err := manager.ApplyToTarget(target, metadata.WorktreeBaseRepo)
+	if err != nil {
+		return pluginhost.WorkspaceApplyResult{}, err
+	}
+	if err := manager.Cleanup(target); err != nil {
+		return pluginhost.WorkspaceApplyResult{}, err
+	}
+	if err := s.rebindThreadWorkspace(metadata.ID, metadata.WorktreeBaseRepo); err != nil {
+		return pluginhost.WorkspaceApplyResult{}, err
+	}
+	return pluginhost.WorkspaceApplyResult{SessionID: metadata.ID, Applied: applied.Applied, ChangedFiles: applied.ChangedFiles, Discarded: true}, nil
+}
+
+func (s *Server) discardPluginWorkspace(_ context.Context, pluginID string, params pluginhost.WorkspaceDiscardParams) (pluginhost.WorkspaceDiscardResult, error) {
+	metadata, manager, target, err := s.pluginWorkspaceTarget(pluginID, params.SessionID)
+	if err != nil {
+		return pluginhost.WorkspaceDiscardResult{}, err
+	}
+	if err := s.requirePluginWorkspaceIdle(metadata.ID); err != nil {
+		return pluginhost.WorkspaceDiscardResult{}, err
+	}
+	if err := manager.Cleanup(target); err != nil {
+		return pluginhost.WorkspaceDiscardResult{}, err
+	}
+	if err := s.rebindThreadWorkspace(metadata.ID, metadata.WorktreeBaseRepo); err != nil {
+		return pluginhost.WorkspaceDiscardResult{}, err
+	}
+	return pluginhost.WorkspaceDiscardResult{SessionID: metadata.ID, Discarded: true}, nil
+}
+
+func (s *Server) pluginWorkspaceTarget(pluginID, sessionID string) (session.Session, *worktree.Manager, *worktree.Worktree, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	sessionID = strings.TrimSpace(sessionID)
+	if pluginID == "" || sessionID == "" {
+		return session.Session{}, nil, nil, errors.New("plugin owner and session_id are required")
+	}
+	metadata, ok, err := session.Find(s.rt.SessionDir, sessionID)
+	if err != nil {
+		return session.Session{}, nil, nil, err
+	}
+	if !ok {
+		return session.Session{}, nil, nil, session.ErrSessionNotFound
+	}
+	if metadata.Owner != "plugin:"+pluginID {
+		return session.Session{}, nil, nil, errors.New("plugin does not own the session")
+	}
+	if strings.TrimSpace(metadata.WorktreePath) == "" || strings.TrimSpace(metadata.WorktreeBaseRepo) == "" {
+		return session.Session{}, nil, nil, errors.New("session does not own an isolated workspace")
+	}
+	manager, err := s.worktreeManager(metadata.WorktreeBaseRepo)
+	if err != nil {
+		return session.Session{}, nil, nil, err
+	}
+	target := &worktree.Worktree{
+		Path: metadata.WorktreePath, SessionID: metadata.ID, WorkerID: "plugin",
+		HEAD: metadata.WorktreeBaseHEAD, BaseRepo: metadata.WorktreeBaseRepo,
+	}
+	return metadata, manager, target, nil
+}
+
+func (s *Server) requirePluginWorkspaceIdle(sessionID string) error {
+	th := s.thread(sessionID)
+	if th == nil {
+		return nil
+	}
+	th.mu.Lock()
+	defer th.mu.Unlock()
+	if th.running || th.admissionReserved {
+		return errors.New("session workspace cannot be changed while a turn is running")
+	}
+	return nil
 }
 
 func (s *Server) cancelPluginSession(_ context.Context, pluginID string, params pluginhost.SessionCancelParams) (pluginhost.SessionCancelResult, error) {
@@ -282,6 +561,16 @@ func (s *Server) sendPluginSession(ctx context.Context, pluginID string, params 
 			msg.DisplayContent = text
 		}
 		msg.Name = strings.TrimSpace(params.Presentation.Name)
+		msg.RelatedSessionID = strings.TrimSpace(params.Presentation.RelatedSessionID)
+		if msg.RelatedSessionID != "" {
+			related, exists, findErr := session.Find(s.rt.SessionDir, msg.RelatedSessionID)
+			if findErr != nil {
+				return pluginhost.SessionSendResult{}, findErr
+			}
+			if !exists || related.Owner != owner {
+				return pluginhost.SessionSendResult{}, errors.New("related_session_id must name a session owned by the plugin")
+			}
+		}
 	}
 	if params.IfRunning == pluginhost.SessionIfRunningSteer {
 		if turnID, steered := s.steerPluginSession(th, msg); steered {
@@ -441,6 +730,17 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 	if prompt := strings.TrimSpace(s.rt.StreamRunner.SystemPrompt); prompt != "" && len(history) == 0 {
 		history = append(history, providers.ChatMessage{Role: "system", Content: prompt})
 	}
+	if params.Instructions != "" {
+		history = applyPluginSessionInstructions(history, params.Instructions)
+	}
+	toolPolicyJSON := ""
+	if params.ToolPolicy != nil {
+		encoded, err := json.Marshal(params.ToolPolicy)
+		if err != nil {
+			return nil, fmt.Errorf("encode tool_policy: %w", err)
+		}
+		toolPolicyJSON = string(encoded)
+	}
 
 	worktree := session.WorktreeInfo{}
 	if params.Workspace == "worktree" {
@@ -472,6 +772,7 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		WorktreePath: worktree.Path, WorktreeBaseHEAD: worktree.BaseHEAD, WorktreeBaseRepo: worktree.BaseRepo,
 		Provider: selection.Provider, Model: selection.Model, Variant: selection.Variant,
 		Effort: selection.Effort, PermissionMode: selection.PermissionMode,
+		Instructions: params.Instructions, ToolPolicyJSON: toolPolicyJSON,
 	}
 	var records []session.HistoryRecord
 	artifactStateDir := ""
@@ -563,6 +864,51 @@ func (s *Server) startPluginSubmittedTurn(ctx context.Context, th *threadState, 
 	}
 	launch.Commit()
 	return started, true, nil
+}
+
+func normalizeSessionToolPolicy(policy pluginhost.SessionToolPolicy) (pluginhost.SessionToolPolicy, error) {
+	normalize := func(kind string, names []string) ([]string, error) {
+		seen := make(map[string]struct{}, len(names))
+		out := make([]string, 0, len(names))
+		for _, name := range names {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				return nil, fmt.Errorf("tool_policy.%s contains an empty tool name", kind)
+			}
+			if len([]byte(name)) > 256 {
+				return nil, fmt.Errorf("tool_policy.%s tool name exceeds 256 bytes", kind)
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+		return out, nil
+	}
+	allow, err := normalize("allow", policy.Allow)
+	if err != nil {
+		return pluginhost.SessionToolPolicy{}, err
+	}
+	deny, err := normalize("deny", policy.Deny)
+	if err != nil {
+		return pluginhost.SessionToolPolicy{}, err
+	}
+	return pluginhost.SessionToolPolicy{Allow: allow, Deny: deny}, nil
+}
+
+func applyPluginSessionInstructions(history []providers.ChatMessage, instructions string) []providers.ChatMessage {
+	instructions = strings.TrimSpace(instructions)
+	if instructions == "" {
+		return history
+	}
+	for index := range history {
+		if strings.EqualFold(strings.TrimSpace(history[index].Role), "system") {
+			history[index].Content = strings.TrimSpace(history[index].Content) + "\n\n# Session instructions\n\n" + instructions
+			return history
+		}
+	}
+	return append([]providers.ChatMessage{{Role: "system", Content: "# Session instructions\n\n" + instructions}}, history...)
 }
 
 func pluginTurnRequestContext(input []pluginhost.SessionContextBlock) ([]agent.ContextSegment, error) {

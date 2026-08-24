@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 
 	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
 )
@@ -35,6 +36,15 @@ type taskRecord struct {
 	SuppressCompletion bool   `json:"suppress_completion,omitempty"`
 }
 
+const taskIndexKey = "tasks.v2"
+const maxTaskRecords = 128
+
+type taskIndex struct {
+	Records []taskRecord `json:"records"`
+}
+
+var taskIndexMu sync.Mutex
+
 func Handler() pluginapi.Handler {
 	return pluginapi.Handler{
 		Definition: pluginapi.Definition{
@@ -54,8 +64,11 @@ func Handler() pluginapi.Handler {
 				{ID: pluginapi.HostServiceSessionSend, Required: true},
 				{ID: pluginapi.HostServiceSessionList, Required: true},
 				{ID: pluginapi.HostServiceSessionCancel, Required: true},
+				{ID: pluginapi.HostServiceSessionInspect, Required: true},
 				{ID: pluginapi.HostServiceStorageGet, Required: true},
 				{ID: pluginapi.HostServiceStorageSet, Required: true},
+				{ID: pluginapi.HostServiceStorageKeys, Required: true},
+				{ID: pluginapi.HostServiceStorageDelete, Required: true},
 			},
 		},
 		ExecuteTool:      executeTool,
@@ -121,7 +134,7 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 		contextSource = "fork"
 	}
 	var created pluginapi.SessionCreateResult
-	err = host.CallHost(ctx, pluginapi.HostServiceSessionCreate, pluginapi.SessionCreateParams{RequestID: "create-" + requestID, Name: name, Visibility: "plugin", ParentSessionID: call.SessionID, ContextSource: contextSource, Workspace: workspace, ModelAlias: strings.TrimSpace(args.Model)}, &created)
+	err = host.CallHost(ctx, pluginapi.HostServiceSessionCreate, pluginapi.SessionCreateParams{RequestID: "create-" + requestID, Name: name, Visibility: "plugin", ParentSessionID: call.SessionID, ContextSource: contextSource, Workspace: workspace, ModelAlias: strings.TrimSpace(args.Model), Instructions: workerInstructions(strings.TrimSpace(args.SubagentType))}, &created)
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}
@@ -130,7 +143,7 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 		return pluginapi.ToolResult{}, err
 	}
 	var sent pluginapi.SessionSendResult
-	err = host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: record.RequestID, SessionID: created.SessionID, Input: pluginapi.SessionInput{Prompt: workerPrompt(strings.TrimSpace(args.SubagentType), strings.TrimSpace(args.Prompt))}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + name + " 已开始", Name: name}, Cause: "subagent.task"}, &sent)
+	err = host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: record.RequestID, SessionID: created.SessionID, Input: pluginapi.SessionInput{Prompt: strings.TrimSpace(args.Prompt)}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + name + " 已开始", Name: name}, Cause: "subagent.task"}, &sent)
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}
@@ -246,6 +259,12 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 			return json.RawMessage(`{}`), nil
 		}
 		record, ok, err := loadRecord(ctx, host, input.RequestID)
+		if err == nil && !ok {
+			err = reconcileOwnedSessions(ctx, host)
+			if err == nil {
+				record, ok, err = loadRecord(ctx, host, input.RequestID)
+			}
+		}
 		if err != nil || !ok {
 			return json.RawMessage(`{}`), err
 		}
@@ -254,7 +273,7 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 			return nil, err
 		}
 		if record.SuppressCompletion {
-			return json.RawMessage(`{}`), nil
+			return json.RawMessage(`{}`), deleteRecord(ctx, host, record.SessionID)
 		}
 		output := strings.TrimSpace(input.FinalOutput)
 		if output == "" {
@@ -273,9 +292,9 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 				return nil, err
 			}
 		}
-		prompt := fmt.Sprintf("子任务 %s（session %s）已%s。请检查并整合以下交接结果：\n\n%s", record.Name, record.SessionID, lifecycleLabel(input.State), output)
+		prompt := fmt.Sprintf("子任务 %s 已%s。请检查并整合以下交接结果：\n\n%s", record.Name, lifecycleLabel(input.State), output)
 		var sent pluginapi.SessionSendResult
-		if err := host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: deliveryRequestID, SessionID: record.ParentSessionID, Input: pluginapi.SessionInput{Prompt: prompt}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + record.Name + " 已更新", Name: record.Name}, Cause: "subagent.completion", IfRunning: pluginapi.SessionIfRunningSteer}, &sent); err != nil {
+		if err := host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: deliveryRequestID, SessionID: record.ParentSessionID, Input: pluginapi.SessionInput{Prompt: prompt}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + record.Name + " 已更新", Name: record.Name, RelatedSessionID: record.SessionID}, Cause: "subagent.completion", IfRunning: pluginapi.SessionIfRunningSteer}, &sent); err != nil {
 			if tracksContinuation {
 				return nil, errors.Join(err, saveRecord(ctx, host, continuationParent))
 			}
@@ -296,7 +315,7 @@ func invokeCapability(ctx context.Context, host pluginapi.Host, call pluginapi.C
 				return nil, err
 			}
 		}
-		return json.RawMessage(`{}`), nil
+		return json.RawMessage(`{}`), deleteRecord(ctx, host, record.SessionID)
 	case capabilityInterrupt:
 		var input pluginapi.AgentTurnInterruptedInput
 		if err := json.Unmarshal(call.Input, &input); err != nil {
@@ -365,28 +384,119 @@ func resolveTask(ctx context.Context, host pluginapi.Host, parentID, target stri
 	if ok {
 		return record, nil
 	}
+	var inspected pluginapi.SessionInspectResult
+	if err := host.CallHost(ctx, pluginapi.HostServiceSessionInspect, pluginapi.SessionInspectParams{SessionID: match.SessionID, Wait: pluginapi.SessionInspectWaitNone}, &inspected); err != nil {
+		return taskRecord{}, err
+	}
+	if inspected.Turn != nil && strings.TrimSpace(inspected.Turn.RequestID) != "" {
+		recovered := taskRecord{
+			SessionID: match.SessionID, ParentSessionID: match.ParentSessionID, Name: match.Name,
+			RequestID: inspected.Turn.RequestID, TurnID: inspected.Turn.TurnID,
+			QueueID: inspected.Turn.QueueID, State: inspected.Turn.State,
+		}
+		if err := saveRecord(ctx, host, recovered); err != nil {
+			return taskRecord{}, err
+		}
+		return recovered, nil
+	}
 	return taskRecord{SessionID: match.SessionID, ParentSessionID: match.ParentSessionID, Name: match.Name, State: match.State}, nil
 }
 
-func saveRecord(ctx context.Context, host pluginapi.Host, record taskRecord) error {
-	encoded, err := json.Marshal(record)
-	if err != nil {
+// reconcileOwnedSessions repairs the bounded cache from durable child sessions.
+// Terminal sessions are intentionally not reintroduced: successful completion
+// delivery garbage-collects their task record, while the host's lifecycle
+// outbox retains and retries any terminal event that was not acknowledged.
+func reconcileOwnedSessions(ctx context.Context, host pluginapi.Host) error {
+	var listed pluginapi.SessionListResult
+	if err := host.CallHost(ctx, pluginapi.HostServiceSessionList, pluginapi.SessionListParams{Scope: pluginapi.SessionListScopeOwned}, &listed); err != nil {
 		return err
 	}
-	for _, key := range []string{"request." + record.RequestID, "session." + record.SessionID} {
-		if err := host.CallHost(ctx, pluginapi.HostServiceStorageSet, map[string]any{"scope": "workspace", "key": key, "value": string(encoded)}, &struct{}{}); err != nil {
+	for _, child := range listed.Sessions {
+		if _, ok, err := loadRecordBySession(ctx, host, child.SessionID); err != nil {
+			return err
+		} else if ok {
+			continue
+		}
+		var inspected pluginapi.SessionInspectResult
+		if err := host.CallHost(ctx, pluginapi.HostServiceSessionInspect, pluginapi.SessionInspectParams{SessionID: child.SessionID, Wait: pluginapi.SessionInspectWaitNone}, &inspected); err != nil {
+			return err
+		}
+		if inspected.Turn == nil || terminalTaskState(inspected.Turn.State) || strings.TrimSpace(inspected.Turn.RequestID) == "" {
+			continue
+		}
+		if err := saveRecord(ctx, host, taskRecord{
+			SessionID: child.SessionID, ParentSessionID: child.ParentSessionID, Name: child.Name,
+			RequestID: inspected.Turn.RequestID, TurnID: inspected.Turn.TurnID,
+			QueueID: inspected.Turn.QueueID, State: inspected.Turn.State,
+		}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func saveRecord(ctx context.Context, host pluginapi.Host, record taskRecord) error {
+	taskIndexMu.Lock()
+	defer taskIndexMu.Unlock()
+	index, err := loadTaskIndexLocked(ctx, host)
+	if err != nil {
+		return err
+	}
+	filtered := index.Records[:0]
+	for _, existing := range index.Records {
+		if existing.SessionID == record.SessionID || (record.RequestID != "" && existing.RequestID == record.RequestID) {
+			continue
+		}
+		filtered = append(filtered, existing)
+	}
+	index.Records = append(filtered, record)
+	if len(index.Records) > maxTaskRecords {
+		trimmed := index.Records[:0]
+		for _, existing := range index.Records {
+			if len(index.Records)-len(trimmed) > maxTaskRecords && terminalTaskState(existing.State) {
+				continue
+			}
+			trimmed = append(trimmed, existing)
+		}
+		index.Records = trimmed
+	}
+	if len(index.Records) > maxTaskRecords {
+		return fmt.Errorf("subagent has more than %d active task records", maxTaskRecords)
+	}
+	return storeTaskIndexLocked(ctx, host, index)
+}
+
 func loadRecord(ctx context.Context, host pluginapi.Host, requestID string) (taskRecord, bool, error) {
-	return loadStoredRecord(ctx, host, "request."+strings.TrimSpace(requestID))
+	taskIndexMu.Lock()
+	defer taskIndexMu.Unlock()
+	index, err := loadTaskIndexLocked(ctx, host)
+	if err != nil {
+		return taskRecord{}, false, err
+	}
+	requestID = strings.TrimSpace(requestID)
+	for _, record := range index.Records {
+		if record.RequestID == requestID {
+			return record, true, nil
+		}
+	}
+	return taskRecord{}, false, nil
 }
 func loadRecordBySession(ctx context.Context, host pluginapi.Host, sessionID string) (taskRecord, bool, error) {
-	return loadStoredRecord(ctx, host, "session."+strings.TrimSpace(sessionID))
+	taskIndexMu.Lock()
+	defer taskIndexMu.Unlock()
+	index, err := loadTaskIndexLocked(ctx, host)
+	if err != nil {
+		return taskRecord{}, false, err
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	for _, record := range index.Records {
+		if record.SessionID == sessionID {
+			return record, true, nil
+		}
+	}
+	return taskRecord{}, false, nil
 }
+
 func loadStoredRecord(ctx context.Context, host pluginapi.Host, key string) (taskRecord, bool, error) {
 	var result struct {
 		Value *string `json:"value"`
@@ -402,6 +512,97 @@ func loadStoredRecord(ctx context.Context, host pluginapi.Host, key string) (tas
 		return taskRecord{}, false, err
 	}
 	return record, true, nil
+}
+
+func deleteRecord(ctx context.Context, host pluginapi.Host, sessionID string) error {
+	taskIndexMu.Lock()
+	defer taskIndexMu.Unlock()
+	index, err := loadTaskIndexLocked(ctx, host)
+	if err != nil {
+		return err
+	}
+	filtered := index.Records[:0]
+	for _, record := range index.Records {
+		if record.SessionID != strings.TrimSpace(sessionID) {
+			filtered = append(filtered, record)
+		}
+	}
+	index.Records = filtered
+	return storeTaskIndexLocked(ctx, host, index)
+}
+
+func loadTaskIndexLocked(ctx context.Context, host pluginapi.Host) (taskIndex, error) {
+	var result struct {
+		Value *string `json:"value"`
+	}
+	if err := host.CallHost(ctx, pluginapi.HostServiceStorageGet, map[string]any{"scope": "workspace", "key": taskIndexKey}, &result); err != nil {
+		return taskIndex{}, err
+	}
+	if result.Value != nil {
+		var index taskIndex
+		if err := json.Unmarshal([]byte(*result.Value), &index); err != nil {
+			return taskIndex{}, err
+		}
+		return index, nil
+	}
+	return migrateLegacyTaskRecordsLocked(ctx, host)
+}
+
+func migrateLegacyTaskRecordsLocked(ctx context.Context, host pluginapi.Host) (taskIndex, error) {
+	var keys struct {
+		Keys []string `json:"keys"`
+	}
+	if err := host.CallHost(ctx, pluginapi.HostServiceStorageKeys, map[string]any{"scope": "workspace"}, &keys); err != nil {
+		return taskIndex{}, err
+	}
+	index := taskIndex{Records: make([]taskRecord, 0)}
+	seen := make(map[string]struct{})
+	for _, key := range keys.Keys {
+		if !strings.HasPrefix(key, "session.") {
+			continue
+		}
+		record, ok, err := loadStoredRecord(ctx, host, key)
+		if err != nil {
+			return taskIndex{}, err
+		}
+		if ok {
+			if _, exists := seen[record.SessionID]; !exists {
+				seen[record.SessionID] = struct{}{}
+				index.Records = append(index.Records, record)
+			}
+		}
+	}
+	for _, key := range keys.Keys {
+		if strings.HasPrefix(key, "session.") || strings.HasPrefix(key, "request.") {
+			if err := host.CallHost(ctx, pluginapi.HostServiceStorageDelete, map[string]any{"scope": "workspace", "key": key}, &struct{}{}); err != nil {
+				return taskIndex{}, err
+			}
+		}
+	}
+	if len(index.Records) > maxTaskRecords {
+		index.Records = index.Records[len(index.Records)-maxTaskRecords:]
+	}
+	if err := storeTaskIndexLocked(ctx, host, index); err != nil {
+		return taskIndex{}, err
+	}
+	return index, nil
+}
+
+func storeTaskIndexLocked(ctx context.Context, host pluginapi.Host, index taskIndex) error {
+	encoded, err := json.Marshal(index)
+	if err != nil {
+		return err
+	}
+	return host.CallHost(ctx, pluginapi.HostServiceStorageSet, map[string]any{"scope": "workspace", "key": taskIndexKey, "value": string(encoded)}, &struct{}{})
+}
+
+func terminalTaskState(state string) bool {
+	switch strings.TrimSpace(state) {
+	case "completed", "failed", "interrupted", "discarded":
+		return true
+	default:
+		return false
+	}
 }
 
 func parentContinuationRecord(ctx context.Context, host pluginapi.Host, child taskRecord, requestID string) (taskRecord, taskRecord, bool, error) {
@@ -471,12 +672,12 @@ func spawnSchema() map[string]any {
 	return objectSchema(map[string]any{"description": stringField("Short 3-5 word summary of what the agent will do."), "prompt": stringField("Concrete, self-contained task brief with scope, constraints, acceptance criteria, and deliverable."), "subagent_type": stringField("Optional specialized agent type."), "name": stringField("Optional addressable task name using lowercase letters, digits, and underscores."), "model": stringField("Optional configured model alias."), "context": map[string]any{"type": "string", "enum": []string{"fresh", "fork"}, "description": "Optional conversation context source. Defaults to fresh; fork inherits the parent conversation."}, "isolation": map[string]any{"type": "string", "enum": []string{"worktree"}}}, "description", "prompt")
 }
 
-func workerPrompt(workerType, task string) string {
+func workerInstructions(workerType string) string {
 	instructions := `Work as a bounded child task. Complete only the assigned scope, preserve unrelated work, verify applicable claims, and report exact changed files, commands, blockers, and evidence. Your final message is the deliverable the parent receives.`
 	if strings.TrimSpace(workerType) == "worker" {
 		instructions = `Implement only the assigned scoped change in the provided isolated workspace. Preserve unrelated work, verify locally, and report exact changed files, commands, blockers, and evidence. Your final message is the deliverable the parent receives.`
 	}
-	return instructions + "\n\n" + strings.TrimSpace(task)
+	return instructions
 }
 
 const promptSection = `# Subagent results

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,21 @@ import (
 	proc "github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
+
+var sharedGitWrapperBuild struct {
+	once   sync.Once
+	dir    string
+	binary string
+	err    error
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if sharedGitWrapperBuild.dir != "" {
+		_ = os.RemoveAll(sharedGitWrapperBuild.dir)
+	}
+	os.Exit(code)
+}
 
 func setupGitRepo(t *testing.T) (*Toolkit, string) {
 	t.Helper()
@@ -291,21 +307,32 @@ func TestGitCommitAttributionCanBeDisabled(t *testing.T) {
 
 func buildWuuForGitWrapper(t *testing.T) string {
 	t.Helper()
-	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatalf("resolve repository root: %v", err)
+	sharedGitWrapperBuild.once.Do(func() {
+		repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+		if err != nil {
+			sharedGitWrapperBuild.err = fmt.Errorf("resolve repository root: %w", err)
+			return
+		}
+		sharedGitWrapperBuild.dir, err = os.MkdirTemp("", "wuu-git-wrapper-test-")
+		if err != nil {
+			sharedGitWrapperBuild.err = fmt.Errorf("create git wrapper build directory: %w", err)
+			return
+		}
+		binaryName := "wuu"
+		if runtime.GOOS == "windows" {
+			binaryName += ".exe"
+		}
+		sharedGitWrapperBuild.binary = filepath.Join(sharedGitWrapperBuild.dir, binaryName)
+		cmd := exec.Command("go", "build", "-o", sharedGitWrapperBuild.binary, "./cmd/wuu")
+		cmd.Dir = repoRoot
+		if output, err := cmd.CombinedOutput(); err != nil {
+			sharedGitWrapperBuild.err = fmt.Errorf("build WUU git wrapper: %w\n%s", err, output)
+		}
+	})
+	if sharedGitWrapperBuild.err != nil {
+		t.Fatal(sharedGitWrapperBuild.err)
 	}
-	binaryName := "wuu"
-	if runtime.GOOS == "windows" {
-		binaryName += ".exe"
-	}
-	binary := filepath.Join(t.TempDir(), binaryName)
-	cmd := exec.Command("go", "build", "-o", binary, "./cmd/wuu")
-	cmd.Dir = repoRoot
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build WUU git wrapper: %v\n%s", err, output)
-	}
-	return binary
+	return sharedGitWrapperBuild.binary
 }
 
 func gitCall(t *testing.T, kit *Toolkit, subcmd string, args ...string) map[string]any {

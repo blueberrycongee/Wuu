@@ -57,7 +57,7 @@ function workspaceTerminalTheme(theme: AppliedTheme, host?: HTMLElement): ITheme
   const defaults: ITheme = theme === "dark"
     ? {
       background: "#1d2024",
-      black: "#141618",
+      black: "#858c93",
       blue: "#58a6ff",
       cursor: "#f2f3f4",
       foreground: "#e4e6e8",
@@ -78,15 +78,18 @@ function workspaceTerminalTheme(theme: AppliedTheme, host?: HTMLElement): ITheme
       yellow: "#ffc21a",
     };
   return {
-    background: workspaceTerminalStyle(host, "--wuu-workspace-terminal-background", defaults.background ?? "#ffffff"),
-    black: workspaceTerminalStyle(host, "--wuu-workspace-terminal-black", defaults.black ?? "#24292f"),
-    blue: workspaceTerminalStyle(host, "--wuu-workspace-terminal-blue", defaults.blue ?? "#2f98ff"),
-    cursor: workspaceTerminalStyle(host, "--wuu-workspace-terminal-cursor", defaults.cursor ?? "#202427"),
-    foreground: workspaceTerminalStyle(host, "--wuu-workspace-terminal-foreground", defaults.foreground ?? "#1f2328"),
-    green: workspaceTerminalStyle(host, "--wuu-workspace-terminal-green", defaults.green ?? "#1f9d46"),
-    red: workspaceTerminalStyle(host, "--wuu-workspace-terminal-red", defaults.red ?? "#b42318"),
-    selectionBackground: workspaceTerminalStyle(host, "--wuu-workspace-terminal-selection", defaults.selectionBackground ?? "#d7e9ff"),
-    yellow: workspaceTerminalStyle(host, "--wuu-workspace-terminal-yellow", defaults.yellow ?? "#ffc21a"),
+    /* The terminal is a host mechanism, not a private theme island. Derive its
+       palette from the existing public semantic contract so bundled and
+       third-party themes affect it without adding terminal-specific API. */
+    background: workspaceTerminalStyle(host, "--wuu-color-canvas", defaults.background ?? "#ffffff"),
+    black: workspaceTerminalStyle(host, "--wuu-color-text-muted", defaults.black ?? "#24292f"),
+    blue: workspaceTerminalStyle(host, "--wuu-color-info", defaults.blue ?? "#2f98ff"),
+    cursor: workspaceTerminalStyle(host, "--wuu-color-text", defaults.cursor ?? "#202427"),
+    foreground: workspaceTerminalStyle(host, "--wuu-color-text", defaults.foreground ?? "#1f2328"),
+    green: workspaceTerminalStyle(host, "--wuu-color-success", defaults.green ?? "#1f9d46"),
+    red: workspaceTerminalStyle(host, "--wuu-color-danger", defaults.red ?? "#b42318"),
+    selectionBackground: workspaceTerminalStyle(host, "--wuu-color-live-highlight", defaults.selectionBackground ?? "#d7e9ff"),
+    yellow: workspaceTerminalStyle(host, "--wuu-color-warning", defaults.yellow ?? "#ffc21a"),
   };
 }
 

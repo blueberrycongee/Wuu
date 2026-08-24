@@ -15,6 +15,51 @@ export function useLiveNow(active: boolean): number {
   return active ? now : Date.now();
 }
 
+// Last live elapsed value per turn id, frozen when the turn leaves
+// in_progress so a paused (interrupted) turn keeps showing how long it had
+// been processing instead of dropping the timer to nothing. Kept outside
+// the component lifecycle so session-tab unmounts and optimistic-turn id
+// swaps do not lose it. Bounded below.
+const pausedTurnElapsedMs = new Map<string, number>();
+const MAX_PAUSED_TURN_ELAPSED = 1_000;
+
+export function recordPausedTurnElapsed(turnID: string, elapsedMs: number): void {
+  if (
+    !pausedTurnElapsedMs.has(turnID) &&
+    pausedTurnElapsedMs.size >= MAX_PAUSED_TURN_ELAPSED
+  ) {
+    pausedTurnElapsedMs.clear();
+  }
+  pausedTurnElapsedMs.set(turnID, elapsedMs);
+}
+
+export function pausedTurnElapsed(turnID: string): number | undefined {
+  return pausedTurnElapsedMs.get(turnID);
+}
+
+export function clearPausedTurnElapsed(turnID: string | undefined): void {
+  if (turnID !== undefined) {
+    pausedTurnElapsedMs.delete(turnID);
+  }
+}
+
+// The send flow first renders an optimistic in_progress placeholder under a
+// client-minted id and swaps in the real server turn under a different id.
+// Move the frozen value across so a turn interrupted before that swap (or
+// right after) keeps its elapsed timer instead of losing it with the
+// placeholder.
+export function transferPausedTurnElapsed(fromTurnID: string, toTurnID: string): void {
+  if (fromTurnID === toTurnID) {
+    return;
+  }
+  const value = pausedTurnElapsedMs.get(fromTurnID);
+  if (value === undefined) {
+    return;
+  }
+  pausedTurnElapsedMs.delete(fromTurnID);
+  pausedTurnElapsedMs.set(toTurnID, value);
+}
+
 export function LiveDuration({ startedAtMs }: { startedAtMs: number }): JSX.Element {
   const nodeRef = useRef<HTMLSpanElement | null>(null);
 

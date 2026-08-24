@@ -934,6 +934,37 @@ func (s *Session) ReconfigureToolLoading(agentCfg config.AgentConfig, providerCf
 	return nil
 }
 
+// PrewarmThreadProvider moves provider-owned auth and transport setup ahead of
+// the first turn without constructing the thread's Toolkit, AgentControl, tool
+// ledger, or worker recovery state. It only runs when runtime construction will
+// reuse the workspace StreamRunner client; shadow provider/model selections own
+// different clients and must warm themselves on their normal request path.
+func (s *Session) PrewarmThreadProvider(ctx context.Context, sessionID string, engineID agentengine.EngineID, selected ThreadModelSelection) error {
+	if s == nil || agentengine.NormalizeEngineID(string(engineID)) != agentengine.EngineWuu || s.StreamRunner == nil || s.StreamRunner.Client == nil {
+		return nil
+	}
+	providerName := strings.TrimSpace(selected.Provider)
+	model := strings.TrimSpace(selected.Model)
+	permissionMode := strings.TrimSpace(selected.PermissionMode)
+	if permissionMode == "" || s.PermissionModeExplicit {
+		permissionMode = s.Permissions.Mode
+	}
+	usesSharedClient := providerName == "" || model == "" ||
+		(providerName == s.ProviderName &&
+			model == s.Model &&
+			strings.TrimSpace(selected.Variant) == strings.TrimSpace(s.StreamRunner.Variant) &&
+			strings.TrimSpace(selected.Effort) == strings.TrimSpace(s.StreamRunner.Effort) &&
+			config.NormalizePermissionMode(permissionMode) == config.NormalizePermissionMode(s.Permissions.Mode))
+	if !usesSharedClient {
+		return nil
+	}
+	prewarmer, ok := s.StreamRunner.Client.(providers.SessionPrewarmer)
+	if !ok {
+		return nil
+	}
+	return prewarmer.PrewarmSession(ctx, sessionID)
+}
+
 // NewThreadRuntime creates a per-conversation execution runtime from the
 // shared workspace runtime. It intentionally does not mutate Session.Toolkit or
 // Session.AgentControl; those remain the legacy single-session runtime used by
