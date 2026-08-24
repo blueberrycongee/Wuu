@@ -194,7 +194,7 @@ func buildClient(provider config.ProviderConfig, providerName string) (providers
 				StreamTransport:       providerStreamTransportMode(provider),
 				Coordinator:           sharedProviderCoordinator,
 				ReuseCodexCredentials: provider.ReuseCodexCredentials,
-				NativeCompaction:      provider.NativeCompactionEnabled(),
+				NativeCompaction:      provider.NativeCompaction,
 			})
 			if newErr != nil {
 				return nil, newErr

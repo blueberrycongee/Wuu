@@ -1647,7 +1647,7 @@ func (s *Server) handleConfigCodexModels(ctx context.Context, req Request) error
 		APIKey:                explicitProviderAPIKey(providerCfg),
 		Headers:               providerCfg.Headers,
 		ReuseCodexCredentials: providerCfg.ReuseCodexCredentials,
-		NativeCompaction:      providerCfg.NativeCompactionEnabled(),
+		NativeCompaction:      providerCfg.NativeCompaction,
 	})
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)

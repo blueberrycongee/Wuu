@@ -33,7 +33,7 @@ type ClientConfig struct {
 	StreamTransport       providers.StreamTransportMode
 	Coordinator           *providers.ProviderCoordinator
 	ReuseCodexCredentials bool
-	NativeCompaction      bool
+	NativeCompaction      *bool
 }
 
 // Client uses a local Codex OAuth session as an OpenAI Responses-compatible
@@ -76,6 +76,10 @@ func New(cfg ClientConfig) (*Client, error) {
 	if streamTransport == "" {
 		streamTransport = providers.StreamTransportAuto
 	}
+	nativeCompaction := true
+	if cfg.NativeCompaction != nil {
+		nativeCompaction = *cfg.NativeCompaction
+	}
 	return &Client{
 		baseURL:          baseURL,
 		auth:             NewOAuthSource(OAuthConfig{BaseURL: baseURL, APIKey: cfg.APIKey, Home: home, HTTPClient: cfg.HTTPClient, ReuseCodexCredentials: cfg.ReuseCodexCredentials}),
@@ -85,7 +89,7 @@ func New(cfg ClientConfig) (*Client, error) {
 		streamTransport:  streamTransport,
 		coordinator:      cfg.Coordinator,
 		wsCache:          openai.NewResponsesWebSocketCache(),
-		nativeCompaction: cfg.NativeCompaction,
+		nativeCompaction: nativeCompaction,
 	}, nil
 }
 
