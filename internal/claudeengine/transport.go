@@ -225,8 +225,17 @@ func (t *Transport) OnStderr(h func(string)) {
 // OnClose registers a handler for transport termination.
 func (t *Transport) OnClose(h func(reason string)) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
+	if t.closed {
+		reason := "claude transport closed"
+		if t.closeErr != nil {
+			reason = t.closeErr.Error()
+		}
+		t.mu.Unlock()
+		h(reason)
+		return
+	}
 	t.closeHandlers = append(t.closeHandlers, h)
+	t.mu.Unlock()
 }
 
 func (t *Transport) fireClose(reason string) {

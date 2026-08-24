@@ -149,4 +149,131 @@ func TestResolveBinaryEnvOverride(t *testing.T) {
 	}
 }
 
+func TestTurnSubscriptionReconcilesStreamAndResult(t *testing.T) {
+	var events []providers.StreamEvent
+	done := make(chan turnOutcome, 1)
+	sub := newTurnSubscription(func(event providers.StreamEvent) {
+		events = append(events, event)
+	}, done)
+
+	sub.handleLine(`{"type":"stream_event","event":{"type":"message_start","message":{"model":"claude-opus"}}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"abc"}}}`)
+	sub.handleLine(`not-json`)
+	sub.handleLine(`{"type":"assistant","message":{"content":[{"type":"text","text":"abc"}]}}`)
+	sub.handleLine(`{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","result":"abcdef"}`)
+
+	out := <-done
+	if out.err != nil {
+		t.Fatalf("turn error: %v", out.err)
+	}
+	if got := out.result.Result.Content; got != "abcdef" {
+		t.Fatalf("result content = %q, want abcdef", got)
+	}
+	var streamed strings.Builder
+	for _, event := range events {
+		if event.Type == providers.EventContentDelta {
+			streamed.WriteString(event.Content)
+		}
+	}
+	if got := streamed.String(); got != "abcdef" {
+		t.Fatalf("streamed content = %q, want abcdef", got)
+	}
+}
+
+func TestTurnSubscriptionIgnoresChildAgentContent(t *testing.T) {
+	done := make(chan turnOutcome, 1)
+	sub := newTurnSubscription(nil, done)
+
+	sub.handleLine(`{"type":"stream_event","event":{"type":"message_start"}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"A"}}}`)
+	sub.handleLine(`{"type":"stream_event","parent_tool_use_id":"toolu_child","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"X"}}}`)
+	sub.handleLine(`{"type":"assistant","parent_tool_use_id":"toolu_child","message":{"content":[{"type":"text","text":"child answer"}]}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"B"}}}`)
+	sub.handleLine(`{"type":"assistant","message":{"content":[{"type":"text","text":"AB"}]}}`)
+	sub.handleLine(`{"type":"result","is_error":false,"result":"AB"}`)
+
+	out := <-done
+	if out.err != nil {
+		t.Fatalf("turn error: %v", out.err)
+	}
+	if got := out.result.Result.Content; got != "AB" {
+		t.Fatalf("result content = %q, want AB", got)
+	}
+}
+
+func TestTurnSubscriptionDeduplicatesToolAndUsesEchoResult(t *testing.T) {
+	var events []providers.StreamEvent
+	done := make(chan turnOutcome, 1)
+	sub := newTurnSubscription(func(event providers.StreamEvent) {
+		events = append(events, event)
+	}, done)
+
+	sub.handleLine(`{"type":"stream_event","event":{"type":"message_start"}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"Bash","input":{}}}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"command\":"}}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"pwd\"}"}}}`)
+	sub.handleLine(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"pwd"}}]}}`)
+	sub.handleLine(`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"/tmp"}]}}`)
+	sub.handleLine(`{"type":"result","is_error":false,"result":"done"}`)
+
+	out := <-done
+	if out.err != nil {
+		t.Fatalf("turn error: %v", out.err)
+	}
+	starts, ends := 0, 0
+	for _, event := range events {
+		switch event.Type {
+		case providers.EventToolUseStart:
+			starts++
+		case providers.EventToolUseEnd:
+			ends++
+			if event.ToolCall == nil || event.ToolCall.Arguments != `{"command":"pwd"}` {
+				t.Fatalf("tool arguments = %+v, want valid complete JSON", event.ToolCall)
+			}
+			if event.ToolResult != "/tmp" {
+				t.Fatalf("tool result = %q, want /tmp", event.ToolResult)
+			}
+		}
+	}
+	if starts != 1 || ends != 1 {
+		t.Fatalf("tool events starts/ends = %d/%d, want 1/1", starts, ends)
+	}
+}
+
+func TestTurnSubscriptionUsesResultErrorText(t *testing.T) {
+	done := make(chan turnOutcome, 1)
+	sub := newTurnSubscription(nil, done)
+	sub.handleLine(`{"type":"result","subtype":"error_during_execution","is_error":true,"result":"API Error: rate limit exceeded"}`)
+
+	out := <-done
+	if out.err == nil || !strings.Contains(out.err.Error(), "API Error: rate limit exceeded") {
+		t.Fatalf("turn error = %v, want result error detail", out.err)
+	}
+}
+
+func TestTurnSubscriptionTransportClosePreservesPartialOutput(t *testing.T) {
+	var events []providers.StreamEvent
+	done := make(chan turnOutcome, 1)
+	sub := newTurnSubscription(func(event providers.StreamEvent) {
+		events = append(events, event)
+	}, done)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}}`)
+	sub.handleTransportClose("claude exited")
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"late"}}}`)
+
+	out := <-done
+	if out.err == nil || out.result.Result.Content != "partial" {
+		t.Fatalf("transport close result = content %q, err %v", out.result.Result.Content, out.err)
+	}
+	var visible strings.Builder
+	for _, event := range events {
+		if event.Type == providers.EventContentDelta {
+			visible.WriteString(event.Content)
+		}
+	}
+	if got := visible.String(); got != "partial" {
+		t.Fatalf("visible content after close = %q, want partial", got)
+	}
+}
+
 var _ = os.Getenv

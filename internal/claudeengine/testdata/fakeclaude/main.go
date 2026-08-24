@@ -71,7 +71,7 @@ func main() {
 							"content": []any{map[string]any{"type": "text", "text": "Ran tool " + toolID + ": " + text}},
 						},
 					})
-					sendResult(false)
+					sendResult(false, "Ran tool "+toolID+": "+text)
 					continue
 				}
 			}
@@ -85,35 +85,53 @@ func main() {
 			"message": map[string]any{"hook_event_name": "PreToolUse"},
 		})
 		send(map[string]any{
-			"type":  "stream_event",
-			"event": "content_block_delta",
-			"delta": map[string]any{"type": "thinking_delta", "thinking": "let me think..."},
+			"type": "stream_event",
+			"event": map[string]any{
+				"type":    "message_start",
+				"message": map[string]any{"model": "claude-sonnet-4"},
+			},
 		})
 		send(map[string]any{
-			"type":  "stream_event",
-			"event": "content_block_delta",
-			"delta": map[string]any{"type": "text_delta", "text": "Hello from "},
+			"type": "stream_event",
+			"event": map[string]any{
+				"type":  "content_block_delta",
+				"index": 0,
+				"delta": map[string]any{"type": "thinking_delta", "thinking": "let me think..."},
+			},
 		})
 		send(map[string]any{
-			"type":    "assistant",
-			"message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "claude."}}},
+			"type": "stream_event",
+			"event": map[string]any{
+				"type":  "content_block_delta",
+				"index": 1,
+				"delta": map[string]any{"type": "text_delta", "text": "Hello from claude."},
+			},
 		})
 		send(map[string]any{
-			"type":  "stream_event",
-			"event": "message_delta",
-			"usage": map[string]any{"input_tokens": 80, "output_tokens": 12, "cache_read_input_tokens": 30},
+			"type": "assistant",
+			"message": map[string]any{"role": "assistant", "content": []any{
+				map[string]any{"type": "thinking", "thinking": "let me think..."},
+				map[string]any{"type": "text", "text": "Hello from claude."},
+			}},
 		})
-		sendResult(false)
+		send(map[string]any{
+			"type": "stream_event",
+			"event": map[string]any{
+				"type":  "message_delta",
+				"usage": map[string]any{"input_tokens": 80, "output_tokens": 12, "cache_read_input_tokens": 30},
+			},
+		})
+		sendResult(false, "Hello from claude.")
 	}
 }
 
-func sendResult(isError bool) {
+func sendResult(isError bool, result string) {
 	payload := map[string]any{
 		"type":        "result",
 		"subtype":     "success",
 		"is_error":    isError,
 		"stop_reason": "end_turn",
-		"result":      "ok",
+		"result":      result,
 		"usage":       map[string]any{"input_tokens": 80, "output_tokens": 12, "cache_read_input_tokens": 30},
 	}
 	if isError {

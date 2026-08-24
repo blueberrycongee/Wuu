@@ -62,11 +62,12 @@ type initMessage struct {
 
 // assistantContentBlock mirrors content blocks in assistant messages.
 type assistantContentBlock struct {
-	Type  string `json:"type"`
-	Text  string `json:"text,omitempty"`
-	ID    string `json:"id,omitempty"`
-	Name  string `json:"name,omitempty"`
-	Input any    `json:"input,omitempty"`
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	Thinking string `json:"thinking,omitempty"`
+	ID       string `json:"id,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Input    any    `json:"input,omitempty"`
 }
 
 // assistantMessage is a full assistant message (also the basis for partial
@@ -77,9 +78,10 @@ type assistantMessage struct {
 	Model   string                  `json:"model,omitempty"`
 }
 
-// streamEvent is a stream_event line; "event" discriminates.
+// streamEvent is the Anthropic event nested inside a stream_event line.
 type streamEvent struct {
-	Event        string                 `json:"event"`
+	Type         string                 `json:"type"`
+	Index        int                    `json:"index,omitempty"`
 	Delta        *streamEventDelta      `json:"delta,omitempty"`
 	ContentBlock *assistantContentBlock `json:"content_block,omitempty"`
 	Message      *assistantMessage      `json:"message,omitempty"`

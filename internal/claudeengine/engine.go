@@ -263,6 +263,7 @@ func (s *Session) spawn(ctx context.Context, sub *turnSubscription) (*Transport,
 		return nil, err
 	}
 	transport.OnLine(sub.handleLine)
+	transport.OnClose(sub.handleTransportClose)
 	sub.attachTransport(transport)
 	return transport, nil
 }
@@ -321,20 +322,23 @@ type turnSubscription struct {
 	sessionID string
 	closed    bool
 
-	text          strings.Builder
-	reasoning     strings.Builder
-	usage         providers.TokenUsage
-	tool          *pendingTool
-	toolBuffer    strings.Builder
-	agentTasks    map[string]observedAgentTask
-	lastRawResult json.RawMessage
-	finishOnce    sync.Once
+	text           strings.Builder
+	reasoning      strings.Builder
+	usage          providers.TokenUsage
+	tools          map[string]*pendingTool
+	toolIDByIndex  map[int]string
+	streamText     map[int]string
+	streamThinking map[int]string
+	agentTasks     map[string]observedAgentTask
+	lastRawResult  json.RawMessage
+	finishOnce     sync.Once
 }
 
 type pendingTool struct {
 	id            string
 	name          string
 	agentActivity bool
+	arguments     strings.Builder
 }
 
 type observedAgentTask struct {
@@ -343,7 +347,15 @@ type observedAgentTask struct {
 }
 
 func newTurnSubscription(sink agentengine.EventSink, done chan turnOutcome) *turnSubscription {
-	return &turnSubscription{sink: sink, done: done, agentTasks: make(map[string]observedAgentTask)}
+	return &turnSubscription{
+		sink:           sink,
+		done:           done,
+		tools:          make(map[string]*pendingTool),
+		toolIDByIndex:  make(map[int]string),
+		streamText:     make(map[int]string),
+		streamThinking: make(map[int]string),
+		agentTasks:     make(map[string]observedAgentTask),
+	}
 }
 
 func (sub *turnSubscription) attachTransport(t *Transport) {
@@ -358,32 +370,55 @@ func (sub *turnSubscription) close() {
 	sub.mu.Unlock()
 }
 
+func (sub *turnSubscription) handleTransportClose(reason string) {
+	err := errors.New(firstNonEmpty(strings.TrimSpace(reason), "claude exited before completing the turn"))
+	sub.emit(providers.StreamEvent{Type: providers.EventError, Error: err})
+	sub.finish(sub.loopResult(sub.text.String(), ""), err)
+}
+
 // claudeLine is the parsed top-level shape of one stdout line.
 type claudeLine struct {
-	Type         string          `json:"type"`
-	Subtype      string          `json:"subtype"`
-	Message      json.RawMessage `json:"message"`
-	Event        string          `json:"event"`
-	Delta        json.RawMessage `json:"delta"`
-	ContentBlock json.RawMessage `json:"content_block"`
-	IsError      bool            `json:"is_error"`
-	StopReason   string          `json:"stop_reason"`
-	Usage        json.RawMessage `json:"usage"`
-	SessionID    string          `json:"session_id"`
-	TaskID       string          `json:"task_id"`
-	ToolUseID    string          `json:"tool_use_id"`
-	TaskType     string          `json:"task_type"`
-	Description  string          `json:"description"`
-	Status       string          `json:"status"`
+	Type            string          `json:"type"`
+	Subtype         string          `json:"subtype"`
+	Message         json.RawMessage `json:"message"`
+	Event           json.RawMessage `json:"event"`
+	Delta           json.RawMessage `json:"delta"`
+	ContentBlock    json.RawMessage `json:"content_block"`
+	IsError         bool            `json:"is_error"`
+	StopReason      string          `json:"stop_reason"`
+	Usage           json.RawMessage `json:"usage"`
+	SessionID       string          `json:"session_id"`
+	ParentToolUseID string          `json:"parent_tool_use_id"`
+	TaskID          string          `json:"task_id"`
+	ToolUseID       string          `json:"tool_use_id"`
+	TaskType        string          `json:"task_type"`
+	Description     string          `json:"description"`
+	Status          string          `json:"status"`
 }
 
 // handleLine dispatches one stdout line. Unknown top-level types are
 // ignored (the raw JSON stays in diagnostics via stderr handlers).
 func (sub *turnSubscription) handleLine(line string) {
+	sub.mu.Lock()
+	closed := sub.closed
+	sub.mu.Unlock()
+	if closed {
+		return
+	}
+	var header struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal([]byte(line), &header); err != nil {
+		return
+	}
 	var envelope claudeLine
 	if err := json.Unmarshal([]byte(line), &envelope); err != nil {
-		sub.emit(providers.StreamEvent{Type: providers.EventError, Error: fmt.Errorf("claude sent invalid JSON: %w", err)})
-		sub.finish(agent.LoopResult{}, fmt.Errorf("claude sent invalid JSON: %w", err))
+		if header.Type != "result" {
+			return
+		}
+		protocolErr := fmt.Errorf("claude sent an invalid result: %w", err)
+		sub.emit(providers.StreamEvent{Type: providers.EventError, Error: protocolErr})
+		sub.finish(sub.loopResult(sub.text.String(), ""), protocolErr)
 		return
 	}
 	if envelope.Type == "result" {
@@ -410,11 +445,11 @@ func (sub *turnSubscription) handleLine(line string) {
 		}
 		sub.handleTaskEvent(envelope)
 	case "assistant":
-		sub.handleAssistant(envelope.Message)
+		sub.handleAssistant(envelope)
 	case "stream_event":
 		sub.handleStreamEvent(envelope)
 	case "user":
-		// tool_result echo; nothing to surface.
+		sub.handleUser(envelope)
 	case "result":
 		sub.handleResult(envelope)
 	default:
@@ -422,89 +457,234 @@ func (sub *turnSubscription) handleLine(line string) {
 	}
 }
 
-func (sub *turnSubscription) handleAssistant(raw json.RawMessage) {
-	var msg assistantMessage
-	if err := json.Unmarshal(raw, &msg); err != nil {
+func (sub *turnSubscription) handleAssistant(envelope claudeLine) {
+	if strings.TrimSpace(envelope.ParentToolUseID) != "" {
 		return
 	}
-	for _, block := range msg.Content {
+	var msg assistantMessage
+	if err := json.Unmarshal(envelope.Message, &msg); err != nil {
+		return
+	}
+	for index, block := range msg.Content {
 		switch block.Type {
 		case "text":
-			if block.Text != "" {
-				sub.text.WriteString(block.Text)
-				sub.emit(providers.StreamEvent{
-					Type:    providers.EventContentDelta,
-					Content: block.Text,
-				})
-			}
+			sub.reconcileText(index, block.Text)
 		case "thinking":
-			if block.Text != "" {
-				sub.reasoning.WriteString(block.Text)
-				sub.emit(providers.StreamEvent{
-					Type:    providers.EventThinkingDelta,
-					Content: block.Text,
-				})
-			}
+			sub.reconcileThinking(index, block.Thinking)
 		case "tool_use":
-			sub.startTool(block)
+			sub.startTool(index, block)
+		}
+	}
+}
+
+func (sub *turnSubscription) reconcileText(index int, full string) {
+	if full == "" {
+		return
+	}
+	streamed := sub.streamText[index]
+	if streamed == "" {
+		sub.text.WriteString(full)
+		sub.emit(providers.StreamEvent{Type: providers.EventContentDelta, Content: full})
+		return
+	}
+	if strings.HasPrefix(full, streamed) {
+		suffix := strings.TrimPrefix(full, streamed)
+		if suffix != "" {
+			sub.text.WriteString(suffix)
+			sub.emit(providers.StreamEvent{Type: providers.EventContentDelta, Content: suffix})
+		}
+	}
+}
+
+func (sub *turnSubscription) reconcileThinking(index int, full string) {
+	if full == "" {
+		return
+	}
+	streamed := sub.streamThinking[index]
+	if streamed == "" {
+		sub.reasoning.WriteString(full)
+		sub.emit(providers.StreamEvent{Type: providers.EventThinkingDelta, Content: full})
+		return
+	}
+	if strings.HasPrefix(full, streamed) {
+		suffix := strings.TrimPrefix(full, streamed)
+		if suffix != "" {
+			sub.reasoning.WriteString(suffix)
+			sub.emit(providers.StreamEvent{Type: providers.EventThinkingDelta, Content: suffix})
 		}
 	}
 }
 
 func (sub *turnSubscription) handleStreamEvent(envelope claudeLine) {
-	switch envelope.Event {
+	if strings.TrimSpace(envelope.ParentToolUseID) != "" {
+		return
+	}
+	event, ok := decodeStreamEvent(envelope)
+	if !ok {
+		return
+	}
+	switch event.Type {
+	case "message_start":
+		clear(sub.streamText)
+		clear(sub.streamThinking)
+		clear(sub.toolIDByIndex)
 	case "content_block_start":
-		var block assistantContentBlock
-		if err := json.Unmarshal(envelope.ContentBlock, &block); err == nil && block.Type == "tool_use" {
-			sub.startTool(block)
+		if event.ContentBlock != nil && event.ContentBlock.Type == "tool_use" {
+			block := *event.ContentBlock
+			block.Input = nil
+			sub.startTool(event.Index, block)
 		}
 	case "content_block_delta":
-		var delta streamEventDelta
-		if err := json.Unmarshal(envelope.Delta, &delta); err != nil {
+		if event.Delta == nil {
 			return
 		}
-		switch delta.Type {
+		switch event.Delta.Type {
 		case "text_delta":
-			if delta.Text != "" {
-				sub.text.WriteString(delta.Text)
-				sub.emit(providers.StreamEvent{Type: providers.EventContentDelta, Content: delta.Text})
+			if event.Delta.Text != "" {
+				sub.streamText[event.Index] += event.Delta.Text
+				sub.text.WriteString(event.Delta.Text)
+				sub.emit(providers.StreamEvent{Type: providers.EventContentDelta, Content: event.Delta.Text})
 			}
 		case "thinking_delta":
-			if delta.Thinking != "" {
-				sub.reasoning.WriteString(delta.Thinking)
-				sub.emit(providers.StreamEvent{Type: providers.EventThinkingDelta, Content: delta.Thinking})
+			if event.Delta.Thinking != "" {
+				sub.streamThinking[event.Index] += event.Delta.Thinking
+				sub.reasoning.WriteString(event.Delta.Thinking)
+				sub.emit(providers.StreamEvent{Type: providers.EventThinkingDelta, Content: event.Delta.Thinking})
 			}
 		case "input_json_delta":
-			sub.toolBuffer.WriteString(delta.PartialJSON)
+			if tool := sub.toolAtIndex(event.Index); tool != nil {
+				tool.arguments.WriteString(event.Delta.PartialJSON)
+			}
 		}
 	case "message_delta":
-		var usage tokenUsage
-		if len(envelope.Usage) > 0 && json.Unmarshal(envelope.Usage, &usage) == nil {
-			sub.accumulateUsage(usage)
+		if event.Usage != nil {
+			sub.accumulateUsage(*event.Usage)
 		}
 	}
 }
 
-func (sub *turnSubscription) startTool(block assistantContentBlock) {
-	if sub.tool != nil {
-		// A previous tool never completed; close it without arguments.
-		sub.finishTool(providers.AgentActivityCompleted)
+func decodeStreamEvent(envelope claudeLine) (streamEvent, bool) {
+	var event streamEvent
+	if len(envelope.Event) == 0 {
+		return streamEvent{}, false
+	}
+	if err := json.Unmarshal(envelope.Event, &event); err == nil && event.Type != "" {
+		return event, true
+	}
+	// Keep accepting the early flattened shape used by development stubs.
+	if err := json.Unmarshal(envelope.Event, &event.Type); err != nil || event.Type == "" {
+		return streamEvent{}, false
+	}
+	if len(envelope.Delta) > 0 {
+		var delta streamEventDelta
+		if json.Unmarshal(envelope.Delta, &delta) == nil {
+			event.Delta = &delta
+		}
+	}
+	if len(envelope.ContentBlock) > 0 {
+		var block assistantContentBlock
+		if json.Unmarshal(envelope.ContentBlock, &block) == nil {
+			event.ContentBlock = &block
+		}
+	}
+	if len(envelope.Usage) > 0 {
+		var usage tokenUsage
+		if json.Unmarshal(envelope.Usage, &usage) == nil {
+			event.Usage = &usage
+		}
+	}
+	return event, true
+}
+
+func (sub *turnSubscription) startTool(index int, block assistantContentBlock) {
+	if block.ID == "" {
+		return
+	}
+	if tool := sub.tools[block.ID]; tool != nil {
+		if block.Input != nil {
+			if args, err := json.Marshal(block.Input); err == nil {
+				tool.arguments.Reset()
+				tool.arguments.Write(args)
+			}
+		}
+		sub.toolIDByIndex[index] = block.ID
+		return
 	}
 	agentActivity := isClaudeAgentTool(block.Name)
-	sub.tool = &pendingTool{id: block.ID, name: block.Name, agentActivity: agentActivity}
-	sub.toolBuffer.Reset()
+	tool := &pendingTool{id: block.ID, name: block.Name, agentActivity: agentActivity}
+	sub.tools[block.ID] = tool
+	sub.toolIDByIndex[index] = block.ID
 	sub.emit(providers.StreamEvent{
 		Type:     providers.EventToolUseStart,
 		ToolCall: &providers.ToolCall{ID: block.ID, Name: block.Name},
 	})
 	if block.Input != nil {
 		if args, err := json.Marshal(block.Input); err == nil {
-			sub.toolBuffer.Write(args)
+			tool.arguments.Write(args)
 		}
 	}
 	if agentActivity {
 		sub.emitAgentActivity(block.ID, claudeAgentToolLabel(block.Input), providers.AgentActivityRunning)
 	}
+}
+
+func (sub *turnSubscription) toolAtIndex(index int) *pendingTool {
+	id := sub.toolIDByIndex[index]
+	if id == "" {
+		return nil
+	}
+	return sub.tools[id]
+}
+
+func (sub *turnSubscription) handleUser(envelope claudeLine) {
+	if strings.TrimSpace(envelope.ParentToolUseID) != "" {
+		return
+	}
+	var msg struct {
+		Content []struct {
+			Type      string          `json:"type"`
+			ToolUseID string          `json:"tool_use_id"`
+			Content   json.RawMessage `json:"content"`
+			IsError   bool            `json:"is_error"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(envelope.Message, &msg); err != nil {
+		return
+	}
+	for _, block := range msg.Content {
+		if block.Type != "tool_result" || sub.tools[block.ToolUseID] == nil {
+			continue
+		}
+		state := providers.AgentActivityCompleted
+		if block.IsError {
+			state = providers.AgentActivityFailed
+		}
+		sub.finishToolResult(block.ToolUseID, state, claudeToolResultText(block.Content))
+	}
+}
+
+func claudeToolResultText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) == nil {
+		var out strings.Builder
+		for _, block := range blocks {
+			if block.Type == "text" {
+				out.WriteString(block.Text)
+			}
+		}
+		return out.String()
+	}
+	return string(raw)
 }
 
 func (sub *turnSubscription) handleTaskEvent(envelope claudeLine) {
@@ -547,20 +727,33 @@ func (sub *turnSubscription) handleTaskEvent(envelope claudeLine) {
 	}
 }
 
-func (sub *turnSubscription) finishTool(agentState providers.AgentActivityState) {
-	if sub.tool == nil {
+func (sub *turnSubscription) finishTool(toolID string, agentState providers.AgentActivityState) {
+	result := "Tool completed"
+	if agentState == providers.AgentActivityFailed {
+		result = "Tool failed"
+	}
+	sub.finishToolResult(toolID, agentState, result)
+}
+
+func (sub *turnSubscription) finishToolResult(toolID string, agentState providers.AgentActivityState, result string) {
+	tool := sub.tools[toolID]
+	if tool == nil {
 		return
 	}
-	tool := sub.tool
 	sub.emit(providers.StreamEvent{
-		Type:     providers.EventToolUseEnd,
-		ToolCall: &providers.ToolCall{ID: tool.id, Name: tool.name, Arguments: sub.toolBuffer.String()},
+		Type:       providers.EventToolUseEnd,
+		ToolCall:   &providers.ToolCall{ID: tool.id, Name: tool.name, Arguments: tool.arguments.String()},
+		ToolResult: result,
 	})
 	if tool.agentActivity && !sub.tracksAgentActivity(tool.id) {
 		sub.emitAgentActivity(tool.id, "Claude agent", agentState)
 	}
-	sub.tool = nil
-	sub.toolBuffer.Reset()
+	delete(sub.tools, toolID)
+	for index, id := range sub.toolIDByIndex {
+		if id == toolID {
+			delete(sub.toolIDByIndex, index)
+		}
+	}
 }
 
 func (sub *turnSubscription) tracksAgentActivity(activityID string) bool {
@@ -632,60 +825,108 @@ func (sub *turnSubscription) accumulateUsage(u tokenUsage) {
 }
 
 func (sub *turnSubscription) handleResult(envelope claudeLine) {
+	var res resultMessage
+	_ = json.Unmarshal(sub.lastRawResult, &res)
+	stopReason := firstNonEmpty(res.StopReason, envelope.StopReason)
+
 	// Close any in-flight tool rendering.
-	if sub.tool != nil {
-		state := providers.AgentActivityCompleted
-		if envelope.IsError {
-			state = providers.AgentActivityFailed
+	state := providers.AgentActivityCompleted
+	if envelope.IsError {
+		state = providers.AgentActivityFailed
+	}
+	for toolID := range sub.tools {
+		sub.finishTool(toolID, state)
+	}
+	if res.Usage != nil {
+		sub.accumulateUsage(*res.Usage)
+	} else if len(envelope.Usage) > 0 {
+		var usage tokenUsage
+		if json.Unmarshal(envelope.Usage, &usage) == nil {
+			sub.accumulateUsage(usage)
 		}
-		sub.finishTool(state)
 	}
 	if envelope.IsError {
 		message := "claude turn failed"
-		var res resultMessage
-		if err := json.Unmarshal(sub.lastRawResult, &res); err == nil && res.Error != nil && res.Error.Message != "" {
+		if res.Error != nil && strings.TrimSpace(res.Error.Message) != "" {
 			message = res.Error.Message
+		} else if strings.TrimSpace(res.Result) != "" {
+			message = res.Result
 		}
 		err := errors.New(message)
 		sub.emit(providers.StreamEvent{Type: providers.EventError, Error: err})
-		sub.finish(agent.LoopResult{}, err)
+		sub.finish(sub.loopResult(sub.text.String(), stopReason), err)
 		return
 	}
-	var usage tokenUsage
-	if len(envelope.Usage) > 0 {
-		_ = json.Unmarshal(envelope.Usage, &usage)
-		sub.accumulateUsage(usage)
-	}
+	content := sub.reconcileResultText(res.Result)
 	sub.emit(providers.StreamEvent{
 		Type:         providers.EventDone,
 		FinishReason: providers.FinishReasonStop,
-		StopReason:   envelope.StopReason,
+		StopReason:   stopReason,
 	})
-	content := sub.text.String()
+	sub.finish(sub.loopResult(content, stopReason), nil)
+}
+
+func (sub *turnSubscription) reconcileResultText(full string) string {
+	full = strings.TrimSpace(full)
+	streamed := sub.text.String()
+	if full == "" {
+		return streamed
+	}
+	if streamed == "" {
+		sub.text.WriteString(full)
+		sub.emit(providers.StreamEvent{Type: providers.EventContentDelta, Content: full})
+		return full
+	}
+	if strings.HasPrefix(full, streamed) {
+		suffix := strings.TrimPrefix(full, streamed)
+		if suffix != "" {
+			sub.text.WriteString(suffix)
+			sub.emit(providers.StreamEvent{Type: providers.EventContentDelta, Content: suffix})
+		}
+		return full
+	}
+	if full != streamed {
+		sub.text.Reset()
+		sub.text.WriteString(full)
+		sub.emit(providers.StreamEvent{Type: providers.EventContentReplace, Content: full})
+	}
+	return full
+}
+
+func (sub *turnSubscription) loopResult(content, stopReason string) agent.LoopResult {
 	result := agent.LoopResult{
-		Content:         strings.TrimSpace(content),
-		FinishReason:    providers.FinishReasonStop,
-		StopReason:      envelope.StopReason,
-		InputTokens:     sub.usage.InputTokens,
-		OutputTokens:    sub.usage.OutputTokens,
-		CacheReadTokens: sub.usage.CacheReadTokens,
-		NewMessages: []providers.ChatMessage{{
+		Content:             strings.TrimSpace(content),
+		FinishReason:        providers.FinishReasonStop,
+		StopReason:          stopReason,
+		InputTokens:         sub.usage.InputTokens,
+		OutputTokens:        sub.usage.OutputTokens,
+		CacheCreationTokens: sub.usage.CacheCreationTokens,
+		CacheReadTokens:     sub.usage.CacheReadTokens,
+	}
+	if content != "" || sub.reasoning.Len() > 0 {
+		result.NewMessages = []providers.ChatMessage{{
 			Role:             "assistant",
 			Content:          content,
 			ReasoningContent: sub.reasoning.String(),
-		}},
+		}}
 	}
-	sub.finish(result, nil)
+	return result
 }
 
 func (sub *turnSubscription) emit(ev providers.StreamEvent) {
-	if sub.sink != nil {
+	sub.mu.Lock()
+	closed := sub.closed
+	sub.mu.Unlock()
+	if !closed && sub.sink != nil {
 		sub.sink(ev)
 	}
 }
 
 func (sub *turnSubscription) finish(result agent.LoopResult, err error) {
 	sub.finishOnce.Do(func() {
+		sub.mu.Lock()
+		sub.closed = true
+		sub.mu.Unlock()
 		select {
 		case sub.done <- turnOutcome{result: agentengine.TurnResult{Result: result}, err: err}:
 		default:
