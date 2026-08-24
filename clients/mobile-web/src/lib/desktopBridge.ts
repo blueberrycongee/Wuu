@@ -260,6 +260,7 @@ export class RemoteDesktopBridge {
       compactThread: (threadId: string) => this.call("thread/compact/start", { thread_id: threadId }),
 
       listChannelRooms: () => this.call("channel/room/list"),
+      listNamedAgents: () => this.call("channel/agent/list"),
 
       startTurn: (threadId, prompt, images, files, permissionMode, activeDocument, contentParts) =>
         this.call("turn/start", {

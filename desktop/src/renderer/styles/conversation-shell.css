@@ -624,6 +624,38 @@
   -webkit-app-region: no-drag;
 }
 
+/* A compact viewport presents one active conversation instead of a tab rail.
+ * The session model remains intact; only the titlebar projection changes. */
+.app-shell.compact-navigation .conversation-pane {
+  grid-template-rows:
+    calc(48px + env(safe-area-inset-top, 0px))
+    minmax(0, 1fr);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.app-shell.compact-navigation .titlebar {
+  column-gap: 6px;
+  padding:
+    env(safe-area-inset-top, 0px)
+    10px
+    0;
+}
+
+.app-shell.compact-navigation .title-block {
+  column-gap: 6px;
+}
+
+.app-shell.compact-navigation .title-actions {
+  gap: 4px;
+}
+
+.app-shell.compact-navigation .titlebar .sidebar-toggle-button,
+.app-shell.compact-navigation .titlebar .environment-toggle-button,
+.app-shell.compact-navigation .titlebar .side-panel-toggle-button {
+  width: 36px;
+  height: 36px;
+}
+
 /* Titlebar icon buttons (left/right sidebar, task board, info panel, new thread):
  * uniform 26×26 visible size with a 30×30 click hit area. The padding
  * is transparent because `background-clip: content-box` restricts the

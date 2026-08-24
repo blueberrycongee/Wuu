@@ -40,6 +40,11 @@ export const SIDEBAR_SCALE_REFERENCE_WINDOW_WIDTH = 1280;
 // scale down either. Narrow windows auto-collapse the rail into a drawer.
 export const SIDEBAR_SCALED_MIN_WIDTH = SIDEBAR_MIN_WIDTH;
 export const SIDEBAR_AUTO_COLLAPSE_WINDOW_WIDTH = 900;
+// Below this width the renderer switches from multi-column/tab rails to
+// single-surface navigation. This is intentionally viewport-based rather than
+// host- or UA-based: a roomy browser keeps the desktop workbench while a
+// narrow desktop window gets the same usable compact presentation as a phone.
+export const COMPACT_NAVIGATION_WINDOW_WIDTH = 760;
 // Keep a small pull-past-minimum dead zone so resizing to the minimum width
 // does not collapse the sidebar by accident.
 const SIDEBAR_COLLAPSE_INTENT_PX = 32;
@@ -346,6 +351,7 @@ export function useAppLayoutState({
   settingsLayoutRootRef?: RefObject<HTMLElement | null>;
   onCloseProjectMenu: () => void;
 }): {
+  compactNavigation: boolean;
   sidebarWidth: number;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -400,6 +406,7 @@ export function useAppLayoutState({
   }, []);
   const sidebarWidth = clampSidebarWidthForWindow(sidebarPreferredWidth, windowWidth);
   const effectiveSidebarWidth = sidebarCollapsed ? 0 : sidebarWidth;
+  const compactNavigation = windowWidth < COMPACT_NAVIGATION_WINDOW_WIDTH;
   // Auto-globalize the open right panel only when the window is too narrow to
   // dock conversation + panel even with the sidebar fully collapsed — i.e. we
   // measure the space WITHOUT the sidebar's width. Opening the sidebar no
@@ -922,6 +929,7 @@ export function useAppLayoutState({
   }
 
   return {
+    compactNavigation,
     sidebarWidth,
     sidebarCollapsed,
     setSidebarCollapsed,

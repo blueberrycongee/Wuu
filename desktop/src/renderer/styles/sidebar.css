@@ -545,6 +545,53 @@
     transform var(--sidebar-drawer-exit-duration) var(--sidebar-drawer-exit-easing);
 }
 
+/* Compact navigation turns the familiar left rail into the phone's session
+ * screen. Keep the same sidebar data and actions, but let the drawer own the
+ * whole viewport instead of exposing a narrow desktop column. */
+.app-shell.compact-navigation .sidebar-hover-zone {
+  display: none;
+}
+
+.app-shell.compact-navigation {
+  --compact-session-switcher-width: min(80vw, 326px);
+}
+
+.app-shell.compact-navigation.sidebar-collapsed:is(.sidebar-drawer-open, .sidebar-drawer-closing)
+  .sidebar {
+  width: var(--compact-session-switcher-width);
+  min-width: var(--compact-session-switcher-width);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-right: 1px solid var(--sidebar-drawer-edge);
+  box-shadow: 10px 0 24px var(--ink-overlay-8);
+}
+
+.compact-session-switcher-backdrop,
+.compact-session-switcher-close {
+  display: none;
+}
+
+.app-shell.compact-navigation.sidebar-drawer-open .compact-session-switcher-backdrop {
+  display: block;
+  position: absolute;
+  z-index: 139;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: var(--modal-backdrop-bg);
+}
+
+.app-shell.compact-navigation.sidebar-drawer-open .compact-session-switcher-close {
+  display: grid;
+  position: absolute;
+  z-index: 142;
+  top: calc(env(safe-area-inset-top, 0px) + 9px);
+  left: calc(var(--compact-session-switcher-width) - 46px);
+  width: 36px;
+  height: 36px;
+  color: var(--ink);
+}
+
 .sidebar-resizer {
   position: absolute;
   top: 0;

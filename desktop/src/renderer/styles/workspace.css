@@ -203,6 +203,64 @@
   -webkit-app-region: no-drag;
 }
 
+.workspace-right-panel.compact-navigation {
+  grid-template-rows:
+    calc(52px + env(safe-area-inset-top, 0px))
+    minmax(0, 1fr);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.workspace-right-panel.compact-navigation .workspace-panel-tabbar {
+  display: grid;
+  height: auto;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  gap: 8px;
+  padding:
+    env(safe-area-inset-top, 0px)
+    10px
+    0;
+}
+
+.workspace-panel-compact-heading {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 2px;
+}
+
+.workspace-panel-compact-heading strong,
+.workspace-panel-compact-heading span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-panel-compact-heading strong {
+  color: var(--ink);
+  font-size: var(--font-body);
+  font-weight: var(--weight-semibold);
+}
+
+.workspace-panel-compact-heading span {
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+}
+
+.workspace-right-panel.compact-navigation :is(
+  .workspace-panel-back,
+  .workspace-panel-close-tab
+) {
+  width: 36px;
+  height: 36px;
+  margin: 0;
+}
+
+.workspace-panel-compact-action-slot {
+  width: 36px;
+  height: 36px;
+}
+
 .turn-file-diff-panel {
   display: grid;
   width: 100%;
@@ -771,6 +829,41 @@
 
 .workspace-files-split.tree-hidden {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* Files become a list -> document stack in compact navigation. The file tabs
+ * and editor resources stay mounted, but the tree and document never compete
+ * for the phone's width. */
+.workspace-right-panel.compact-navigation .workspace-files-split {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace-right-panel.compact-navigation[data-wuu-view="files"]
+  .workspace-files-content,
+.workspace-right-panel.compact-navigation[data-wuu-view="file"]
+  :is(
+    .workspace-files-tree,
+    .workspace-files-resizer,
+    .workspace-file-tree-reveal
+  ) {
+  display: none;
+}
+
+.workspace-right-panel.compact-navigation[data-wuu-view="files"]
+  .workspace-files-tree {
+  display: flex;
+  grid-column: 1;
+  padding: 10px 0;
+}
+
+.workspace-right-panel.compact-navigation[data-wuu-view="files"]
+  .workspace-file-tree-drag-handle {
+  display: none;
+}
+
+.workspace-right-panel.compact-navigation[data-wuu-view="file"]
+  .workspace-files-content {
+  grid-column: 1;
 }
 
 .workspace-files-split.tree-dragging::after {

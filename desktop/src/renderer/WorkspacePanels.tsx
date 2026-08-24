@@ -26,6 +26,7 @@ import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  ArrowLeft,
   FileDiff,
   FileText,
   FolderOpen,
@@ -152,6 +153,7 @@ function initialWorkspaceFileTreeVisible(): boolean {
 }
 
 export function WorkspaceRightPanel({
+  compactNavigation = false,
   open,
   present,
   prewarm = false,
@@ -185,6 +187,7 @@ export function WorkspaceRightPanel({
   pluginHost,
   workbenchController,
 }: {
+  compactNavigation?: boolean;
   open: boolean;
   present: boolean;
   prewarm?: boolean;
@@ -536,15 +539,15 @@ export function WorkspaceRightPanel({
     scope: "workspace",
     title: activeTab ? workspaceViewTabLabel(activeTab) : t("workspace.artifactsAndTools"),
     subtitle: activeTab?.kind === "file" || activeTab?.kind === "diff" ? activeTab.path : undefined,
-    tabs: headerTabs,
-    activeTabId: activeTabID,
+    tabs: compactNavigation ? undefined : headerTabs,
+    activeTabId: compactNavigation ? undefined : activeTabID,
     busy: headerTabs.some((tab) => tab.busy) || undefined,
     dirty: headerTabs.some((tab) => tab.dirty) || undefined,
   });
 
   return (
     <aside
-      className={`workspace-right-panel${activeTab ? " detail" : " tools"}${activeTab?.kind === "review" ? " review" : ""}${activeTab?.kind === "diff" ? " diff" : ""}${activeTab?.kind === "files" || activeTab?.kind === "file" ? " files" : ""}${activeTab?.kind === "terminal" ? " terminal" : ""}${focusedComposer && activeTab?.kind === "file" ? " document-focus" : ""}`}
+      className={`workspace-right-panel${compactNavigation ? " compact-navigation" : ""}${activeTab ? " detail" : " tools"}${activeTab?.kind === "review" ? " review" : ""}${activeTab?.kind === "diff" ? " diff" : ""}${activeTab?.kind === "files" || activeTab?.kind === "file" ? " files" : ""}${activeTab?.kind === "terminal" ? " terminal" : ""}${focusedComposer && activeTab?.kind === "file" ? " document-focus" : ""}`}
       data-wuu-component="workspace-panel"
       data-wuu-view={activeTab?.kind ?? "picker"}
       data-sheet={
@@ -577,7 +580,52 @@ export function WorkspaceRightPanel({
             const tab = tabs.find((candidate) => candidate.id === tabId);
             if (tab) requestCloseTab(tab);
           }}
-          fallback={(
+          fallback={compactNavigation ? (
+            <>
+              <button
+                className="icon-button workspace-panel-back"
+                type="button"
+                aria-label={t("common.back")}
+                disabled={!open}
+                onClick={() => {
+                  if (!activeTab) {
+                    onClose();
+                    return;
+                  }
+                  if (activeTab.kind === "file") {
+                    onOpenTool("files");
+                    return;
+                  }
+                  onShowTools();
+                }}
+              >
+                <ArrowLeft className="icon" />
+              </button>
+              <div className="workspace-panel-compact-heading">
+                <strong>
+                  {activeTab ? workspaceViewTabLabel(activeTab) : t("workspace.artifactsAndTools")}
+                </strong>
+                {activeTab?.kind === "file" || activeTab?.kind === "diff" ? (
+                  <span>{activeTab.path}</span>
+                ) : null}
+              </div>
+              {activeTab ? (
+                <button
+                  className="icon-button workspace-panel-close-tab"
+                  type="button"
+                  aria-label={t("workspace.closeTab", {
+                    label: workspaceViewTabLabel(activeTab),
+                  })}
+                  disabled={!open}
+                  onClick={() => requestCloseTab(activeTab)}
+                >
+                  <X className="icon" />
+                </button>
+              ) : (
+                <span className="workspace-panel-compact-action-slot" aria-hidden="true" />
+              )}
+            </>
+          ) : (
             <>
         {globalized ? (
           <span className="workspace-panel-sidebar-hit-hole" aria-hidden="true" />
@@ -772,7 +820,7 @@ export function WorkspaceRightPanel({
                 className="workspace-files-tree"
                 data-wuu-component="workspace-file-tree"
                 aria-label={t("workspace.fileTree")}
-                hidden={!fileTreeVisible}
+                hidden={!compactNavigation && !fileTreeVisible}
                 ref={fileTreeRef}
               >
                 <div
@@ -792,7 +840,7 @@ export function WorkspaceRightPanel({
                   activeContext={workspaceContext}
                   open={
                     open &&
-                    fileTreeVisible &&
+                    (compactNavigation || fileTreeVisible) &&
                     (activeTab?.kind === "files" || activeTab?.kind === "file")
                   }
                   selectedFilePath={selectedFilePath}
