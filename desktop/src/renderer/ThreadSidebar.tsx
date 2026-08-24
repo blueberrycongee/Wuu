@@ -289,13 +289,15 @@ export function ProjectGroup({
   // directly: App.tsx already filtered scratch threads. Real
   // projects still go through the cwd-path filter so stale entries
   // can't leak into the wrong group.
-  const unorderedProjectThreads = unpinnedThreads(
-    isScratchPseudo
-      ? threadsByProjectID[project.id] ?? []
-      : threadsForProjectPath(
-          threadsByProjectID[project.id] ?? [],
-          project.path,
-        ),
+  const sourceProjectThreads = threadsByProjectID[project.id];
+  const unorderedProjectThreads = useMemo(
+    () =>
+      unpinnedThreads(
+        isScratchPseudo
+          ? sourceProjectThreads ?? []
+          : threadsForProjectPath(sourceProjectThreads ?? [], project.path),
+      ),
+    [isScratchPseudo, project.path, sourceProjectThreads],
   );
   const [threadOrder, setThreadOrder] = useState<string[]>(() =>
     storedThreadOrder(project.id),
@@ -304,12 +306,14 @@ export function ProjectGroup({
     () => reconcileThreadOrder(unorderedProjectThreads, threadOrder),
     [threadOrder, unorderedProjectThreads],
   );
-  const threadsByID = new Map(
-    unorderedProjectThreads.map((thread) => [thread.id, thread]),
-  );
-  const projectThreads = reconciledThreadOrder
-    .map((id) => threadsByID.get(id))
-    .filter((thread): thread is ThreadSummary => thread !== undefined);
+  const projectThreads = useMemo(() => {
+    const threadsByID = new Map(
+      unorderedProjectThreads.map((thread) => [thread.id, thread]),
+    );
+    return reconciledThreadOrder
+      .map((id) => threadsByID.get(id))
+      .filter((thread): thread is ThreadSummary => thread !== undefined);
+  }, [reconciledThreadOrder, unorderedProjectThreads]);
 
   function reorderProjectThreads(
     activeThreadID: string,
@@ -535,6 +539,12 @@ function ThreadList({
     Set<string>
   >(() => new Set());
   const visibleThreads = threads;
+  const stickyVisibilityRevision = JSON.stringify(
+    visibleThreads.map((thread) => [
+      thread.id,
+      importantThreadVisible(thread, activeID, pendingThreadID),
+    ]),
+  );
   useEffect(() => {
     const validIDs = new Set(visibleThreads.map((thread) => thread.id));
     setStickyVisibleThreadIDs((current) => {
@@ -551,7 +561,7 @@ function ThreadList({
       }
       return sameStringSet(current, next) ? current : next;
     });
-  }, [activeID, pendingThreadID, visibleThreads]);
+  }, [stickyVisibilityRevision]);
   const limitedThreads = limitedProjectThreads(
     visibleThreads,
     visibleCount,

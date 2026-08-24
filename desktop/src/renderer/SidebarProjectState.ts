@@ -172,6 +172,15 @@ export function threadListsEquivalent(
   });
 }
 
+function threadSnapshotsShallowEqual(left: Thread, right: Thread): boolean {
+  const leftKeys = Object.keys(left) as Array<keyof Thread>;
+  const rightKeys = Object.keys(right);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key) => Object.is(left[key], right[key]))
+  );
+}
+
 function sameWorkdirPath(left: string, right: string): boolean {
   const trim = (path: string): string => path.replace(/\/+$/, "");
   return trim(left) === trim(right);
@@ -189,10 +198,16 @@ export function mergeSidebarThreadSnapshots(
       continue;
     }
     const cachedThread = byID.get(thread.id);
-    byID.set(
-      thread.id,
-      cachedThread ? mergeSidebarThread(cachedThread, thread) : thread,
-    );
+    const mergedThread = cachedThread
+      ? mergeSidebarThread(cachedThread, thread)
+      : thread;
+    if (
+      cachedThread &&
+      threadSnapshotsShallowEqual(cachedThread, mergedThread)
+    ) {
+      continue;
+    }
+    byID.set(thread.id, mergedThread);
     changed = true;
   }
   if (!changed) {
@@ -248,6 +263,8 @@ export function useSidebarProjectState({
       ),
   );
   const loadingProjectThreadIDsRef = useRef(new Set<string>());
+  const projectIDs = projects.map((project) => project.id);
+  const projectIdentityRevision = JSON.stringify(projectIDs);
   const projectsByID = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
@@ -330,17 +347,16 @@ export function useSidebarProjectState({
   }, [sidebarSectionOrder]);
 
   useEffect(() => {
-    const validProjectIDs = projects.map((project) => project.id);
     setSidebarSectionOrder((current) =>
       reconcileSidebarSectionOrder(
         current,
-        validProjectIDs,
+        projectIDs,
       ),
     );
-  }, [projects]);
+  }, [projectIdentityRevision]);
 
   useEffect(() => {
-    const validProjectIDs = new Set(projects.map((project) => project.id));
+    const validProjectIDs = new Set(projectIDs);
     const validSectionIDs = new Set([
       ...validProjectIDs,
       SIDEBAR_SECTION_PINNED,
@@ -365,7 +381,7 @@ export function useSidebarProjectState({
       }
       return changed ? next : current;
     });
-  }, [projects]);
+  }, [projectIdentityRevision]);
 
   useEffect(() => {
     if (

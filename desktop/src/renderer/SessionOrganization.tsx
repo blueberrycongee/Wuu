@@ -43,6 +43,9 @@ export function useSessionOrganization(threads: ThreadSummary[]): SessionOrganiz
   const [optimisticFolders, setOptimisticFolders] = useState<Record<string, string>>({});
   const folderReorderRevisionRef = useRef(0);
   const folderReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const folderAssignmentRevision = JSON.stringify(
+    threads.map((thread) => [thread.id, thread.folder_id ?? ""]),
+  );
 
   useEffect(() => {
     if (!window.wuu?.getSessionOrganization) return;
@@ -60,7 +63,7 @@ export function useSessionOrganization(threads: ThreadSummary[]): SessionOrganiz
   useEffect(() => {
     const byID = new Map(threads.map((thread) => [thread.id, thread]));
     setOptimisticFolders((current) => clearReconciledAssignments(current, byID));
-  }, [threads]);
+  }, [folderAssignmentRevision]);
 
   const folderByThreadID = useMemo(() => {
     const next: Record<string, string> = {};
