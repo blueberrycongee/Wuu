@@ -136,6 +136,7 @@ function renderSidebar({
         onOpenChannelAgents={onOpenChannelAgents}
         onOpenChannelTasks={onOpenChannelTasks}
         onOpenChannels={() => {}}
+        onMarkThreadsViewed={() => {}}
         onToggleConversationSearch={() => {}}
         onSeedConversationFixture={() => {}}
         onOpenChipGallery={() => {}}

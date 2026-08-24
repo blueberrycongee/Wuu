@@ -117,6 +117,7 @@ import {
   isThreadRunning,
   isThreadUnread,
   latestTodoUpdateForThread,
+  markThreadSummariesViewed,
   markThreadTurnsViewed,
   pinnedThreadSummaries,
   queryTextForUserItem,
@@ -4790,6 +4791,9 @@ export function App(): JSX.Element {
             }}
             groupChatEnabled={ENABLE_GROUP_CHAT}
             onSwitchToCollaboration={openCollaborationView}
+            onMarkThreadsViewed={(threads) => {
+              setState((current) => markThreadSummariesViewed(current, threads));
+            }}
             onToggleConversationSearch={toggleConversationSearch}
             onSeedConversationFixture={seedConversationFixture}
             onOpenChipGallery={() => setChipGalleryOpen(true)}

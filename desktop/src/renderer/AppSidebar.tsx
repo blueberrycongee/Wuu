@@ -1,5 +1,6 @@
 import {
   Archive,
+  Bell,
   ChevronRight,
   Clock,
   FileText,
@@ -55,6 +56,7 @@ import type { ChannelRoom, DesktopProject } from "../shared/protocol";
 import {
   isThreadExecuting,
   isThreadUnread,
+  threadTime,
   type AppState,
   type ThreadSummary,
 } from "./AppState";
@@ -352,6 +354,7 @@ export function AppSidebar({
   onPointerLeave,
   onOpenSettings,
   onSwitchToCollaboration,
+  onMarkThreadsViewed,
   pluginHost = desktopPluginHost,
   workbenchController = desktopWorkbenchController,
 }: {
@@ -426,10 +429,12 @@ export function AppSidebar({
   onPointerLeave?: (event: ReactPointerEvent<HTMLElement>) => void;
   onOpenSettings: () => void;
   onSwitchToCollaboration?: () => void;
+  onMarkThreadsViewed: (threads: readonly ThreadSummary[]) => void;
   pluginHost?: PluginHost;
   workbenchController?: WorkbenchController;
 }): JSX.Element {
   const { t } = useI18n();
+  const [unreadViewOpen, setUnreadViewOpen] = useState(false);
   const organizationSourceThreads = useMemo(() => {
     const byID = new Map<string, ThreadSummary>();
     for (const threads of Object.values(projectThreadsByProjectID)) {
@@ -905,6 +910,22 @@ export function AppSidebar({
     for (const thread of pinnedRows) byID.set(thread.id, thread);
     return [...byID.values()];
   }, [pinnedRows, projectThreadsByProjectID]);
+  const unreadThreads = useMemo(() => allSidebarThreads
+    .filter((thread) => (
+      !thread.archived
+      && thread.id !== activeThreadID
+      && thread.id !== pendingThreadID
+      && isThreadUnread(thread, state.lastViewedTurnByThreadID[thread.id])
+    ))
+    .sort((left, right) => (
+      Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+      || threadTime(right) - threadTime(left)
+    )), [
+    activeThreadID,
+    allSidebarThreads,
+    pendingThreadID,
+    state.lastViewedTurnByThreadID,
+  ]);
   const visibleProjectThreadsByProjectID = useMemo(() => {
     const next: Record<string, ThreadSummary[]> = {};
     for (const [projectID, threads] of Object.entries(projectThreadsByProjectID)) {
@@ -1513,7 +1534,53 @@ export function AppSidebar({
           mode="harness"
           collaborationEnabled={groupChatEnabled}
           onChange={(mode) => { if (mode === "collaboration") onSwitchToCollaboration?.(); }}
+          unreadViewOpen={unreadViewOpen}
+          unreadCount={unreadThreads.length}
+          onToggleUnreadView={() => setUnreadViewOpen((open) => !open)}
+          onClearUnread={() => onMarkThreadsViewed(unreadThreads)}
         />
+        {unreadViewOpen ? (
+          <section
+            className="sidebar-unread-view scrollbar-hidden"
+            aria-label={t("sidebar.unreadConversations")}
+          >
+            <header className="sidebar-unread-heading">
+              <span>{t("sidebar.unreadConversations")}</span>
+              <span className="sidebar-unread-count" aria-live="polite">
+                {unreadThreads.length}
+              </span>
+            </header>
+            {unreadThreads.length > 0 ? (
+              <div className="sidebar-unread-list">
+                {unreadThreads.map((thread) => {
+                  const label = sidebarThreadLabel(thread);
+                  return (
+                    <div
+                      key={thread.id}
+                      className="thread-row sidebar-session-row sidebar-unread-row has-unread"
+                    >
+                      <button
+                        className="thread-row-main"
+                        type="button"
+                        aria-label={label}
+                        onClick={() => onSelectThread(thread.id)}
+                      >
+                        <span className="thread-row-title">{label}</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="sidebar-unread-empty" role="status">
+                <Bell aria-hidden="true" />
+                <span>{t("sidebar.unreadEmpty")}</span>
+              </div>
+            )}
+            <p className="sidebar-unread-hint">{t("sidebar.clearUnreadHint")}</p>
+          </section>
+        ) : (
+          <>
         <nav className="primary-nav" aria-label={t("sidebar.mainNavigation")}>
           <button
             className="nav-item"
@@ -1875,6 +1942,8 @@ export function AppSidebar({
             projectCount: sidebarProjects.length,
           })}
         />
+          </>
+        )}
         <div className="sidebar-settings">
           <PluginSlot
             host={pluginHost}
@@ -2127,7 +2196,7 @@ function threadNavigationNode(
   return {
     id: `thread:${thread.id}`,
     kind: "thread",
-    label: thread.title?.trim() || thread.preview?.trim() || thread.id,
+    label: sidebarThreadLabel(thread),
     parentId,
     depth,
     active: thread.id === activeThreadID,
@@ -2137,6 +2206,10 @@ function threadNavigationNode(
     onActivate,
     onTogglePinned,
   };
+}
+
+function sidebarThreadLabel(thread: ThreadSummary): string {
+  return thread.title?.trim() || thread.preview?.trim() || thread.id;
 }
 
 function sidebarThreadUnread(
