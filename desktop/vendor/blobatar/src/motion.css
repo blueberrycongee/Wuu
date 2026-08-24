@@ -215,9 +215,9 @@
    *
    * Hover exits faster than it enters, because on the way out the system is just
    * getting out of the way. An expression is the opposite: it is a message the
-   * consumer sent, and yanking it off the face in 160ms reads as a glitch rather
+   * consumer sent, and yanking it off the face too quickly reads as a glitch rather
    * than as a creature settling. So entering an expression is quick and
-   * returning to idle is slower — 300ms against 400ms.
+   * returning to idle is slower — 420ms against 560ms.
    *
    * The asymmetry works the same way the hover one does: a transition takes the
    * duration declared in the state it is heading *to*. `.mo-expr` is present on
@@ -228,8 +228,8 @@
    * set: these are inherited, so a change upstream changes this element's
    * computed value, and that is a transitionable change like any other.
    */
-  --mo-morph: calc(400ms * var(--mo-rate, 1));
-  --mo-morph-ease: ease-in-out;
+  --mo-morph: calc(560ms * var(--mo-rate, 1));
+  --mo-morph-ease: cubic-bezier(0.22, 0.75, 0.25, 1);
 
   /*
    * The pose channels and their two parallel lists, hoisted into properties of
@@ -381,8 +381,7 @@
  * duration is a taste dial and the gate deliberately does not own it.
  */
 .mo-root.mo-expr {
-  --mo-morph: calc(300ms * var(--mo-rate, 1));
-  --mo-morph-ease: cubic-bezier(0.45, 0.05, 0.5, 1);
+  --mo-morph: calc(420ms * var(--mo-rate, 1));
 }
 
 .mo-root:hover {

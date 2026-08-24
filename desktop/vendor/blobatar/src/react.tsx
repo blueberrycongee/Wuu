@@ -1,4 +1,4 @@
-import { useMemo, type ImgHTMLAttributes, type SVGProps } from "react";
+import { useMemo, type CSSProperties, type ImgHTMLAttributes, type SVGProps } from "react";
 import type { Animate } from "./animate";
 import { _parts, type BlobatarOptions } from "./blobatar";
 import { blobatarUri } from "./uri";
@@ -99,6 +99,18 @@ export function Blobatar({
 
   if (parts) {
     const { style, ...svgRest } = rest as SVGProps<SVGSVGElement>;
+    // Keep pose variables on the transition target itself. They used to live on
+    // the outer SVG and arrive on `.mo-root` through inheritance; that is usually
+    // fine, but some engines can recalculate the inherited custom properties as a
+    // jump when the expression changes. Writing them on the root group makes the
+    // old and new values unambiguously belong to the same element, so the morph
+    // never flashes to an intermediate frame.
+    const rootStyle = {
+      ...(parts.vars as CSSProperties),
+      ...Object.fromEntries(
+        Object.entries(style ?? {}).filter(([property]) => property.startsWith("--mo-")),
+      ),
+    } as CSSProperties;
     return (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -111,7 +123,7 @@ export function Blobatar({
         // `role="img"` that is also `aria-hidden` just contradicts itself.
         role={title ? "img" : undefined}
         aria-hidden={title ? undefined : true}
-        style={{ ...(parts.vars as React.CSSProperties), ...style }}
+        style={style}
         {...svgRest}
       >
         {/*
@@ -133,7 +145,7 @@ export function Blobatar({
         */}
         {title ? <title>{title}</title> : null}
         {parts.bg ? <path d={parts.bg.d} fill={parts.bg.fill} /> : null}
-        <g className={parts.cls} dangerouslySetInnerHTML={html} />
+        <g className={parts.cls} style={rootStyle} dangerouslySetInnerHTML={html} />
       </svg>
     );
   }
