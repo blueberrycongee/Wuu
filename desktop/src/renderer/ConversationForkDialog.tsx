@@ -1,4 +1,4 @@
-import { GitBranch, GitFork, Laptop } from "lucide-react";
+import { GitBranch, Laptop } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "./Modal";
 import { desktopApiErrorMessage } from "./WorkspaceReviewHelpers";
@@ -79,10 +79,9 @@ export function ConversationForkDialog({
   return (
     <Modal
       ariaLabel={t("fork.dialogLabel")}
-      icon={<GitFork className="icon-lg" />}
-      title={t("fork.dialogTitle")}
       onClose={onCancel}
       closeDisabled={disabled}
+      showCloseButton={false}
       panelClassName="fork-dialog"
     >
       <div className="fork-dialog-options">
@@ -121,9 +120,6 @@ export function ConversationForkDialog({
           {errorMessage}
         </div>
       ) : null}
-      <p className="fork-dialog-note">
-        {t("fork.note")}
-      </p>
     </Modal>
   );
 }

@@ -70,9 +70,7 @@ describe("ConversationForkDialog", () => {
 
     expect(buttonByLabel("Fork locally")).toBeTruthy();
     expect(buttonByLabel("Fork to a Git worktree")).toBeTruthy();
-    expect(document.querySelector(".fork-dialog-note")?.textContent).toContain(
-      "current files and worktree will remain unchanged",
-    );
+    expect(document.querySelectorAll(".fork-dialog button")).toHaveLength(2);
   });
 
   it("renders the two fork option buttons", () => {
@@ -85,10 +83,10 @@ describe("ConversationForkDialog", () => {
 
     expect(buttonByLabel("派生到本地")).toBeTruthy();
     expect(buttonByLabel("派生到 git worktree")).toBeTruthy();
-    expect(buttonByLabel("关闭")).toBeTruthy();
+    expect(document.querySelectorAll(".fork-dialog button")).toHaveLength(2);
   });
 
-  it("includes the explanatory footnote about file/worktree state", () => {
+  it("does not render extra dialog content", () => {
     mount(
       createElement(ConversationForkDialog, {
         onCancel: () => undefined,
@@ -96,10 +94,9 @@ describe("ConversationForkDialog", () => {
       }),
     );
 
-    const dialog = document.querySelector(".fork-dialog");
-    expect(dialog?.textContent ?? "").toContain(
-      "这会保持你当前的文件和工作树状态不变",
-    );
+    expect(document.querySelector(".fork-dialog-note")).toBeNull();
+    expect(document.querySelector(".fork-dialog h2")).toBeNull();
+    expect(document.querySelector(".fork-dialog .icon-button")).toBeNull();
   });
 
   it("invokes onChoose(\"local\") when the local option is clicked", async () => {
@@ -185,7 +182,7 @@ describe("ConversationForkDialog", () => {
     expect(onCancel).not.toHaveBeenCalled();
   });
 
-  it("invokes onCancel when the X close button is clicked", () => {
+  it("keeps the fork picker to two option buttons", () => {
     const onChoose = vi.fn(() => Promise.resolve());
     const onCancel = vi.fn();
 
@@ -193,11 +190,9 @@ describe("ConversationForkDialog", () => {
       createElement(ConversationForkDialog, { onCancel, onChoose }),
     );
 
-    act(() => {
-      buttonByLabel("关闭").click();
-    });
-
-    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(document.querySelectorAll(".fork-dialog button")).toHaveLength(2);
+    expect(document.querySelector('button[aria-label="关闭"]')).toBeNull();
+    expect(onCancel).not.toHaveBeenCalled();
     expect(onChoose).not.toHaveBeenCalled();
   });
 
@@ -245,16 +240,15 @@ describe("ConversationForkDialog", () => {
       createElement(ConversationForkDialog, { onCancel, onChoose }),
     );
 
-    // The footnote <p> sits inside the dialog panel but is not a
-    // <button>. The panel's onClick stops propagation, so the backdrop's
-    // onClick (which fires onCancel) must NOT trigger.
-    const footnote = document.querySelector(".fork-dialog-note");
-    if (!(footnote instanceof HTMLElement)) {
-      throw new Error("footnote not rendered");
+    // The panel's onClick stops propagation, so the backdrop's onClick
+    // (which fires onCancel) must NOT trigger.
+    const panel = document.querySelector(".fork-dialog");
+    if (!(panel instanceof HTMLElement)) {
+      throw new Error("dialog panel not rendered");
     }
 
     act(() => {
-      footnote.click();
+      panel.click();
     });
 
     expect(onCancel).not.toHaveBeenCalled();
@@ -280,7 +274,6 @@ describe("ConversationForkDialog", () => {
     expect(onChoose).toHaveBeenCalledWith("local");
     expect(buttonByLabel("派生到本地").disabled).toBe(true);
     expect(buttonByLabel("派生到 git worktree").disabled).toBe(true);
-    expect(buttonByLabel("关闭").disabled).toBe(true);
 
     // Resolve inside act() so the busy-mode-reset state update lands
     // inside a flushed transition — otherwise React 19 logs a noisy

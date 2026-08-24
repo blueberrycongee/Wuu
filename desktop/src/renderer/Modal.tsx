@@ -33,11 +33,12 @@ import { useUILayerHost } from "./ui/layers/UILayerHost";
  */
 export type ModalProps = {
   ariaLabel: string;
-  icon: ReactNode;
-  title: ReactNode;
+  icon?: ReactNode;
+  title?: ReactNode;
   subtitle?: ReactNode;
   onClose?: () => void;
   closeDisabled?: boolean;
+  showCloseButton?: boolean;
   panelClassName?: string;
   initialFocus?: "first-interactive" | "none";
   asForm?: boolean;
@@ -53,6 +54,7 @@ export function Modal({
   subtitle,
   onClose,
   closeDisabled = false,
+  showCloseButton = true,
   panelClassName,
   initialFocus = "first-interactive",
   asForm = false,
@@ -143,9 +145,10 @@ export function Modal({
 
   const panelBody = (
     <>
-      <div className="environment-dialog-header">
-        <span className="environment-dialog-icon">{icon}</span>
-        {onClose ? (
+      {title || icon || (onClose && showCloseButton) ? (
+        <div className="environment-dialog-header">
+          {icon ? <span className="environment-dialog-icon">{icon}</span> : <span />}
+          {onClose && showCloseButton ? (
           <button
             className="icon-button"
             type="button"
@@ -159,9 +162,10 @@ export function Modal({
           >
             <X className="icon" />
           </button>
-        ) : null}
-      </div>
-      <h2>{title}</h2>
+          ) : null}
+        </div>
+      ) : null}
+      {title ? <h2>{title}</h2> : null}
       {subtitle ? (
         <p className="environment-dialog-subtitle">{subtitle}</p>
       ) : null}

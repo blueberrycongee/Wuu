@@ -1604,15 +1604,13 @@
   animation: wuu-spin var(--motion-spin) linear infinite;
 }
 
-/* Fork-from-earlier picker. Reuses the .environment-dialog shell so the
-   modal look-and-feel stays consistent with the GitHub and Approval
-   dialogs; only the body content swaps to a stacked list of option
-   cards plus a footnote and a wide Cancel button. */
+/* Fork-from-earlier picker. Reuses the .environment-dialog shell while
+   keeping the dialog body focused on the two fork choices. */
 .fork-dialog {
-  width: min(100%, clamp(420px, 42vw, 580px));
-  max-height: min(560px, calc(100dvh - 48px));
-  gap: 12px;
-  padding: clamp(18px, 2.2vw, 24px);
+  width: min(100%, clamp(360px, 34vw, 480px));
+  max-height: min(440px, calc(100dvh - 48px));
+  gap: 8px;
+  padding: 10px;
 }
 
 .fork-dialog .environment-dialog-header {
@@ -1631,7 +1629,7 @@
 
 .fork-dialog-options {
   display: grid;
-  gap: 10px;
+  gap: 4px;
 }
 
 .fork-dialog-option {
@@ -1639,19 +1637,19 @@
   align-items: flex-start;
   gap: 12px;
   width: 100%;
-  border: 1px solid var(--ink-overlay-12);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--paper);
   color: var(--ink);
   text-align: left;
-  padding: 12px 14px;
+  padding: 14px;
   cursor: pointer;
   transition: border-color var(--menu-enter-duration) var(--menu-enter-easing),
     background var(--menu-enter-duration) var(--menu-enter-easing);
 }
 
 .fork-dialog-option:hover:not(:disabled) {
-  border-color: var(--info);
+  border-color: var(--ink-overlay-18);
   background: var(--surface-1);
 }
 
@@ -1670,7 +1668,7 @@
 }
 
 .fork-dialog-option.is-busy {
-  border-color: var(--info);
+  border-color: var(--ink-overlay-18);
 }
 
 .fork-dialog-option-icon {
@@ -1713,13 +1711,6 @@
   animation: wuu-spin var(--motion-spin) linear infinite;
 }
 
-.fork-dialog-note {
-  margin: 0;
-  color: var(--ink-tertiary);
-  font-size: var(--font-sm);
-  line-height: 1.45;
-}
-
 @media (max-width: 720px) {
   .modal-backdrop {
     padding: 12px;
@@ -1729,7 +1720,7 @@
     width: 100%;
     max-height: calc(100dvh - 24px);
     gap: 12px;
-    padding: 18px;
+    padding: 8px;
   }
 
   .fork-dialog h2 {
