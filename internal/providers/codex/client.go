@@ -31,19 +31,21 @@ type ClientConfig struct {
 	StreamTransport       providers.StreamTransportMode
 	Coordinator           *providers.ProviderCoordinator
 	ReuseCodexCredentials bool
+	NativeCompaction      bool
 }
 
 // Client uses a local Codex OAuth session as an OpenAI Responses-compatible
 // provider while leaving the agent loop in wuu.
 type Client struct {
-	baseURL         string
-	auth            *OAuthSource
-	headers         map[string]string
-	httpClient      *http.Client
-	streamConfig    *providers.StreamTransportConfig
-	streamTransport providers.StreamTransportMode
-	coordinator     *providers.ProviderCoordinator
-	wsCache         *openai.ResponsesWebSocketCache
+	baseURL          string
+	auth             *OAuthSource
+	headers          map[string]string
+	httpClient       *http.Client
+	streamConfig     *providers.StreamTransportConfig
+	streamTransport  providers.StreamTransportMode
+	coordinator      *providers.ProviderCoordinator
+	wsCache          *openai.ResponsesWebSocketCache
+	nativeCompaction bool
 }
 
 // ModelInfo describes one model advertised by the OAuth-backed Codex backend.
@@ -73,14 +75,15 @@ func New(cfg ClientConfig) (*Client, error) {
 		streamTransport = providers.StreamTransportAuto
 	}
 	return &Client{
-		baseURL:         baseURL,
-		auth:            NewOAuthSource(OAuthConfig{BaseURL: baseURL, APIKey: cfg.APIKey, Home: home, HTTPClient: cfg.HTTPClient, ReuseCodexCredentials: cfg.ReuseCodexCredentials}),
-		headers:         cloneHeaders(cfg.Headers),
-		httpClient:      cfg.HTTPClient,
-		streamConfig:    cfg.StreamConfig,
-		streamTransport: streamTransport,
-		coordinator:     cfg.Coordinator,
-		wsCache:         openai.NewResponsesWebSocketCache(),
+		baseURL:          baseURL,
+		auth:             NewOAuthSource(OAuthConfig{BaseURL: baseURL, APIKey: cfg.APIKey, Home: home, HTTPClient: cfg.HTTPClient, ReuseCodexCredentials: cfg.ReuseCodexCredentials}),
+		headers:          cloneHeaders(cfg.Headers),
+		httpClient:       cfg.HTTPClient,
+		streamConfig:     cfg.StreamConfig,
+		streamTransport:  streamTransport,
+		coordinator:      cfg.Coordinator,
+		wsCache:          openai.NewResponsesWebSocketCache(),
+		nativeCompaction: cfg.NativeCompaction,
 	}, nil
 }
 

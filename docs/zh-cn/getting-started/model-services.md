@@ -19,7 +19,9 @@ wuu 使用 BYOK（自带密钥）模式。你选择模型服务并提供凭据�
 
 - **OpenAI：**选择 OpenAI 兼容类型并填写 API Key。桌面端当前不能直接发起 OpenAI
   OAuth 登录；使用 OAuth 需要已有 Wuu 凭据，或先运行 Codex CLI 完成登录，再在
-  `openai-codex` provider 配置中启用 `reuse_codex_credentials`。
+  `openai-codex` provider 配置中启用 `reuse_codex_credentials`。Codex 原生上下文压缩
+  默认开启；如需继续使用 Wuu 的可移植文本摘要压缩，可将 `native_compaction` 设为
+  `false`。
 - **Anthropic：**选择 Anthropic 兼容类型，填写 Anthropic API Key 和模型 ID。
 - **OpenRouter、one-api 或其他网关：**选择 OpenAI 兼容类型，并填写网关端点、Key
   和它提供的模型 ID。

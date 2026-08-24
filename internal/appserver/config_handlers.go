@@ -1594,6 +1594,7 @@ func providerClientConfigChanged(previous, next config.ProviderConfig) bool {
 		strings.TrimSpace(previous.AuthToken) != strings.TrimSpace(next.AuthToken) ||
 		strings.TrimSpace(previous.AuthTokenEnv) != strings.TrimSpace(next.AuthTokenEnv) ||
 		previous.ReuseCodexCredentials != next.ReuseCodexCredentials ||
+		previous.NativeCompactionEnabled() != next.NativeCompactionEnabled() ||
 		previous.StreamConnectTimeoutMS != next.StreamConnectTimeoutMS ||
 		previous.StreamHeaderTimeoutMS != next.StreamHeaderTimeoutMS ||
 		previous.StreamIdleTimeoutMS != next.StreamIdleTimeoutMS ||
@@ -1646,6 +1647,7 @@ func (s *Server) handleConfigCodexModels(ctx context.Context, req Request) error
 		APIKey:                explicitProviderAPIKey(providerCfg),
 		Headers:               providerCfg.Headers,
 		ReuseCodexCredentials: providerCfg.ReuseCodexCredentials,
+		NativeCompaction:      providerCfg.NativeCompactionEnabled(),
 	})
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)

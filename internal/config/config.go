@@ -146,6 +146,10 @@ type ProviderConfig struct {
 	// Codex CLI auth store (CODEX_HOME/auth.json or ~/.codex/auth.json) as a
 	// read-only fallback when wuu does not have its own OAuth session.
 	ReuseCodexCredentials bool `json:"reuse_codex_credentials,omitempty"`
+	// NativeCompaction controls provider-native context compaction for Codex
+	// subscription providers. Nil defaults to enabled; false explicitly keeps
+	// Wuu's portable text-summary compaction path.
+	NativeCompaction *bool `json:"native_compaction,omitempty"`
 	// StreamConnectTimeoutMS bounds dial and TLS handshake for one streaming
 	// connection attempt. It does not cap the whole turn.
 	StreamConnectTimeoutMS int `json:"stream_connect_timeout_ms,omitempty"`
@@ -181,6 +185,16 @@ type ProviderConfig struct {
 	// live-probed EXCLUSIVE on 2026-07-06 and must not set this. Defaults to
 	// false.
 	InputTokensIncludeCacheRead bool `json:"input_tokens_include_cache_read,omitempty"`
+}
+
+// NativeCompactionEnabled reports the effective provider-native compaction
+// policy. Only Codex subscription providers opt in by default; other provider
+// types keep their existing portable compaction path.
+func (p ProviderConfig) NativeCompactionEnabled() bool {
+	if p.NativeCompaction != nil {
+		return *p.NativeCompaction
+	}
+	return isCodexSubscriptionProvider(p.Type)
 }
 
 // ProviderModelProviderConfig mirrors OpenCode's per-model provider override
@@ -888,6 +902,7 @@ func validatePermissionMode(mode string) error {
 
 // Default returns a practical starter config.
 func Default() Config {
+	nativeCompaction := true
 	return Config{
 		DefaultProvider: "openai",
 		Providers: map[string]ProviderConfig{
@@ -909,6 +924,7 @@ func Default() Config {
 				WireAPI:               "responses",
 				Model:                 "gpt-5.5",
 				ReuseCodexCredentials: true,
+				NativeCompaction:      &nativeCompaction,
 			},
 			"anthropic": {
 				Type:      "anthropic",
