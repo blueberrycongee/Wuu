@@ -609,6 +609,7 @@ describe("ThreadItemView", () => {
         type: "user_message",
         text: "子任务 太阳 已更新",
         input_text: "子任务 太阳（session 20260817-171746-edd1069c0780f11a）已完成。请检查并整合以下交接结果：\n\n三个命令均已成功执行",
+        related_session_id: "20260817-171746-edd1069c0780f11a",
         read_only: true,
         origin: "plugin",
         origin_id: "subagent",
