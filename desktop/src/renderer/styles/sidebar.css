@@ -564,7 +564,6 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
   border-right: 1px solid var(--sidebar-drawer-edge);
   box-shadow: 10px 0 24px var(--ink-overlay-8);
-  overflow: hidden;
 }
 
 /* The desktop drawer keeps its content at --sidebar-open-width so the rail is
