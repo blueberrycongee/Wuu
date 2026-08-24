@@ -126,7 +126,15 @@ function run() {
   for (const variable of launchEnvironment(process.env, token)) {
     args.push("--env", variable);
   }
-  args.push("--args", ...normalizeElectronArguments(process.argv.slice(2)));
+  const electronArguments = normalizeElectronArguments(process.argv.slice(2));
+  // Chromium recommends the mock keychain for local developer builds. It
+  // prevents a rebuilt development app from asking for the login password to
+  // read "Safe Storage" on every launch. Set WUU_DEV_USE_SYSTEM_KEYCHAIN=1
+  // only when intentionally testing Chromium's real Keychain integration.
+  if (process.env.WUU_DEV_USE_SYSTEM_KEYCHAIN !== "1") {
+    electronArguments.unshift("--use-mock-keychain");
+  }
+  args.push("--args", ...electronArguments);
   args.push(`--wuu-dev-launch-token=${token}`);
 
   const opened = spawnSync("open", args, { cwd: desktopRoot, stdio: "inherit" });

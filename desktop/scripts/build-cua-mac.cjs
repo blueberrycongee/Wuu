@@ -32,6 +32,10 @@ if (!existsSync(source)) {
   throw new Error(`Swift build did not produce ${source}`);
 }
 const sourceHash = createHash("sha256").update(readFileSync(source)).digest("hex");
+if (outputsAreCurrent(sourceHash, signingIdentity)) {
+  console.log(`reusing unchanged ${destination} and ${pipDestination}`);
+  process.exit(0);
+}
 mkdirSync(outDir, { recursive: true });
 removeOutput(destination);
 removeOutput(pipDestination);
@@ -59,7 +63,7 @@ const pipStat = statSync(pipDestination);
 if (lstatSync(pipDestination).isSymbolicLink() || (mcpStat.dev === pipStat.dev && mcpStat.ino === pipStat.ino)) {
   throw new Error("CUA MCP and PiP helpers must be separate physical files");
 }
-writeFileSync(buildInfo, `${JSON.stringify({ sourceHash })}\n`);
+writeFileSync(buildInfo, `${JSON.stringify({ sourceHash, signingIdentity })}\n`);
 
 console.log(`built ${destination} and ${pipDestination}`);
 
@@ -69,6 +73,36 @@ function removeOutput(path) {
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
+}
+
+function outputsAreCurrent(sourceHash, signingIdentity) {
+  if (!existsSync(destination) || !existsSync(pipDestination) || !existsSync(buildInfo)) {
+    return false;
+  }
+  try {
+    const info = JSON.parse(readFileSync(buildInfo, "utf8"));
+    if (info.sourceHash !== sourceHash || info.signingIdentity !== signingIdentity) {
+      return false;
+    }
+    const mcpStat = statSync(destination);
+    const pipStat = statSync(pipDestination);
+    if (
+      lstatSync(pipDestination).isSymbolicLink()
+      || (mcpStat.dev === pipStat.dev && mcpStat.ino === pipStat.ino)
+    ) {
+      return false;
+    }
+    return signatureIsValid(destination) && signatureIsValid(pipDestination);
+  } catch {
+    return false;
+  }
+}
+
+function signatureIsValid(path) {
+  return spawnSync("codesign", ["--verify", "--strict", path], {
+    cwd: desktopRoot,
+    stdio: "ignore",
+  }).status === 0;
 }
 
 function run(command, args) {
