@@ -7,11 +7,13 @@ import {
   type ServerRequestResult,
 } from "@wuu/remote-core";
 import type {
+  ChannelRoomPreferences,
   DesktopPlatform,
   DesktopProject,
   InitializeResult,
   LanguagePreference,
   MessageFlowFontSize,
+  PluginConflictPreferences,
   ProjectListResult,
   RunningThreadSnapshot,
   ServerEvent,
@@ -27,6 +29,8 @@ type PreferenceListener<T> = (value: T) => void;
 const THEME_KEY = "wuu.web.theme";
 const LANGUAGE_KEY = "wuu.web.language";
 const MESSAGE_SIZE_KEY = "wuu.web.message-size";
+const CHANNEL_ROOM_PREFERENCES_KEY = "wuu.channels.roomPreferences";
+const PLUGIN_CONFLICT_PREFERENCES_KEY = "wuu.web.plugin-conflict-preferences";
 const DEFAULT_MESSAGE_SIZE = 16;
 
 function basename(path: string): string {
@@ -54,6 +58,31 @@ function storedLanguage(): LanguagePreference {
 function storedMessageSize(): MessageFlowFontSize {
   const value = Number(localStorage.getItem(MESSAGE_SIZE_KEY));
   return (Number.isFinite(value) ? value : DEFAULT_MESSAGE_SIZE) as MessageFlowFontSize;
+}
+
+function storedChannelRoomPreferences(): ChannelRoomPreferences {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CHANNEL_ROOM_PREFERENCES_KEY) ?? "null") as
+      | Partial<ChannelRoomPreferences>
+      | null;
+    return {
+      pinnedRoomIDs: Array.isArray(parsed?.pinnedRoomIDs) ? parsed.pinnedRoomIDs : [],
+      archivedRoomIDs: Array.isArray(parsed?.archivedRoomIDs) ? parsed.archivedRoomIDs : [],
+    };
+  } catch {
+    return { pinnedRoomIDs: [], archivedRoomIDs: [] };
+  }
+}
+
+function storedPluginConflictPreferences(): PluginConflictPreferences {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PLUGIN_CONFLICT_PREFERENCES_KEY) ?? "null");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as PluginConflictPreferences
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 /** Browser host adapter for the shared desktop renderer. */
@@ -188,8 +217,12 @@ export class RemoteDesktopBridge {
       initialLanguagePreference: storedLanguage(),
       initialSystemLocale: navigator.language,
       initialVoiceInputSettings,
+      initialChannelRoomPreferences: storedChannelRoomPreferences(),
       initialMessageFlowFontSize: storedMessageSize(),
       popOutInit: () => ({ kind: null, threadID: null, context: null }),
+      // Electron uses this to route native CUA overlay windows. The Web host
+      // has no native overlay, so tracking an active CUA thread is inapplicable.
+      setActiveCUAThread: () => {},
 
       listProjects: async () => this.projectState(),
       selectProject: async () => this.projectState(),
@@ -225,6 +258,8 @@ export class RemoteDesktopBridge {
         this.call("thread/archive", { thread_id: threadId, archived, force }),
       deleteThread: (threadId: string) => this.call("thread/delete", { thread_id: threadId }),
       compactThread: (threadId: string) => this.call("thread/compact/start", { thread_id: threadId }),
+
+      listChannelRooms: () => this.call("channel/room/list"),
 
       startTurn: (threadId, prompt, images, files, permissionMode, activeDocument, contentParts) =>
         this.call("turn/start", {
@@ -339,6 +374,16 @@ export class RemoteDesktopBridge {
       setMessageFlowFontSize: async (fontSize: MessageFlowFontSize) => {
         localStorage.setItem(MESSAGE_SIZE_KEY, String(fontSize));
         return { ok: true, fontSize };
+      },
+      updateChannelRoomPreferences: async (preferences: ChannelRoomPreferences) => {
+        localStorage.setItem(CHANNEL_ROOM_PREFERENCES_KEY, JSON.stringify(preferences));
+        return preferences;
+      },
+      getPluginConflictPreferences: async () => storedPluginConflictPreferences(),
+      setPluginConflictPreference: async (key: string, pluginId: string) => {
+        const preferences = { ...storedPluginConflictPreferences(), [key]: pluginId };
+        localStorage.setItem(PLUGIN_CONFLICT_PREFERENCES_KEY, JSON.stringify(preferences));
+        return preferences;
       },
       openExternal: async (url: string) => {
         window.open(url, "_blank", "noopener,noreferrer");

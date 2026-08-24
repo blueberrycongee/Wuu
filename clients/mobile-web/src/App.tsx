@@ -16,23 +16,39 @@ type Phase =
 export default function App(): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>({ kind: "boot" });
   const bridgeRef = useRef<RemoteDesktopBridge | null>(null);
+  const connectionAttemptRef = useRef(0);
 
   const connect = async (credentials: Credentials): Promise<void> => {
+    const attempt = ++connectionAttemptRef.current;
     setPhase({ kind: "connecting" });
     const bridge = new RemoteDesktopBridge(credentials);
     bridgeRef.current = bridge;
     try {
       await bridge.connect();
+      if (attempt !== connectionAttemptRef.current) {
+        await bridge.disconnect().catch(() => {});
+        return;
+      }
       bridge.install();
       setPhase({ kind: "ready" });
     } catch (error) {
       await bridge.disconnect().catch(() => {});
+      if (attempt !== connectionAttemptRef.current) return;
       bridgeRef.current = null;
       setPhase({
         kind: "error",
         message: error instanceof Error ? error.message : "无法连接到 Wuu",
       });
     }
+  };
+
+  const resetPairing = async (): Promise<void> => {
+    connectionAttemptRef.current += 1;
+    const bridge = bridgeRef.current;
+    bridgeRef.current = null;
+    if (bridge) await bridge.disconnect().catch(() => {});
+    await webCredStore.clear();
+    setPhase({ kind: "pair" });
   };
 
   useEffect(() => {
@@ -81,9 +97,7 @@ export default function App(): React.JSX.Element {
       <StatusCard title="连接失败" detail={phase.message}>
         <button
           type="button"
-          onClick={() => {
-            void webCredStore.clear().then(() => setPhase({ kind: "pair" }));
-          }}
+          onClick={() => void resetPairing()}
         >
           重新配对
         </button>
@@ -91,7 +105,17 @@ export default function App(): React.JSX.Element {
     );
   }
 
-  return <StatusCard title={phase.kind === "boot" ? "正在启动…" : "正在连接电脑…"} />;
+  if (phase.kind === "connecting") {
+    return (
+      <StatusCard title="正在连接电脑…" detail="如果电脑或 relay 地址已经变化，请清除旧配对后重新连接。">
+        <button type="button" onClick={() => void resetPairing()}>
+          清除旧配对
+        </button>
+      </StatusCard>
+    );
+  }
+
+  return <StatusCard title="正在启动…" />;
 }
 
 function PairCard({
