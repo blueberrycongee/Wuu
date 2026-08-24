@@ -127,6 +127,13 @@ func TestNewProviderStreamError_Retryable(t *testing.T) {
 	}
 }
 
+func TestNewProviderStreamError_StreamReadErrorRetryable(t *testing.T) {
+	err := NewProviderStreamError("stream_read_error", "stream_read_error")
+	if !IsRetryable(err) {
+		t.Fatal("expected provider stream read error to be retryable")
+	}
+}
+
 func TestNewProviderStreamError_TerminalUsageLimit(t *testing.T) {
 	err := NewProviderStreamError("usage_limit_reached", "The usage limit has been reached")
 	if IsRetryable(err) {
