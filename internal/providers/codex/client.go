@@ -2,6 +2,8 @@ package codex
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -166,8 +168,40 @@ func (c *Client) PrewarmSession(ctx context.Context, sessionID string) error {
 	}
 }
 
-func (c *Client) PrepareInferenceRequest(_ context.Context, req providers.ChatRequest) (providers.ChatRequest, error) {
+func (c *Client) PrepareInferenceRequest(ctx context.Context, req providers.ChatRequest) (providers.ChatRequest, error) {
+	creds, err := c.auth.Credentials(ctx, false)
+	if err != nil {
+		return providers.ChatRequest{}, err
+	}
+	req.ProviderStateScope = codexNativeCompactionScope(c.baseURL, req.Model, creds)
 	return codexRequest(req), nil
+}
+
+// NativeCompact invokes Codex Remote Compaction V2 over the normal Responses
+// stream. It never calls the legacy /responses/compact endpoint.
+func (c *Client) NativeCompact(ctx context.Context, req providers.ChatRequest) (providers.NativeCompactionResult, error) {
+	if !c.nativeCompaction {
+		return providers.NativeCompactionResult{}, providers.ErrNativeCompactionUnavailable
+	}
+	client, creds, err := c.openAIClient(ctx, false)
+	if err != nil {
+		return providers.NativeCompactionResult{}, err
+	}
+	req = codexRequest(req)
+	req.ProviderStateScope = codexNativeCompactionScope(c.baseURL, req.Model, creds)
+	item, usage, err := client.CompactResponsesV2(ctx, req)
+	if err != nil {
+		return providers.NativeCompactionResult{}, err
+	}
+	return providers.NativeCompactionResult{
+		Replacement: []providers.ChatMessage{{
+			Role:          "assistant",
+			Hidden:        true,
+			ProviderItems: []providers.ProviderItem{item},
+		}},
+		Usage:              usage,
+		ProviderStateScope: req.ProviderStateScope,
+	}, nil
 }
 
 func (c *Client) ApplyInferenceRecovery(ctx context.Context, plan providers.RecoveryPlan) error {
@@ -295,6 +329,15 @@ func codexProviderScope(baseURL string, creds credentials) providers.ProviderSco
 		return providers.NewProviderScope(baseURL, "", accountID)
 	}
 	return providers.NewProviderScope(baseURL, creds.accessToken, "")
+}
+
+func codexNativeCompactionScope(baseURL, model string, creds credentials) string {
+	identity := strings.TrimSpace(creds.accountID)
+	if identity == "" {
+		identity = strings.TrimSpace(creds.accessToken)
+	}
+	sum := sha256.Sum256([]byte(strings.TrimSpace(baseURL) + "\x00" + identity + "\x00" + strings.TrimSpace(model)))
+	return "codex-v2:" + hex.EncodeToString(sum[:16])
 }
 
 func parseModels(data []byte) ([]ModelInfo, error) {

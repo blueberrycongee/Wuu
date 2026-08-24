@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -411,6 +412,7 @@ const (
 	EventAgentActivity   StreamEventType = "agent_activity"
 	EventRequestContext  StreamEventType = "request_context"
 	EventProviderState   StreamEventType = "provider_state"
+	EventProviderItem    StreamEventType = "provider_item"
 	EventUsage           StreamEventType = "usage"
 	EventMessage         StreamEventType = "message"
 	EventLifecycle       StreamEventType = "lifecycle"
@@ -655,9 +657,13 @@ type StreamEvent struct {
 	AgentActivity  *AgentActivity
 	RequestContext *RequestContextSummary
 	ProviderState  *ProviderStateSummary
-	Lifecycle      *StreamLifecycle
-	Error          error
-	Usage          *TokenUsage
+	ProviderItem   *ProviderItem
+	// ProviderEventType records the exact provider terminal event when a
+	// protocol-specific operation needs stricter completion validation.
+	ProviderEventType string
+	Lifecycle         *StreamLifecycle
+	Error             error
+	Usage             *TokenUsage
 	// StopReason / FinishReason / Truncated are populated on the terminal
 	// EventDone when the provider reports them. StopReason is raw-ish provider
 	// detail; FinishReason is the normalized semantic.
@@ -670,6 +676,22 @@ type StreamEvent struct {
 type StreamClient interface {
 	Client
 	StreamChat(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error)
+}
+
+var ErrNativeCompactionUnavailable = errors.New("native compaction unavailable")
+
+// NativeCompactionResult is a provider-generated replacement history. Opaque
+// provider items in Replacement remain bound to ProviderStateScope.
+type NativeCompactionResult struct {
+	Replacement        []ChatMessage
+	Usage              *TokenUsage
+	ProviderStateScope string
+}
+
+// NativeCompactor is an optional provider capability. Implementations must not
+// replace caller history until they return a successful result.
+type NativeCompactor interface {
+	NativeCompact(ctx context.Context, req ChatRequest) (NativeCompactionResult, error)
 }
 
 // SessionPrewarmer is an optional provider capability for moving cold

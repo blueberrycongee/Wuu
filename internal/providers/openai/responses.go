@@ -106,6 +106,51 @@ func (c *Client) responsesStreamChatSSE(ctx context.Context, payload responsesRe
 	return ch, nil
 }
 
+// CompactResponsesV2 invokes provider-native remote compaction over the normal
+// streaming Responses endpoint. The request differs from an inference request
+// only by its trailing compaction_trigger item.
+func (c *Client) CompactResponsesV2(ctx context.Context, req providers.ChatRequest) (providers.ProviderItem, *providers.TokenUsage, error) {
+	payload, err := c.buildResponsesRequest(req, true)
+	if err != nil {
+		return providers.ProviderItem{}, nil, err
+	}
+	payload.Input = append(payload.Input, responsesInputItem{Raw: json.RawMessage(`{"type":"compaction_trigger"}`)})
+	payload.MaxOutputTokens = 0
+
+	ch, err := c.responsesStreamChatSSE(ctx, payload, nil)
+	if err != nil {
+		return providers.ProviderItem{}, nil, err
+	}
+	var item providers.ProviderItem
+	var count int
+	for event := range ch {
+		switch event.Type {
+		case providers.EventProviderItem:
+			if event.ProviderItem == nil || event.ProviderItem.Type != "compaction" {
+				continue
+			}
+			item = *event.ProviderItem
+			count++
+		case providers.EventError:
+			if event.Error == nil {
+				event.Error = errors.New("remote compaction failed")
+			}
+			return providers.ProviderItem{}, nil, event.Error
+		case providers.EventDone:
+			if event.ProviderEventType != "response.completed" || event.Truncated {
+				return providers.ProviderItem{}, event.Usage, fmt.Errorf("remote compaction did not complete: %s", event.ProviderEventType)
+			}
+			if count != 1 {
+				return providers.ProviderItem{}, event.Usage, fmt.Errorf("remote compaction returned %d compaction items", count)
+			}
+			item.Provider = strings.TrimSpace(req.Provider)
+			item.Scope = strings.TrimSpace(req.ProviderStateScope)
+			return item, event.Usage, nil
+		}
+	}
+	return providers.ProviderItem{}, nil, errors.New("remote compaction stream ended before response.completed")
+}
+
 func responsesSSEProviderState(payload responsesRequest, configuredTransport providers.StreamTransportMode, fallbackReason string, fallback responsesWebSocketFallbackMeta) *providers.ProviderStateSummary {
 	fallbackReason = strings.TrimSpace(fallbackReason)
 	state := &providers.ProviderStateSummary{
@@ -885,6 +930,9 @@ func (c *Client) readResponsesSSE(ctx context.Context, resp *http.Response, leas
 				sawToolCall = true
 				pt := pending.start(event.Item, event.outputIndex(), emit)
 				pending.emitEnd(pt, event.Item.argumentsString(), emit)
+			case "compaction":
+				item := providers.ProviderItem{Type: "compaction", Data: string(event.Item.Raw)}
+				emit.Send(providers.StreamEvent{Type: providers.EventProviderItem, ProviderItem: &item})
 			}
 
 		case "response.completed", "response.done", "response.incomplete":
@@ -892,11 +940,12 @@ func (c *Client) readResponsesSSE(ctx context.Context, resp *http.Response, leas
 			usage, stopReason, finishReason, truncated := responsesDoneMetadata(event.Response, sawToolCall)
 			lease.SucceedWithUsage(usage)
 			emit.Send(providers.StreamEvent{
-				Type:         providers.EventDone,
-				Usage:        usage,
-				StopReason:   stopReason,
-				FinishReason: finishReason,
-				Truncated:    truncated,
+				Type:              providers.EventDone,
+				Usage:             usage,
+				StopReason:        stopReason,
+				FinishReason:      finishReason,
+				Truncated:         truncated,
+				ProviderEventType: event.Type,
 			})
 			return
 
