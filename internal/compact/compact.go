@@ -176,6 +176,17 @@ type Budget struct {
 	SummaryInputTokens int
 }
 
+// NativeOptions carries the current inference route into optional provider-
+// native compaction without changing the portable summary API.
+type NativeOptions struct {
+	Provider                    string
+	Tools                       []providers.ToolDefinition
+	Temperature                 float64
+	ProviderOptions             map[string]any
+	MediaInput                  providers.MediaInputPolicy
+	NativeDeferredToolDiscovery bool
+}
+
 // CanCompactWithBudget reports whether CompactWithBudget can replace at least
 // one real conversation message with a summary. It intentionally mirrors the
 // production boundary selection so callers can skip no-op auto-compact passes
@@ -223,6 +234,59 @@ func CompactWithBudgetAndOptions(ctx context.Context, messages []providers.ChatM
 	}
 	compacted = append(compacted, providers.CloneChatMessages(toKeep)...)
 	return compacted, nil
+}
+
+// CompactWithNativeOrSummary prefers a provider-native checkpoint when the
+// active client exposes that capability. Unsupported and exhausted transient
+// failures fall back to the portable text summary; cancellation, authentication,
+// and quota failures are returned without another provider request.
+func CompactWithNativeOrSummary(ctx context.Context, messages []providers.ChatMessage, client providers.Client, model string, budget Budget, options NativeOptions) ([]providers.ChatMessage, error) {
+	native, ok := client.(providers.NativeCompactor)
+	if !ok {
+		return CompactWithBudgetAndOptions(ctx, messages, client, model, budget, options.ProviderOptions)
+	}
+	req := providers.ChatRequest{
+		Model:                       model,
+		Provider:                    options.Provider,
+		Messages:                    messages,
+		Tools:                       options.Tools,
+		Temperature:                 options.Temperature,
+		ProviderOptions:             options.ProviderOptions,
+		MediaInput:                  options.MediaInput,
+		NativeDeferredToolDiscovery: options.NativeDeferredToolDiscovery,
+		Operation:                   providers.EnsureInferenceOperation(providers.InferenceOperation{}, providers.InferenceOperationCompaction, providers.InferenceProfileContinuationCritical),
+	}
+	var err error
+	req, err = providers.EnsureInferenceExecutionContext(ctx, req, providers.InferenceOperationCompaction, providers.InferenceProfileContinuationCritical)
+	if err != nil {
+		return messages, err
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		result, nativeErr := native.NativeCompact(ctx, req)
+		if nativeErr == nil {
+			if len(result.Replacement) == 0 {
+				return messages, errors.New("native compaction returned empty replacement history")
+			}
+			return result.Replacement, nil
+		}
+		err = nativeErr
+		if errors.Is(err, providers.ErrNativeCompactionUnavailable) {
+			break
+		}
+		if ctx.Err() != nil {
+			return messages, ctx.Err()
+		}
+		failure := providers.NormalizeFailure(err)
+		switch failure.Category {
+		case providers.FailureAuthentication, providers.FailureQuota, providers.FailureCanceled:
+			return messages, err
+		}
+		if !providers.IsRetryable(err) {
+			break
+		}
+	}
+	providers.DebugLogf("native compaction unavailable after attempt, using portable summary: %v", err)
+	return CompactWithBudgetAndOptions(ctx, messages, client, model, budget, options.ProviderOptions)
 }
 
 type compactionPlan struct {

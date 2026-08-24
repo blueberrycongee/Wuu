@@ -27,6 +27,7 @@ func PrepareMessagesForProviderRequest(provider, model string, msgs []ChatMessag
 // downstream validation sees the same message shape the provider will see.
 // Auto and supported kinds pass through unchanged.
 func PrepareMessagesForProviderRequestWithPolicy(provider, model string, msgs []ChatMessage, policy MediaInputPolicy) ([]ChatMessage, error) {
+	msgs = ResolveProviderHistory(msgs, provider, "")
 	msgs = ProjectMediaForPolicy(msgs, policy)
 	repaired, err := RepairAndValidateToolCallHistory(msgs)
 	if err != nil {
@@ -38,6 +39,31 @@ func PrepareMessagesForProviderRequestWithPolicy(provider, model string, msgs []
 		return nil, fmt.Errorf("invalid message sequence after model compatibility: %w", err)
 	}
 	return compatible, nil
+}
+
+// ResolveProviderHistory expands the portable fallback behind opaque native
+// checkpoints that are incompatible with the active provider state scope.
+// Empty scope means the caller can only enforce provider provenance.
+func ResolveProviderHistory(msgs []ChatMessage, provider, scope string) []ChatMessage {
+	provider = strings.TrimSpace(provider)
+	scope = strings.TrimSpace(scope)
+	out := make([]ChatMessage, 0, len(msgs))
+	for _, msg := range msgs {
+		resolved := false
+		for _, item := range msg.ProviderItems {
+			providerMismatch := item.Provider != "" && strings.TrimSpace(item.Provider) != provider
+			scopeMismatch := scope != "" && item.Scope != "" && strings.TrimSpace(item.Scope) != scope
+			if (providerMismatch || scopeMismatch) && len(item.Fallback) > 0 {
+				out = append(out, CloneChatMessages(item.Fallback)...)
+				resolved = true
+				break
+			}
+		}
+		if !resolved {
+			out = append(out, CloneChatMessage(msg))
+		}
+	}
+	return out
 }
 
 // ApplyModelMessageCompatibility mirrors the request-only message transforms

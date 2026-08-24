@@ -16,6 +16,13 @@ type ToolExecutor interface {
 	Execute(ctx context.Context, call providers.ToolCall) (string, error)
 }
 
+func toolDefinitions(executor ToolExecutor) []providers.ToolDefinition {
+	if executor == nil {
+		return nil
+	}
+	return executor.Definitions()
+}
+
 type RichToolExecutor interface {
 	ExecuteResult(ctx context.Context, call providers.ToolCall) (toolresult.Result, error)
 }
@@ -198,7 +205,13 @@ func (r *Runner) RunWithUsage(ctx context.Context, prompt string, onUsage func(i
 			if budgetErr != nil {
 				return messages, budgetErr
 			}
-			return compact.CompactWithBudgetAndOptions(ctx, messages, r.Client, r.Model, budget, r.ProviderOptions)
+			return compact.CompactWithNativeOrSummary(ctx, messages, r.Client, r.Model, budget, compact.NativeOptions{
+				Provider:                    r.ProviderName,
+				Tools:                       toolDefinitions(r.Tools),
+				Temperature:                 r.Temperature,
+				ProviderOptions:             r.ProviderOptions,
+				NativeDeferredToolDiscovery: r.NativeDeferredToolDiscovery,
+			})
 		},
 	}
 

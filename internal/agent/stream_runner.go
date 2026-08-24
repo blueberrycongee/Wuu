@@ -477,7 +477,14 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 			if budgetErr != nil {
 				return messages, budgetErr
 			}
-			return compact.CompactWithBudgetAndOptions(ctx, messages, client, requestModel, budget, r.ProviderOptions)
+			return compact.CompactWithNativeOrSummary(ctx, messages, client, requestModel, budget, compact.NativeOptions{
+				Provider:                    r.ProviderName,
+				Tools:                       toolDefinitions(tools),
+				Temperature:                 r.Temperature,
+				ProviderOptions:             r.ProviderOptions,
+				MediaInput:                  r.MediaInput,
+				NativeDeferredToolDiscovery: r.NativeDeferredToolDiscovery,
+			})
 		},
 		CompactionRegistry: r.CompactionRegistry,
 		// Forward each tool result through the streaming callback so

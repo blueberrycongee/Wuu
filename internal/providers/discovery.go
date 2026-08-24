@@ -126,7 +126,7 @@ func CloneChatMessage(msg ChatMessage) ChatMessage {
 	msg.Images = append([]InputImage(nil), msg.Images...)
 	msg.Files = append([]InputFile(nil), msg.Files...)
 	msg.ReasoningBlocks = append([]ReasoningBlock(nil), msg.ReasoningBlocks...)
-	msg.ProviderItems = append([]ProviderItem(nil), msg.ProviderItems...)
+	msg.ProviderItems = cloneProviderItems(msg.ProviderItems)
 	msg.ToolCalls = CloneToolCalls(msg.ToolCalls)
 	msg.DiscoveredTools = CloneLoadableToolDefinitions(msg.DiscoveredTools)
 	if msg.ToolResult != nil {
@@ -134,6 +134,17 @@ func CloneChatMessage(msg ChatMessage) ChatMessage {
 		msg.ToolResult = &result
 	}
 	return msg
+}
+
+func cloneProviderItems(items []ProviderItem) []ProviderItem {
+	if len(items) == 0 {
+		return nil
+	}
+	out := append([]ProviderItem(nil), items...)
+	for i := range out {
+		out[i].Fallback = CloneChatMessages(items[i].Fallback)
+	}
+	return out
 }
 
 func CloneToolCalls(calls []ToolCall) []ToolCall {

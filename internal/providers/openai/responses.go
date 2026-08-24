@@ -185,7 +185,8 @@ func (c *Client) buildResponsesRequest(req providers.ChatRequest, stream bool) (
 		return responsesRequest{}, errors.New("messages is required")
 	}
 
-	prepared, err := providers.PrepareMessagesForProviderRequestWithPolicy(req.Provider, req.Model, req.Messages, req.MediaInput)
+	resolved := providers.ResolveProviderHistory(req.Messages, req.Provider, req.ProviderStateScope)
+	prepared, err := providers.PrepareMessagesForProviderRequestWithPolicy(req.Provider, req.Model, resolved, req.MediaInput)
 	if err != nil {
 		return responsesRequest{}, err
 	}

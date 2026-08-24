@@ -189,10 +189,20 @@ func (c *Client) NativeCompact(ctx context.Context, req providers.ChatRequest) (
 	}
 	req = codexRequest(req)
 	req.ProviderStateScope = codexNativeCompactionScope(c.baseURL, req.Model, creds)
+	req.Messages = providers.ResolveProviderHistory(req.Messages, req.Provider, req.ProviderStateScope)
 	item, usage, err := client.CompactResponsesV2(ctx, req)
+	if err != nil && providers.IsAuthError(err) && creds.refreshable {
+		client, creds, err = c.openAIClient(ctx, true)
+		if err == nil {
+			req.ProviderStateScope = codexNativeCompactionScope(c.baseURL, req.Model, creds)
+			req.Messages = providers.ResolveProviderHistory(req.Messages, req.Provider, req.ProviderStateScope)
+			item, usage, err = client.CompactResponsesV2(ctx, req)
+		}
+	}
 	if err != nil {
 		return providers.NativeCompactionResult{}, err
 	}
+	item.Fallback = providers.CloneChatMessages(req.Messages)
 	return providers.NativeCompactionResult{
 		Replacement: []providers.ChatMessage{{
 			Role:          "assistant",

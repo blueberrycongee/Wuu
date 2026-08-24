@@ -166,6 +166,9 @@ type ProviderItem struct {
 	Data     string `json:"data"`
 	Provider string `json:"provider"`
 	Scope    string `json:"scope,omitempty"`
+	// Fallback retains the portable pre-compaction history for a future route
+	// whose provider, credential scope, or model cannot replay Data.
+	Fallback []ChatMessage `json:"fallback,omitempty"`
 }
 
 // MessagePhase classifies assistant text when a provider exposes the same
