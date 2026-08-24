@@ -226,7 +226,7 @@ describe("GitService worktree roots", () => {
 
     const frontendRoot = service.worktreeRoot(frontend);
     expect(service.worktreeRoot(backend)).toBe(frontendRoot);
-    expect(realpathSync(frontendRoot)).toBe(realpathSync(root));
+    expect(realpathSync.native(frontendRoot)).toBe(realpathSync.native(root));
   });
 
   it("treats a non-Git running cwd as unresolved", () => {
