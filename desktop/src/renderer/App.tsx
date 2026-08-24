@@ -985,12 +985,6 @@ export function App(): JSX.Element {
   const cachedThreadPaneHistoryRef = useRef<string[]>([]);
   const cachedConversationPaneThreadsRef = useRef(new Map<string, Thread>());
   const draftSessionTabCounterRef = useRef(0);
-  const draftThreadStartsRef = useRef(
-    new Map<
-      string,
-      { selectionKey: string; promise: Promise<Thread | undefined> }
-    >(),
-  );
   const currentSessionTab = activeSessionTab(state);
   const activeChannelRooms = useMemo(
     () => [
@@ -3055,96 +3049,6 @@ export function App(): JSX.Element {
     );
   }
 
-  function materializeDraftThread(
-    tab: Extract<SessionTab, { kind: "draft" }>,
-  ): Promise<Thread | undefined> {
-    const selectedEngine =
-      draftEngine || engineInventory?.settings?.default_engine || "wuu";
-    const externalRuntime = defaultEngineRuntimeSelection(
-      engineInventory?.engines.find((engine) => engine.id === selectedEngine),
-    );
-    const selectionKey = JSON.stringify({
-      engine: selectedEngine,
-      model: draftEngineRuntime.model || externalRuntime.model,
-      effort: draftEngineRuntime.effort || externalRuntime.effort,
-      permissionMode: draftPermissionMode,
-    });
-    const existing = draftThreadStartsRef.current.get(tab.id);
-    if (existing?.selectionKey === selectionKey) {
-      return existing.promise;
-    }
-    if (existing) {
-      draftThreadStartsRef.current.delete(tab.id);
-      void existing.promise.then((thread) =>
-        thread ? window.wuu.deleteThread(thread.id).catch(() => undefined) : undefined,
-      );
-    }
-    const pending = window.wuu
-      .startThread({
-        ...(draftEngine ? { engine: draftEngine } : {}),
-        ...(selectedEngine !== "wuu"
-          ? {
-              model: draftEngineRuntime.model || externalRuntime.model,
-              effort: draftEngineRuntime.effort || externalRuntime.effort,
-              permission_mode: draftPermissionMode || "unconfined",
-            }
-          : {}),
-      })
-      .then((result) => {
-        return requireThread(
-          result,
-          "thread/start did not return a thread",
-        );
-      })
-      .catch(() => {
-        if (draftThreadStartsRef.current.get(tab.id)?.promise === pending) {
-          draftThreadStartsRef.current.delete(tab.id);
-        }
-        return undefined;
-      });
-    draftThreadStartsRef.current.set(tab.id, { selectionKey, promise: pending });
-    return pending;
-  }
-
-  useEffect(() => {
-    const current = appStateRef.current;
-    const tab = activeSessionTab(current);
-    if (!current.initialized || !tab || tab.kind !== "draft") {
-      return;
-    }
-    void materializeDraftThread(tab);
-  }, [
-    state.activeSessionTabID,
-    state.initialized,
-    draftEngine,
-    draftEngineRuntime.effort,
-    draftEngineRuntime.model,
-    draftPermissionMode,
-    engineInventory,
-  ]);
-
-  useEffect(() => {
-    const liveDraftIDs = new Set(
-      state.sessionTabs
-        .filter(
-          (tab): tab is Extract<SessionTab, { kind: "draft" }> =>
-            tab.kind === "draft",
-        )
-        .map((tab) => tab.id),
-    );
-    for (const draftID of draftThreadStartsRef.current.keys()) {
-      if (!liveDraftIDs.has(draftID)) {
-        const prepared = draftThreadStartsRef.current.get(draftID);
-        draftThreadStartsRef.current.delete(draftID);
-        if (prepared) {
-          void prepared.promise.then((thread) =>
-            thread ? window.wuu.deleteThread(thread.id).catch(() => undefined) : undefined,
-          );
-        }
-      }
-    }
-  }, [state.sessionTabs]);
-
   const {
     selectProjectForNewThread,
     startNewThreadForProject,
@@ -4068,9 +3972,6 @@ export function App(): JSX.Element {
     }));
     let optimisticTurnID: string | undefined;
     let optimisticThreadID: string | undefined;
-    const activeDraftTab = !targetThread
-      ? activeSessionTab(currentState)
-      : undefined;
     // Render a tab-scoped optimistic turn before a new thread exists. Once
     // thread/start returns, the same turn moves into normal thread state.
     const optimisticTurn = createOptimisticTurn(message, sendClickedAtMs);
@@ -4081,16 +3982,8 @@ export function App(): JSX.Element {
       });
     }
     try {
-      const prestartedThread =
-        activeDraftTab?.kind === "draft"
-          ? await materializeDraftThread(activeDraftTab)
-          : undefined;
-      if (prestartedThread && activeDraftTab?.kind === "draft") {
-        draftThreadStartsRef.current.delete(activeDraftTab.id);
-      }
       const thread =
         targetThread ??
-        prestartedThread ??
         requireThread(
           await window.wuu.startThread({
             ...(draftEngine ? { engine: draftEngine } : {}),
