@@ -35,7 +35,10 @@ function committedMatrix(): SurfaceMatrix {
 function baselineEntries(): Set<string> {
   return new Set(
     readFileSync(resolve(stylesDir, "themeCoverage.baseline.txt"), "utf8")
-      .split("\n")
+      // The baseline is checked out with CRLF line endings on Windows; split
+      // on either newline style so entries never carry a trailing carriage
+      // return into the set comparison.
+      .split(/\r?\n/)
       .filter((line) => line.length > 0 && !line.startsWith("#")),
   );
 }

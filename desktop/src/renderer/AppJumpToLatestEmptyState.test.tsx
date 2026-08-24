@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   InitializeResult,
   ServerEvent,
+  Thread,
   WuuDesktopApi,
 } from "../shared/protocol";
 
@@ -46,6 +47,24 @@ let root: Root | null = null;
 let serverEventHandlers: Array<(event: ServerEvent) => void> = [];
 
 const workspace = "/tmp/wuu-jump-to-latest-empty-state-test";
+
+function draftThread(): Thread {
+  return {
+    id: "draft-thread-1",
+    preview: "New conversation",
+    title: "",
+    model_provider: "fake",
+    model: "fake-model",
+    cwd: workspace,
+    workspace_kind: "scratch",
+    status: "idle",
+    pinned: false,
+    archived: false,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    turns: [],
+  };
+}
 
 function initialized(): InitializeResult {
   return {
@@ -103,6 +122,8 @@ function installWuuApi(): void {
     listThreads: vi.fn().mockResolvedValue({ threads: [] }),
     listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
     resumeThread: vi.fn().mockResolvedValue({ thread: undefined }),
+    startThread: vi.fn().mockResolvedValue({ thread: draftThread() }),
+    deleteThread: vi.fn().mockResolvedValue(undefined),
     getActiveGoalSummary: vi.fn().mockResolvedValue(null),
     gitStatus: vi.fn().mockResolvedValue({
       is_repo: false,

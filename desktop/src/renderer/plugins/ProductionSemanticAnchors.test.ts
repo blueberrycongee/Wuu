@@ -224,14 +224,23 @@ describe("production semantic anchors", () => {
 
   it("bridges public workspace terminal variables into xterm", () => {
     const source = readFileSync(resolve(RENDERER_ROOT, "WorkspaceTerminalPanel.tsx"), "utf8");
-    for (const variable of [
-      "--wuu-workspace-terminal-background",
-      "--wuu-workspace-terminal-foreground",
-      "--wuu-workspace-terminal-cursor",
-      "--wuu-workspace-terminal-selection",
+    expect(source, "font-family xterm bridge").toContain(
       "--wuu-workspace-terminal-font-family",
+    );
+    // The xterm palette derives from the public --wuu-color-* semantic
+    // contract so bundled and third-party themes affect the terminal without
+    // terminal-specific API.
+    for (const variable of [
+      "--wuu-color-canvas",
+      "--wuu-color-text",
+      "--wuu-color-text-muted",
+      "--wuu-color-info",
+      "--wuu-color-success",
+      "--wuu-color-danger",
+      "--wuu-color-warning",
+      "--wuu-color-live-highlight",
     ]) {
-      expect(source, `${variable} xterm bridge`).toContain(variable);
+      expect(source, `${variable} xterm theme bridge`).toContain(variable);
     }
   });
 

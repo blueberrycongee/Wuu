@@ -381,10 +381,12 @@ export function ProjectGroup({
         onContextMenu={
           !onRemoveProject && !onRelocateProject && !onToggleProjectPinned
             ? undefined
-            : (event) => {
-                event.preventDefault();
-                setContextMenu({ x: event.clientX, y: event.clientY });
-              }
+            : isScratchPseudo && !onToggleProjectPinned
+              ? undefined
+              : (event) => {
+                  event.preventDefault();
+                  setContextMenu({ x: event.clientX, y: event.clientY });
+                }
         }
         newItemButton={
           <button

@@ -84,7 +84,7 @@ describe("production UI layer ownership", () => {
   it("limits direct React portals to specialized rendering boundaries", () => {
     const owners = rendererSources(RENDERER_ROOT)
       .filter((path) => readFileSync(path, "utf8").includes("createPortal"))
-      .map((path) => relative(RENDERER_ROOT, path))
+      .map((path) => relative(RENDERER_ROOT, path).replace(/\\/g, "/"))
       .sort();
 
     expect(owners).toEqual([...INTENTIONAL_DIRECT_PORTAL_OWNERS].sort());

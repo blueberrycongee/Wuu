@@ -140,6 +140,10 @@ function installWuuApi(threads: Thread[] = []): void {
       const thread = threads.find((item) => item.id === threadID) ?? threads[0];
       return Promise.resolve({ thread });
     }),
+    startThread: vi.fn().mockResolvedValue({
+      thread: threadFixture("draft-thread", "New conversation", "2026-01-01T00:00:00Z"),
+    }),
+    deleteThread: vi.fn().mockResolvedValue(undefined),
     getActiveGoalSummary: vi.fn().mockResolvedValue(null),
     gitStatus: vi.fn().mockResolvedValue({
       is_repo: false,
