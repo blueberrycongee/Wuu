@@ -520,7 +520,7 @@
     {
       "name": "unanchored:turns.css",
       "synthetic": true,
-      "rows": 394
+      "rows": 401
     },
     {
       "name": "unanchored:workbench.css",
@@ -2013,6 +2013,10 @@
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".context-composition-state, .instruction-files-state","prop":"color","variable":"--ink-tertiary","status":"bridged","tokens":["--wuu-color-canvas","--wuu-color-text-muted"]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".context-composition-state.error, .instruction-files-state.error","prop":"color","variable":"--danger","status":"bridged","tokens":["--wuu-color-danger"]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".context-composition-state.error, .instruction-files-state.error","prop":"color","variable":"--instruction-files-error-fallback","status":"bridged","tokens":["--wuu-color-danger"]},
+    {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".conversation-turn-history-loader","prop":"background","variable":"--surface-1","status":"bridged","tokens":["--wuu-color-surface"]},
+    {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".conversation-turn-history-loader","prop":"border","variable":"--hairline-soft","status":"bridged","tokens":["--wuu-border-subtle"]},
+    {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".conversation-turn-history-loader","prop":"color","variable":"--ink-muted","status":"bridged","tokens":["--wuu-color-canvas","--wuu-color-text-muted"]},
+    {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".conversation-turn-history-loader:focus-visible","prop":"outline","variable":"--focus-ring","status":"bridged","tokens":["--wuu-color-focus","--wuu-color-info"]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".empty-home","prop":"background","variable":"--paper","status":"bridged","tokens":["--wuu-color-canvas"]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".empty-home","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:turns.css","state":"default","file":"turns.css","selector":".empty-home h2","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
@@ -2284,6 +2288,9 @@
     {"anchor":"unanchored:turns.css","state":"hover","file":"turns.css","selector":".activity-toggle:hover","prop":"color","variable":"--activity-toggle-hover-color-alt","status":"bridged","tokens":["--wuu-color-text-muted"]},
     {"anchor":"unanchored:turns.css","state":"hover","file":"turns.css","selector":".artifact-preview-actions button:hover","prop":"background","variable":"--surface-2","status":"bridged","tokens":["--wuu-color-surface-muted"]},
     {"anchor":"unanchored:turns.css","state":"hover","file":"turns.css","selector":".artifact-preview-actions button:hover","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
+    {"anchor":"unanchored:turns.css","state":"hover","file":"turns.css","selector":".conversation-turn-history-loader:hover, .conversation-turn-history-loader:focus-visible","prop":"background","variable":"--surface-2","status":"bridged","tokens":["--wuu-color-surface-muted"]},
+    {"anchor":"unanchored:turns.css","state":"hover","file":"turns.css","selector":".conversation-turn-history-loader:hover, .conversation-turn-history-loader:focus-visible","prop":"border-color","variable":"--hairline","status":"bridged","tokens":["--wuu-color-border-subtle"]},
+    {"anchor":"unanchored:turns.css","state":"hover","file":"turns.css","selector":".conversation-turn-history-loader:hover, .conversation-turn-history-loader:focus-visible","prop":"color","variable":"--ink","status":"bridged","tokens":["--wuu-color-text"]},
     {"anchor":"unanchored:turns.css","state":"hover","file":"turns.css","selector":".empty-home-actions button:hover","prop":"background","variable":"--surface-1","status":"bridged","tokens":["--wuu-color-surface"]},
     {"anchor":"unanchored:turns.css","state":"hover","file":"turns.css","selector":".empty-home-actions button:hover","prop":"border-color","variable":"--empty-home-action-border-hover","status":"bridged","tokens":["--wuu-border-strong"]},
     {"anchor":"unanchored:turns.css","state":"hover","file":"turns.css","selector":".fork-worktree-summary:hover, .fork-worktree-summary:focus-visible","prop":"background","variable":"--ink-overlay-4","status":"unbridged","tokens":[]},
