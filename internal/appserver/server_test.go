@@ -140,6 +140,20 @@ type fakeClient struct {
 	onChat    func(call int, req providers.ChatRequest)
 }
 
+type prewarmRecordingClient struct {
+	*fakeClient
+	prewarmed chan string
+}
+
+func (c *prewarmRecordingClient) StreamChat(ctx context.Context, req providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	return providers.AdaptStreamClient(c.fakeClient).StreamChat(ctx, req)
+}
+
+func (c *prewarmRecordingClient) PrewarmSession(_ context.Context, sessionID string) error {
+	c.prewarmed <- sessionID
+	return nil
+}
+
 func providersResponse(content string) providers.ChatResponse {
 	return providers.ChatResponse{
 		Content:      content,
@@ -3715,6 +3729,42 @@ func TestServerProcessListRedactsSensitiveCommandAndError(t *testing.T) {
 	if strings.Contains(summary.LastError, "super-secret-token") || !strings.Contains(summary.LastError, "[REDACTED]") {
 		t.Fatalf("process error was not redacted: %+v", summary)
 	}
+}
+
+func TestServerThreadResumeSchedulesProviderPrewarm(t *testing.T) {
+	baseClient := &fakeClient{}
+	rt := newTestRuntime(t, baseClient)
+	prewarmer := &prewarmRecordingClient{
+		fakeClient: baseClient,
+		prewarmed:  make(chan string, 4),
+	}
+	rt.StreamRunner.Client = prewarmer
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	defer srv.Close()
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"start","method":"thread/start"}`)); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "start")["result"]).Thread.ID
+	waitForPrewarm := func(stage string) {
+		t.Helper()
+		select {
+		case got := <-prewarmer.prewarmed:
+			if got != threadID {
+				t.Fatalf("%s prewarm session = %q, want %q", stage, got, threadID)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s did not schedule provider prewarm", stage)
+		}
+	}
+	waitForPrewarm("start")
+
+	resume := fmt.Sprintf(`{"id":"resume","method":"thread/resume","params":{"session_id":%q}}`, threadID)
+	if err := srv.handleLine(context.Background(), []byte(resume)); err != nil {
+		t.Fatalf("thread/resume: %v", err)
+	}
+	waitForPrewarm("resume")
 }
 
 func TestServerThreadStartEphemeralDoesNotPersistSession(t *testing.T) {

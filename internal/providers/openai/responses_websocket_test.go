@@ -294,6 +294,62 @@ func TestResponsesWebSocketFallbackTTLClassification(t *testing.T) {
 	}
 }
 
+func TestPrewarmResponsesWebSocket_FailedDialPinsFirstRequestToSSE(t *testing.T) {
+	var websocketAttempts atomic.Int32
+	var sseRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+			websocketAttempts.Add(1)
+			http.Error(w, "websocket unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		sseRequests.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"response.completed","response":{"id":"resp_sse","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}` + "\n\n"))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{
+		BaseURL:                 server.URL,
+		WireAPI:                 "responses",
+		APIKey:                  "test-key",
+		ResponsesTransport:      providers.StreamTransportAuto,
+		ResponsesWebSocketCache: NewResponsesWebSocketCache(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	const sessionID = "thread-failed-prewarm"
+	if err := client.PrewarmResponsesWebSocket(context.Background(), sessionID); err == nil {
+		t.Fatal("prewarm should report the failed websocket upgrade")
+	}
+	ch, err := client.StreamChat(context.Background(), providers.ChatRequest{
+		Model:     "gpt-test",
+		Messages:  []providers.ChatMessage{{Role: "user", Content: "hello"}},
+		CacheHint: &providers.CacheHint{PromptCacheKey: sessionID},
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	states, err := drainStreamProviderStates(ch)
+	if err != nil {
+		t.Fatalf("drain SSE fallback: %v", err)
+	}
+
+	if got := websocketAttempts.Load(); got != 1 {
+		t.Fatalf("websocket attempts = %d, want only the prewarm attempt", got)
+	}
+	if got := sseRequests.Load(); got != 1 {
+		t.Fatalf("SSE requests = %d, want 1", got)
+	}
+	if len(states) != 1 || states[0].Transport != "http" ||
+		!states[0].FallbackActive || states[0].FallbackReason != "websocket_setup_failed" ||
+		states[0].FallbackPinStatus != responsesWebSocketFallbackPinReused {
+		t.Fatalf("unexpected fallback provider state: %+v", states)
+	}
+}
+
 func TestResponsesStreamChatWebSocket_CanceledSetupDoesNotPinFallback(t *testing.T) {
 	requestStarted := make(chan struct{}, 1)
 	var requests atomic.Int32

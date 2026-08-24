@@ -157,8 +157,8 @@ const threadPrewarmTimeout = 30 * time.Second
 // startThreadPrewarm moves provider auth and transport setup into the gap
 // between opening a blank thread and sending its first message. It deliberately
 // avoids constructing the thread runtime; that would start tool/worker
-// lifecycle state just to warm a connection. A failed prewarm is retried by the
-// normal request path.
+// lifecycle state just to warm a connection. A failed transport prewarm leaves
+// a short-lived fallback result for the normal request path.
 func (s *Server) startThreadPrewarm(th *threadState) {
 	if s == nil || th == nil {
 		return
@@ -242,6 +242,9 @@ func (s *Server) writeThreadResumeResult(req Request, thread Thread) error {
 	held, err := s.loadHeldUserTurns(thread.ID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
+	}
+	if th := s.thread(thread.ID); th != nil {
+		s.startThreadPrewarm(th)
 	}
 	heldMessages := heldUserMessageSummaries(thread.ID, held)
 	result := ThreadResumeResult{Thread: thread, HeldUserMessages: heldMessages}

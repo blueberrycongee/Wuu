@@ -198,6 +198,13 @@ func (c *Client) PrewarmResponsesWebSocket(ctx context.Context, sessionID string
 	}
 	close(prewarmDone)
 	if dialErr != nil {
+		// Prewarm is the session's first WebSocket setup attempt. Preserve its
+		// result so the first real request does not repeat the same failed dial
+		// before falling back to SSE. Caller cancellation is different: it aborts
+		// prewarm without making a claim about transport availability.
+		if ctx.Err() == nil {
+			c.responsesWebSocketActivateFallbackLocked(session, "websocket_setup_failed", dialErr)
+		}
 		session.mu.Unlock()
 		return dialErr
 	}
