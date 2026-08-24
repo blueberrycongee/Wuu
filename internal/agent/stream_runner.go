@@ -44,9 +44,10 @@ type StreamRunner struct {
 	// request telemetry to explain the stable prompt without exposing text.
 	SystemPromptSections []SystemPromptSectionInfo
 	// CompactionRegistry resolves a generation-owned compactor for each run.
-	CompactionRegistry *CompactionRegistry
-	MaxSteps           int
-	Temperature        float64
+	CompactionRegistry  *CompactionRegistry
+	CompactionNoteStore CompactionNoteStore
+	MaxSteps            int
+	Temperature         float64
 	// MediaInput is the admission policy for user-supplied media, resolved
 	// from the session's model capabilities. Zero value means fully
 	// unprobed (auto), preserving legacy pass-through behavior.
@@ -189,6 +190,7 @@ type StreamRunner struct {
 
 	compactMu                sync.Mutex
 	proactiveCompactFailures int
+	noteMu                   sync.Mutex
 
 	sysPromptMu sync.RWMutex
 }
@@ -486,7 +488,8 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 				NativeDeferredToolDiscovery: r.NativeDeferredToolDiscovery,
 			})
 		},
-		CompactionRegistry: r.CompactionRegistry,
+		CompactionRegistry:  r.CompactionRegistry,
+		CompactionNoteStore: r.CompactionNoteStore,
 		// Forward each tool result through the streaming callback so
 		// clients can render tool output live (the loop itself only
 		// records the tool message into the history).
@@ -573,6 +576,10 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		PromptCacheKey:              r.PromptCacheKey,
 		RetainedRequestContext:      r.takeRetainedRequestContext(),
 	}
+	cfg.ForkCompactionNote = r.compactionNoteFork(cfg.RetainedRequestContext)
+	cfg.OnCompactionNote = func(status string, noteErr error) {
+		emitCompactionNoteEvent(effectiveOnEvent, status, noteErr)
+	}
 	if policy.DisableCompaction {
 		cfg.Compact = nil
 		cfg.CompactionRegistry = nil
@@ -598,6 +605,26 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 	if res.HistoryRewritten {
 		finalHistory = providers.CloneChatMessages(res.NewMessages)
 	}
+	if !r.CompactOnly {
+		if usage, noteErr := r.prepareCompactionNote(ctx, finalHistory, r.compactionNoteFork(res.RetainedRequestContext)); noteErr != nil {
+			if !errors.Is(noteErr, ErrCompactionNoteNotDue) {
+				providers.DebugLogf("context note update failed: %v", noteErr)
+				emitCompactionNoteEvent(effectiveOnEvent, "failed", noteErr)
+			}
+		} else if usage != nil {
+			emitCompactionNoteEvent(effectiveOnEvent, "updated", nil)
+			res.InputTokens += usage.InputTokens
+			res.OutputTokens += usage.OutputTokens
+			res.CacheCreationTokens += usage.CacheCreationTokens
+			res.CacheReadTokens += usage.CacheReadTokens
+			if r.OnUsage != nil {
+				r.OnUsage(usage.InputTokens, usage.OutputTokens)
+			}
+			if r.OnTokenUsage != nil {
+				r.OnTokenUsage(*usage)
+			}
+		}
+	}
 	r.commitUsageTrackerForContract(runUsage, finalHistory, runUsageContract)
 	if r.AfterTurn != nil {
 		fullHistory := make([]providers.ChatMessage, 0, len(history)+len(res.NewMessages))
@@ -607,6 +634,28 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		r.AfterTurn(ctx, r, fullHistory, res)
 	}
 	return res, nil
+}
+
+func emitCompactionNoteEvent(onEvent StreamCallback, status string, noteErr error) {
+	if onEvent == nil {
+		return
+	}
+	content := "Context note used."
+	switch status {
+	case "updated":
+		content = "Context note updated."
+	case "forced":
+		content = "Forced context note generated."
+	case "failed":
+		content = "Context note failed."
+		if noteErr != nil {
+			content += " " + noteErr.Error()
+		}
+	}
+	onEvent(providers.StreamEvent{
+		Type: providers.EventCompact, Content: content,
+		CompactReason: "context_note", CompactPhase: providers.CompactPhaseCompleted,
+	})
 }
 
 func (r *StreamRunner) pendingToolResultMessages(ctx context.Context, history []providers.ChatMessage) ([]providers.ChatMessage, error) {
@@ -763,6 +812,109 @@ func (r *StreamRunner) storeRetainedRequestContext(state *RetainedRequestContext
 	r.retainedContextMu.Lock()
 	defer r.retainedContextMu.Unlock()
 	r.retainedRequestContext = state
+}
+
+func (r *StreamRunner) prepareCompactionNote(ctx context.Context, history []providers.ChatMessage, fork CompactionNoteFork) (*providers.TokenUsage, error) {
+	if r == nil || r.CompactionRegistry == nil || r.CompactionNoteStore == nil {
+		return nil, ErrCompactionNoteNotDue
+	}
+	provider, ok := r.CompactionRegistry.Resolve(nil).(ForkingCompactionProvider)
+	if !ok || provider == nil || !provider.CompactionNotesEnabled() {
+		return nil, ErrCompactionNoteNotDue
+	}
+	r.noteMu.Lock()
+	defer r.noteMu.Unlock()
+	_, usage, err := generateCompactionNote(ctx, provider, r.CompactionNoteStore, fork, r.requestModel(), filterDurableHistory(history), false)
+	if errors.Is(err, ErrCompactionNoteUnsupported) {
+		return nil, ErrCompactionNoteNotDue
+	}
+	return usage, err
+}
+
+func (r *StreamRunner) requestModel() string {
+	model := strings.TrimSpace(r.APIModel)
+	if model == "" {
+		model = strings.TrimSpace(r.Model)
+	}
+	return model
+}
+
+// compactionNoteFork clones the main request shape, including its complete tool
+// surface, and adds only a hidden tail instruction. Tool calls in the response
+// are rejected and never executed.
+func (r *StreamRunner) compactionNoteFork(retained *RetainedRequestContextState) CompactionNoteFork {
+	return func(ctx context.Context, history []providers.ChatMessage, plan CompactionNotePlan) (CompactionNoteForkResult, error) {
+		client, _ := r.providerConnectionSnapshot()
+		if client == nil {
+			return CompactionNoteForkResult{}, errors.New("context note client is unavailable")
+		}
+		messages := providers.CloneChatMessages(filterDurableHistory(history))
+		if retained != nil && retained.validFor(messages) {
+			messages = spliceRetainedContext(messages, retained.Messages)
+		}
+		messages = append(messages, providers.ChatMessage{
+			Role: "user", Content: strings.TrimSpace(plan.Prompt), Hidden: true, ReadOnly: true,
+			Origin: "internal", Cause: "compaction_note_fork",
+		})
+		req := providers.ChatRequest{
+			Provider:                    r.ProviderName,
+			Model:                       r.requestModel(),
+			Messages:                    messages,
+			Tools:                       toolDefinitions(r.Tools),
+			Temperature:                 r.Temperature,
+			Effort:                      r.Effort,
+			ProviderOptions:             provideroptions.Clone(r.ProviderOptions),
+			NativeDeferredToolDiscovery: r.NativeDeferredToolDiscovery,
+			MediaInput:                  r.MediaInput,
+		}
+		if plan.MaxBytes > 0 {
+			req.MaxTokens = max(1024, plan.MaxBytes/3)
+		}
+		if r.BeforeRequest != nil {
+			forceBefore := strings.TrimSpace(req.ForceToolName)
+			forceAvailableBefore := requestHasTool(req.Tools, forceBefore)
+			if err := r.BeforeRequest(ctx, &req); err != nil {
+				return CompactionNoteForkResult{}, fmt.Errorf("transform context note request: %w", err)
+			}
+			if err := validateTransformedRequest(req, forceBefore, forceAvailableBefore); err != nil {
+				return CompactionNoteForkResult{}, err
+			}
+		}
+		cacheHint := buildCacheHint(req.Messages)
+		applyPromptCacheKeyOverride(&cacheHint, r.PromptCacheKey)
+		req.CacheHint = cacheHint
+		req.Operation = providers.EnsureInferenceOperation(req.Operation, providers.InferenceOperationCompaction, providers.InferenceProfileContinuationCritical)
+		ctx = providers.WithInferenceJournal(ctx, r.InferenceJournal)
+		resp, executed, err := providers.ExecuteChatAttempt(ctx, client, req, providers.InferenceOperationCompaction, providers.InferenceProfileContinuationCritical)
+		if err != nil {
+			if executed.Execution != nil {
+				_ = executed.Execution.Complete(providers.InferenceOutcomeFailed, providers.NormalizeFailure(err))
+			}
+			return CompactionNoteForkResult{Usage: resp.Usage}, err
+		}
+		fail := func(err error) (CompactionNoteForkResult, error) {
+			if executed.Execution != nil {
+				_ = executed.Execution.Complete(providers.InferenceOutcomeFailed, providers.NormalizeFailure(err))
+			}
+			return CompactionNoteForkResult{Usage: resp.Usage}, err
+		}
+		if len(resp.ToolCalls) != 0 {
+			return fail(errors.New("context note fork attempted to call a tool"))
+		}
+		if resp.Truncated || resp.FinishReason == providers.FinishReasonLength {
+			return fail(errors.New("context note fork output was truncated"))
+		}
+		markdown := strings.TrimSpace(resp.Content)
+		if markdown == "" {
+			return fail(errors.New("context note fork returned empty Markdown"))
+		}
+		if executed.Execution != nil {
+			if err := executed.Execution.Complete(providers.InferenceOutcomeSucceeded, providers.NormalizedFailure{}); err != nil {
+				return CompactionNoteForkResult{Usage: resp.Usage}, err
+			}
+		}
+		return CompactionNoteForkResult{Markdown: markdown, Usage: resp.Usage}, nil
+	}
 }
 
 // commitUsageTracker publishes a run-local usage snapshot as the new

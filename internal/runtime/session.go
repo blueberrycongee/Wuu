@@ -1399,6 +1399,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 	runner.PromptCacheKey = strings.TrimSpace(id)
 	runner.InferenceJournal = s.InferenceJournalForOwner(id)
 	runner.DriverCheckpointStore = sessionDriverCheckpointStore{sessDir: s.SessionDir, sessionID: id}
+	runner.CompactionNoteStore = sessionCompactionNoteStore{sessDir: s.SessionDir, sessionID: id}
 	// Exact model-input receipts have no production consumer and duplicate the
 	// cumulative conversation on every step. Keep the optional runner contract
 	// available for explicit diagnostics, but do not persist receipts by default.
@@ -1429,6 +1430,41 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 type sessionDriverCheckpointStore struct {
 	sessDir   string
 	sessionID string
+}
+
+type sessionCompactionNoteStore struct {
+	sessDir   string
+	sessionID string
+}
+
+func (store sessionCompactionNoteStore) LoadCompactionNote(ctx context.Context, providerKey string) (agent.CompactionNote, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return agent.CompactionNote{}, false, err
+	}
+	record, ok, err := session.LoadCompactionNote(store.sessDir, store.sessionID, providerKey)
+	if errors.Is(err, session.ErrSessionNotFound) {
+		return agent.CompactionNote{}, false, nil
+	}
+	if err != nil || !ok {
+		return agent.CompactionNote{}, ok, err
+	}
+	return agent.CompactionNote{
+		Markdown: record.Markdown, CoveredMessages: record.CoveredMessages, CoveredHash: record.CoveredHash,
+	}, true, nil
+}
+
+func (store sessionCompactionNoteStore) StoreCompactionNote(ctx context.Context, providerKey string, note agent.CompactionNote) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	err := session.StoreCompactionNote(store.sessDir, session.CompactionNote{
+		SessionID: store.sessionID, ProviderKey: providerKey, Markdown: note.Markdown,
+		CoveredMessages: note.CoveredMessages, CoveredHash: note.CoveredHash,
+	})
+	if errors.Is(err, session.ErrSessionNotFound) {
+		return nil
+	}
+	return err
 }
 
 type sessionModelInputReceiptStore struct {
@@ -1543,6 +1579,7 @@ func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.Too
 		DriverCheckpointStore:       base.DriverCheckpointStore,
 		ModelInputReceiptStore:      base.ModelInputReceiptStore,
 		CompactionRegistry:          base.CompactionRegistry,
+		CompactionNoteStore:         base.CompactionNoteStore,
 	}
 }
 

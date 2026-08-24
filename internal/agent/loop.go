@@ -937,6 +937,56 @@ func resolveEffectiveCompaction(cfg LoopConfig) CompactFn {
 		return fallback
 	}
 	return func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+		if forked, ok := resolved.(ForkingCompactionProvider); ok && forked.CompactionNotesEnabled() {
+			note, valid, err := loadValidCompactionNote(ctx, cfg.CompactionNoteStore, forked.CompactionKey(), messages)
+			if err != nil {
+				if cfg.OnCompactionNote != nil {
+					cfg.OnCompactionNote("failed", err)
+				}
+				return nil, fmt.Errorf("load context note: %w", err)
+			}
+			if !valid {
+				note, _, err = generateCompactionNote(
+					ctx, forked, cfg.CompactionNoteStore, cfg.ForkCompactionNote, cfg.Model, messages, true,
+				)
+				if errors.Is(err, ErrCompactionNoteUnsupported) {
+					compacted, legacyErr := resolved.Compact(ctx, cfg.Model, messages)
+					if legacyErr == nil || !errors.Is(legacyErr, ErrCompactionUnavailable) {
+						return compacted, legacyErr
+					}
+					if fallback == nil {
+						return messages, nil
+					}
+					return fallback(ctx, messages)
+				}
+				if err != nil {
+					if cfg.OnCompactionNote != nil {
+						cfg.OnCompactionNote("failed", err)
+					}
+					return nil, fmt.Errorf("forced context note: %w", err)
+				}
+				if cfg.OnCompactionNote != nil {
+					cfg.OnCompactionNote("forced", nil)
+				}
+			} else if cfg.OnCompactionNote != nil {
+				cfg.OnCompactionNote("context_note", nil)
+			}
+			replacement, err := forked.CompactWithNote(ctx, cfg.Model, messages, note)
+			if err != nil {
+				return nil, err
+			}
+			if replacement.CoveredMessages <= 0 || replacement.CoveredMessages > len(replacement.Messages) {
+				return nil, fmt.Errorf("context note replacement returned invalid coverage %d for %d messages", replacement.CoveredMessages, len(replacement.Messages))
+			}
+			note.CoveredMessages = replacement.CoveredMessages
+			note.CoveredHash = CompactionHistoryHash(replacement.Messages[:replacement.CoveredMessages])
+			if cfg.CompactionNoteStore != nil {
+				if err := cfg.CompactionNoteStore.StoreCompactionNote(ctx, forked.CompactionKey(), note); err != nil {
+					return nil, fmt.Errorf("re-anchor context note: %w", err)
+				}
+			}
+			return replacement.Messages, nil
+		}
 		compacted, err := resolved.Compact(ctx, cfg.Model, messages)
 		if err == nil || !errors.Is(err, ErrCompactionUnavailable) {
 			return compacted, err

@@ -1174,6 +1174,16 @@ func migrateSchema(db *sql.DB) error {
 			updated_at       TEXT NOT NULL,
 			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS session_compaction_notes (
+			session_id       TEXT NOT NULL,
+			provider_key     TEXT NOT NULL,
+			markdown         TEXT NOT NULL,
+			covered_messages INTEGER NOT NULL,
+			covered_hash     TEXT NOT NULL,
+			updated_at       TEXT NOT NULL,
+			PRIMARY KEY(session_id, provider_key),
+			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS session_model_input_receipts (
 			session_id       TEXT NOT NULL,
 			operation_id     TEXT NOT NULL,

@@ -307,6 +307,14 @@ type LoopConfig struct {
 	// for this run. The highest-priority registered provider wins. When nil,
 	// the legacy Compact field is used.
 	CompactionRegistry *CompactionRegistry
+	// CompactionNoteStore persists hidden Markdown checkpoints for fork-capable
+	// compaction providers. ForkCompactionNote performs the provider request
+	// while preserving the main request's model and tool surface.
+	CompactionNoteStore CompactionNoteStore
+	ForkCompactionNote  CompactionNoteFork
+	// OnCompactionNote reports whether a compact pass used an existing note,
+	// forced a fresh fork, or failed to produce one.
+	OnCompactionNote func(status string, err error)
 	// SystemPromptSections is metadata for the stable system prompt in the
 	// live history. It is emitted as telemetry only and never sent to providers.
 	SystemPromptSections []SystemPromptSectionInfo

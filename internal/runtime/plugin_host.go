@@ -364,6 +364,53 @@ type pluginCompactionProvider struct {
 
 func (p *pluginCompactionProvider) CompactionKey() string   { return p.key }
 func (p *pluginCompactionProvider) CompactionPriority() int { return p.priority }
+func (p *pluginCompactionProvider) CompactionNotesEnabled() bool {
+	return p.capability.Descriptor.Version >= 2
+}
+func (p *pluginCompactionProvider) PlanCompactionNote(ctx context.Context, model string, messages, delta []providers.ChatMessage, previous agent.CompactionNote) (agent.CompactionNotePlan, error) {
+	if p.capability.Descriptor.Version < 2 {
+		return agent.CompactionNotePlan{}, agent.ErrCompactionNoteUnsupported
+	}
+	output := pluginhost.CompactionOutput{}
+	if err := p.host.InvokeCapability(ctx, p.capability, pluginhost.CompactionInput{
+		Operation: "note_plan", Model: model, Messages: providers.CloneChatMessages(messages),
+		Delta: providers.CloneChatMessages(delta), PreviousNote: previous.Markdown,
+		PreviousCoveredMessages: previous.CoveredMessages,
+	}, &output); err != nil {
+		if policyErr := p.host.HandleCapabilityError(p.capability, err); policyErr != nil {
+			return agent.CompactionNotePlan{}, policyErr
+		}
+		return agent.CompactionNotePlan{}, err
+	}
+	if strings.TrimSpace(output.NotePrompt) == "" {
+		return agent.CompactionNotePlan{}, agent.ErrCompactionNoteUnsupported
+	}
+	return agent.CompactionNotePlan{
+		Prompt: output.NotePrompt, IntervalTokens: output.CheckpointIntervalTokens, MaxBytes: output.MaxNoteBytes,
+	}, nil
+}
+
+func (p *pluginCompactionProvider) CompactWithNote(ctx context.Context, model string, messages []providers.ChatMessage, note agent.CompactionNote) (agent.CompactionNoteReplacement, error) {
+	output := pluginhost.CompactionOutput{}
+	if err := p.host.InvokeCapability(ctx, p.capability, pluginhost.CompactionInput{
+		Operation: "compact_with_note", Model: model, Messages: providers.CloneChatMessages(messages),
+		Note: note.Markdown, CoveredMessages: note.CoveredMessages,
+	}, &output); err != nil {
+		if policyErr := p.host.HandleCapabilityError(p.capability, err); policyErr != nil {
+			return agent.CompactionNoteReplacement{}, policyErr
+		}
+		return agent.CompactionNoteReplacement{}, err
+	}
+	compacted := providers.CloneChatMessages(output.Messages)
+	if err := providers.ValidateToolCallHistory(compacted); err != nil {
+		return agent.CompactionNoteReplacement{}, fmt.Errorf("plugin compaction returned invalid tool-call history: %w", err)
+	}
+	if output.CoveredMessages <= 0 || output.CoveredMessages > len(compacted) {
+		return agent.CompactionNoteReplacement{}, fmt.Errorf("plugin compaction returned invalid note coverage %d for %d messages", output.CoveredMessages, len(compacted))
+	}
+	return agent.CompactionNoteReplacement{Messages: compacted, CoveredMessages: output.CoveredMessages}, nil
+}
+
 func (p *pluginCompactionProvider) Compact(ctx context.Context, model string, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 	output := pluginhost.CompactionOutput{}
 	if err := p.host.InvokeCapability(ctx, p.capability, pluginhost.CompactionInput{

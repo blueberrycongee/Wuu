@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "note-compaction",
   "name": "Context Notes (Experimental)",
-  "description": "Experimental context compaction driven by model-authored continuation notes.",
+  "description": "Experimental context compaction driven by hidden session-scoped Markdown notes.",
   "icon": { "path": "assets/icon.svg" },
   "version": "0.1.0",
   "defaultEnabled": false,
@@ -14,13 +14,13 @@
       "checkpoint_interval_tokens": {
         "type": "number",
         "title": "Checkpoint interval (estimated tokens)",
-        "description": "Request a fresh continuation note after roughly this much new context. Experimental estimates are provider-neutral and intentionally approximate.",
+        "description": "Fork a fresh Markdown continuation note after roughly this much new transcript. Experimental estimates are provider-neutral and intentionally approximate.",
         "default": 12000,
         "scope": "workspace",
         "apply": "live"
       }
     }
   },
-  "interface": { "displayName": "Context Notes (Experimental)", "shortDescription": "Replace old context with model-authored continuation checkpoints.", "developerName": "Wuu", "category": "Developer Tools", "capabilities": ["Write"] },
+  "interface": { "displayName": "Context Notes (Experimental)", "shortDescription": "Replace old context with session-scoped Markdown checkpoints.", "developerName": "Wuu", "category": "Developer Tools", "capabilities": ["Write"] },
   "officialNativeHelper": { "id": "note-compaction", "environment": "WUU_NOTE_COMPACTION_PLUGIN_HELPER", "executable": "wuu-note-compaction-plugin" }
 }

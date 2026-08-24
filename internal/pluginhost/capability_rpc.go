@@ -738,15 +738,26 @@ type SystemPromptSectionOutput struct {
 	Text string `json:"text"`
 }
 
-// CompactionInput is experimental immutable request context for agent.compaction v1.
+// CompactionInput is experimental immutable request context for
+// agent.compaction. Operation and note fields are available in v2.
 type CompactionInput struct {
-	Model    string                  `json:"model"`
-	Messages []providers.ChatMessage `json:"messages"`
+	Operation               string                  `json:"operation,omitempty"`
+	Model                   string                  `json:"model"`
+	Messages                []providers.ChatMessage `json:"messages"`
+	Delta                   []providers.ChatMessage `json:"delta,omitempty"`
+	PreviousNote            string                  `json:"previous_note,omitempty"`
+	PreviousCoveredMessages int                     `json:"previous_covered_messages,omitempty"`
+	Note                    string                  `json:"note,omitempty"`
+	CoveredMessages         int                     `json:"covered_messages,omitempty"`
 }
 
 // CompactionOutput is the experimental replacement transcript returned by a compactor.
 type CompactionOutput struct {
-	Messages []providers.ChatMessage `json:"messages"`
+	Messages                 []providers.ChatMessage `json:"messages"`
+	CoveredMessages          int                     `json:"covered_messages,omitempty"`
+	NotePrompt               string                  `json:"note_prompt,omitempty"`
+	CheckpointIntervalTokens int                     `json:"checkpoint_interval_tokens,omitempty"`
+	MaxNoteBytes             int                     `json:"max_note_bytes,omitempty"`
 	// Unavailable reports that the provider has no strategy for this
 	// transcript. The host translates it into a fallback signal so the
 	// default compactor can take over; Messages is ignored in that case.

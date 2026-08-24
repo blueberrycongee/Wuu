@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/agentthread"
@@ -533,6 +534,17 @@ func (s *Server) handleThreadFork(req Request) error {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	if err := rewriteChatHistory(s.rt.SessionDir, sess.ID, history); err != nil {
+		_, _ = session.Delete(s.rt.SessionDir, sess.ID)
+		_ = os.RemoveAll(statepath.SessionArtifactDir(stateDir, sess.ID))
+		cleanupWorktree()
+		return s.writeResponse(req.ID, nil, err)
+	}
+	if err := session.CopyCompactionNotesForFork(s.rt.SessionDir, source.thread.ID, sess.ID, func(covered int) (string, bool) {
+		if covered < 0 || covered > len(history) {
+			return "", false
+		}
+		return agent.CompactionHistoryHash(history[:covered]), true
+	}); err != nil {
 		_, _ = session.Delete(s.rt.SessionDir, sess.ID)
 		_ = os.RemoveAll(statepath.SessionArtifactDir(stateDir, sess.ID))
 		cleanupWorktree()
