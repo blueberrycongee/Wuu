@@ -75,6 +75,7 @@ export function useAppDebugState({
   const [runDebugOpen, setRunDebugOpen] = useState(false);
   const [chipGalleryOpen, setChipGalleryOpen] = useState(false);
   const [runDebugEvents, setRunDebugEvents] = useState<RunDebugEvent[]>([]);
+  const runDebugEventsRef = useRef<RunDebugEvent[]>([]);
   const [runDebugCopied, setRunDebugCopied] = useState(false);
   const runDebugRef = useRef<HTMLDivElement>(null);
   const runDebugEventIDRef = useRef(0);
@@ -87,7 +88,11 @@ export function useAppDebugState({
       id: ++runDebugEventIDRef.current,
       at: Date.now()
     };
-    setRunDebugEvents((current) => [...current, next].slice(-80));
+    const events = [...runDebugEventsRef.current, next].slice(-80);
+    runDebugEventsRef.current = events;
+    if (runDebugOpen) {
+      setRunDebugEvents(events);
+    }
   }
 
   function resetRunDebugEvents(entry: Omit<RunDebugEvent, "id" | "at">): void {
@@ -97,10 +102,16 @@ export function useAppDebugState({
       id: ++runDebugEventIDRef.current,
       at: Date.now()
     };
-    setRunDebugEvents([next]);
+    runDebugEventsRef.current = [next];
+    if (runDebugOpen) {
+      setRunDebugEvents([next]);
+    }
   }
 
   function recordRunDebugEvent(event: ServerEvent): void {
+    if (!debugControlsVisible) {
+      return;
+    }
     const entry = runDebugEventFromServerEvent(event, runDebugDeltaSeenRef.current);
     if (entry) {
       appendRunDebugEvent(entry);
@@ -122,7 +133,7 @@ export function useAppDebugState({
   }): Promise<void> {
     const snapshot = buildRunDebugSnapshot({
       state,
-      events: runDebugEvents,
+      events: runDebugEventsRef.current,
       queuedMessages,
       guideMessages,
       composerImages,
@@ -156,6 +167,12 @@ export function useAppDebugState({
     setChipGalleryOpen(false);
     onHideDebugControls();
   }, [debugControlsVisible, onHideDebugControls]);
+
+  useEffect(() => {
+    if (runDebugOpen) {
+      setRunDebugEvents(runDebugEventsRef.current);
+    }
+  }, [runDebugOpen]);
 
   return {
     debugControlsEnabled,
