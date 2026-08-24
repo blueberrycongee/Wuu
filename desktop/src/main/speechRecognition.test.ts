@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { SpeechRecognitionService } from "./speechRecognition";
 
@@ -129,7 +130,7 @@ describe("SpeechRecognitionService", () => {
 
     await expect(status).resolves.toBe("denied");
     expect(spawnHelper).toHaveBeenCalledWith(
-      "/resources/bin/wuu-speech-mac",
+      join("/resources", "bin", "wuu-speech-mac"),
       ["--authorization-status"],
     );
   });

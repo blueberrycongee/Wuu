@@ -115,40 +115,40 @@ describe("appServerExitMessage", () => {
 
 describe("appServerHelperEnvironment", () => {
   it("injects packaged first-party plugin helpers and the signed macOS helper", () => {
-    const packagedBin = "/Applications/wuu.app/Contents/Resources/bin";
+    const resourcesPath = "/Applications/wuu.app/Contents/Resources";
+    const packagedBin = join(resourcesPath, "bin");
     const available = new Set([
-      `${packagedBin}/wuu-subagent-plugin`,
-      `${packagedBin}/wuu-automation-plugin`,
-      `${packagedBin}/wuu-memory-plugin`,
-      `${packagedBin}/wuu-dream-plugin`,
-      `${packagedBin}/wuu-todo-plugin`,
-      `${packagedBin}/wuu-cua-mac`,
+      join(packagedBin, "wuu-subagent-plugin"),
+      join(packagedBin, "wuu-automation-plugin"),
+      join(packagedBin, "wuu-memory-plugin"),
+      join(packagedBin, "wuu-dream-plugin"),
+      join(packagedBin, "wuu-todo-plugin"),
+      join(packagedBin, "wuu-cua-mac"),
     ]);
     const result = appServerHelperEnvironment(
       { HOME: "/Users/test" },
       "/source",
-      "/Applications/wuu.app/Contents/Resources",
+      resourcesPath,
       "darwin",
       (path) => available.has(path),
     );
-    expect(result.WUU_SUBAGENT_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-subagent-plugin`);
-    expect(result.WUU_AUTOMATION_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-automation-plugin`);
-    expect(result.WUU_MEMORY_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-memory-plugin`);
-    expect(result.WUU_DREAM_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-dream-plugin`);
-    expect(result.WUU_TODO_PLUGIN_HELPER).toBe(`${packagedBin}/wuu-todo-plugin`);
-    expect(result.WUU_CUA_MAC_HELPER).toBe(
-      `${packagedBin}/wuu-cua-mac`,
-    );
+    expect(result.WUU_SUBAGENT_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-subagent-plugin"));
+    expect(result.WUU_AUTOMATION_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-automation-plugin"));
+    expect(result.WUU_MEMORY_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-memory-plugin"));
+    expect(result.WUU_DREAM_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-dream-plugin"));
+    expect(result.WUU_TODO_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-todo-plugin"));
+    expect(result.WUU_CUA_MAC_HELPER).toBe(join(packagedBin, "wuu-cua-mac"));
   });
 
   it("uses development plugin helpers without replacing explicit overrides", () => {
+    const sourceBin = join("/source", "desktop", "build", "bin");
     const available = new Set([
-      "/source/desktop/build/bin/wuu-subagent-plugin",
-      "/source/desktop/build/bin/wuu-automation-plugin",
-      "/source/desktop/build/bin/wuu-memory-plugin",
-      "/source/desktop/build/bin/wuu-dream-plugin",
-      "/source/desktop/build/bin/wuu-todo-plugin",
-      "/source/desktop/build/bin/wuu-cua-mac",
+      join(sourceBin, "wuu-subagent-plugin"),
+      join(sourceBin, "wuu-automation-plugin"),
+      join(sourceBin, "wuu-memory-plugin"),
+      join(sourceBin, "wuu-dream-plugin"),
+      join(sourceBin, "wuu-todo-plugin"),
+      join(sourceBin, "wuu-cua-mac"),
     ]);
     const discovered = appServerHelperEnvironment(
       {},
@@ -157,12 +157,8 @@ describe("appServerHelperEnvironment", () => {
       "darwin",
       (path) => available.has(path),
     );
-    expect(discovered.WUU_TODO_PLUGIN_HELPER).toBe(
-      "/source/desktop/build/bin/wuu-todo-plugin",
-    );
-    expect(discovered.WUU_CUA_MAC_HELPER).toBe(
-      "/source/desktop/build/bin/wuu-cua-mac",
-    );
+    expect(discovered.WUU_TODO_PLUGIN_HELPER).toBe(join(sourceBin, "wuu-todo-plugin"));
+    expect(discovered.WUU_CUA_MAC_HELPER).toBe(join(sourceBin, "wuu-cua-mac"));
     const overridden = appServerHelperEnvironment(
       {
         WUU_SUBAGENT_PLUGIN_HELPER: "/custom/subagent",

@@ -84,8 +84,8 @@ describe("cuaFrameHelperCandidates", () => {
       "/app",
       ["/repo"],
     )).toEqual([
-      "/app/bin/wuu-cua-mac-pip",
-      "/repo/desktop/build/bin/wuu-cua-mac-pip",
+      join("/app", "bin", "wuu-cua-mac-pip"),
+      join("/repo", "desktop", "build", "bin", "wuu-cua-mac-pip"),
     ]);
   });
 
@@ -97,7 +97,7 @@ describe("cuaFrameHelperCandidates", () => {
       },
       undefined,
       [],
-    )).toEqual(["/app/bin/wuu-cua-mac-pip"]);
+    )).toEqual([join("/app", "bin", "wuu-cua-mac-pip")]);
   });
 
   it("detects aliases that resolve to the same executable file", () => {

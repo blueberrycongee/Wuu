@@ -35,7 +35,7 @@ export async function removeLegacyDesktopCliLink(
     ? [resolve(resourcesPath, "bin", "wuu"), resolve(resourcesPath, "wuu")]
     : [];
   const packagedAppTarget =
-    /(?:^|\/)wuu\.app\/Contents\/Resources\/(?:bin\/)?wuu$/i.test(source);
+    /(?:^|[\\/])wuu\.app[\\/]Contents[\\/]Resources[\\/](?:bin[\\/])?wuu$/i.test(source);
   if (!currentAppTargets.includes(source) && !packagedAppTarget) {
     return false;
   }

@@ -6,6 +6,7 @@
 // command line. npm has already prepended node_modules/.bin to PATH, so bare
 // tool names (vitest, electron-vite) resolve on every platform.
 const { spawn } = require("node:child_process");
+const path = require("node:path");
 
 const args = process.argv.slice(2);
 const env = { ...process.env };
@@ -22,11 +23,31 @@ if (!command) {
   process.exit(2);
 }
 
+// cmd.exe rewrites the command line it is handed (it strips and re-pairs
+// quotes), so arguments containing quotes or shell metacharacters must never
+// pass through a shell. Only .cmd/.bat shims require cmd.exe; absolute or
+// relative executable paths are spawned directly so their arguments arrive
+// verbatim.
+function requiresCmdShell(command) {
+  if (process.platform !== "win32") {
+    return false;
+  }
+  if (
+    path.isAbsolute(command) ||
+    command.includes("/") ||
+    command.includes("\\")
+  ) {
+    return /\.(cmd|bat)$/i.test(command);
+  }
+  // Bare tool names on Windows resolve to npm's node_modules/.bin shims
+  // (.cmd), which only a shell can start.
+  return true;
+}
+
 const child = spawn(command, args.slice(index + 1), {
   stdio: "inherit",
   env,
-  // Windows tool shims are .cmd batch files; only a shell can start those.
-  shell: process.platform === "win32",
+  shell: requiresCmdShell(command),
 });
 child.on("error", (error) => {
   console.error(`env-run: ${error.message}`);
