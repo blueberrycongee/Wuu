@@ -779,14 +779,17 @@
   align-items: flex-start;
   justify-content: center;
   gap: 1px;
+  margin-right: 10px;
   transform: translateY(-5px);
   -webkit-app-region: no-drag;
 }
 
 .sidebar-mode-option {
   min-width: 0;
+  max-width: 100%;
   height: auto;
   padding: 0;
+  overflow: hidden;
   background: transparent;
   color: var(--ink-strong);
   font-size: 11px;
@@ -794,6 +797,8 @@
   letter-spacing: 0.08em;
   line-height: 1.05;
   opacity: 0.32;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: color 120ms ease, opacity 120ms ease;
 }
 
@@ -823,6 +828,7 @@
   flex: 0 0 32px;
   align-self: center;
   place-items: center;
+  margin-right: -4px;
   margin-left: auto;
   border-radius: 8px;
   padding: 0;
