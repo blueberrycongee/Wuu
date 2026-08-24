@@ -1,4 +1,11 @@
-import { memo, useCallback, useRef } from "react";
+import {
+  Profiler,
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import type {
   Agent,
   InputFile,
@@ -29,6 +36,11 @@ import type { HistoryMessageEditState } from "./ConversationHistoryActions";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import { PluginConversationCards } from "./plugins/PluginConversationCards";
 import { ConversationRenderActivityProvider } from "./ConversationRenderActivity";
+import {
+  markSessionSwitch,
+  recordSessionSwitchPaneRender,
+  SESSION_SWITCH_PERF_ENABLED,
+} from "./SessionSwitchPerformance";
 
 export type CachedConversationPanesProps = {
   threadIDs: string[];
@@ -165,6 +177,22 @@ const CachedConversationPane = memo(function CachedConversationPane({
 }: CachedConversationPaneProps): JSX.Element {
   const threadRef = useRef(thread);
   threadRef.current = thread;
+  const wasActiveRef = useRef(isActive);
+  useLayoutEffect(() => {
+    if (!SESSION_SWITCH_PERF_ENABLED) {
+      return undefined;
+    }
+    if (isActive && !wasActiveRef.current) {
+      markSessionSwitch(thread.id, "pane-layout-effect");
+      const frame = window.requestAnimationFrame(() => {
+        markSessionSwitch(thread.id, "next-animation-frame");
+      });
+      wasActiveRef.current = isActive;
+      return () => window.cancelAnimationFrame(frame);
+    }
+    wasActiveRef.current = isActive;
+    return undefined;
+  }, [isActive, thread.id]);
   const handleOpenFile = useCallback(
     (path: string) => onOpenFile?.(threadRef.current, path),
     [onOpenFile],
@@ -299,82 +327,108 @@ const CachedConversationPane = memo(function CachedConversationPane({
     : undefined;
   return (
     <ConversationRenderActivityProvider active={isActive}>
-      <div
-        aria-hidden={isActive ? undefined : true}
-        className="cached-conversation-pane"
-        data-active={isActive}
-        data-thread-id={thread.id}
-        inert={isActive ? undefined : true}
-      >
-        <div className="conversation-width session-flow">
-          <ConversationTurnList
-            threadID={thread.id}
-            turns={threadTurns}
-            renderBeforeTurns={[
-              ...entriesBeforeTurns.map(renderContextEntry),
-            ]}
-            renderAfterMissingTurn={
-              <>
-                {entriesAfterMissingTurn.map(renderContextEntry)}
-                {forkWorktreeNotice}
-                {threadInstructionCards}
-                <PluginConversationCards
-                  host={desktopPluginHost}
-                  threadId={thread.id}
+      <SessionSwitchProfiler threadID={thread.id}>
+        <div
+          aria-hidden={isActive ? undefined : true}
+          className="cached-conversation-pane"
+          data-active={isActive}
+          data-thread-id={thread.id}
+          inert={isActive ? undefined : true}
+        >
+          <div className="conversation-width session-flow">
+            <ConversationTurnList
+              threadID={thread.id}
+              turns={threadTurns}
+              renderBeforeTurns={[
+                ...entriesBeforeTurns.map(renderContextEntry),
+              ]}
+              renderAfterMissingTurn={
+                <>
+                  {entriesAfterMissingTurn.map(renderContextEntry)}
+                  {forkWorktreeNotice}
+                  {threadInstructionCards}
+                  <PluginConversationCards
+                    host={desktopPluginHost}
+                    threadId={thread.id}
+                    onStreamFrame={onStreamFrame}
+                  />
+                  {pendingQuestion && !turnIDs.has(pendingQuestion.request.turn_id)
+                    ? renderPendingQuestionCard(false)
+                    : null}
+                </>
+              }
+              renderAfterTurn={(turn) => (
+                <>
+                  {(entriesByAfterTurnID.get(turn.id) ?? []).map(renderContextEntry)}
+                  {turn.id === pendingQuestion?.request.turn_id
+                    ? renderPendingQuestionCard(true)
+                    : null}
+                </>
+              )}
+              forcedFullTurnIDs={
+                [
+                  ...(historyMessageEdit ? [historyMessageEdit.turnID] : []),
+                  ...(pendingQuestion ? [pendingQuestion.request.turn_id] : []),
+                ]
+              }
+              autoLoadEarlier={isActive}
+              renderTurn={(turn) => (
+                <PaneTurnView
+                  turn={turn}
+                  cwd={thread.cwd ?? activeContextCwd}
+                  onOpenFile={onOpenFile ? handleOpenFile : undefined}
+                  onOpenAgent={handleOpenAgentByID}
+                  latestAgentMessageID={
+                    latestAgentLocation?.turnID === turn.id
+                      ? latestAgentLocation.itemID
+                      : undefined
+                  }
+                  isLatestTurn={latestTurn?.id === turn.id}
                   onStreamFrame={onStreamFrame}
+                  onCollapseComplete={onCollapseComplete}
+                  onForkMessage={handleForkMessage}
+                  canEdit={canEditThreadMessage(thread)}
+                  onEditMessage={handleEditMessage}
+                  editingMessage={historyMessageEdit}
+                  onCancelEditMessage={onCancelEditMessage}
+                  onSubmitEditMessage={handleSubmitEditMessage}
+                  onOpenFileDiff={handleOpenFileDiffSelection}
+                  streamStatus={
+                    latestTurn?.id === turn.id ? latestTurnStreamStatus : undefined
+                  }
                 />
-                {pendingQuestion && !turnIDs.has(pendingQuestion.request.turn_id)
-                  ? renderPendingQuestionCard(false)
-                  : null}
-              </>
-            }
-            renderAfterTurn={(turn) => (
-              <>
-                {(entriesByAfterTurnID.get(turn.id) ?? []).map(renderContextEntry)}
-                {turn.id === pendingQuestion?.request.turn_id
-                  ? renderPendingQuestionCard(true)
-                  : null}
-              </>
-            )}
-            forcedFullTurnIDs={
-              [
-                ...(historyMessageEdit ? [historyMessageEdit.turnID] : []),
-                ...(pendingQuestion ? [pendingQuestion.request.turn_id] : []),
-              ]
-            }
-            autoLoadEarlier={isActive}
-            renderTurn={(turn) => (
-              <PaneTurnView
-                turn={turn}
-                cwd={thread.cwd ?? activeContextCwd}
-                onOpenFile={onOpenFile ? handleOpenFile : undefined}
-                onOpenAgent={handleOpenAgentByID}
-                latestAgentMessageID={
-                  latestAgentLocation?.turnID === turn.id
-                    ? latestAgentLocation.itemID
-                    : undefined
-                }
-                isLatestTurn={latestTurn?.id === turn.id}
-                onStreamFrame={onStreamFrame}
-                onCollapseComplete={onCollapseComplete}
-                onForkMessage={handleForkMessage}
-                canEdit={canEditThreadMessage(thread)}
-                onEditMessage={handleEditMessage}
-                editingMessage={historyMessageEdit}
-                onCancelEditMessage={onCancelEditMessage}
-                onSubmitEditMessage={handleSubmitEditMessage}
-                onOpenFileDiff={handleOpenFileDiffSelection}
-                streamStatus={
-                  latestTurn?.id === turn.id ? latestTurnStreamStatus : undefined
-                }
-              />
-            )}
-          />
+              )}
+            />
+          </div>
         </div>
-      </div>
+      </SessionSwitchProfiler>
     </ConversationRenderActivityProvider>
   );
 }, reuseCachedConversationPane);
+
+type SessionSwitchProfilerProps = {
+  threadID: string;
+  children: ReactNode;
+};
+
+function SessionSwitchProfiler({
+  threadID,
+  children,
+}: SessionSwitchProfilerProps): ReactNode {
+  if (!SESSION_SWITCH_PERF_ENABLED) {
+    return children;
+  }
+  return (
+    <Profiler
+      id={`conversation-pane:${threadID}`}
+      onRender={(_id, phase, actualDuration, baseDuration) =>
+        recordSessionSwitchPaneRender(threadID, phase, actualDuration, baseDuration)
+      }
+    >
+      {children}
+    </Profiler>
+  );
+}
 
 function reuseCachedConversationPane(
   previous: CachedConversationPaneProps,

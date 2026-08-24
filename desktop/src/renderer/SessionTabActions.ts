@@ -27,6 +27,7 @@ import {
 } from "./RuntimeLoadState";
 import { translateCurrent } from "./i18n";
 import { showErrorToast } from "./Toast";
+import { beginSessionSwitch, markSessionSwitch } from "./SessionSwitchPerformance";
 
 type SetAppState = (update: SetStateAction<AppState>) => void;
 type ViewSwitchKind = "thread" | "project" | "runtime";
@@ -252,6 +253,7 @@ export function createSessionTabActions(
       return;
     }
     if (sameContext) {
+      beginSessionSwitch(tab.threadID, "same-runtime");
       await deps.selectThread(tab.threadID);
       return;
     }
@@ -266,6 +268,8 @@ export function createSessionTabActions(
         deps.getCrossWorkspaceThreads?.().find((thread) => thread.id === tab.threadID),
     );
     const canSwitchInstantly = localThread !== undefined && localThread.turns.length > 0;
+    const performanceThreadID = tab.threadID;
+    beginSessionSwitch(performanceThreadID, "cross-runtime");
     const requestID = canSwitchInstantly
       ? deps.beginInstantThreadSwitch()
       : deps.beginViewSwitch("thread", tab.threadID);
@@ -299,6 +303,7 @@ export function createSessionTabActions(
           status: "ready",
         };
       });
+      markSessionSwitch(performanceThreadID, "state-update-issued");
     }
     try {
       const projectState = await selectRuntimeContext(tab.context);
@@ -306,6 +311,7 @@ export function createSessionTabActions(
         loadRuntime(projectState, { resumeLatestThread: false }),
         window.wuu.resumeThread(tab.threadID),
       ]);
+      markSessionSwitch(performanceThreadID, "runtime-loaded");
       const resumedThread = requireThread(
         resumed,
         translateCurrent("thread.resumeMissing"),

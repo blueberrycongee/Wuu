@@ -27,6 +27,7 @@ import {
   createWindowResizeSettleScheduler,
   isWindowResizing,
 } from "./WindowResizeState";
+import { markSessionSwitch } from "./SessionSwitchPerformance";
 
 // Tight threshold so the conversation only re-engages auto-follow when the
 // user is effectively parked at the bottom. The previous 48px band let one
@@ -579,12 +580,14 @@ export function useConversationScrollState({
       return undefined;
     }
 
+    markSessionSwitch(activeThreadID, "scroll-restore-start");
     const snapshot = threadScrollSnapshotsRef.current.get(activeThreadID);
     if (snapshot && !snapshot.autoFollow) {
       applyProgrammaticScroll(node, snapshot.scrollTop, false);
     } else {
       applyProgrammaticScroll(node, node.scrollHeight, true);
     }
+    markSessionSwitch(activeThreadID, "scroll-restore-end");
     return undefined;
   }, [activePane, activeThreadID, setAutoFollow, splitConversation]);
 
