@@ -299,11 +299,9 @@ export function CollaborationSidebar({
                             </button>
                           );
                         })}
-                        {(isAgents ? visibleAgents.length : visibleRooms.length) === 0 ? (
+                        {normalizedQuery && (isAgents ? visibleAgents.length : visibleRooms.length) === 0 ? (
                           <div className="collaboration-contact-empty">
-                            {t(isAgents
-                              ? (query ? "channels.noMatchingAgents" : "channels.noAgents")
-                              : (query ? "channels.noMatchingConversations" : "sidebar.collaborationEmpty"))}
+                            {t(isAgents ? "channels.noMatchingAgents" : "channels.noMatchingConversations")}
                           </div>
                         ) : null}
                       </div>
