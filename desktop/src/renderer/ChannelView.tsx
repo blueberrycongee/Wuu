@@ -450,6 +450,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
   const roomAvatarTargetRef = useRef<string>("");
   const savedRoomNameRef = useRef("");
   const messagesByRoomIDRef = useRef<Map<string, ChannelMessage[]>>(new Map());
+  const messageRefreshGenerationByRoomRef = useRef<Map<string, number>>(new Map());
   const markedMessageSeqByRoomRef = useRef<Map<string, number>>(new Map());
   const visibleRoomIDRef = useRef("");
   visibleRoomIDRef.current = section === "rooms" ? selectedRoomID : "";
@@ -800,7 +801,10 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
 
   const refreshMessages = useCallback(async (roomID: string): Promise<void> => {
     if (!window.wuu || !roomID) return;
+    const generation = (messageRefreshGenerationByRoomRef.current.get(roomID) ?? 0) + 1;
+    messageRefreshGenerationByRoomRef.current.set(roomID, generation);
     const result = await window.wuu.listChannelMessages({ room_id: roomID, limit: 500 });
+    if (messageRefreshGenerationByRoomRef.current.get(roomID) !== generation) return;
     const nextMessages = result.messages ?? [];
     const previousMessages = messagesByRoomIDRef.current.get(roomID) ?? [];
     messagesByRoomIDRef.current.set(roomID, nextMessages);
