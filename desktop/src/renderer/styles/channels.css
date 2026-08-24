@@ -552,6 +552,9 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
   padding: 12px var(--channel-horizontal-gutter)
     calc(
       var(
@@ -567,37 +570,32 @@
   grid-template-columns: var(--channel-avatar-size) minmax(0, 1fr);
   align-items: start;
   gap: var(--channel-message-column-gap);
-  margin: 0 auto 18px;
-}
-
-.channel-message.grouped {
-  margin-top: -12px;
+  margin: 0 auto;
 }
 
 .channel-message.own {
-  grid-template-columns: var(--channel-avatar-size) minmax(0, 1fr);
-  justify-items: stretch;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: end;
 }
 
 .channel-message-content {
-  width: 100%;
-  max-width: 100%;
+  width: fit-content;
+  max-width: min(var(--conversation-message-max-width, 720px), 84%);
   min-width: 0;
-}
-
-.channel-message.grouped .channel-message-content {
-  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .channel-message.own .channel-message-content {
-  max-width: 100%;
-  display: block;
+  max-width: min(var(--conversation-message-max-width, 720px), 72%);
+  align-items: flex-end;
 }
 
 .channel-message-content.has-thread-digest,
 .channel-message.own .channel-message-content.has-thread-digest {
-  width: 100%;
-  max-width: 100%;
+  width: min(var(--conversation-message-max-width, 720px), 84%);
+  max-width: 84%;
 }
 
 .channel-message-meta {
@@ -608,11 +606,7 @@
 }
 
 .channel-message.own .channel-message-meta {
-  justify-content: flex-start;
-}
-
-.channel-message.own .channel-message-meta strong {
-  display: inline;
+  justify-content: flex-end;
 }
 
 .channel-author-mention {
@@ -652,14 +646,16 @@
 }
 
 .channel-message-bubble {
+  position: relative;
+  width: fit-content;
   max-width: 100%;
   margin: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  background: var(--ink-overlay-4);
   color: var(--text-primary);
   font-size: var(--conversation-message-font-size, 14px);
-  line-height: var(--conversation-reading-line-height, 1.45);
+  line-height: var(--conversation-reading-line-height, 1.5);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -705,15 +701,16 @@
 }
 
 .channel-message.own .channel-message-bubble {
-  border-radius: 0;
+  border-radius: 12px 12px 3px 12px;
+  background: var(--chat-user-message-bg);
 }
 
 .channel-message-content > .composer-attachments {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .channel-message.own .composer-attachments {
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
 .channel-message-actions {
@@ -731,31 +728,6 @@
 
 .channel-message.own .channel-message-actions {
   justify-content: flex-end;
-}
-
-.channel-message.grouped .channel-message-meta {
-  position: relative;
-  height: 0;
-  min-height: 0;
-}
-
-.channel-message.grouped .channel-message-actions {
-  position: absolute;
-  top: 0;
-  right: 0;
-}
-
-.channel-human-avatar {
-  width: var(--channel-avatar-size);
-  height: var(--channel-avatar-size);
-  display: block;
-  overflow: hidden;
-  border-radius: 6px;
-}
-
-.channel-human-avatar > * {
-  width: 100%;
-  height: 100%;
 }
 
 .channel-message-actions button,

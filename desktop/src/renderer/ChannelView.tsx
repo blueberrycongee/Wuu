@@ -24,6 +24,7 @@ import {
 import { useI18n } from "./i18n";
 import { JumpToLatestPill } from "./JumpToLatestPill";
 import { useLongTextCollapse } from "./LongTextCollapse";
+import { MessageBubble, MessageBubbleRow } from "./MessageBubbleFlow";
 import { SelectMenu, type SelectMenuGroup } from "./SelectMenu";
 import { SidebarNameDialog } from "./SidebarNameDialog";
 import { RichContent } from "./RichContent";
@@ -57,20 +58,12 @@ const MAX_ROOM_AGENTS = 6;
 const THREAD_PANEL_MAX_WIDTH = 720;
 const THREAD_PANEL_DEFAULT_WIDTH = 420;
 const THREAD_PANEL_WIDTH_STEP = 24;
-const CHANNEL_MESSAGE_GROUP_WINDOW_MS = 3 * 60 * 1000;
-
 const AGENT_AVATAR_SOURCE_MAX_BYTES = 10 * 1024 * 1024;
 const AGENT_AVATAR_SIZE = 256;
 const AGENT_AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export function formatChannelUnreadCount(count: number): string {
   return count > 99 ? "99+" : String(Math.max(0, count));
-}
-
-function canGroupChannelMessages(previous: ChannelMessage | undefined, current: ChannelMessage): boolean {
-  if (!previous || previous.author_type !== current.author_type || previous.author_id !== current.author_id) return false;
-  const elapsed = Date.parse(current.created_at) - Date.parse(previous.created_at);
-  return Number.isFinite(elapsed) && elapsed >= 0 && elapsed <= CHANNEL_MESSAGE_GROUP_WINDOW_MS;
 }
 
 async function squareAvatarImageFromFile(file: File): Promise<string> {
@@ -247,17 +240,23 @@ function ChannelThreadDigest({
   );
 }
 
-function ChannelMessageBody({
-  text,
+function ChannelMessageBubble({
+  message,
+  outgoing,
   allowCollapse,
   onExpand,
+  attachmentIDPrefix,
+  beforeBody,
 }: {
-  text: string;
+  message: ChannelMessage;
+  outgoing: boolean;
   allowCollapse: boolean;
   onExpand?: () => void;
+  attachmentIDPrefix: string;
+  beforeBody?: JSX.Element;
 }): JSX.Element {
   const { t } = useI18n();
-  const { collapsible, expanded, toggleExpanded } = useLongTextCollapse(text);
+  const { collapsible, expanded, toggleExpanded } = useLongTextCollapse(message.body);
   const canCollapse = allowCollapse && collapsible;
   const handleToggleExpanded = (): void => {
     if (!expanded) {
@@ -265,22 +264,38 @@ function ChannelMessageBody({
     }
     toggleExpanded();
   };
+  const hasBubble = Boolean(message.body || beforeBody);
 
   return (
-    <div className={`channel-message-bubble${canCollapse ? ` long-card ${expanded ? "expanded" : "collapsed"}` : ""}`}>
-      <RichContent text={text} />
-      {canCollapse ? (
-        <button
-          className="channel-message-expand-toggle"
-          type="button"
-          aria-expanded={expanded}
-          onClick={handleToggleExpanded}
+    <>
+      {hasBubble ? (
+        <MessageBubble
+          outgoing={outgoing}
+          className={`channel-message-bubble${canCollapse ? ` long-card ${expanded ? "expanded" : "collapsed"}` : ""}`}
         >
-          <span>{expanded ? t("common.collapse") : t("common.showMore")}</span>
-          {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
-        </button>
+          {beforeBody}
+          {message.body ? <RichContent text={message.body} /> : null}
+          {canCollapse ? (
+            <button
+              className="channel-message-expand-toggle"
+              type="button"
+              aria-expanded={expanded}
+              onClick={handleToggleExpanded}
+            >
+              <span>{expanded ? t("common.collapse") : t("common.showMore")}</span>
+              {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+            </button>
+          ) : null}
+        </MessageBubble>
       ) : null}
-    </div>
+      {message.images?.length || message.files?.length ? (
+        <ComposerAttachmentStrip
+          images={(message.images ?? []).map((image, index) => ({ id: `${message.id}-${attachmentIDPrefix}-image-${index}`, ...image }))}
+          files={(message.files ?? []).map((file, index) => ({ id: `${message.id}-${attachmentIDPrefix}-file-${index}`, ...file }))}
+          removable={false}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -1491,39 +1506,33 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
           />
           {loadError ? <div className="channel-error" role="alert">{loadError}</div> : null}
         <div ref={messageScroll.scrollRef} className="channel-message-stream" role="log" aria-live="polite">
-          {rootMessages.map((message, index) => {
+          {rootMessages.map((message) => {
             const own = message.author_type === "human";
             const author = own ? t("channels.you") : (agentNames.get(message.author_id) ?? message.author_id);
             const threadReplies = repliesByThread.get(message.id) ?? [];
-            const previousMessage = rootMessages[index - 1];
-            const previousThreadReplies = previousMessage ? (repliesByThread.get(previousMessage.id) ?? []) : [];
-            const grouped = Boolean(
-              canGroupChannelMessages(previousMessage, message)
-              && previousThreadReplies.length === 0,
-            );
+            const agent = own ? undefined : messageAgents.find((candidate) => candidate.id === message.author_id);
+            const status = activityFor(agent);
             return (
-              <article className={`channel-message ${own ? "own" : "agent"}${grouped ? " grouped" : ""}`} key={message.id}>
-                {!grouped && own ? (
-                  <span className="channel-human-avatar" aria-hidden="true">
-                    <HumanAvatarMark />
-                  </span>
-                ) : !grouped ? (() => {
-                  const agent = messageAgents.find((candidate) => candidate.id === message.author_id);
-                  const status = activityFor(agent);
-                  return <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
-                })() : null}
-                <div className={`channel-message-content${threadReplies.length ? " has-thread-digest" : ""}`}>
+              <MessageBubbleRow
+                key={message.id}
+                outgoing={own}
+                className={`channel-message ${own ? "own" : "agent"}`}
+                contentClassName={`channel-message-content${threadReplies.length ? " has-thread-digest" : ""}`}
+                avatar={!own ? (
+                  <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
+                ) : undefined}
+                meta={(
                   <div className="channel-message-meta">
-                    {!grouped ? (
+                    {!own ? (
                       <ChannelAuthorName
                         name={author}
-                        mentionLabel={!own ? t("channels.mentionAgent", { name: author }) : undefined}
-                        onMention={!own ? () => roomComposerRef.current?.insertMention(author) : undefined}
+                        mentionLabel={t("channels.mentionAgent", { name: author })}
+                        onMention={() => roomComposerRef.current?.insertMention(author)}
                       />
                     ) : null}
-                    {!grouped ? <time dateTime={message.created_at}>
+                    <time dateTime={message.created_at}>
                       {formatDate(message.created_at, { hour: "2-digit", minute: "2-digit" })}
-                    </time> : null}
+                    </time>
                     <div className="channel-message-actions">
                       <button type="button" onClick={() => openThread(message)}>
                         <Reply aria-hidden="true" />
@@ -1531,30 +1540,24 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                       </button>
                     </div>
                   </div>
-                  {message.body ? (
-                    <ChannelMessageBody
-                      text={message.body}
-                      allowCollapse={!own}
-                      onExpand={messageScroll.pauseAutoFollow}
-                    />
-                  ) : null}
-                  {message.images?.length || message.files?.length ? (
-                    <ComposerAttachmentStrip
-                      images={(message.images ?? []).map((image, index) => ({ id: `${message.id}-image-${index}`, ...image }))}
-                      files={(message.files ?? []).map((file, index) => ({ id: `${message.id}-file-${index}`, ...file }))}
-                      removable={false}
-                    />
-                  ) : null}
-                  {threadReplies.length ? (
+                )}
+                footer={threadReplies.length ? (
                     <ChannelThreadDigest
                       replies={threadReplies}
                       agents={messageAgents}
                       onOpen={() => openThread(message)}
                       onMention={(name) => roomComposerRef.current?.insertMention(name)}
                     />
-                  ) : null}
-                </div>
-              </article>
+                ) : undefined}
+              >
+                <ChannelMessageBubble
+                  message={message}
+                  outgoing={own}
+                  allowCollapse={!own}
+                  onExpand={messageScroll.pauseAutoFollow}
+                  attachmentIDPrefix="main"
+                />
+              </MessageBubbleRow>
             );
           })}
           {!loading && loadedRoomIDs.has(selectedRoomID) && selectedRoom && rootMessages.length === 0 ? (
@@ -1602,38 +1605,33 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
               onKeyDown={handleThreadResizeKeyDown}
             />
             <div ref={threadScroll.scrollRef} className="channel-thread-messages">
-              {threadConversationMessages.map((message, index) => {
+              {threadConversationMessages.map((message) => {
                 const own = message.author_type === "human";
                 const author = own ? t("channels.you") : (agentNames.get(message.author_id) ?? message.author_id);
                 const repliedMessage = message.reply_to ? messageByID.get(message.reply_to) : undefined;
-                const previousMessage = threadConversationMessages[index - 1];
-                const grouped = Boolean(
-                  canGroupChannelMessages(previousMessage, message)
-                  && previousMessage.reply_to === message.reply_to,
-                );
+                const agent = own ? undefined : messageAgents.find((candidate) => candidate.id === message.author_id);
+                const status = activityFor(agent);
                 return (
-                  <article className={`channel-message channel-thread-message ${own ? "own" : "agent"}${grouped ? " grouped" : ""}`} key={message.id}>
-                    {!grouped && own ? (
-                      <span className="channel-human-avatar" aria-hidden="true">
-                        <HumanAvatarMark />
-                      </span>
-                    ) : !grouped ? (() => {
-                      const agent = messageAgents.find((candidate) => candidate.id === message.author_id);
-                      const status = activityFor(agent);
-                      return <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />;
-                    })() : null}
-                    <div className="channel-message-content">
+                  <MessageBubbleRow
+                    key={message.id}
+                    outgoing={own}
+                    className={`channel-message channel-thread-message ${own ? "own" : "agent"}`}
+                    contentClassName="channel-message-content"
+                    avatar={!own ? (
+                      <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
+                    ) : undefined}
+                    meta={(
                       <div className="channel-message-meta">
-                        {!grouped ? (
+                        {!own ? (
                           <ChannelAuthorName
                             name={author}
-                            mentionLabel={!own ? t("channels.mentionAgent", { name: author }) : undefined}
-                            onMention={!own ? () => threadComposerRef.current?.insertMention(author) : undefined}
+                            mentionLabel={t("channels.mentionAgent", { name: author })}
+                            onMention={() => threadComposerRef.current?.insertMention(author)}
                           />
                         ) : null}
-                        {!grouped ? <time dateTime={message.created_at}>
+                        <time dateTime={message.created_at}>
                           {formatDate(message.created_at, { hour: "2-digit", minute: "2-digit" })}
-                        </time> : null}
+                        </time>
                         <div className="channel-message-actions">
                           <button type="button" onClick={() => setThreadReplyTargetID(message.id)}>
                             <Reply aria-hidden="true" />
@@ -1641,7 +1639,15 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                           </button>
                         </div>
                       </div>
-                      {repliedMessage && repliedMessage.id !== activeThreadRoot.id ? (
+                    )}
+                  >
+                    <ChannelMessageBubble
+                      message={message}
+                      outgoing={own}
+                      allowCollapse={!own}
+                      onExpand={threadScroll.pauseAutoFollow}
+                      attachmentIDPrefix="thread"
+                      beforeBody={repliedMessage && repliedMessage.id !== activeThreadRoot.id ? (
                         <button className="channel-thread-reference" type="button" onClick={() => setThreadReplyTargetID(repliedMessage.id)}>
                           {t("channels.replyingTo", {
                             name: repliedMessage.author_type === "human"
@@ -1650,23 +1656,9 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                           })}
                           <span>{repliedMessage.body}</span>
                         </button>
-                      ) : null}
-                      {message.body ? (
-                        <ChannelMessageBody
-                          text={message.body}
-                          allowCollapse={!own}
-                          onExpand={threadScroll.pauseAutoFollow}
-                        />
-                      ) : null}
-                      {message.images?.length || message.files?.length ? (
-                        <ComposerAttachmentStrip
-                          images={(message.images ?? []).map((image, index) => ({ id: `${message.id}-thread-image-${index}`, ...image }))}
-                          files={(message.files ?? []).map((file, index) => ({ id: `${message.id}-thread-file-${index}`, ...file }))}
-                          removable={false}
-                        />
-                      ) : null}
-                    </div>
-                  </article>
+                      ) : undefined}
+                    />
+                  </MessageBubbleRow>
                 );
               })}
             </div>

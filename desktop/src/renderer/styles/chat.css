@@ -35,6 +35,13 @@
   justify-items: end;
 }
 
+.chat-avatar-slot {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
 .chat-row--system {
   grid-template-columns: 1fr;
   padding: 2px 0;
@@ -73,6 +80,10 @@
   gap: 4px;
   min-width: 0;
   max-width: 72%;
+}
+
+.chat-row--participant .chat-bubble-group {
+  max-width: min(var(--conversation-message-max-width, 720px), 84%);
 }
 
 .chat-row--user .chat-bubble-group {
