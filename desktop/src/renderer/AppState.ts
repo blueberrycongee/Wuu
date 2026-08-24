@@ -663,6 +663,7 @@ function reduceNotification(
           ? true
           : state.allowThreadAutoActivation,
         threads: upsertThread(state.threads, mergedThread),
+        sessionTabs: syncThreadSessionTabTitle(state.sessionTabs, mergedThread),
         status: activateThread || updatesVisibleThread ? "ready" : state.status,
         running: autoActivateNewThread
           ? isThreadRunning(mergedThread)
@@ -1366,6 +1367,7 @@ function updateThreadByID(
       thread: primaryActive ? thread : state.thread,
       secondaryThread: secondaryActive ? thread : state.secondaryThread,
       threads: upsertThread(state.threads, thread),
+      sessionTabs: syncThreadSessionTabTitle(state.sessionTabs, thread),
     };
   }
   let updated = false;
@@ -1379,7 +1381,14 @@ function updateThreadByID(
   if (!updated) {
     return state;
   }
-  return { ...state, threads: sortThreads(threads) };
+  const updatedThread = threads.find((thread) => thread.id === threadID);
+  return {
+    ...state,
+    threads: sortThreads(threads),
+    sessionTabs: updatedThread
+      ? syncThreadSessionTabTitle(state.sessionTabs, updatedThread)
+      : state.sessionTabs,
+  };
 }
 
 function updateThread(
@@ -1963,6 +1972,28 @@ function createThreadSessionTab(
     images: draft.images.map((image) => ({ ...image })),
     files: draft.files.map((file) => ({ ...file })),
   };
+}
+
+// Thread tab titles are snapshots taken when the tab is created. The live
+// label prefers the current thread (sessionTabLabel), but after a workspace
+// switch the thread may only exist in the cross-workspace sidebar cache — or
+// nowhere in the renderer state yet. Keep the snapshot fresh whenever the app
+// learns a newer thread record so background tabs never regress to the stale
+// creation-time placeholder (e.g. "未命名对话") until they are clicked.
+function syncThreadSessionTabTitle(
+  tabs: SessionTab[],
+  thread: Thread,
+): SessionTab[] {
+  const title = threadDisplayTitle(thread);
+  let changed = false;
+  const next = tabs.map((tab) => {
+    if (tab.kind !== "thread" || tab.threadID !== thread.id || tab.title === title) {
+      return tab;
+    }
+    changed = true;
+    return { ...tab, title };
+  });
+  return changed ? next : tabs;
 }
 
 function createSkillsSessionTab(context: RuntimeContext): SessionTab {

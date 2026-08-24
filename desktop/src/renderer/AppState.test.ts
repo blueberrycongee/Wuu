@@ -3417,6 +3417,107 @@ describe("sessionTabLabel (draft tabs read as their workspace)", () => {
   });
 });
 
+describe("thread session tab title sync", () => {
+  const context: RuntimeContext = { kind: "no_project", cwd: "/repo" };
+
+  it("refreshes a thread tab's snapshot title when thread/updated carries a new title", () => {
+    const thread = { ...threadWithUserTexts(["first query"]), preview: "" };
+    const tab = createThreadSessionTab(thread, context);
+    expect(tab.title).toBe("未命名对话");
+
+    const next = reduceServerEvent(
+      {
+        ...initialState,
+        activeContext: context,
+        thread,
+        threads: [thread],
+        sessionTabs: [tab],
+        activeSessionTabID: tab.id,
+      },
+      {
+        kind: "notification",
+        workdir: "/repo",
+        message: {
+          method: "thread/updated",
+          params: {
+            thread: { ...thread, preview: "Fix login crash" },
+          },
+        },
+      },
+    );
+
+    expect(next.sessionTabs[0]?.title).toBe("Fix login crash");
+  });
+
+  it("keeps the freshest known title when the thread leaves renderer state (workspace switch)", () => {
+    const thread = { ...threadWithUserTexts(["first query"]), preview: "" };
+    const tab = createThreadSessionTab(thread, context);
+    const next = reduceServerEvent(
+      {
+        ...initialState,
+        activeContext: context,
+        thread,
+        threads: [thread],
+        sessionTabs: [tab],
+        activeSessionTabID: tab.id,
+      },
+      {
+        kind: "notification",
+        workdir: "/repo",
+        message: {
+          method: "thread/updated",
+          params: {
+            thread: { ...thread, preview: "Fix login crash" },
+          },
+        },
+      },
+    );
+
+    // The active workspace moved on; the thread is no longer resolvable from
+    // state.thread / state.threads, so the label must fall back to the tab's
+    // synced snapshot instead of the stale creation-time placeholder.
+    const switched = {
+      ...next,
+      activeContext: { kind: "no_project", cwd: "/other" } as RuntimeContext,
+      thread: undefined,
+      threads: [],
+    };
+    expect(sessionTabLabel(switched.sessionTabs[0], switched)).toBe(
+      "Fix login crash",
+    );
+  });
+
+  it("leaves unrelated tabs and unchanged titles alone", () => {
+    const thread = threadWithUserTexts(["first query"]);
+    const tab = createThreadSessionTab(thread, context);
+    const draft = createDraftSessionTab("draft:active", context);
+    const next = reduceServerEvent(
+      {
+        ...initialState,
+        activeContext: context,
+        thread,
+        threads: [thread],
+        sessionTabs: [tab, draft],
+        activeSessionTabID: tab.id,
+      },
+      {
+        kind: "notification",
+        workdir: "/repo",
+        message: {
+          method: "thread/updated",
+          params: {
+            thread: { ...thread, preview: "preview" },
+          },
+        },
+      },
+    );
+
+    expect(next.sessionTabs).toHaveLength(2);
+    expect(next.sessionTabs[0]?.title).toBe(tab.title);
+    expect(next.sessionTabs[1]).toBe(draft);
+  });
+});
+
 describe("reconcileChannelRoomSessionTabs", () => {
   const context: RuntimeContext = { kind: "no_project", cwd: "/scratch" };
 

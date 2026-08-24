@@ -170,6 +170,11 @@ export function threadListsEquivalent(
   });
 }
 
+function sameWorkdirPath(left: string, right: string): boolean {
+  const trim = (path: string): string => path.replace(/\/+$/, "");
+  return trim(left) === trim(right);
+}
+
 export function mergeSidebarThreadSnapshots(
   cached: Thread[] | undefined,
   incoming: Thread[],
@@ -397,11 +402,24 @@ export function useSidebarProjectState({
         (thread) => !thread.ephemeral && isScratchThread(thread, projects),
       ),
     );
-    setCachedScratchThreads((current) =>
-      threadListsEquivalent(current, activeScratchThreads)
-        ? current
-        : activeScratchThreads,
-    );
+    const activeCwd = activeContext.cwd;
+    setCachedScratchThreads((current) => {
+      // The active workspace's list is authoritative for its own threads, but
+      // this cache also feeds the cross-workspace session tab strip and the
+      // global sidebar groups. Replacing it wholesale would drop every other
+      // workspace's sessions the moment the user switches workspaces, which
+      // regresses background tab labels to their stale snapshots (they fall
+      // back to "未命名对话" until clicked). Preserve other workspaces'
+      // entries and only reconcile the active workspace's slice.
+      const otherWorkspaceThreads = current.filter(
+        (thread) => !sameWorkdirPath(thread.cwd, activeCwd),
+      );
+      const next = sortThreads([
+        ...otherWorkspaceThreads,
+        ...activeScratchThreads,
+      ]);
+      return threadListsEquivalent(current, next) ? current : next;
+    });
   }, [activeContext?.kind, projects, threads]);
 
   useEffect(() => {

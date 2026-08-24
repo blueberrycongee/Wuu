@@ -358,4 +358,24 @@ describe("useSidebarProjectState", () => {
       hook.get().collapsedSidebarSectionIDs.has(SCRATCH_PSEUDO_PROJECT_ID),
     ).toBe(false);
   });
+
+  it("keeps other workspaces' scratch sessions when switching no-project workspaces", async () => {
+    const hook = await renderSidebarProjectState({
+      projects: [],
+      threads: [thread("thread-a", "/tmp/a")],
+      activeContext: { kind: "no_project", cwd: "/tmp/a" },
+    });
+    expect(hook.get().cachedScratchThreads.map((item) => item.id)).toEqual([
+      "thread-a",
+    ]);
+
+    await hook.rerender({
+      threads: [thread("thread-b", "/tmp/b")],
+      activeContext: { kind: "no_project", cwd: "/tmp/b" },
+    });
+
+    expect(
+      hook.get().cachedScratchThreads.map((item) => item.id).sort(),
+    ).toEqual(["thread-a", "thread-b"]);
+  });
 });
