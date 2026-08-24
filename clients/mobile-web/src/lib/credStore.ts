@@ -6,12 +6,18 @@
 
 import type { Credentials } from "@wuu/remote-core";
 
-import type { CredentialStore } from "./controller";
+export interface WebCredentialStore {
+  load(): Promise<Credentials | null>;
+  save(creds: Credentials): Promise<void>;
+  clear(): Promise<void>;
+  loadLastViewed(): Promise<Record<string, string> | null>;
+  saveLastViewed(lastViewed: Record<string, string>): Promise<void>;
+}
 
 const CREDS_KEY = "wuu.web.credentials";
 const LAST_VIEWED_KEY = "wuu.web.lastViewed";
 
-export const webCredStore: CredentialStore = {
+export const webCredStore: WebCredentialStore = {
   async load(): Promise<Credentials | null> {
     const raw = localStorage.getItem(CREDS_KEY);
     if (!raw) return null;

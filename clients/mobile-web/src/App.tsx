@@ -1,116 +1,157 @@
-// App shell: pair → home ⇄ thread, ChatGPT-style. Home is the new-chat
-// screen (greeting + composer + workspace picker); history lives in a left
-// drawer shared by both screens. The controller is a module singleton;
-// screens read the store via useSyncExternalStore.
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import type { Credentials } from "@wuu/remote-core";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
-
-import { ChatDrawer } from "./components/ChatDrawer";
-import { ConnectionBanner } from "./components/ConnectionBanner";
 import { webCredStore } from "./lib/credStore";
-import { WuuMobile } from "./lib/controller";
-import { PairScreen } from "./screens/PairScreen";
-import { HomeScreen } from "./screens/HomeScreen";
-import { ThreadScreen } from "./screens/ThreadScreen";
+import { RemoteDesktopBridge } from "./lib/desktopBridge";
 
-const controller = new WuuMobile(webCredStore);
+const SharedWorkbench = lazy(() => import("./WebWorkspace"));
 
-type Route =
-  | { name: "boot" }
-  | { name: "pair" }
-  | { name: "home" }
-  | { name: "thread"; threadId: string };
+type Phase =
+  | { kind: "boot" }
+  | { kind: "pair"; error?: string }
+  | { kind: "connecting" }
+  | { kind: "ready" }
+  | { kind: "error"; message: string };
 
 export default function App(): React.JSX.Element {
-  const [route, setRoute] = useState<Route>({ name: "boot" });
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const snapshot = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot);
+  const [phase, setPhase] = useState<Phase>({ kind: "boot" });
+  const bridgeRef = useRef<RemoteDesktopBridge | null>(null);
+
+  const connect = async (credentials: Credentials): Promise<void> => {
+    setPhase({ kind: "connecting" });
+    const bridge = new RemoteDesktopBridge(credentials);
+    bridgeRef.current = bridge;
+    try {
+      await bridge.connect();
+      bridge.install();
+      setPhase({ kind: "ready" });
+    } catch (error) {
+      await bridge.disconnect().catch(() => {});
+      bridgeRef.current = null;
+      setPhase({
+        kind: "error",
+        message: error instanceof Error ? error.message : "无法连接到 Wuu",
+      });
+    }
+  };
 
   useEffect(() => {
-    void controller
-      .startFromStoredCredentials()
-      .then((hadCredentials) => {
-        setRoute(hadCredentials ? { name: "home" } : { name: "pair" });
-      })
-      .catch(() => {
-        setRoute({ name: "pair" });
-      });
+    let active = true;
+    void webCredStore.load().then((credentials) => {
+      if (!active) return;
+      if (credentials) void connect(credentials);
+      else setPhase({ kind: "pair" });
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const openThread = (threadId: string): void => {
-    setDrawerOpen(false);
-    // Switching conversations from the drawer marks the previous one viewed
-    // before the new active thread advances its own unread cursor.
-    const active = controller.store.getSnapshot().activeThreadId;
-    if (active && active !== threadId) controller.closeThread();
-    setRoute({ name: "thread", threadId });
-    void controller.openThread(threadId).catch(() => {});
-  };
+  if (phase.kind === "ready") {
+    return (
+      <Suspense fallback={<StatusCard title="正在载入工作台…" />}>
+        <SharedWorkbench />
+      </Suspense>
+    );
+  }
 
-  /** Home composer: create a conversation in the host workspace, send the
-   *  first message, then move into that thread's full chat view. */
-  const startChat = async (text: string): Promise<void> => {
-    const thread = await controller.startThread();
-    await controller.sendMessage(thread, text);
-    setRoute({ name: "thread", threadId: thread.id });
-    await controller.openThread(thread.id).catch(() => {});
-  };
+  if (phase.kind === "pair") {
+    return (
+      <PairCard
+        error={phase.error}
+        onPair={async (uri, name) => {
+          setPhase({ kind: "connecting" });
+          try {
+            const credentials = await RemoteDesktopBridge.pair(uri, name);
+            await webCredStore.save(credentials);
+            await connect(credentials);
+          } catch (error) {
+            setPhase({
+              kind: "pair",
+              error: error instanceof Error ? error.message : "配对失败",
+            });
+          }
+        }}
+      />
+    );
+  }
 
-  /** Drawer "新对话": back to the home composer, like ChatGPT's new chat. */
-  const newChat = (): void => {
-    setDrawerOpen(false);
-    if (route.name === "thread") controller.closeThread();
-    if (route.name !== "home") setRoute({ name: "home" });
-  };
-
-  return (
-    <div className="app">
-      {route.name === "boot" ? (
-        <div className="boot-note">正在启动…</div>
-      ) : route.name === "pair" ? (
-        <PairScreen
-          onPair={async (uri, deviceName) => {
-            const creds = await controller.pairWithUri(uri, deviceName);
-            return creds.host_name ?? "";
+  if (phase.kind === "error") {
+    return (
+      <StatusCard title="连接失败" detail={phase.message}>
+        <button
+          type="button"
+          onClick={() => {
+            void webCredStore.clear().then(() => setPhase({ kind: "pair" }));
           }}
-          onDone={() => setRoute({ name: "home" })}
-        />
-      ) : (
-        <>
-          <ConnectionBanner phase={snapshot.phase} syncError={snapshot.syncError} />
-          {route.name === "home" ? (
-            <HomeScreen
-              snapshot={snapshot}
-              onCompose={startChat}
-              onSelectWorkspace={(workspace) =>
-                void controller.selectWorkspace(workspace).catch(() => {})
-              }
-              onOpenDrawer={() => setDrawerOpen(true)}
-            />
-          ) : (
-            <ThreadScreen
-              snapshot={snapshot}
-              threadId={route.threadId}
-              onSend={(thread, text) => void controller.sendMessage(thread, text).catch(() => {})}
-              onInterrupt={(threadId) => void controller.interrupt(threadId).catch(() => {})}
-              onOpenDrawer={() => setDrawerOpen(true)}
-            />
-          )}
-          <ChatDrawer
-            open={drawerOpen}
-            snapshot={snapshot}
-            onClose={() => setDrawerOpen(false)}
-            onNewChat={newChat}
-            onOpenThread={(thread) => openThread(thread.id)}
-            onTogglePin={(thread) => void controller.togglePin(thread).catch(() => {})}
-            onRefresh={() => void controller.refreshThreads().catch(() => {})}
-            onUnpair={() => {
-              setDrawerOpen(false);
-              void controller.unpair().then(() => setRoute({ name: "pair" }));
-            }}
+        >
+          重新配对
+        </button>
+      </StatusCard>
+    );
+  }
+
+  return <StatusCard title={phase.kind === "boot" ? "正在启动…" : "正在连接电脑…"} />;
+}
+
+function PairCard({
+  error,
+  onPair,
+}: {
+  error?: string;
+  onPair: (uri: string, name: string) => Promise<void>;
+}): React.JSX.Element {
+  const [uri, setURI] = useState("");
+  const [name, setName] = useState("Web Browser");
+  return (
+    <main className="web-gate">
+      <section className="web-gate-card">
+        <p className="web-gate-kicker">WUU / WEB</p>
+        <h1>连接你的工作台</h1>
+        <p className="web-gate-copy">Agent 继续运行在电脑上，浏览器只承载同一套 Wuu 工作界面。</p>
+        <label>
+          <span>设备名称</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label>
+          <span>配对 URI</span>
+          <textarea
+            value={uri}
+            onChange={(event) => setURI(event.target.value)}
+            placeholder="wuu://pair?…"
+            rows={4}
           />
-        </>
-      )}
-    </div>
+        </label>
+        {error ? <p className="web-gate-error">{error}</p> : null}
+        <button
+          type="button"
+          disabled={!uri.trim() || !name.trim()}
+          onClick={() => void onPair(uri.trim(), name.trim())}
+        >
+          配对并进入
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function StatusCard({
+  title,
+  detail,
+  children,
+}: {
+  title: string;
+  detail?: string;
+  children?: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <main className="web-gate">
+      <section className="web-gate-card web-gate-status">
+        <p className="web-gate-kicker">WUU / WEB</p>
+        <h1>{title}</h1>
+        {detail ? <p className="web-gate-error">{detail}</p> : null}
+        {children}
+      </section>
+    </main>
   );
 }

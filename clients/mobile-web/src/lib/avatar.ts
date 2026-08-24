@@ -1,6 +1,6 @@
 // Default-avatar assignment, mirrored from the desktop DefaultAvatar.tsx so
-// the same participant renders the same blobatar on both ends. Pure logic
-// only (no react imports) — the renderer lives in components/BlobatarAvatar.
+// the same participant renders the same avatar on both ends. Pure logic only;
+// the shared renderer owns presentation.
 
 // The 12 muted hues the desktop pins blobatar colors to, preserved from the
 // old mascot tint palette (--avatar-N in desktop default-avatar.css).
