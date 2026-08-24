@@ -241,6 +241,184 @@ function ChannelThreadDigest({
   );
 }
 
+type ChannelTimelineItem =
+  | { kind: "message"; message: ChannelMessage }
+  | { kind: "orchestration"; tasks: ChannelMessage[] };
+
+function buildChannelTimeline(messages: ChannelMessage[], roomAgentID?: string): ChannelTimelineItem[] {
+  const timeline: ChannelTimelineItem[] = [];
+  for (const message of messages) {
+    if (message.thread_id) continue;
+    const isRoomAssignment = Boolean(roomAgentID)
+      && message.kind === "task"
+      && message.author_type === "agent"
+      && message.author_id === roomAgentID;
+    if (isRoomAssignment) {
+      const previous = timeline[timeline.length - 1];
+      const previousTask = previous?.kind === "orchestration" ? previous.tasks[previous.tasks.length - 1] : undefined;
+      if (previous?.kind === "orchestration" && previousTask && previousTask.seq + 1 === message.seq) {
+        previous.tasks.push(message);
+      } else {
+        timeline.push({ kind: "orchestration", tasks: [message] });
+      }
+      continue;
+    }
+    if (message.kind !== "task") timeline.push({ kind: "message", message });
+  }
+  return timeline;
+}
+
+function assignmentState(state?: string): "open" | "doing" | "done" {
+  if (state === "doing") return "doing";
+  if (state === "done") return "done";
+  return "open";
+}
+
+function ChannelOrchestrationCluster({
+  room,
+  tasks,
+  agents,
+  repliesByThread,
+  onOpenThread,
+  onMention,
+}: {
+  room: ChannelRoom;
+  tasks: ChannelMessage[];
+  agents: NamedAgent[];
+  repliesByThread: Map<string, ChannelMessage[]>;
+  onOpenThread: (messageID: string) => void;
+  onMention: (name: string) => void;
+}): JSX.Element {
+  const { formatDate, t } = useI18n();
+  const agentByID = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const ownerIDs = [...new Set(tasks.map((task) => task.task_owner).filter(Boolean))] as string[];
+  const doneCount = tasks.filter((task) => assignmentState(task.task_state) === "done").length;
+  const allDone = tasks.length > 0 && doneCount === tasks.length;
+  const [expanded, setExpanded] = useState(!allDone);
+  const previousAllDone = useRef(allDone);
+  const latestTask = tasks[tasks.length - 1];
+
+  useEffect(() => {
+    if (allDone !== previousAllDone.current) setExpanded(!allDone);
+    previousAllDone.current = allDone;
+  }, [allDone]);
+
+  const coordinationLabel = allDone
+    ? t("channels.coordinationComplete", { count: ownerIDs.length, done: doneCount })
+    : t("channels.coordinatingAgents", { count: ownerIDs.length });
+
+  return (
+    <article className="channel-message channel-orchestration-message" data-complete={allDone || undefined}>
+      <MessageBubbleRow
+        outgoing={false}
+        avatar={(
+          <span className="channel-agent-avatar channel-orchestration-avatar" role="img" aria-label={room.name}>
+            <ChannelGroupAvatar room={room} agents={agents} />
+          </span>
+        )}
+        meta={(
+          <div className="channel-message-meta">
+            <span className="channel-orchestration-meta">
+              <strong>{room.name}</strong>
+              <span className="channel-coordinator-badge">{t("channels.coordinator")}</span>
+              <span className="channel-coordinator-state">{coordinationLabel}</span>
+              <time dateTime={latestTask.created_at}>
+                {formatDate(latestTask.created_at, { hour: "2-digit", minute: "2-digit" })}
+              </time>
+              {allDone && expanded ? (
+                <button className="channel-orchestration-toggle" type="button" onClick={() => setExpanded(false)}>
+                  {t("channels.hideAssignments")}
+                  <ChevronUp aria-hidden="true" />
+                </button>
+              ) : null}
+            </span>
+          </div>
+        )}
+      >
+        {allDone && !expanded ? (
+          <MessageBubble outgoing={false} className="channel-message-bubble channel-orchestration-summary">
+            <button type="button" onClick={() => setExpanded(true)}>
+              <span className="channel-orchestration-owner-stack" aria-hidden="true">
+                {ownerIDs.slice(0, 3).map((ownerID) => {
+                  const owner = agentByID.get(ownerID);
+                  return (
+                    <span key={ownerID}>
+                      <AgentAvatarMark
+                        seed={ownerID}
+                        avatarKey={owner?.avatar_key ?? "abstract-1"}
+                        avatarImage={owner?.avatar_image}
+                      />
+                    </span>
+                  );
+                })}
+              </span>
+              <span>{coordinationLabel}</span>
+              <ChevronDown aria-hidden="true" />
+            </button>
+          </MessageBubble>
+        ) : (
+          <div className="channel-assignment-list">
+            {tasks.map((task, index) => {
+              const owner = agentByID.get(task.task_owner ?? "");
+              const ownerName = owner?.name ?? task.task_owner ?? t("channels.taskOwnerLabel");
+              const state = assignmentState(task.task_state);
+              const title = task.task_title?.trim() || task.body.trim() || t("channels.newTask");
+              const body = task.task_title?.trim() && task.body.trim() !== task.task_title.trim()
+                ? task.body.trim()
+                : "";
+              const replies = repliesByThread.get(task.id) ?? [];
+              return (
+                <div
+                  className="channel-assignment-item"
+                  data-state={state}
+                  key={task.id}
+                  style={{ "--channel-assignment-index": index } as CSSProperties}
+                >
+                  <MessageBubble outgoing={false} className="channel-message-bubble channel-assignment-bubble">
+                    <span className="channel-assignment-target" aria-hidden="true">
+                      <AgentAvatarMark
+                        seed={owner?.id ?? task.task_owner ?? task.id}
+                        avatarKey={owner?.avatar_key ?? "abstract-1"}
+                        avatarImage={owner?.avatar_image}
+                        status={owner?.activity_status === "thinking" ? "thinking" : "idle"}
+                      />
+                    </span>
+                    <span className="channel-assignment-copy">
+                      <span className="channel-assignment-owner"><span aria-hidden="true">→</span>{ownerName}</span>
+                      <strong>{title}</strong>
+                      {body ? <span className="channel-assignment-body"><RichContent text={body} /></span> : null}
+                    </span>
+                    <span className="channel-assignment-status" data-state={state}>
+                      <i aria-hidden="true" />
+                      {t(`channels.assignmentStatus.${state}`)}
+                    </span>
+                    <button
+                      className="channel-assignment-thread-button"
+                      type="button"
+                      aria-label={t("channels.openAssignmentThread", { title })}
+                      onClick={() => onOpenThread(task.id)}
+                    >
+                      <MessageCircle aria-hidden="true" />
+                    </button>
+                  </MessageBubble>
+                  {replies.length > 0 ? (
+                    <ChannelThreadDigest
+                      replies={replies}
+                      agents={agents}
+                      onOpen={() => onOpenThread(task.id)}
+                      onMention={onMention}
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </MessageBubbleRow>
+    </article>
+  );
+}
+
 function ChannelMessageBubble({
   message,
   outgoing,
@@ -275,7 +453,19 @@ function ChannelMessageBubble({
           className={`channel-message-bubble${canCollapse ? ` long-card ${expanded ? "expanded" : "collapsed"}` : ""}`}
         >
           {beforeBody}
-          {message.body ? <RichContent text={message.body} /> : null}
+          {message.kind === "task" ? (
+            <span className="channel-thread-task-heading">
+              <strong>{message.task_title?.trim() || message.body.trim() || t("channels.newTask")}</strong>
+              <span className="channel-assignment-status" data-state={assignmentState(message.task_state)}>
+                <i aria-hidden="true" />
+                {t(`channels.assignmentStatus.${assignmentState(message.task_state)}`)}
+              </span>
+            </span>
+          ) : null}
+          {message.body && (
+            message.kind !== "task"
+            || Boolean(message.task_title?.trim() && message.body.trim() !== message.task_title.trim())
+          ) ? <RichContent text={message.body} /> : null}
           {canCollapse ? (
             <button
               className="channel-message-expand-toggle"
@@ -708,9 +898,9 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
-  const rootMessages = useMemo(
-    () => messages.filter((message) => message.kind !== "task" && !message.thread_id),
-    [messages],
+  const channelTimeline = useMemo(
+    () => buildChannelTimeline(messages, selectedRoom?.agent_id),
+    [messages, selectedRoom?.agent_id],
   );
   const repliesByThread = useMemo(() => {
     const replies = new Map<string, ChannelMessage[]>();
@@ -1507,12 +1697,31 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
           />
           {loadError ? <div className="channel-error" role="alert">{loadError}</div> : null}
         <div ref={messageScroll.scrollRef} className="channel-message-stream" role="log" aria-live="polite">
-          {rootMessages.map((message) => {
+          {channelTimeline.map((item) => {
+            if (item.kind === "orchestration" && selectedRoom) {
+              return (
+                <ChannelOrchestrationCluster
+                  key={`orchestration-${item.tasks[0].id}`}
+                  room={selectedRoom}
+                  tasks={item.tasks}
+                  agents={agents}
+                  repliesByThread={repliesByThread}
+                  onOpenThread={(messageID) => {
+                    const task = messageByID.get(messageID);
+                    if (task) openThread(task);
+                  }}
+                  onMention={(name) => roomComposerRef.current?.insertMention(name)}
+                />
+              );
+            }
+            if (item.kind !== "message") return null;
+            const message = item.message;
             const own = message.author_type === "human";
             const author = own ? t("channels.you") : (agentNames.get(message.author_id) ?? message.author_id);
             const threadReplies = repliesByThread.get(message.id) ?? [];
             const agent = own ? undefined : messageAgents.find((candidate) => candidate.id === message.author_id);
             const status = activityFor(agent);
+            const isRoomAgentMessage = agent?.kind === "room" && selectedRoom?.agent_id === agent.id;
             return (
               <MessageBubbleRow
                 key={message.id}
@@ -1520,11 +1729,22 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 className={`channel-message ${own ? "own" : "agent"}`}
                 contentClassName={`channel-message-content${threadReplies.length ? " has-thread-digest" : ""}`}
                 avatar={!own ? (
-                  <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
+                  isRoomAgentMessage && selectedRoom ? (
+                    <span className="channel-agent-avatar channel-orchestration-avatar" role="img" aria-label={selectedRoom.name}>
+                      <ChannelGroupAvatar room={selectedRoom} agents={agents} />
+                    </span>
+                  ) : (
+                    <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
+                  )
                 ) : undefined}
                 meta={(
                   <div className="channel-message-meta">
-                    {!own ? (
+                    {isRoomAgentMessage ? (
+                      <>
+                        <strong>{author}</strong>
+                        <span className="channel-coordinator-badge">{t("channels.coordinator")}</span>
+                      </>
+                    ) : !own ? (
                       <ChannelAuthorName
                         name={author}
                         mentionLabel={t("channels.mentionAgent", { name: author })}
@@ -1561,7 +1781,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
               </MessageBubbleRow>
             );
           })}
-          {!loading && loadedRoomIDs.has(selectedRoomID) && selectedRoom && rootMessages.length === 0 ? (
+          {!loading && loadedRoomIDs.has(selectedRoomID) && selectedRoom && channelTimeline.length === 0 ? (
             <div className="channel-stream-empty">{t("channels.empty")}</div>
           ) : null}
         </div>
@@ -1612,6 +1832,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 const repliedMessage = message.reply_to ? messageByID.get(message.reply_to) : undefined;
                 const agent = own ? undefined : messageAgents.find((candidate) => candidate.id === message.author_id);
                 const status = activityFor(agent);
+                const isRoomAgentMessage = agent?.kind === "room" && selectedRoom?.agent_id === agent.id;
                 return (
                   <MessageBubbleRow
                     key={message.id}
@@ -1619,11 +1840,22 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                     className={`channel-message channel-thread-message ${own ? "own" : "agent"}`}
                     contentClassName="channel-message-content"
                     avatar={!own ? (
-                      <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
+                      isRoomAgentMessage && selectedRoom ? (
+                        <span className="channel-agent-avatar channel-orchestration-avatar" role="img" aria-label={selectedRoom.name}>
+                          <ChannelGroupAvatar room={selectedRoom} agents={agents} />
+                        </span>
+                      ) : (
+                        <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
+                      )
                     ) : undefined}
                     meta={(
                       <div className="channel-message-meta">
-                        {!own ? (
+                        {isRoomAgentMessage ? (
+                          <>
+                            <strong>{author}</strong>
+                            <span className="channel-coordinator-badge">{t("channels.coordinator")}</span>
+                          </>
+                        ) : !own ? (
                           <ChannelAuthorName
                             name={author}
                             mentionLabel={t("channels.mentionAgent", { name: author })}

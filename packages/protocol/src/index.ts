@@ -816,6 +816,7 @@ export type ChannelMessage = {
   files?: InputFile[];
   mentions?: string[];
   reply_to?: string;
+  task_title?: string;
   task_state?: string;
   task_owner?: string;
   created_at: string;
