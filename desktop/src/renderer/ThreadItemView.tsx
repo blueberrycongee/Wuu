@@ -69,7 +69,6 @@ interface ThreadItemViewProps {
   latestAgentMessageID?: string;
   onStreamFrame: () => void;
   onForkMessage?: (turnID: string, itemID: string) => void;
-  onOpenRuns?: () => void;
   onEditMessage?: (turnID: string, item: ThreadItem) => void;
   editing?: boolean;
   editSubmitting?: boolean;
@@ -195,7 +194,6 @@ function BuiltInThreadItemView({
   latestAgentMessageID,
   onStreamFrame,
   onForkMessage,
-  onOpenRuns,
   onEditMessage,
   editing,
   editSubmitting,
@@ -377,7 +375,6 @@ function BuiltInThreadItemView({
               onFork={
                 onForkMessage ? () => onForkMessage(turnID, item.id) : undefined
               }
-              onOpenRuns={onOpenRuns}
             />
           ) : null}
         </article>

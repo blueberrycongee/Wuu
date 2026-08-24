@@ -89,7 +89,6 @@ export function AssistantTurnShell({
   latestAgentMessageID,
   onStreamFrame,
   onForkMessage,
-  onOpenRuns,
   onCollapseComplete,
   trailingContent,
   editSummaryCard,
@@ -103,7 +102,6 @@ export function AssistantTurnShell({
   latestAgentMessageID?: string;
   onStreamFrame: () => void;
   onForkMessage?: (turnID: string, itemID: string) => void;
-  onOpenRuns?: () => void;
   onCollapseComplete?: () => void;
   /**
    * Turn-owned output rendered at the end of the turn content region (after
@@ -187,7 +185,6 @@ export function AssistantTurnShell({
     latestAgentMessageID,
     onStreamFrame,
     onForkMessage,
-    onOpenRuns,
     onCollapseComplete,
     editSummaryCard,
   };
@@ -234,7 +231,6 @@ function TurnProcessFold({
   latestAgentMessageID,
   onStreamFrame,
   onForkMessage,
-  onOpenRuns,
   onCollapseComplete,
   editSummaryCard,
 }: {
@@ -251,7 +247,6 @@ function TurnProcessFold({
   latestAgentMessageID?: string;
   onStreamFrame: () => void;
   onForkMessage?: (turnID: string, itemID: string) => void;
-  onOpenRuns?: () => void;
   /**
    * Fires once the fold has finished collapsing so the conversation
    * scroll container can re-anchor `scrollTop = scrollHeight`. The
@@ -496,7 +491,6 @@ return (
                     latestAgentMessageID={latestAgentMessageID}
                     onStreamFrame={onStreamFrame}
                     onForkMessage={onForkMessage}
-                    onOpenRuns={onOpenRuns}
                     editSummaryCard={editSummaryCard}
                   />
                 </div>
@@ -535,7 +529,6 @@ function EntryRenderer({
   latestAgentMessageID,
   onStreamFrame,
   onForkMessage,
-  onOpenRuns,
   editSummaryCard,
 }: {
   entry: TurnEntry;
@@ -548,7 +541,6 @@ function EntryRenderer({
   latestAgentMessageID?: string;
   onStreamFrame: () => void;
   onForkMessage?: (turnID: string, itemID: string) => void;
-  onOpenRuns?: () => void;
   editSummaryCard?: JSX.Element;
 }): JSX.Element | null {
   const { item, kind, streaming } = entry;
@@ -611,7 +603,6 @@ function EntryRenderer({
         latestAgentMessageID={latestAgentMessageID}
         onStreamFrame={onStreamFrame}
         onForkMessage={onForkMessage}
-        onOpenRuns={onOpenRuns}
         editSummaryCard={
           editSummaryCard !== undefined && item.id === actionableAgentMessageID
             ? editSummaryCard

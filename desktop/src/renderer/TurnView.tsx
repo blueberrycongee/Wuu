@@ -50,7 +50,6 @@ export type TurnViewProps = {
   ) => void;
   onCollapseComplete?: () => void;
   onOpenFileDiff?: (selection: TurnFileDiffSelection) => void;
-  onOpenRuns?: () => void;
   streamStatus?: TurnStreamStatus;
   isLatestTurn?: boolean;
 };
@@ -106,7 +105,6 @@ function TurnContent({
   onSubmitEditMessage,
   onCollapseComplete,
   onOpenFileDiff,
-  onOpenRuns,
   streamStatus,
   isLatestTurn,
 }: TurnViewProps): JSX.Element {
@@ -148,7 +146,6 @@ function TurnContent({
         latestAgentMessageID={latestAgentMessageID}
         onStreamFrame={onStreamFrame}
         onForkMessage={onForkMessage}
-        onOpenRuns={onOpenRuns}
         onEditMessage={onEditMessage}
         editing={
           editingMessage?.turnID === turn.id && editingMessage.itemID === item.id
@@ -199,7 +196,6 @@ function TurnContent({
           latestAgentMessageID={latestAgentMessageID}
           onStreamFrame={onStreamFrame}
           onForkMessage={onForkMessage}
-          onOpenRuns={onOpenRuns}
           onCollapseComplete={onCollapseComplete}
           onOpenAgent={onOpenAgent}
           editSummaryCard={

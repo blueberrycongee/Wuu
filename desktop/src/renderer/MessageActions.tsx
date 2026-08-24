@@ -7,7 +7,6 @@ import {
   FileText,
   GitFork,
   PencilLine,
-  SquareTerminal,
   X,
 } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
@@ -46,12 +45,10 @@ function formatFileSize(data: string): string {
 export function AgentMessageActions({
   getText,
   onFork,
-  onOpenRuns,
   placement,
 }: {
   getText: () => string;
   onFork?: () => void;
-  onOpenRuns?: () => void;
   placement: "overlay" | "persistent";
 }): JSX.Element {
   const { t } = useI18n();
@@ -64,7 +61,6 @@ export function AgentMessageActions({
       aria-label={t("message.assistantActions")}
     >
       <MessageCopyButton getText={getText} className="message-action-button" iconSize={15} />
-      {onOpenRuns ? <TurnRunButton onOpenRuns={onOpenRuns} /> : null}
       <button
         className="message-action-button"
         type="button"
@@ -76,22 +72,6 @@ export function AgentMessageActions({
         <GitFork className="icon" />
       </button>
     </div>
-  );
-}
-
-function TurnRunButton({ onOpenRuns }: { onOpenRuns: () => void }): JSX.Element {
-  const { t } = useI18n();
-  const label = t("message.viewTurnRuns");
-  return (
-    <button
-      className="message-action-button"
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onOpenRuns}
-    >
-      <SquareTerminal className="icon" />
-    </button>
   );
 }
 

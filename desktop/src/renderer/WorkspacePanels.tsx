@@ -55,10 +55,7 @@ import {
   type WorkspaceFileDirtyState,
 } from "./WorkspaceFiles";
 import { WorkspaceReviewPanel } from "./WorkspaceReviewPanels";
-import {
-  WorkspaceTerminalPanel,
-  type WorkspaceTerminalRunRequest,
-} from "./WorkspaceTerminalPanel";
+import { WorkspaceTerminalPanel } from "./WorkspaceTerminalPanel";
 import type { WorkspaceFileViewTab, WorkspaceViewTab } from "./WorkspaceViewTabs";
 import { handleTabListKeyDown, useTabCloseFocusRestoration } from "./TabKeyboardNavigation";
 import { useStripEnterReady, useTabExitRetention } from "./TabMotion";
@@ -164,7 +161,6 @@ export function WorkspaceRightPanel({
   activeContext,
   workspaceContext,
   terminalThread,
-  terminalRunRequest,
   gitStatus,
   selectedFilePath,
   onSelectTab,
@@ -203,7 +199,6 @@ export function WorkspaceRightPanel({
   activeContext?: RuntimeContext;
   workspaceContext?: RuntimeContext;
   terminalThread?: Thread;
-  terminalRunRequest?: WorkspaceTerminalRunRequest;
   gitStatus?: GitStatusResult;
   selectedFilePath?: string;
   onSelectTab: (id: string) => void;
@@ -860,7 +855,6 @@ export function WorkspaceRightPanel({
                   <WorkspaceTerminalPanel
                     activeContext={workspaceContext}
                     thread={terminalThread}
-                    requestedRun={terminalRunRequest}
                   />
                 ) : activeTab.kind === "browser" ? (
                   <WorkspaceBrowserPanel

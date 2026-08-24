@@ -67,7 +67,7 @@ function makeReasoning(text: string, id = "reasoning-1"): ThreadItem {
   };
 }
 
-function render(turn: Turn, onOpenRuns?: () => void): HTMLDivElement {
+function render(turn: Turn): HTMLDivElement {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -76,7 +76,6 @@ function render(turn: Turn, onOpenRuns?: () => void): HTMLDivElement {
       <TurnView
         turn={turn}
         onStreamFrame={() => {}}
-        onOpenRuns={onOpenRuns}
       />,
     );
   });
@@ -389,8 +388,7 @@ describe("TurnView", () => {
     expect(view.querySelectorAll(".turn-notice")).toHaveLength(0);
   });
 
-  it("offers the turn's command runs from the final answer actions", () => {
-    const onOpenRuns = vi.fn();
+  it("keeps command runs out of the final answer actions", () => {
     const view = render(
       makeTurn("completed", [
         {
@@ -404,38 +402,10 @@ describe("TurnView", () => {
         },
         makeFinalAnswer("done"),
       ]),
-      onOpenRuns,
     );
 
-    const button = view.querySelector<HTMLButtonElement>(
-      "button:has(.lucide-square-terminal)",
-    );
-    expect(button).not.toBeNull();
-    act(() => button?.click());
-    expect(onOpenRuns).toHaveBeenCalledTimes(1);
-  });
-
-  it("renders no run action when a settled turn has no final answer", () => {
-    const onOpenRuns = vi.fn();
-    const view = render(
-      makeTurn("failed", [
-        {
-          id: "call-1",
-          type: "tool_call",
-          status: "failed",
-          name: "bash",
-          arguments: JSON.stringify({ command: "npm test" }),
-          display: { kind: "command", capability: "command.bash" },
-          result: JSON.stringify({ exit_code: 1 }),
-        },
-      ]),
-      onOpenRuns,
-    );
-
-    // The terminal affordance lives only in the final answer's action bar;
-    // without an answer there is no bar and no standalone row either.
-    expect(view.querySelector(".turn-run-actions")).toBeNull();
     expect(view.querySelector("button:has(.lucide-square-terminal)")).toBeNull();
+    expect(view.querySelectorAll(".agent-message-actions button")).toHaveLength(2);
   });
 });
 

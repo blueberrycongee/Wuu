@@ -69,7 +69,6 @@ export type CachedConversationPanesProps = {
     contentParts?: MessageContentPart[],
   ) => void;
   onOpenFileDiff: (thread: Thread, selection: TurnFileDiffSelection) => void;
-  onOpenTurnRuns?: (thread: Thread, turnID: string) => void;
   turnStreamStatus: Record<string, TurnStreamStatus>;
   pendingUserQuestion?: UserQuestionRequest;
   onAnswerUserQuestion?: (requestID: string, answer: UserQuestionAnswer) => Promise<void>;
@@ -96,7 +95,6 @@ export const CachedConversationPanes = memo(function CachedConversationPanes({
   onCancelEditMessage,
   onSubmitEditMessage,
   onOpenFileDiff,
-  onOpenTurnRuns,
   turnStreamStatus,
   pendingUserQuestion,
   onAnswerUserQuestion,
@@ -133,7 +131,6 @@ export const CachedConversationPanes = memo(function CachedConversationPanes({
             onCancelEditMessage={onCancelEditMessage}
             onSubmitEditMessage={onSubmitEditMessage}
             onOpenFileDiff={onOpenFileDiff}
-            onOpenTurnRuns={onOpenTurnRuns}
             turnStreamStatus={turnStreamStatus}
             pendingUserQuestion={pendingUserQuestion}
             onAnswerUserQuestion={onAnswerUserQuestion}
@@ -172,7 +169,6 @@ const CachedConversationPane = memo(function CachedConversationPane({
   onCancelEditMessage,
   onSubmitEditMessage,
   onOpenFileDiff,
-  onOpenTurnRuns,
   turnStreamStatus,
   pendingUserQuestion,
   onAnswerUserQuestion,
@@ -240,10 +236,6 @@ const CachedConversationPane = memo(function CachedConversationPane({
     (selection: TurnFileDiffSelection) =>
       onOpenFileDiff(threadRef.current, selection),
     [onOpenFileDiff],
-  );
-  const handleOpenTurnRunsForThread = useCallback(
-    (turnID: string) => onOpenTurnRuns?.(threadRef.current, turnID),
-    [onOpenTurnRuns],
   );
   const threadTurns = thread.turns ?? [];
   // Location (owner turn + item) lets renderTurn scope latestAgentMessageID to
@@ -503,9 +495,6 @@ const CachedConversationPane = memo(function CachedConversationPane({
                 onCancelEditMessage={onCancelEditMessage}
                 onSubmitEditMessage={handleSubmitEditMessage}
                 onOpenFileDiff={handleOpenFileDiffSelection}
-                onOpenTurnRuns={
-                  onOpenTurnRuns ? handleOpenTurnRunsForThread : undefined
-                }
                 streamStatus={
                   latestTurn?.id === turn.id ? latestTurnStreamStatus : undefined
                 }
@@ -568,7 +557,6 @@ type PaneTurnViewProps = {
     contentParts?: MessageContentPart[],
   ) => void;
   onOpenFileDiff: (selection: TurnFileDiffSelection) => void;
-  onOpenTurnRuns?: (turnID: string) => void;
 };
 
 // Memo boundary for the turn tree. Server events (item/started, item/
@@ -595,15 +583,7 @@ const PaneTurnView = memo(function PaneTurnView({
   onCancelEditMessage,
   onSubmitEditMessage,
   onOpenFileDiff,
-  onOpenTurnRuns,
 }: PaneTurnViewProps): JSX.Element {
-  // TurnView's onOpenRuns takes no argument; bind the turn id here so the
-  // pane-level callback can stay identity-stable (per-turn inline closures
-  // would defeat the memo).
-  const handleOpenRuns = useCallback(
-    () => onOpenTurnRuns?.(turn.id),
-    [onOpenTurnRuns, turn.id],
-  );
   return (
     <TurnView
       turn={turn}
@@ -620,7 +600,6 @@ const PaneTurnView = memo(function PaneTurnView({
       onCancelEditMessage={onCancelEditMessage}
       onSubmitEditMessage={onSubmitEditMessage}
       onOpenFileDiff={onOpenFileDiff}
-      onOpenRuns={onOpenTurnRuns ? handleOpenRuns : undefined}
       streamStatus={streamStatus}
     />
   );

@@ -1403,7 +1403,6 @@ export const enUS = {
   "workspace.terminal.status.interactive": "Interactive",
   "workspace.terminal.status.stopping": "Stopping",
   "workspace.terminal.status.stopped": "Stopped",
-  "message.viewTurnRuns": "View runs from this turn",
   "git.commit.failed": "Commit failed",
   "git.commit.title": "Commit changes",
   "git.branch": "Branch",

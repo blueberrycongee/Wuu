@@ -1401,7 +1401,6 @@ export const zhCN = {
   "workspace.terminal.status.interactive": "可交互",
   "workspace.terminal.status.stopping": "正在停止",
   "workspace.terminal.status.stopped": "已停止",
-  "message.viewTurnRuns": "查看本轮运行记录",
   "git.commit.failed": "提交失败",
   "git.commit.title": "提交更改",
   "git.branch": "分支",
