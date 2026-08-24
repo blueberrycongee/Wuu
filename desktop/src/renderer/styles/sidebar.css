@@ -1660,6 +1660,9 @@
   border-top-color: var(--sidebar-project-loading-notch);
   border-radius: var(--radius-pill);
   animation: wuu-spin var(--session-loading-spin-duration) linear infinite;
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    scale var(--motion-fast) var(--ease-out);
 }
 
 .project-row-unread {
@@ -1738,9 +1741,20 @@
 }
 
 .project-group:hover .project-row .project-row-unread,
-.project-group:focus-within .project-row .project-row-unread {
+.project-group:focus-within .project-row .project-row-unread,
+.project-group:hover .project-row .project-row-loading,
+.project-group:focus-within .project-row .project-row-loading {
   opacity: 0;
+}
+
+.project-group:hover .project-row .project-row-unread,
+.project-group:focus-within .project-row .project-row-unread {
   transform: scale(0.72);
+}
+
+.project-group:hover .project-row .project-row-loading,
+.project-group:focus-within .project-row .project-row-loading {
+  scale: 0.72;
 }
 
 /* `.sidebar-section-empty-note` (the shared empty-state placeholder) is
