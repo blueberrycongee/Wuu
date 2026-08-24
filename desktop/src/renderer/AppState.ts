@@ -2776,25 +2776,6 @@ function markThreadTurnsViewed(
   return state;
 }
 
-function markThreadSummariesViewed(
-  state: AppState,
-  threads: readonly ThreadSummary[],
-): AppState {
-  let nextLastViewed = state.lastViewedTurnByThreadID;
-  for (const thread of threads) {
-    if (isThreadRunning(thread)) continue;
-    const lastTurnID = latestCompletedTurnID(thread);
-    if (!lastTurnID || nextLastViewed[thread.id] === lastTurnID) continue;
-    if (nextLastViewed === state.lastViewedTurnByThreadID) {
-      nextLastViewed = { ...nextLastViewed };
-    }
-    nextLastViewed[thread.id] = lastTurnID;
-  }
-  return nextLastViewed === state.lastViewedTurnByThreadID
-    ? state
-    : { ...state, lastViewedTurnByThreadID: nextLastViewed };
-}
-
 function activeTurnIDForThread(thread: Thread | undefined): string | undefined {
   return activeTurnForThread(thread)?.id;
 }
@@ -3532,7 +3513,6 @@ export {
   isThreadUnread,
   latestCompletedTurnID,
   latestTodoUpdateForThread,
-  markThreadSummariesViewed,
   markThreadTurnsViewed,
   mergeAgentSummary,
   mergeListedThreads,

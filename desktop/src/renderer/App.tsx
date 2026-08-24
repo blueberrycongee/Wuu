@@ -117,7 +117,6 @@ import {
   isThreadRunning,
   isThreadUnread,
   latestTodoUpdateForThread,
-  markThreadSummariesViewed,
   markThreadTurnsViewed,
   pinnedThreadSummaries,
   queryTextForUserItem,
@@ -205,7 +204,7 @@ import { TopNotice } from "./TopNotice";
 import { UILayerPortal } from "./ui/layers/UILayerHost";
 import { showErrorToast, showToast } from "./Toast";
 import { setOpenThreadInSplitHandler } from "./ConversationSplitBridge";
-import { CircleAlert, RefreshCw, X } from "lucide-react";
+import { CircleAlert, RefreshCw } from "lucide-react";
 import type {
 } from "../shared/protocol";
 import { useSettingsRuntimeState } from "./SettingsRuntimeState";
@@ -437,7 +436,6 @@ export function App(): JSX.Element {
     useState<MainComposerFocusRequest | null>(null);
   const userInteractionVersionRef = useRef(0);
   const {
-    compactNavigation,
     sidebarWidth,
     sidebarCollapsed,
     resizingSidebar,
@@ -522,7 +520,7 @@ export function App(): JSX.Element {
   // Focused workspace mode always parks the left rail as a drawer. Its
   // visibility is transient and must not be inferred from the user's normal
   // docked-sidebar preference.
-  const sidebarDrawerMode = compactNavigation || sidebarCollapsed || rightPanelGlobalized;
+  const sidebarDrawerMode = sidebarCollapsed || rightPanelGlobalized;
   const {
     sidebarDrawerPhase,
     sidebarHoverZoneRef,
@@ -540,28 +538,6 @@ export function App(): JSX.Element {
     dockingMotionMs: SIDEBAR_MOTION_MS,
   });
   const sidebarDrawerVisible = sidebarDrawerPhase === "open";
-  const toggleSessionSwitcher = useCallback((): void => {
-    if (!compactNavigation) {
-      toggleSidebar();
-      return;
-    }
-    if (sidebarDrawerVisible) {
-      closeSidebarDrawer();
-      return;
-    }
-    openSidebarDrawerNow();
-  }, [
-    closeSidebarDrawer,
-    compactNavigation,
-    openSidebarDrawerNow,
-    sidebarDrawerVisible,
-    toggleSidebar,
-  ]);
-  const closeCompactSessionSwitcher = useCallback((): void => {
-    if (compactNavigation) {
-      closeSidebarDrawer();
-    }
-  }, [closeSidebarDrawer, compactNavigation]);
   const {
     collapsedSidebarSectionIDs,
     expandedSidebarSectionIDs,
@@ -2549,7 +2525,7 @@ export function App(): JSX.Element {
   const environmentPanelMotionState: EnvironmentPanelMotionState =
     environmentPanelVisible ? "open" : "closing";
   const sessionTabsVisible = Boolean(
-    state.initialized && !previewingLaunch && !poppedOutMode && !compactNavigation,
+    state.initialized && !previewingLaunch && !poppedOutMode,
   );
   const sidebarVisible = !poppedOutMode;
 
@@ -2559,7 +2535,7 @@ export function App(): JSX.Element {
     }
   }, [environmentPanelOpen, sideThread.close, sideThread.entry?.open]);
 
-  const shellClassName = `app-shell${poppedOutMode ? " popped-out-shell" : ""}${compactNavigation ? " compact-navigation" : ""}${sidebarDrawerMode ? " sidebar-collapsed" : ""}${
+  const shellClassName = `app-shell${poppedOutMode ? " popped-out-shell" : ""}${sidebarDrawerMode ? " sidebar-collapsed" : ""}${
     sidebarDrawerMode && sidebarDrawerVisible ? " sidebar-drawer-open" : ""
   }${
     sidebarDrawerMode &&
@@ -4769,26 +4745,11 @@ export function App(): JSX.Element {
               rooms={[...pinnedChannelRooms, ...sidebarChannelRooms]}
               selectedAgentID={collaborationSection === "rooms" ? selectedCollaborationAgent?.id : undefined}
               selectedRoomID={collaborationSection === "rooms" ? selectedChannelRoomID : undefined}
-              onSelectAgent={(agent) => {
-                closeCompactSessionSwitcher();
-                selectCollaborationAgent(agent);
-              }}
-              onSelectRoom={(roomID) => {
-                closeCompactSessionSwitcher();
-                selectChannelRoom(roomID);
-              }}
-              onManageAgents={() => {
-                closeCompactSessionSwitcher();
-                openAgentManagement();
-              }}
-              onCreateRoom={() => {
-                closeCompactSessionSwitcher();
-                openNewChannelRoom();
-              }}
-              onSwitchToHarness={() => {
-                closeCompactSessionSwitcher();
-                openHarnessView();
-              }}
+              onSelectAgent={selectCollaborationAgent}
+              onSelectRoom={selectChannelRoom}
+              onManageAgents={openAgentManagement}
+              onCreateRoom={openNewChannelRoom}
+              onSwitchToHarness={openHarnessView}
               onPointerEnter={openSidebarDrawer}
               onPointerLeave={(event) => scheduleSidebarDrawerCloseFromPointerLeave(event.nativeEvent)}
               onOpenSettings={() => {
@@ -4822,27 +4783,18 @@ export function App(): JSX.Element {
             sectionOrder={sidebarSectionOrder}
             onStartNewThread={() => {
               revealConversationFromFocusedWorkspace();
-              closeCompactSessionSwitcher();
               startNewThreadWithComposerFocus();
             }}
             onOpenSkillsTab={() => {
-              closeCompactSessionSwitcher();
               openSkillsTab();
             }}
             groupChatEnabled={ENABLE_GROUP_CHAT}
-            onSwitchToCollaboration={() => {
-              closeCompactSessionSwitcher();
-              openCollaborationView();
-            }}
-            onMarkThreadsViewed={(threads) => {
-              setState((current) => markThreadSummariesViewed(current, threads));
-            }}
+            onSwitchToCollaboration={openCollaborationView}
             onToggleConversationSearch={toggleConversationSearch}
             onSeedConversationFixture={seedConversationFixture}
             onOpenChipGallery={() => setChipGalleryOpen(true)}
             onSelectThread={(id) => {
               revealConversationFromFocusedWorkspace();
-              closeCompactSessionSwitcher();
               void activateThread(id);
             }}
             onTogglePinned={(thread) => void toggleThreadPinned(thread)}
@@ -4877,19 +4829,16 @@ export function App(): JSX.Element {
                       project_id: project.id,
                       cwd: project.path,
                     });
-                    closeCompactSessionSwitcher();
                     openWorkspaceTool("files");
                   }
                 : undefined
             }
             onStartNewThreadForProject={(id) => {
               revealConversationFromFocusedWorkspace();
-              closeCompactSessionSwitcher();
               startNewThreadForProjectWithComposerFocus(id);
             }}
             onSelectProjectThread={(projectID, threadID) => {
               revealConversationFromFocusedWorkspace();
-              closeCompactSessionSwitcher();
               void selectProjectThread(projectID, threadID);
             }}
             onRemoveProject={(id) => void removeProject(id)}
@@ -4908,25 +4857,6 @@ export function App(): JSX.Element {
             }}
           />
           )}
-
-          {compactNavigation && sidebarDrawerVisible ? (
-            <>
-              <button
-                className="compact-session-switcher-backdrop"
-                type="button"
-                aria-label={t("app.collapseLeftSidebar")}
-                onClick={closeSidebarDrawer}
-              />
-              <button
-                className="icon-button compact-session-switcher-close"
-                type="button"
-                aria-label={t("app.collapseLeftSidebar")}
-                onClick={closeSidebarDrawer}
-              >
-                <X className="icon-lg" />
-              </button>
-            </>
-          ) : null}
 
           {sidebarDrawerMode ? null : (
             <div
@@ -4987,21 +4917,18 @@ export function App(): JSX.Element {
                     data-wuu-component="sidebar-toggle"
                     type="button"
                     aria-label={t(
-                      sidebarDrawerMode && !sidebarDrawerVisible
+                      sidebarCollapsed
                         ? "app.expandLeftSidebar"
                         : "app.collapseLeftSidebar",
                     )}
-                    aria-pressed={sidebarDrawerMode ? sidebarDrawerVisible : !sidebarCollapsed}
-                    onClick={toggleSessionSwitcher}
+                    aria-pressed={!sidebarCollapsed}
+                    onClick={toggleSidebar}
                     onPointerEnter={scheduleSidebarDrawerOpen}
                     onPointerLeave={(event) =>
                       scheduleSidebarDrawerCloseFromPointerLeave(event.nativeEvent)
                     }
                   >
-                    <SidePanelToggleIcon
-                      side="left"
-                      open={sidebarDrawerMode ? sidebarDrawerVisible : !sidebarCollapsed}
-                    />
+                    <SidePanelToggleIcon side="left" open={!sidebarCollapsed} />
                   </button>
                 ) : null}
                 <span className="collaboration-titlebar-label">
@@ -5037,21 +4964,18 @@ export function App(): JSX.Element {
                 data-wuu-component="sidebar-toggle"
                 type="button"
                 aria-label={t(
-                  sidebarDrawerMode && !sidebarDrawerVisible
+                  sidebarCollapsed
                     ? "app.expandLeftSidebar"
                     : "app.collapseLeftSidebar",
                 )}
-                aria-pressed={sidebarDrawerMode ? sidebarDrawerVisible : !sidebarCollapsed}
-                onClick={toggleSessionSwitcher}
+                aria-pressed={!sidebarCollapsed}
+                onClick={toggleSidebar}
                 onPointerEnter={scheduleSidebarDrawerOpen}
                 onPointerLeave={(event) =>
                   scheduleSidebarDrawerCloseFromPointerLeave(event.nativeEvent)
                 }
               >
-                <SidePanelToggleIcon
-                  side="left"
-                  open={sidebarDrawerMode ? sidebarDrawerVisible : !sidebarCollapsed}
-                />
+                <SidePanelToggleIcon side="left" open={!sidebarCollapsed} />
               </button>
             ) : null}
             <ConversationTitleContent
@@ -5417,7 +5341,6 @@ export function App(): JSX.Element {
       ) : null}
       {poppedOutMode ? null : (
         <WorkspaceRightPanel
-          compactNavigation={compactNavigation}
           open={rightPanelOpen}
           present={rightPanelOpen || rightPanelAnimating}
           prewarm={Boolean(state.initialized)}
