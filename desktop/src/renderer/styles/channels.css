@@ -1943,6 +1943,16 @@
   gap: 20px;
 }
 
+.sidebar-name-dialog.channel-agent-editor-dialog {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.channel-agent-editor-dialog > .channel-setup-form {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
 .channel-form-field {
   display: grid;
   gap: 6px;
@@ -2056,8 +2066,30 @@
   min-width: 0;
 }
 
-/* Preset avatar grid: columns follow available width so the picker keeps
-   readable tiles instead of shrinking to fit a fixed column count. */
+/* Avatar creator: every option uses the same persisted avatar renderer as the
+   final sidebar, directory, graph, and message surfaces. */
+.agent-avatar-creator {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.agent-avatar-creator fieldset {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.agent-avatar-creator legend {
+  margin-bottom: 8px;
+  color: var(--ink-tertiary);
+  font-size: var(--font-sm);
+  font-weight: var(--weight-semibold);
+}
+
 .channel-avatar-picker > div {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
@@ -2086,6 +2118,40 @@
   height: 100%;
   display: block;
   border-radius: 50%;
+}
+
+.agent-avatar-accessory-picker > div {
+  max-height: 168px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.channel-avatar-picker > .agent-avatar-color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.agent-avatar-color-swatches button {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 50%;
+  background: hsl(var(--agent-avatar-hue) 68% 60%);
+}
+
+.agent-avatar-color-swatches button:hover {
+  background: hsl(var(--agent-avatar-hue) 68% 54%);
+}
+
+.agent-avatar-color-swatches button.active {
+  border-color: var(--paper);
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+.agent-avatar-color-picker input[type="range"] {
+  width: 100%;
+  accent-color: hsl(var(--agent-avatar-hue) 68% 54%);
 }
 
 /* Effort chips: the option count and label length are runtime-dependent

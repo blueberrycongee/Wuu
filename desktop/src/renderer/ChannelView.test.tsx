@@ -574,8 +574,8 @@ describe("ChannelView", () => {
     expect(container.querySelector<HTMLImageElement>(".channel-message.own .composer-image-attachment img")?.src).toContain("data:image/png;base64,aW1hZ2U=");
     expect(container.querySelector(".channel-message.own .composer-file-attachment")?.textContent).toContain("brief.pdf");
     expect(container.querySelector(".channel-message.own .composer-attachments button")).toBeNull();
-    expect(container.querySelector(".channel-message.own .channel-human-avatar .default-avatar")).not.toBeNull();
-    expect(container.querySelector(".channel-message.own .channel-message-meta strong")?.textContent).toBe("你");
+    expect(container.querySelector(".channel-message.own .channel-human-avatar")).toBeNull();
+    expect(container.querySelector(".channel-message.own .channel-message-meta strong")).toBeNull();
     expect(container.querySelector(".channel-task-card")).toBeNull();
     expect(container.querySelector(".channel-message-stream")?.textContent).not.toContain("Investigate flaky build");
     expect(container.querySelector('[aria-label="Alpha: 处理中"]')).not.toBeNull();
@@ -716,7 +716,7 @@ describe("ChannelView", () => {
     });
   });
 
-  it("groups adjacent messages from the same author without repeating identity", async () => {
+  it("keeps each bubble independently identified after adjacent messages", async () => {
     const api = createApi();
     api.listChannelMessages = vi.fn(async ({ room_id }) => ({
       messages: [{
@@ -767,16 +767,16 @@ describe("ChannelView", () => {
     expect(renderedMessages[0].classList.contains("grouped")).toBe(false);
     expect(renderedMessages[0].querySelector(".channel-agent-avatar")).not.toBeNull();
     expect(renderedMessages[0].querySelector(".channel-author-mention")?.textContent).toBe("@Alpha");
-    expect(renderedMessages[1].classList.contains("grouped")).toBe(true);
-    expect(renderedMessages[1].querySelector(".channel-agent-avatar")).toBeNull();
-    expect(renderedMessages[1].querySelector(".channel-author-mention")).toBeNull();
-    expect(renderedMessages[1].querySelector("time")).toBeNull();
+    expect(renderedMessages[1].classList.contains("grouped")).toBe(false);
+    expect(renderedMessages[1].querySelector(".channel-agent-avatar")).not.toBeNull();
+    expect(renderedMessages[1].querySelector(".channel-author-mention")?.textContent).toBe("@Alpha");
+    expect(renderedMessages[1].querySelector("time")).not.toBeNull();
     expect(renderedMessages[2].classList.contains("grouped")).toBe(false);
     expect(renderedMessages[2].querySelector(".channel-agent-avatar")).not.toBeNull();
-    expect(renderedMessages[3].querySelector(".channel-human-avatar")).not.toBeNull();
+    expect(renderedMessages[3].querySelector(".channel-human-avatar")).toBeNull();
   });
 
-  it("groups a thread root with its preceding author but starts a new group after the digest", async () => {
+  it("keeps a thread root and surrounding messages as independent bubbles", async () => {
     const api = createApi();
     api.listChannelMessages = vi.fn(async ({ room_id }) => ({
       messages: [{
@@ -860,7 +860,7 @@ describe("ChannelView", () => {
     const renderedMessages = container.querySelectorAll<HTMLElement>(".channel-message-stream > .channel-message");
     expect(renderedMessages).toHaveLength(3);
     expect(renderedMessages[0].classList.contains("grouped")).toBe(false);
-    expect(renderedMessages[1].classList.contains("grouped")).toBe(true);
+    expect(renderedMessages[1].classList.contains("grouped")).toBe(false);
     const digest = renderedMessages[1].querySelector(".channel-thread-digest");
     expect(digest?.textContent).toContain("4 条回复");
     expect(digest?.querySelectorAll(".channel-thread-digest-row")).toHaveLength(3);
@@ -1300,17 +1300,20 @@ describe("ChannelView", () => {
     const nameInput = document.querySelector<HTMLInputElement>(".channel-setup-form input:not([type])");
     expect(nameInput).not.toBeNull();
     act(() => setInputValue(nameInput!, "Beta"));
-    const avatar = document.querySelector<HTMLButtonElement>('button[aria-label="选择头像 5"]');
+    const avatar = document.querySelector<HTMLButtonElement>('button[aria-label="云朵"]');
+    const color = document.querySelector<HTMLButtonElement>('button[aria-label="选择色相 202"]');
     expect(avatar).not.toBeNull();
+    expect(color).not.toBeNull();
     expect(document.querySelector('button[aria-label="选择自定义头像图片"]')).not.toBeNull();
     expect(document.querySelector<HTMLInputElement>('.channel-avatar-file-input')?.accept).toBe("image/png,image/jpeg,image/webp");
     act(() => avatar?.click());
+    act(() => color?.click());
     const form = document.querySelector<HTMLFormElement>(".sidebar-name-dialog");
     await act(async () => form?.requestSubmit());
 
     expect(api.createNamedAgent).toHaveBeenCalledWith({
       name: "Beta",
-      avatar_key: "abstract-5",
+      avatar_key: "mascot-v1:cloud:none:202",
       avatar_image: "",
       provider_override: undefined,
       model_override: undefined,

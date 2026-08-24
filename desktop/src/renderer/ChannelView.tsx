@@ -4,7 +4,8 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkCjkStrongBoundary from "./remarkCjkStrongBoundary";
 import type { ChannelAgentInsight, ChannelMessage, ChannelRoom, InitializeResult, NamedAgent } from "../shared/protocol";
-import { AGENT_AVATAR_KEYS, AgentAvatarMark, randomAgentAvatarKey } from "./AgentAvatarMark";
+import { AgentAvatarMark, randomAgentAvatarKey } from "./AgentAvatarMark";
+import { AgentAvatarCreator } from "./AgentAvatarCreator";
 import { AgentRelationshipGraph } from "./AgentRelationshipGraph";
 import { AUTO_FOLLOW_BOTTOM_THRESHOLD_PX, useAutoFollowScrollContainer } from "./AutoFollowScroll";
 import { ChannelComposer, type ChannelComposerHandle } from "./ChannelComposer";
@@ -1812,6 +1813,16 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                           <span>{t("channels.name")}</span>
                           <input value={agentName} onChange={(event) => setAgentName(event.currentTarget.value)} />
                         </label>
+                        <AgentAvatarCreator
+                          seed={selectedAgent.id}
+                          avatarKey={agentAvatarKey}
+                          avatarImage={agentAvatarImage}
+                          onChange={(nextAvatarKey) => {
+                            setAgentAvatarKey(nextAvatarKey);
+                            setAgentAvatarImage("");
+                            setAgentAvatarError("");
+                          }}
+                        />
                         <label className="channel-form-field">
                           <span>{t("channels.model")}</span>
                           <SelectMenu value={agentModel} onChange={selectAgentModel} groups={modelGroups} ariaLabel={t("channels.model")} />
@@ -1953,6 +1964,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
         onClose={closeAgentPanel}
         dialogTitle={editingAgentID ? t("channels.editAgent") : t("channels.newAgent")}
         dialogTitleId="channel-agent-dialog-title"
+        dialogClassName="channel-agent-editor-dialog"
         fieldLabel={t("channels.name")}
         fieldAriaLabel={t("channels.name")}
         placeholder="Andy"
@@ -1996,23 +2008,16 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                 .finally(() => { input.value = ""; });
             }}
           />
-          <fieldset className="channel-avatar-picker">
-            <legend>{t("channels.avatar")}</legend>
-            <div>
-              {AGENT_AVATAR_KEYS.map((avatarKey, index) => (
-                <button
-                  className={agentAvatarKey === avatarKey && !agentAvatarImage ? "active" : ""}
-                  type="button"
-                  key={avatarKey}
-                  aria-label={t("channels.chooseAvatar", { index: index + 1 })}
-                  aria-pressed={agentAvatarKey === avatarKey && !agentAvatarImage}
-                  onClick={() => { setAgentAvatarKey(avatarKey); setAgentAvatarImage(""); setAgentAvatarError(""); }}
-                >
-                  <AgentAvatarMark seed={editingAgentID || "new-agent"} avatarKey={avatarKey} />
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          <AgentAvatarCreator
+            seed={editingAgentID || "new-agent"}
+            avatarKey={agentAvatarKey}
+            avatarImage={agentAvatarImage}
+            onChange={(nextAvatarKey) => {
+              setAgentAvatarKey(nextAvatarKey);
+              setAgentAvatarImage("");
+              setAgentAvatarError("");
+            }}
+          />
           <div className="channel-form-section">
             <label className="channel-form-field">
               <span>{t("channels.model")}</span>

@@ -247,6 +247,9 @@ type WuuMascotProps = Omit<
   accessory?: WuuMascotAccessory;
   activity?: WuuMascotActivity;
   followPointer?: boolean;
+  identityName?: string;
+  identityHue?: number;
+  identityTraits?: Readonly<Record<string, number>>;
 };
 
 export function WuuMascot({
@@ -255,13 +258,16 @@ export function WuuMascot({
   accessory,
   activity = "idle",
   followPointer = false,
+  identityName = WUU_MASCOT_NAME,
+  identityHue,
+  identityTraits = WUU_MASCOT_TRAITS,
   style,
   ...svgProps
 }: WuuMascotProps): JSX.Element {
   const runtime = useContext(WuuMascotRuntimeContext);
   const effectiveProvider = provider ?? runtime.provider;
   const effectiveModel = model ?? runtime.model;
-  const hue = providerMascotHue(effectiveProvider, runtime.providers);
+  const hue = identityHue ?? providerMascotHue(effectiveProvider, runtime.providers);
   const colors = palette(hue);
   const selectedAccessory = accessory ?? modelMascotAccessory(effectiveModel);
   const [svg, setSVG] = useState<SVGSVGElement | null>(null);
@@ -381,10 +387,10 @@ export function WuuMascot({
       <Blobatar
         {...svgProps}
         ref={setSVG}
-        name={WUU_MASCOT_NAME}
-        hue={WUU_MASCOT_DEFAULT_HUE}
+        name={identityName}
+        hue={identityHue ?? WUU_MASCOT_DEFAULT_HUE}
         background={false}
-        traits={WUU_MASCOT_TRAITS}
+        traits={identityTraits}
         perspective={WUU_MASCOT_ACTIVITY_PERSPECTIVES[activity]}
         animate="always"
         expression={WUU_MASCOT_ACTIVITY_EXPRESSIONS[activity]}

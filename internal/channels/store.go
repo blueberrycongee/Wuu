@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1651,7 +1652,32 @@ func normalizeNamedAgentAvatarKey(value string) (string, error) {
 			return value, nil
 		}
 	}
+	parts := strings.Split(value, ":")
+	if len(parts) == 4 && parts[0] == "mascot-v1" && validNamedAgentAvatarShape(parts[1]) && validNamedAgentAvatarAccessory(parts[2]) {
+		hue, err := strconv.Atoi(parts[3])
+		if err == nil && hue >= 0 && hue <= 359 && parts[3] == strconv.Itoa(hue) {
+			return value, nil
+		}
+	}
 	return "", fmt.Errorf("invalid named agent avatar %q", value)
+}
+
+func validNamedAgentAvatarShape(value string) bool {
+	switch value {
+	case "round", "organic", "boxy", "nub", "cloud", "sun":
+		return true
+	default:
+		return false
+	}
+}
+
+func validNamedAgentAvatarAccessory(value string) bool {
+	switch value {
+	case "none", "cap", "beanie", "top-hat", "sprout", "crown", "headphones", "scarf", "beret", "party-hat", "wizard-hat", "chef-hat", "flower", "halo", "bow-tie", "graduation-cap", "cowboy-hat", "propeller-cap", "mushroom-cap", "bunny-ears", "cat-ears", "ribbon", "necktie":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeNamedAgentAvatarImage(value string) (string, error) {
