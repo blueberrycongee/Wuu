@@ -16,6 +16,7 @@ import {
   SCRATCH_PSEUDO_PROJECT_ID,
   initialState,
   isScratchThread,
+  mergeSidebarThread,
   reduceNotification,
   sortThreads,
   threadBelongsToProject,
@@ -187,7 +188,11 @@ export function mergeSidebarThreadSnapshots(
     if (byID.get(thread.id) === thread) {
       continue;
     }
-    byID.set(thread.id, thread);
+    const cachedThread = byID.get(thread.id);
+    byID.set(
+      thread.id,
+      cachedThread ? mergeSidebarThread(cachedThread, thread) : thread,
+    );
     changed = true;
   }
   if (!changed) {

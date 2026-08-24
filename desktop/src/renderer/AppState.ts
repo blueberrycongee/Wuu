@@ -1702,6 +1702,8 @@ function mergeListedThreads(current: Thread[], listed: Thread[]): Thread[] {
 function mergeListedThread(existing: Thread, listed: Thread): Thread {
   return {
     ...listed,
+    title: listed.title?.trim() ? listed.title : existing.title,
+    preview: listed.preview?.trim() ? listed.preview : existing.preview,
     turns:
       listed.turns.length > 0 || existing.turns.length === 0
         ? listed.turns
@@ -1711,6 +1713,10 @@ function mergeListedThread(existing: Thread, listed: Thread): Thread {
         ? listed.child_agents
         : existing.child_agents,
   };
+}
+
+export function mergeSidebarThread(existing: Thread, incoming: Thread): Thread {
+  return mergeListedThread(existing, incoming);
 }
 
 function conversationSearchThreadMeta(thread: Thread): string {

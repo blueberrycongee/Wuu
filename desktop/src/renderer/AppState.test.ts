@@ -41,6 +41,7 @@ import {
   latestContextUsageForThread,
   RETAINED_TURN_TELEMETRY_LIMIT,
   mergeListedThreads,
+  mergeSidebarThread,
   markThreadTurnsViewed,
   openForkThreadAsPrimary,
   pinnedThreads,
@@ -687,6 +688,20 @@ describe("summarizeThreadsForSidebar", () => {
     expect(summary.workspace_id).toBe(project.id);
     expect(threadBelongsToProject(summary, project)).toBe(true);
     expect(isScratchThread(summary, [project])).toBe(false);
+  });
+});
+
+describe("mergeSidebarThread", () => {
+  it("preserves a known title and preview when an incoming snapshot omits them", () => {
+    const existing = threadWithUserTexts(["今天我在这里面提交的内容"]);
+    existing.title = "已经生成的标题";
+    existing.preview = "今天我在这里面提交的内容";
+    const incoming = { ...existing, title: "", preview: "" };
+
+    const merged = mergeSidebarThread(existing, incoming);
+
+    expect(merged.title).toBe(existing.title);
+    expect(merged.preview).toBe(existing.preview);
   });
 });
 
