@@ -2268,11 +2268,14 @@
   gap: 3px;
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
   transform: translateY(-50%);
   /* Keep the button boxes on their final x-axis while they appear. Moving the
    * whole clickable overlay during hover made fast clicks land beside the
    * glyph the user was following. */
-  transition: opacity var(--motion-fast) var(--ease-out);
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    visibility 0s linear 120ms;
 }
 
 /* When the row is hovered the action icons must read as clearly
@@ -2284,17 +2287,31 @@
   color: var(--ink);
 }
 
-.thread-row:hover .thread-row-actions,
+.thread-row:hover .thread-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transform: translateY(-50%);
+  transition-delay: 120ms;
+}
+
+.thread-row:focus-within .thread-row-actions,
 .thread-row:has(.thread-row-action:focus-visible) .thread-row-actions {
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
   transform: translateY(-50%);
+  transition-delay: 0s;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .thread-row-main > .thread-row-title,
-  .thread-row-actions {
+  .thread-row-main > .thread-row-title {
     transition: none;
+  }
+
+  .thread-row-actions {
+    /* Keep the short hit-target guard even when the fade is disabled. */
+    transition: visibility 0s linear 120ms;
   }
 }
 
