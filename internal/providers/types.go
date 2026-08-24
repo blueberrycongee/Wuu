@@ -157,6 +157,16 @@ type ReasoningBlock struct {
 	Data      string
 }
 
+// ProviderItem preserves an opaque provider-native history item that must be
+// replayed verbatim to the same provider state scope. Data is the complete JSON
+// wire item; Type is copied separately for validation and diagnostics.
+type ProviderItem struct {
+	Type     string `json:"type"`
+	Data     string `json:"data"`
+	Provider string `json:"provider"`
+	Scope    string `json:"scope,omitempty"`
+}
+
 // MessagePhase classifies assistant text when a provider exposes the same
 // structured phase signal Codex uses. Empty means unknown.
 type MessagePhase string
@@ -221,6 +231,7 @@ type ChatMessage struct {
 	// providers like Kimi when thinking mode is enabled.
 	ReasoningContent string
 	ReasoningBlocks  []ReasoningBlock
+	ProviderItems    []ProviderItem
 	Images           []InputImage
 	Files            []InputFile
 	// ContentParts is durable presentation metadata; provider adapters ignore it.
@@ -336,6 +347,9 @@ type ChatRequest struct {
 	// model variants. Keys follow OpenCode's AI SDK option names where
 	// possible; provider clients translate them to wire-format fields.
 	ProviderOptions map[string]any
+	// ProviderStateScope is an opaque, non-secret compatibility key for
+	// replaying provider-native history. Provider adapters must not serialize it.
+	ProviderStateScope string
 	// NativeDeferredToolDiscovery allows provider adapters to use their native
 	// deferred-tool protocol for tools marked DeferLoading. Compatible
 	// endpoints leave this false unless the session explicitly opts in.

@@ -125,6 +125,7 @@ type HistoryRecord struct {
 	Steered             bool            `json:"steered,omitempty"`
 	ReasoningContent    string          `json:"reasoning_content,omitempty"`
 	ReasoningBlocks     json.RawMessage `json:"reasoning_blocks,omitempty"`
+	ProviderItems       json.RawMessage `json:"provider_items,omitempty"`
 	ContentParts        json.RawMessage `json:"content_parts,omitempty"`
 	Images              json.RawMessage `json:"images,omitempty"`
 	Files               json.RawMessage `json:"files,omitempty"`

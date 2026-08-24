@@ -154,7 +154,7 @@ func (c *Client) buildResponsesRequest(req providers.ChatRequest, stream bool) (
 		}
 	}
 	for _, msg := range messages {
-		input = appendResponsesInputItem(input, msg, req.Model, nativeDeferred)
+		input = appendResponsesInputItem(input, msg, req.Provider, req.ProviderStateScope, req.Model, nativeDeferred)
 	}
 
 	payload := responsesRequest{
@@ -323,7 +323,7 @@ func splitResponsesInstructions(messages []providers.ChatMessage) (string, []pro
 	return strings.Join(instructions, "\n\n"), input
 }
 
-func appendResponsesInputItem(input []responsesInputItem, msg providers.ChatMessage, model string, nativeDeferred bool) []responsesInputItem {
+func appendResponsesInputItem(input []responsesInputItem, msg providers.ChatMessage, provider, providerStateScope, model string, nativeDeferred bool) []responsesInputItem {
 	if msg.Role == "tool" {
 		if nativeDeferred && isResponsesToolSearchResult(msg) {
 			return append(input, responsesInputItem{
@@ -348,6 +348,11 @@ func appendResponsesInputItem(input []responsesInputItem, msg providers.ChatMess
 	}
 
 	if msg.Role == "assistant" {
+		for _, providerItem := range msg.ProviderItems {
+			if item, ok := responsesProviderInputItem(providerItem, provider, providerStateScope); ok {
+				input = append(input, item)
+			}
+		}
 		for _, block := range msg.ReasoningBlocks {
 			if item, ok := responsesReasoningInputItem(block); ok {
 				input = append(input, item)
@@ -382,7 +387,7 @@ func appendResponsesInputItem(input []responsesInputItem, msg providers.ChatMess
 				Arguments: call.Arguments,
 			})
 		}
-		if strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0 {
+		if strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0 && len(msg.ProviderItems) == 0 {
 			input = append(input, responsesInputItem{Role: "assistant", Content: ""})
 		}
 		return input
@@ -392,6 +397,26 @@ func appendResponsesInputItem(input []responsesInputItem, msg providers.ChatMess
 		Role:    msg.Role,
 		Content: responsesMessageContent(msg),
 	})
+}
+
+func responsesProviderInputItem(item providers.ProviderItem, provider, providerStateScope string) (responsesInputItem, bool) {
+	if item.Provider != "" && strings.TrimSpace(item.Provider) != strings.TrimSpace(provider) {
+		return responsesInputItem{}, false
+	}
+	if item.Scope != "" && strings.TrimSpace(item.Scope) != strings.TrimSpace(providerStateScope) {
+		return responsesInputItem{}, false
+	}
+	raw := json.RawMessage(strings.TrimSpace(item.Data))
+	if len(raw) == 0 || !json.Valid(raw) {
+		return responsesInputItem{}, false
+	}
+	var probe struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil || probe.Type != item.Type || probe.Type != "compaction" {
+		return responsesInputItem{}, false
+	}
+	return responsesInputItem{Raw: append(json.RawMessage(nil), raw...)}, true
 }
 
 func responsesReasoningInputItem(block providers.ReasoningBlock) (responsesInputItem, bool) {
