@@ -918,7 +918,8 @@ export function AppSidebar({
       && isThreadUnread(thread, state.lastViewedTurnByThreadID[thread.id])
     ))
     .sort((left, right) => (
-      Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+      Number(isThreadExecuting(right)) - Number(isThreadExecuting(left))
+      || Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
       || threadTime(right) - threadTime(left)
     )), [
     activeThreadID,
