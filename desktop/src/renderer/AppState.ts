@@ -573,6 +573,20 @@ function itemStreamSnapshotsCoverCachedValues(
   return true;
 }
 
+function syncRunningThreadStreamItems(thread: Thread): void {
+  for (const turn of thread.turns) {
+    if (turn.status !== "in_progress") {
+      continue;
+    }
+    for (const item of turn.items) {
+      if ((item.status ?? "in_progress") !== "in_progress") {
+        continue;
+      }
+      syncStreamItem({ turn_id: turn.id, item });
+    }
+  }
+}
+
 function reduceNotification(
   state: AppState,
   notification: AppServerNotification,
@@ -2470,6 +2484,14 @@ function requireThread(result: { thread?: Thread }, message: string): Thread {
   if (!isThread(result.thread)) {
     throw new Error(message);
   }
+  // A renderer only consumes high-rate deltas for its active workdir. When a
+  // running conversation is resumed after a cross-workspace tab switch, the
+  // RPC snapshot therefore may be ahead of the StreamTextStore buffer that
+  // was last painted before the switch. Seed the buffer from that authoritative
+  // in-progress snapshot before rendering or appending newly arriving deltas;
+  // otherwise the pane keeps showing the old partial text until item/completed
+  // replaces it with the final response.
+  syncRunningThreadStreamItems(result.thread);
   return result.thread;
 }
 
