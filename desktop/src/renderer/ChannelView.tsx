@@ -383,11 +383,11 @@ function ChannelOrchestrationCluster({
                         status={owner?.activity_status === "thinking" ? "thinking" : "idle"}
                       />
                     </span>
-                    <span className="channel-assignment-copy">
+                    <div className="channel-assignment-copy">
                       <span className="channel-assignment-owner"><span aria-hidden="true">→</span>{ownerName}</span>
                       <strong>{title}</strong>
-                      {body ? <span className="channel-assignment-body"><RichContent text={body} /></span> : null}
-                    </span>
+                      {body ? <div className="channel-assignment-body"><RichContent text={body} /></div> : null}
+                    </div>
                     <span className="channel-assignment-status" data-state={state}>
                       <i aria-hidden="true" />
                       {t(`channels.assignmentStatus.${state}`)}

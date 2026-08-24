@@ -722,8 +722,8 @@
 }
 
 .channel-orchestration-avatar {
-  width: 32px;
-  height: 32px;
+  width: var(--channel-avatar-size);
+  height: var(--channel-avatar-size);
 }
 
 .channel-orchestration-avatar > *,
