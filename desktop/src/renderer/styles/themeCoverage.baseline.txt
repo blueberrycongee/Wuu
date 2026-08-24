@@ -14,6 +14,7 @@ channels.css .channel-form-danger-row button.danger:hover:not(:disabled), .chann
 channels.css .channel-management-primary:hover:not(:disabled) background --ink-overlay-4
 channels.css .channel-management-row:hover background --ink-overlay-4
 channels.css .channel-member-picker-option:hover, .channel-member-picker-option:focus-visible background --ink-overlay-4
+channels.css .channel-message-bubble background --ink-overlay-4
 channels.css .channel-room-danger-zone button:hover, .channel-room-danger-zone button:focus-visible background --danger-soft
 channels.css .channel-room-member-remove:hover:not(:disabled), .channel-room-member-remove:focus-visible:not(:disabled) background --danger-soft
 channels.css .channel-split-resizer:hover::before, .channel-split-resizer:focus-visible::before, .resizing-channel-split .channel-split-resizer::before background --ink-overlay-18
@@ -44,7 +45,6 @@ composer.css .composer-input-header > * + * border-top --ink-overlay-6
 composer.css .composer-input-header-action:hover:not(:disabled) background --ink-overlay-8
 composer.css .composer-queue-row + .composer-queue-row border-top --ink-overlay-6
 composer.css .composer-queue-row:hover .composer-queue-preview, .composer-queue-row:focus-within .composer-queue-preview background --ink-overlay-4
-composer.css .composer-send-button:disabled color --composer-send-button-disabled-text
 composer.css .composer-voice-button:hover:not(:disabled) background --ink-overlay-8
 composer.css .group-members-capsule:hover, .group-members-capsule:focus-visible background --ink-overlay-6
 composer.css .permission-chip.tone-danger:hover, .permission-chip.tone-danger[aria-expanded="true"] background --danger-soft
@@ -101,7 +101,8 @@ environment.css .environment-panel box-shadow --env-shadow-dark-006
 environment.css .environment-panel box-shadow --env-shadow-dark-008
 environment.css .environment-panel border --ink-overlay-12
 environment.css .environment-pr-result background --env-pr-result-bg
-environment.css .fork-dialog-option border --ink-overlay-12
+environment.css .fork-dialog-option:hover:not(:disabled) border-color --ink-overlay-18
+environment.css .fork-dialog-option.is-busy border-color --ink-overlay-18
 environment.css .new-participant-avatar border --ink-overlay-12
 environment.css .new-participant-field input:focus border-color --ink-overlay-12
 environment.css .new-participant-field input:focus box-shadow --ink-overlay-12
@@ -185,6 +186,8 @@ settings.css .settings-usage-heatmap-cell[data-level="4"], .settings-heatmap-leg
 settings.css .settings-usage-trend-day i background --settings-heatmap-level-4
 side-thread.css .side-thread-panel__resizer:hover::before, .side-thread-panel__resizer:focus-visible::before, .resizing-side-thread .side-thread-panel__resizer::before background --sidebar-resizer-hover-bg
 side-thread.css .side-thread-panel__resizer:hover::before, .side-thread-panel__resizer:focus-visible::before, .resizing-side-thread .side-thread-panel__resizer::before box-shadow --sidebar-resizer-hover-ring
+sidebar.css .app-shell.compact-navigation.sidebar-collapsed:is(.sidebar-drawer-open, .sidebar-drawer-closing) .sidebar box-shadow --ink-overlay-8
+sidebar.css .app-shell.compact-navigation.sidebar-collapsed:is(.sidebar-drawer-open, .sidebar-drawer-closing) .sidebar border-right --sidebar-drawer-edge
 sidebar.css .collaboration-contact-row:hover, .collaboration-contact-row:focus-visible background --ink-overlay-4
 sidebar.css .dev-fixture-nav border-top --sidebar-dev-fixture-nav-border
 sidebar.css .nav-item[aria-current="page"] background --sidebar-row-selected-bg
@@ -202,6 +205,7 @@ sidebar.css .sidebar-drawer-docking :is(.sidebar, .settings-sidebar) background 
 sidebar.css .sidebar-drawer-docking :is(.sidebar, .settings-sidebar) background --sidebar-material-fill
 sidebar.css .sidebar-drawer-docking :is(.sidebar, .settings-sidebar) box-shadow --sidebar-material-inner-edge
 sidebar.css .sidebar-functional-action:hover, .sidebar-functional-action:focus-visible, .sidebar-functional-action[aria-expanded="true"] background --sidebar-row-icon-hover-bg-default
+sidebar.css .sidebar-notifications-dot border --sidebar-material-fill
 sidebar.css .sidebar-resizer:hover::before, .sidebar-resizer:focus-visible::before, .resizing-sidebar .sidebar-resizer::before background --sidebar-resizer-hover-bg
 sidebar.css .sidebar-resizer:hover::before, .sidebar-resizer:focus-visible::before, .resizing-sidebar .sidebar-resizer::before box-shadow --sidebar-resizer-hover-ring
 sidebar.css .sidebar-row-icon-button:hover, .sidebar-row-icon-button:focus-visible background --sidebar-row-icon-hover-bg
