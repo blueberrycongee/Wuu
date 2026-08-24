@@ -918,6 +918,7 @@ export const enUS = {
   "task.status.cancelled": "Cancelled",
   "turn.noUserPreview": "No user message is available to preview for this turn",
   "turn.expandConversationTurn": "Expand this conversation turn",
+  "turn.loadEarlier": "Load {count} earlier turns",
   "sources.label": "Source",
   "sources.labelCount": "Sources {count}",
   "sources.openNamed": "Open {name}",

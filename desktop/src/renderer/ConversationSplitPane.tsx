@@ -171,7 +171,10 @@ export function ConversationSplitPane({
                 : null
             }
             forcedFullTurnIDs={
-              editingMessage ? [editingMessage.turnID] : undefined
+              [
+                ...(editingMessage ? [editingMessage.turnID] : []),
+                ...(pendingQuestion ? [pendingQuestion.request.turn_id] : []),
+              ]
             }
             renderTurn={(turn) => (
                 <TurnView

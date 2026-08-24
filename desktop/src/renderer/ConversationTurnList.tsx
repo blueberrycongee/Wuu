@@ -2,7 +2,9 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -15,6 +17,8 @@ import {
 import {
   turnAnchorID,
   turnReplySnippet,
+  CONVERSATION_TURN_REVEAL_EVENT,
+  type ConversationTurnRevealDetail,
   userMessageAnchorID,
 } from "./TurnViewHelpers";
 import { useI18n } from "./i18n";
@@ -32,7 +36,48 @@ type ConversationTurnListProps = {
   renderAfterTurn?: (turn: Turn) => ReactNode;
   renderAfterMissingTurn?: ReactNode;
   forcedFullTurnIDs?: Iterable<string>;
+  autoLoadEarlier?: boolean;
 };
+
+export const TURN_LIST_INITIAL_TAIL_TURNS = TURN_LIST_RECENT_FULL_TURNS;
+export const TURN_LIST_PREPEND_BATCH_TURNS = 40;
+const TURN_LIST_PRELOAD_SCROLL_TOP_PX = 160;
+
+type TurnWindowState = {
+  threadID: string;
+  visibleCount: number;
+  coldWindowed: boolean;
+};
+
+type PrependScrollSnapshot = {
+  node: HTMLElement;
+  scrollHeight: number;
+  scrollTop: number;
+};
+
+function initialTurnWindowCount(turnCount: number): number {
+  if (turnCount <= TURN_LIST_COLLAPSE_THRESHOLD) {
+    return turnCount;
+  }
+  return TURN_LIST_INITIAL_TAIL_TURNS;
+}
+
+function initialTurnWindowState(
+  threadID: string,
+  turnCount: number,
+): TurnWindowState {
+  return {
+    threadID,
+    visibleCount: initialTurnWindowCount(turnCount),
+    coldWindowed: turnCount > TURN_LIST_COLLAPSE_THRESHOLD,
+  };
+}
+
+function turnListScrollContainer(start: HTMLElement): HTMLElement | null {
+  return start.closest<HTMLElement>(
+    ".scroll-region, .conversation-split-body, .side-thread-panel__body",
+  );
+}
 
 export function ConversationTurnList({
   threadID,
@@ -42,17 +87,65 @@ export function ConversationTurnList({
   renderAfterTurn,
   renderAfterMissingTurn,
   forcedFullTurnIDs,
+  autoLoadEarlier = true,
 }: ConversationTurnListProps): JSX.Element {
+  const { t, formatNumber } = useI18n();
   const [expandedTurnIDs, setExpandedTurnIDs] = useState<Set<string>>(
     () => new Set(),
   );
+  const [turnWindow, setTurnWindow] = useState<TurnWindowState>(() =>
+    initialTurnWindowState(threadID, turns.length),
+  );
+  const historyLoaderRef = useRef<HTMLButtonElement | null>(null);
+  const prependScrollSnapshotRef = useRef<PrependScrollSnapshot | null>(null);
   const forcedFull = useMemo(
     () => new Set(forcedFullTurnIDs ?? []),
     [forcedFullTurnIDs],
   );
+  const initialVisibleCount = initialTurnWindowCount(turns.length);
+  const storedVisibleCount =
+    turnWindow.threadID === threadID
+      ? Math.min(
+          Math.max(
+            turnWindow.visibleCount,
+            turnWindow.coldWindowed
+              ? 0
+              : Math.min(turns.length, TURN_LIST_COLLAPSE_THRESHOLD),
+          ),
+          turns.length,
+        )
+      : initialVisibleCount;
+  const storedStartIndex = Math.max(0, turns.length - storedVisibleCount);
+  let requiredStartIndex = turns.length;
+  turns.forEach((turn, index) => {
+    if (turn.status === "in_progress" || forcedFull.has(turn.id)) {
+      requiredStartIndex = Math.min(requiredStartIndex, index);
+    }
+  });
+  const visibleStartIndex = Math.min(storedStartIndex, requiredStartIndex);
+  const visibleTurns = turns.slice(visibleStartIndex);
+  const hasEarlierTurns = visibleStartIndex > 0;
+
   useEffect(() => {
     setExpandedTurnIDs(new Set());
   }, [threadID]);
+
+  useEffect(() => {
+    if (turnWindow.threadID === threadID) {
+      return;
+    }
+    setTurnWindow(initialTurnWindowState(threadID, turns.length));
+  }, [threadID, turnWindow.threadID, turns.length]);
+
+  useLayoutEffect(() => {
+    const snapshot = prependScrollSnapshotRef.current;
+    if (!snapshot) {
+      return;
+    }
+    prependScrollSnapshotRef.current = null;
+    const addedHeight = snapshot.node.scrollHeight - snapshot.scrollHeight;
+    snapshot.node.scrollTop = snapshot.scrollTop + Math.max(0, addedHeight);
+  }, [visibleStartIndex]);
 
   useEffect(() => {
     setExpandedTurnIDs((current) => {
@@ -92,10 +185,98 @@ export function ConversationTurnList({
     });
   }, []);
 
+  const loadEarlierTurns = useCallback(
+    (preserveScrollPosition = true) => {
+      if (!hasEarlierTurns) {
+        return;
+      }
+      const nextStartIndex = Math.max(
+        0,
+        visibleStartIndex - TURN_LIST_PREPEND_BATCH_TURNS,
+      );
+      if (preserveScrollPosition) {
+        const loader = historyLoaderRef.current;
+        const node = loader ? turnListScrollContainer(loader) : null;
+        if (node) {
+          prependScrollSnapshotRef.current = {
+            node,
+            scrollHeight: node.scrollHeight,
+            scrollTop: node.scrollTop,
+          };
+        }
+      }
+      setTurnWindow({
+        threadID,
+        visibleCount: turns.length - nextStartIndex,
+        coldWindowed: turnWindow.coldWindowed,
+      });
+    },
+    [
+      hasEarlierTurns,
+      threadID,
+      turnWindow.coldWindowed,
+      turns.length,
+      visibleStartIndex,
+    ],
+  );
+
+  useEffect(() => {
+    const handleRevealTurn = (event: Event): void => {
+      const detail = (event as CustomEvent<ConversationTurnRevealDetail>).detail;
+      const turnIndex = turns.findIndex((turn) => turn.id === detail?.turnID);
+      if (turnIndex < 0 || turnIndex >= visibleStartIndex) {
+        return;
+      }
+      prependScrollSnapshotRef.current = null;
+      setTurnWindow({
+        threadID,
+        visibleCount: turns.length - turnIndex,
+        coldWindowed: turnWindow.coldWindowed,
+      });
+    };
+    window.addEventListener(CONVERSATION_TURN_REVEAL_EVENT, handleRevealTurn);
+    return () =>
+      window.removeEventListener(CONVERSATION_TURN_REVEAL_EVENT, handleRevealTurn);
+  }, [threadID, turnWindow.coldWindowed, turns, visibleStartIndex]);
+
+  useEffect(() => {
+    if (!autoLoadEarlier || !hasEarlierTurns) {
+      return;
+    }
+    const loader = historyLoaderRef.current;
+    const node = loader ? turnListScrollContainer(loader) : null;
+    if (!node) {
+      return;
+    }
+    const loadIfNearTop = (): void => {
+      if (node.scrollTop <= TURN_LIST_PRELOAD_SCROLL_TOP_PX) {
+        loadEarlierTurns(true);
+      }
+    };
+    node.addEventListener("scroll", loadIfNearTop, { passive: true });
+    return () => node.removeEventListener("scroll", loadIfNearTop);
+  }, [autoLoadEarlier, hasEarlierTurns, loadEarlierTurns]);
+
   return (
     <>
-      {renderBeforeTurns}
-      {turns.map((turn, index) => {
+      {hasEarlierTurns ? (
+        <button
+          className="conversation-turn-history-loader"
+          onClick={() => loadEarlierTurns(true)}
+          ref={historyLoaderRef}
+          type="button"
+        >
+          {t("turn.loadEarlier", {
+            count: formatNumber(
+              Math.min(visibleStartIndex, TURN_LIST_PREPEND_BATCH_TURNS),
+            ),
+          })}
+        </button>
+      ) : (
+        renderBeforeTurns
+      )}
+      {visibleTurns.map((turn, visibleIndex) => {
+        const index = visibleStartIndex + visibleIndex;
         const full =
           !collapseOlderTurns ||
           index >= firstRecentFullIndex ||

@@ -5,9 +5,14 @@ import type { Turn } from "../shared/protocol";
 import {
   ConversationTurnList,
   TURN_LIST_COLLAPSE_THRESHOLD,
+  TURN_LIST_INITIAL_TAIL_TURNS,
+  TURN_LIST_PREPEND_BATCH_TURNS,
   TURN_LIST_RECENT_FULL_TURNS,
 } from "./ConversationTurnList";
-import { userMessageAnchorID } from "./TurnViewHelpers";
+import {
+  requestConversationTurnReveal,
+  userMessageAnchorID,
+} from "./TurnViewHelpers";
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -56,12 +61,17 @@ function makeTurn(index: number, status: Turn["status"] = "completed"): Turn {
   };
 }
 
-function mountTurns(turns: Turn[], forcedFullTurnIDs?: string[]): void {
-  render(
+function turnList(
+  turns: Turn[],
+  forcedFullTurnIDs?: string[],
+  autoLoadEarlier = true,
+): JSX.Element {
+  return (
     <ConversationTurnList
       threadID="thread-1"
       turns={turns}
       forcedFullTurnIDs={forcedFullTurnIDs}
+      autoLoadEarlier={autoLoadEarlier}
       renderTurn={(turn) => (
         <section
           className="turn"
@@ -71,7 +81,13 @@ function mountTurns(turns: Turn[], forcedFullTurnIDs?: string[]): void {
           {turn.id}
         </section>
       )}
-    />,
+    />
+  );
+}
+
+function mountTurns(turns: Turn[], forcedFullTurnIDs?: string[]): void {
+  render(
+    turnList(turns, forcedFullTurnIDs),
   );
 }
 
@@ -138,7 +154,18 @@ describe("ConversationTurnList", () => {
     expect(container.querySelector(".turn-collapsed")).toBeNull();
   });
 
-  it("keeps old turn anchors while full-rendering only recent turns", () => {
+  it("keeps an already-mounted short conversation intact as turns append", () => {
+    const initialTurns = [makeTurn(0)];
+    render(turnList(initialTurns));
+    const initialTurn = container.querySelector('[data-turn-id="turn-0"]');
+
+    render(turnList([...initialTurns, makeTurn(1)]));
+
+    expect(container.querySelectorAll(".turn")).toHaveLength(2);
+    expect(container.querySelector('[data-turn-id="turn-0"]')).toBe(initialTurn);
+  });
+
+  it("cold-mounts only the recent tail of a long conversation", () => {
     const turns = Array.from(
       { length: TURN_LIST_COLLAPSE_THRESHOLD + 10 },
       (_, index) => makeTurn(index),
@@ -147,25 +174,42 @@ describe("ConversationTurnList", () => {
     mountTurns(turns);
 
     expect(container.querySelectorAll('[data-testid="full-turn"]')).toHaveLength(
-      TURN_LIST_RECENT_FULL_TURNS,
+      TURN_LIST_INITIAL_TAIL_TURNS,
     );
-    expect(container.querySelectorAll(".turn-collapsed").length).toBe(
-      turns.length - TURN_LIST_RECENT_FULL_TURNS,
+    expect(container.querySelectorAll(".turn")).toHaveLength(
+      TURN_LIST_INITIAL_TAIL_TURNS,
     );
+    expect(container.querySelectorAll(".turn-collapsed")).toHaveLength(0);
     expect(
       container.querySelector(
         `#${userMessageAnchorID("turn-0", "user-0")}`,
       ),
-    ).not.toBeNull();
+    ).toBeNull();
+    expect(container.querySelector(".conversation-turn-history-loader")).not.toBeNull();
   });
 
-  it("expands an old collapsed turn on demand", () => {
+  it("loads earlier turns in bounded batches and expands a loaded turn", () => {
     const turns = Array.from(
       { length: TURN_LIST_COLLAPSE_THRESHOLD + 10 },
       (_, index) => makeTurn(index),
     );
     mountTurns(turns);
 
+    const historyLoader = container.querySelector<HTMLButtonElement>(
+      ".conversation-turn-history-loader",
+    );
+    expect(historyLoader).not.toBeNull();
+
+    act(() => {
+      historyLoader?.click();
+    });
+
+    expect(container.querySelectorAll(".turn")).toHaveLength(
+      TURN_LIST_INITIAL_TAIL_TURNS + TURN_LIST_PREPEND_BATCH_TURNS,
+    );
+    expect(container.querySelectorAll(".turn-collapsed")).toHaveLength(
+      TURN_LIST_PREPEND_BATCH_TURNS,
+    );
     const firstCollapsed = container.querySelector<HTMLButtonElement>(
       ".turn-collapsed-button",
     );
@@ -176,7 +220,80 @@ describe("ConversationTurnList", () => {
     });
 
     expect(
-      container.querySelector('[data-testid="full-turn"][data-turn-id="turn-0"]'),
+      container.querySelector('[data-testid="full-turn"][data-turn-id="turn-10"]'),
+    ).not.toBeNull();
+  });
+
+  it("preserves the viewport offset when an earlier batch is prepended", () => {
+    const turns = Array.from(
+      { length: TURN_LIST_COLLAPSE_THRESHOLD + 10 },
+      (_, index) => makeTurn(index),
+    );
+    const scrollNode = document.createElement("div");
+    scrollNode.className = "scroll-region";
+    container.appendChild(scrollNode);
+    Object.defineProperty(scrollNode, "scrollHeight", {
+      configurable: true,
+      get: () => scrollNode.querySelectorAll(".turn").length * 10,
+    });
+    scrollNode.scrollTop = 120;
+
+    act(() => {
+      if (!root) {
+        root = createRoot(scrollNode);
+      }
+      root.render(turnList(turns, undefined, false));
+    });
+    act(() => {
+      scrollNode
+        .querySelector<HTMLButtonElement>(".conversation-turn-history-loader")
+        ?.click();
+    });
+
+    expect(scrollNode.scrollTop).toBe(520);
+  });
+
+  it("loads one earlier batch only after the user scrolls near the top", () => {
+    const turns = Array.from(
+      { length: TURN_LIST_COLLAPSE_THRESHOLD + 50 },
+      (_, index) => makeTurn(index),
+    );
+    const scrollNode = document.createElement("div");
+    scrollNode.className = "scroll-region";
+    container.appendChild(scrollNode);
+
+    act(() => {
+      if (!root) {
+        root = createRoot(scrollNode);
+      }
+      root.render(turnList(turns));
+    });
+
+    expect(scrollNode.querySelectorAll(".turn")).toHaveLength(
+      TURN_LIST_INITIAL_TAIL_TURNS,
+    );
+
+    scrollNode.scrollTop = 0;
+    act(() => scrollNode.dispatchEvent(new Event("scroll")));
+
+    expect(scrollNode.querySelectorAll(".turn")).toHaveLength(
+      TURN_LIST_INITIAL_TAIL_TURNS + TURN_LIST_PREPEND_BATCH_TURNS,
+    );
+  });
+
+  it("reveals an unloaded turn before an anchor jump retries", () => {
+    const turns = Array.from(
+      { length: TURN_LIST_COLLAPSE_THRESHOLD + 10 },
+      (_, index) => makeTurn(index),
+    );
+    mountTurns(turns);
+
+    expect(container.querySelector('[data-turn-id="turn-0"]')).toBeNull();
+    act(() => requestConversationTurnReveal("turn-0"));
+
+    expect(container.querySelector('[data-turn-id="turn-0"]')).not.toBeNull();
+    expect(
+      container.querySelector(`#${userMessageAnchorID("turn-0", "user-0")}`),
     ).not.toBeNull();
   });
 

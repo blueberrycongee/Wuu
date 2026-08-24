@@ -182,18 +182,19 @@ describe("conversation turn memoization", () => {
     expect(turnViewRenders.get("turn-3")).toBe(2);
   });
 
-  it("collapsed turns skip re-render and snippet recompute on events", () => {
-    // 90 turns: beyond TURN_LIST_COLLAPSE_THRESHOLD (80), so the oldest 50
-    // render collapsed and the newest 40 render full.
+  it("unmounted history stays out of render and snippet work on events", () => {
+    // 90 turns: beyond TURN_LIST_COLLAPSE_THRESHOLD (80), so only the newest
+    // 40 mount on the cold path.
     const turns = Array.from({ length: 90 }, (_, index) => makeTurn(index + 1));
     const thread = threadWithTurns("thread-collapsed", turns);
     const { container, rerender } = mountPanes(thread);
 
     const collapsedCount = () =>
       container.querySelectorAll(".turn-collapsed").length;
-    expect(collapsedCount()).toBe(50);
+    expect(collapsedCount()).toBe(0);
+    expect(container.querySelectorAll('[data-testid^="full-"]')).toHaveLength(40);
     const snippetsAfterMount = replySnippetCalls.count;
-    expect(snippetsAfterMount).toBe(50);
+    expect(snippetsAfterMount).toBe(0);
     expect(turnViewRenders.get("turn-90")).toBe(1);
 
     const updated = threadWithTurns("thread-collapsed", [
@@ -213,26 +214,31 @@ describe("conversation turn memoization", () => {
     ]);
     rerender(updated);
 
-    // Only the touched full turn re-renders; no collapsed row recomputed.
+    // Only the touched full turn re-renders; unmounted history does no work.
     expect(turnViewRenders.get("turn-90")).toBe(2);
     expect(turnViewRenders.get("turn-89")).toBe(1);
     expect(replySnippetCalls.count).toBe(snippetsAfterMount);
-    expect(collapsedCount()).toBe(50);
+    expect(collapsedCount()).toBe(0);
   });
 
-  it("still expands a collapsed turn on click after memoization", () => {
+  it("still expands a loaded historical turn after memoization", () => {
     const turns = Array.from({ length: 90 }, (_, index) => makeTurn(index + 1));
     const thread = threadWithTurns("thread-expand", turns);
     const { container } = mountPanes(thread);
 
     expect(turnViewRenders.get("turn-1")).toBeUndefined();
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>(".conversation-turn-history-loader")
+        ?.click();
+    });
     const expandButton = container.querySelector<HTMLButtonElement>(
-      '[data-turn-id="turn-1"] .turn-collapsed-button',
+      '[data-turn-id="turn-11"] .turn-collapsed-button',
     );
     expect(expandButton).not.toBeNull();
     act(() => {
       expandButton!.click();
     });
-    expect(turnViewRenders.get("turn-1")).toBe(1);
+    expect(turnViewRenders.get("turn-11")).toBe(1);
   });
 });

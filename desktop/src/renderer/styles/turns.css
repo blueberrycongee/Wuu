@@ -138,6 +138,32 @@
   margin-bottom: 14px;
 }
 
+.conversation-turn-history-loader {
+  justify-self: center;
+  margin: 4px 0 20px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-sm);
+  font-weight: var(--weight-semibold);
+  padding: 7px 11px;
+}
+
+.conversation-turn-history-loader:hover,
+.conversation-turn-history-loader:focus-visible {
+  border-color: var(--hairline);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.conversation-turn-history-loader:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .turn-collapsed-button {
   display: grid;
   width: 100%;

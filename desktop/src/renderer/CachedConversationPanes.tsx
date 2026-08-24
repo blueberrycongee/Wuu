@@ -337,8 +337,12 @@ const CachedConversationPane = memo(function CachedConversationPane({
               </>
             )}
             forcedFullTurnIDs={
-              historyMessageEdit ? [historyMessageEdit.turnID] : undefined
+              [
+                ...(historyMessageEdit ? [historyMessageEdit.turnID] : []),
+                ...(pendingQuestion ? [pendingQuestion.request.turn_id] : []),
+              ]
             }
+            autoLoadEarlier={isActive}
             renderTurn={(turn) => (
               <PaneTurnView
                 turn={turn}

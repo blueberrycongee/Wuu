@@ -25,6 +25,25 @@ export function userMessageAnchorID(turnID: string, itemID: string): string {
   return `user-msg-${turnID}-${itemID}`;
 }
 
+export const CONVERSATION_TURN_REVEAL_EVENT =
+  "wuu:conversation-turn-reveal";
+
+export type ConversationTurnRevealDetail = {
+  turnID: string;
+};
+
+export function requestConversationTurnReveal(turnID: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent<ConversationTurnRevealDetail>(
+      CONVERSATION_TURN_REVEAL_EVENT,
+      { detail: { turnID } },
+    ),
+  );
+}
+
 function userMessageAnchorSelector(turnID: string, itemID: string): string {
   return `#${userMessageAnchorID(turnID, itemID)}`;
 }
@@ -343,6 +362,7 @@ export function scrollToUserMessage(turnID: string, itemID: string): void {
   if (typeof window === "undefined") {
     return;
   }
+  requestConversationTurnReveal(turnID);
   let attemptIndex = 0;
   const tryOnce = (): void => {
     if (attemptJump(turnID, itemID)) {

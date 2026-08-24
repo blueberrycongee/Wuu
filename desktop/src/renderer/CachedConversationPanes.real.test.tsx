@@ -49,8 +49,8 @@ function longThread(id: string, turnCount: number): Thread {
 
 describe("CachedConversationPanes real message tree", () => {
   it("keeps a long cross-workspace pane mounted and reveals it synchronously", () => {
-    const source = longThread("source-workspace", 80);
-    const target = longThread("target-workspace", 80);
+    const source = longThread("source-workspace", 200);
+    const target = longThread("target-workspace", 200);
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -103,9 +103,9 @@ describe("CachedConversationPanes real message tree", () => {
       `[data-thread-id="${source.id}"]`,
     );
     const sourceLastTurn = sourcePane?.querySelector<HTMLElement>(
-      `[data-turn-id="${source.id}-turn-79"]`,
+      `[data-turn-id="${source.id}-turn-199"]`,
     );
-    expect(sourcePane?.querySelectorAll(".turn")).toHaveLength(80);
+    expect(sourcePane?.querySelectorAll(".turn")).toHaveLength(40);
 
     paneThreads = retainCachedConversationPaneThreads({
       threadIDs: [target.id, source.id],
@@ -120,7 +120,7 @@ describe("CachedConversationPanes real message tree", () => {
     expect(sourcePane?.getAttribute("data-active")).toBe("true");
     expect(sourcePane?.hasAttribute("inert")).toBe(false);
     expect(
-      sourcePane?.querySelector(`[data-turn-id="${source.id}-turn-79"]`),
+      sourcePane?.querySelector(`[data-turn-id="${source.id}-turn-199"]`),
     ).toBe(sourceLastTurn);
   });
 });
