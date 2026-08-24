@@ -218,15 +218,6 @@
   content-visibility: visible;
 }
 
-.cached-conversation-pane:not([data-layout-settled]) > .conversation-width {
-  opacity: 0;
-}
-
-.cached-conversation-pane[data-layout-settled] > .conversation-width {
-  opacity: 1;
-  transition: opacity var(--content-swap-duration) var(--content-swap-easing);
-}
-
 .conversation-pane.side-thread-panel-visible {
   grid-template-columns: minmax(0, 1fr) var(--side-thread-width, 400px);
   --conversation-visible-inset-right: var(--side-thread-width, 400px);
@@ -249,14 +240,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .conversation-pane {
-    transition: none;
-  }
-
-  .cached-conversation-pane:not([data-layout-settled]) > .conversation-width {
-    opacity: 1;
-  }
-
-  .cached-conversation-pane[data-layout-settled] > .conversation-width {
     transition: none;
   }
 }

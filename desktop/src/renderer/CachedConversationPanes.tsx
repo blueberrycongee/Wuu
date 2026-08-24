@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useRef } from "react";
 import type {
   Agent,
   InputFile,
@@ -21,7 +21,6 @@ import {
   InstructionFilesCard,
   type InstructionFilesEntry,
 } from "./InstructionFilesCard";
-import { OPTIMISTIC_TURN_ID_PREFIX } from "./ComposerMessages";
 import { TurnView } from "./TurnView";
 import { UserQuestionCard } from "./UserQuestionCard";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
@@ -30,16 +29,6 @@ import type { HistoryMessageEditState } from "./ConversationHistoryActions";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import { PluginConversationCards } from "./plugins/PluginConversationCards";
 import { ConversationRenderActivityProvider } from "./ConversationRenderActivity";
-
-const CONVERSATION_LAYOUT_STABLE_FRAMES = 2;
-const CONVERSATION_LAYOUT_SETTLE_TIMEOUT_MS = 120;
-
-function sameEntriesByIdentity<T>(previous: readonly T[], next: readonly T[]): boolean {
-  return (
-    previous.length === next.length &&
-    previous.every((entry, index) => entry === next[index])
-  );
-}
 
 export type CachedConversationPanesProps = {
   threadIDs: string[];
@@ -174,13 +163,6 @@ const CachedConversationPane = memo(function CachedConversationPane({
   onAnswerUserQuestion,
   onCancelUserQuestion,
 }: CachedConversationPaneProps): JSX.Element {
-  // A brand-new thread takes over from the already-visible optimistic first
-  // turn. Hiding that same turn behind the tab-switch layout gate creates a
-  // blank frame during the handoff, so keep it visible from the first paint.
-  const [layoutSettled, setLayoutSettled] = useState(() =>
-    thread.turns.some((turn) => turn.id.startsWith(OPTIMISTIC_TURN_ID_PREFIX)),
-  );
-  const paneRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef(thread);
   threadRef.current = thread;
   const handleOpenFile = useCallback(
@@ -315,131 +297,14 @@ const CachedConversationPane = memo(function CachedConversationPane({
   const latestTurnStreamStatus = latestTurn
     ? turnStreamStatus[latestTurn.id]
     : undefined;
-  const previousLayoutContentRef = useRef({
-    turns: threadTurns,
-    streamStatus: latestTurnStreamStatus,
-    contextEntries: threadContextEntries,
-    instructionEntries: threadInstructionEntries,
-    historyMessageEdit,
-    forkedFromID: thread.forked_from_id,
-    worktree: thread.worktree,
-    cwd: thread.cwd,
-  });
-  const wasActiveRef = useRef(isActive);
-
-  useLayoutEffect(() => {
-    const previous = previousLayoutContentRef.current;
-    const contentChanged =
-      previous.turns !== threadTurns ||
-      previous.streamStatus !== latestTurnStreamStatus ||
-      !sameEntriesByIdentity(previous.contextEntries, threadContextEntries) ||
-      !sameEntriesByIdentity(previous.instructionEntries, threadInstructionEntries) ||
-      previous.historyMessageEdit !== historyMessageEdit ||
-      previous.forkedFromID !== thread.forked_from_id ||
-      previous.worktree !== thread.worktree ||
-      previous.cwd !== thread.cwd;
-    const changedWhileHidden =
-      contentChanged && (!isActive || !wasActiveRef.current);
-
-    previousLayoutContentRef.current = {
-      turns: threadTurns,
-      streamStatus: latestTurnStreamStatus,
-      contextEntries: threadContextEntries,
-      instructionEntries: threadInstructionEntries,
-      historyMessageEdit,
-      forkedFromID: thread.forked_from_id,
-      worktree: thread.worktree,
-      cwd: thread.cwd,
-    };
-    wasActiveRef.current = isActive;
-
-    if (changedWhileHidden && layoutSettled) {
-      setLayoutSettled(false);
-    }
-  }, [
-    contextCompositionEntries,
-    historyMessageEdit,
-    isActive,
-    instructionFilesEntries,
-    latestTurnStreamStatus,
-    layoutSettled,
-    thread.cwd,
-    thread.forked_from_id,
-    thread.worktree,
-    threadTurns,
-  ]);
-
-  useLayoutEffect(() => {
-    if (!isActive || layoutSettled) {
-      return undefined;
-    }
-
-    const pane = paneRef.current;
-    if (!pane) {
-      setLayoutSettled(true);
-      return undefined;
-    }
-
-    let frame: number | undefined;
-    let timeout: number | undefined;
-    let finished = false;
-    let previousHeight = pane.scrollHeight;
-    let stableFrames = 0;
-
-    const finish = (): void => {
-      if (finished) return;
-      finished = true;
-      if (frame !== undefined) {
-        window.cancelAnimationFrame(frame);
-        frame = undefined;
-      }
-      if (timeout !== undefined) {
-        window.clearTimeout(timeout);
-        timeout = undefined;
-      }
-      setLayoutSettled(true);
-    };
-
-    const sampleLayout = (): void => {
-      frame = undefined;
-      const nextHeight = pane.scrollHeight;
-      if (nextHeight === previousHeight) {
-        stableFrames += 1;
-      } else {
-        previousHeight = nextHeight;
-        stableFrames = 0;
-      }
-      if (stableFrames >= CONVERSATION_LAYOUT_STABLE_FRAMES) {
-        finish();
-        return;
-      }
-      frame = window.requestAnimationFrame(sampleLayout);
-    };
-
-    frame = window.requestAnimationFrame(sampleLayout);
-    timeout = window.setTimeout(finish, CONVERSATION_LAYOUT_SETTLE_TIMEOUT_MS);
-
-    return () => {
-      finished = true;
-      if (frame !== undefined) {
-        window.cancelAnimationFrame(frame);
-      }
-      if (timeout !== undefined) {
-        window.clearTimeout(timeout);
-      }
-    };
-  }, [isActive, layoutSettled, thread.id]);
-
   return (
     <ConversationRenderActivityProvider active={isActive}>
       <div
         aria-hidden={isActive ? undefined : true}
         className="cached-conversation-pane"
         data-active={isActive}
-        data-layout-settled={layoutSettled ? "" : undefined}
         data-thread-id={thread.id}
         inert={isActive ? undefined : true}
-        ref={paneRef}
       >
         <div className="conversation-width session-flow">
           <ConversationTurnList

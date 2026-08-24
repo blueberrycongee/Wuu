@@ -7,6 +7,26 @@ import {
 export const MAX_CACHED_CONVERSATION_PANES = 8;
 export const CACHED_CONVERSATION_RENDER_BUDGET = 240;
 
+export function retainCachedConversationPaneThreads({
+  threadIDs,
+  currentThreadsByID,
+  previousThreadsByID,
+}: {
+  threadIDs: readonly string[];
+  currentThreadsByID: ReadonlyMap<string, Thread>;
+  previousThreadsByID: ReadonlyMap<string, Thread>;
+}): Map<string, Thread> {
+  const retained = new Map<string, Thread>();
+  for (const threadID of threadIDs) {
+    const thread =
+      currentThreadsByID.get(threadID) ?? previousThreadsByID.get(threadID);
+    if (thread) {
+      retained.set(threadID, thread);
+    }
+  }
+  return retained;
+}
+
 export function conversationPaneRenderWeight(thread: Thread | undefined): number {
   const turns = thread?.turns ?? [];
   if (turns.length <= TURN_LIST_COLLAPSE_THRESHOLD) {

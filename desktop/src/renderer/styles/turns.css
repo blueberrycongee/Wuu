@@ -123,10 +123,9 @@
  * (overflow-anchor is disabled while auto-following, so the browser does
  * not compensate), and the ResizeObserver re-pin lands one frame later —
  * a visible vertical jolt right after opening a session. Turns further up
- * keep the cheap estimate. When a viewport reaches past this tail (for
- * example because the recent turns are short and an older turn contains a
- * tall diff card), the pane's data-layout-settled gate keeps that correction
- * hidden until the scroll anchor has caught up.
+ * keep the cheap estimate. ResizeObserver-based scroll anchoring corrects
+ * older estimated turns asynchronously without delaying the first visible
+ * frame of a cached conversation.
  */
 .turn:nth-last-child(-n + 5 of .turn) {
   content-visibility: visible;

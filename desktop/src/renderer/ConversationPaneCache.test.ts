@@ -4,6 +4,7 @@ import {
   CACHED_CONVERSATION_RENDER_BUDGET,
   MAX_CACHED_CONVERSATION_PANES,
   conversationPaneRenderWeight,
+  retainCachedConversationPaneThreads,
   selectCachedConversationPaneIDs,
 } from "./ConversationPaneCache";
 
@@ -85,5 +86,36 @@ describe("conversation pane cache", () => {
         ]),
       }),
     ).toEqual([active.id, open.id]);
+  });
+
+  it("retains an open pane snapshot when a runtime load replaces the thread list", () => {
+    const source = thread("source-workspace", 40);
+    const target = thread("target-workspace", 20);
+
+    const retained = retainCachedConversationPaneThreads({
+      threadIDs: [target.id, source.id],
+      currentThreadsByID: new Map([[target.id, target]]),
+      previousThreadsByID: new Map([[source.id, source]]),
+    });
+
+    expect([...retained.keys()]).toEqual([target.id, source.id]);
+    expect(retained.get(source.id)).toBe(source);
+    expect(retained.get(target.id)).toBe(target);
+  });
+
+  it("drops snapshots once their pane is evicted", () => {
+    const retained = thread("retained", 1);
+    const evicted = thread("evicted", 1);
+
+    expect(
+      [...retainCachedConversationPaneThreads({
+        threadIDs: [retained.id],
+        currentThreadsByID: new Map(),
+        previousThreadsByID: new Map([
+          [retained.id, retained],
+          [evicted.id, evicted],
+        ]),
+      }).keys()],
+    ).toEqual([retained.id]);
   });
 });
