@@ -2463,15 +2463,17 @@
 }
 
 .agent-avatar-color-swatches button {
+  --agent-avatar-swatch: hsl(var(--agent-avatar-hue) 68% 60%);
   width: 24px;
   height: 24px;
   flex: 0 0 24px;
   border-radius: 50%;
-  background: hsl(var(--agent-avatar-hue) 68% 60%);
+  background: var(--agent-avatar-swatch);
 }
 
 .agent-avatar-color-swatches button:hover {
-  background: hsl(var(--agent-avatar-hue) 68% 54%);
+  --agent-avatar-swatch-hover: hsl(var(--agent-avatar-hue) 68% 54%);
+  background: var(--agent-avatar-swatch-hover);
 }
 
 .agent-avatar-color-swatches button.active {
@@ -2480,8 +2482,9 @@
 }
 
 .agent-avatar-color-picker input[type="range"] {
+  --agent-avatar-accent: hsl(var(--agent-avatar-hue) 68% 54%);
   width: 100%;
-  accent-color: hsl(var(--agent-avatar-hue) 68% 54%);
+  accent-color: var(--agent-avatar-accent);
 }
 
 /* Effort chips: the option count and label length are runtime-dependent
