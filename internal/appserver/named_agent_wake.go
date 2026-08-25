@@ -422,6 +422,9 @@ func (s *Server) restoreNamedAgentWakes() {
 	if s == nil || s.channelService == nil || s.closed.Load() {
 		return
 	}
+	if err := s.reconcileChannelWorkRuns(context.Background()); err != nil {
+		providers.DebugLogf("reconcile channel work runs: %v", err)
+	}
 	agents, err := s.channelService.ListAgentRuntimes(context.Background())
 	if err != nil {
 		providers.DebugLogf("restore named agent wakes: %v", err)
@@ -481,6 +484,8 @@ You are the hidden runtime for your mapped Wuu room. Its current name and visibl
 You are the room's single collaboration entrypoint. Ordinary room messages and member reports wake you; they do not wake every member. On every wake, call chat_check. Use chat_read when you need the full room context or attachments.
 
 Choose one visible owner for a tightly coupled goal, or split genuinely independent deliverables across a few visible owners. Make every real assignment visible with chat_task create at the room root (no thread_id), using a concise title, a natural-language brief, the triggering source_message_id, and that Named Agent as owner. Set verification_required=true for every substantive coding task; leave it false for pure conversation, retrieval, or work with no meaningful deliverable. The host creates one durable Work debt and a private assignment envelope from this action. Do not duplicate assignments through collaboration_send and do not build a speculative project tree. When the user corrects an existing task goal, call chat_task revise with the task_id and the complete revised brief instead of creating a duplicate task; the host increments goal_revision, invalidates older deliveries, and interrupts stale run handles.
+
+An incoming room delivery with work_id belongs to that existing Work. Route a correction back to the same owner with chat_task revise, use chat_work cancel for an explicit cancellation after first asking Core's Subagent close_agent to stop any listed live session refs, and forward a needs-human answer to the same owner rather than creating another Work. Cancellation prevents new runs and integration but does not claim that already-applied side effects were rolled back.
 
 For a substantive coding task, the owner moves the task to checking and sends you a private candidate_ready collaboration delivery before publishing a final result. The delivery's work_id, goal_revision, candidate_revision, and artifact_refs identify the exact candidate. On that signal, use the Subagent plugin's spawn_agent tool to start exactly one fresh-context verifier, then immediately record its returned session id with chat_work start_run using run_kind=verifier and the candidate workspace revision. Give the child the original user goal, task brief, both revisions, candidate summary, relevant absolute workspace paths, and available command/diff evidence. Ask it to independently read the code, rerun focused checks, seek counterexamples, and return a first-line PASS, BLOCK, or UNKNOWN followed by a concise natural-language report. Do not pass the producer's private transcript and do not require JSON or a criterion table.
 

@@ -80,6 +80,15 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 		}
 		goalRevision = task.TaskGoalRevision
 		candidateRevision = task.TaskCandidateRevision
+		for _, artifactRef := range params.ArtifactRefs {
+			if artifactRef == "" {
+				continue
+			}
+			var artifactWorkID string
+			if err := tx.QueryRowContext(ctx, `SELECT work_id FROM work_artifacts WHERE id = ?`, artifactRef).Scan(&artifactWorkID); err != nil || artifactWorkID != task.ID {
+				return CollaborationMessage{}, fmt.Errorf("%w: candidate artifact %q does not belong to current work", ErrConflict, artifactRef)
+			}
+		}
 	}
 	if params.ReplyTo != "" {
 		var exists int
@@ -100,6 +109,21 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	})
 	if err != nil {
 		return CollaborationMessage{}, err
+	}
+	if params.Kind == CollaborationCandidateReady {
+		candidateRef := message.ID
+		workspaceRevision := ""
+		if len(params.ArtifactRefs) > 0 && params.ArtifactRefs[0] != "" {
+			candidateRef = params.ArtifactRefs[0]
+			_ = tx.QueryRowContext(ctx, `SELECT workspace_revision FROM work_artifacts WHERE id = ?`, candidateRef).Scan(&workspaceRevision)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE works SET state = 'checking', candidate_revision = ?, candidate_artifact_ref = ?,
+				candidate_workspace_revision = ?, verification_state = 'pending', updated_at = ?
+			WHERE id = ? AND goal_revision = ?`, candidateRevision, candidateRef,
+			workspaceRevision, toMillis(now), params.SourceMessageID, goalRevision); err != nil {
+			return CollaborationMessage{}, fmt.Errorf("project candidate-ready work: %w", err)
+		}
 	}
 	shouldDeliver, err := requestWakeTx(ctx, tx, params.ToAgentID, toMillis(now))
 	if err != nil {
@@ -124,6 +148,9 @@ func enqueueCollaborationTx(ctx context.Context, tx *sql.Tx, message Collaborati
 	}
 	if message.Kind == "" {
 		message.Kind = CollaborationControl
+	}
+	if message.FromType == "" {
+		message.FromType = MemberAgent
 	}
 	artifactRefsJSON, err := json.Marshal(message.ArtifactRefs)
 	if err != nil {

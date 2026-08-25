@@ -503,9 +503,21 @@ func evaluateTriggersTx(ctx context.Context, tx *sql.Tx, message Message, mentio
 		if suppressed {
 			return nil, nil
 		}
+		workID := ""
+		goalRevision := 0
+		threadRoot := strings.TrimSpace(message.ThreadID)
+		if threadRoot != "" {
+			var kind MessageKind
+			if err := tx.QueryRowContext(ctx, `
+				SELECT kind, task_goal_revision FROM room_messages WHERE id = ? AND room_id = ?`,
+				threadRoot, message.RoomID).Scan(&kind, &goalRevision); err == nil && kind == MessageTask {
+				workID = threadRoot
+			}
+		}
 		if _, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
 			RoomID: message.RoomID, FromType: message.AuthorType, FromID: message.AuthorID,
-			ToAgentID: roomRuntimeID, Body: message.Body, SourceMessageID: message.ID, CreatedAt: fromMillis(now),
+			ToAgentID: roomRuntimeID, WorkID: workID, Body: message.Body,
+			SourceMessageID: message.ID, GoalRevision: goalRevision, CreatedAt: fromMillis(now),
 		}); err != nil {
 			return nil, err
 		}

@@ -240,7 +240,7 @@ func (s *Service) StartWorkRun(ctx context.Context, params WorkRunStartParams) (
 			return WorkRun{}, fmt.Errorf("%w: verifier run requires a checking candidate", ErrConflict)
 		}
 	}
-	if params.Kind == WorkRunSelector && (work.MaxCandidates < 2 || strings.TrimSpace(work.FanoutReason) == "") {
+	if params.Kind == WorkRunSelector && (work.MaxCandidates < 2 || work.CandidatesUsed < 2 || strings.TrimSpace(work.FanoutReason) == "") {
 		return WorkRun{}, fmt.Errorf("%w: selector requires an explicit multi-candidate policy", ErrConflict)
 	}
 	id, err := randomID("workrun", 12)
@@ -351,6 +351,18 @@ func (s *Service) AddWorkArtifact(ctx context.Context, params WorkArtifactAddPar
 	}
 	if err := authorizeWorkActorTx(ctx, tx, work, actor); err != nil {
 		return WorkArtifact{}, err
+	}
+	if runID := strings.TrimSpace(params.RunID); runID != "" {
+		run, err := scanWorkRun(tx.QueryRowContext(ctx, workRunSelect+` WHERE run.id = ? AND run.work_id = ?`, runID, work.ID))
+		if err != nil {
+			return WorkArtifact{}, err
+		}
+		if run.GoalRevision != work.GoalRevision || run.CandidateRevision != work.CandidateRevision {
+			return WorkArtifact{}, fmt.Errorf("%w: artifact run revisions are stale", ErrConflict)
+		}
+	}
+	if params.Kind == WorkArtifactCandidate && work.CandidatesUsed >= work.MaxCandidates {
+		return WorkArtifact{}, fmt.Errorf("%w: candidate budget exhausted", ErrConflict)
 	}
 	id, err := randomID("artifact", 12)
 	if err != nil {

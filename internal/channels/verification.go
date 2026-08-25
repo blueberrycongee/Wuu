@@ -108,6 +108,12 @@ func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerific
 	case VerificationUnknown:
 		taskState = TaskStateNeedsHuman
 	}
+	if verification.Decision == VerificationBlock {
+		var maxAttempts int
+		if err := tx.QueryRowContext(ctx, `SELECT max_verifier_attempts FROM works WHERE id = ?`, task.ID).Scan(&maxAttempts); err == nil && verification.Attempt >= maxAttempts {
+			taskState = TaskStateNeedsHuman
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE room_messages SET task_state = ? WHERE id = ?`, taskState, task.ID); err != nil {
 		return TaskVerificationSubmitResult{}, fmt.Errorf("project task verification state: %w", err)
 	}
