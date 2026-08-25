@@ -278,7 +278,10 @@ function buildChannelTimeline(messages: ChannelMessage[], roomAgentID?: string):
   return timeline;
 }
 
-function assignmentState(state?: string): "open" | "doing" | "done" {
+export function assignmentState(state?: string): "open" | "doing" | "checking" | "revising" | "needs_human" | "done" {
+  if (state === "checking") return "checking";
+  if (state === "revising") return "revising";
+  if (state === "needs_human") return "needs_human";
   if (state === "doing") return "doing";
   if (state === "done") return "done";
   return "open";
@@ -491,6 +494,29 @@ function ChannelMessageBubble({
         />
       ) : null}
     </>
+  );
+}
+
+function ChannelMessageWithReplyAction({
+  outgoing,
+  onReply,
+  children,
+}: {
+  outgoing: boolean;
+  onReply: () => void;
+  children: JSX.Element;
+}): JSX.Element {
+  const { t } = useI18n();
+  return (
+    <div className={`channel-message-bubble-line${outgoing ? " outgoing" : ""}`}>
+      <div className="channel-message-body">{children}</div>
+      <div className="channel-message-actions">
+        <button type="button" onClick={onReply}>
+          <Reply aria-hidden="true" />
+          {t("channels.reply")}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1822,12 +1848,6 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                     <time dateTime={message.created_at}>
                       {formatDate(message.created_at, { hour: "2-digit", minute: "2-digit" })}
                     </time>
-                    <div className="channel-message-actions">
-                      <button type="button" onClick={() => openThread(message)}>
-                        <Reply aria-hidden="true" />
-                        {t("channels.reply")}
-                      </button>
-                    </div>
                   </div>
                 )}
                 footer={threadReplies.length ? (
@@ -1839,13 +1859,15 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                     />
                 ) : undefined}
               >
-                <ChannelMessageBubble
-                  message={message}
-                  outgoing={own}
-                  allowCollapse={!own}
-                  onExpand={messageScroll.pauseAutoFollow}
-                  attachmentIDPrefix="main"
-                />
+                <ChannelMessageWithReplyAction outgoing={own} onReply={() => openThread(message)}>
+                  <ChannelMessageBubble
+                    message={message}
+                    outgoing={own}
+                    allowCollapse={!own}
+                    onExpand={messageScroll.pauseAutoFollow}
+                    attachmentIDPrefix="main"
+                  />
+                </ChannelMessageWithReplyAction>
               </MessageBubbleRow>
             );
           })}
@@ -1949,32 +1971,28 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                         <time dateTime={message.created_at}>
                           {formatDate(message.created_at, { hour: "2-digit", minute: "2-digit" })}
                         </time>
-                        <div className="channel-message-actions">
-                          <button type="button" onClick={() => setThreadReplyTargetID(message.id)}>
-                            <Reply aria-hidden="true" />
-                            {t("channels.reply")}
-                          </button>
-                        </div>
                       </div>
                     )}
                   >
-                    <ChannelMessageBubble
-                      message={message}
-                      outgoing={own}
-                      allowCollapse={!own}
-                      onExpand={threadScroll.pauseAutoFollow}
-                      attachmentIDPrefix="thread"
-                      beforeBody={repliedMessage && repliedMessage.id !== activeThreadRoot.id ? (
-                        <button className="channel-thread-reference" type="button" onClick={() => setThreadReplyTargetID(repliedMessage.id)}>
-                          {t("channels.replyingTo", {
-                            name: repliedMessage.author_type === "human"
-                              ? t("channels.you")
-                              : (agentNames.get(repliedMessage.author_id) ?? repliedMessage.author_id),
-                          })}
-                          <span>{repliedMessage.body}</span>
-                        </button>
-                      ) : undefined}
-                    />
+                    <ChannelMessageWithReplyAction outgoing={own} onReply={() => setThreadReplyTargetID(message.id)}>
+                      <ChannelMessageBubble
+                        message={message}
+                        outgoing={own}
+                        allowCollapse={!own}
+                        onExpand={threadScroll.pauseAutoFollow}
+                        attachmentIDPrefix="thread"
+                        beforeBody={repliedMessage && repliedMessage.id !== activeThreadRoot.id ? (
+                          <button className="channel-thread-reference" type="button" onClick={() => setThreadReplyTargetID(repliedMessage.id)}>
+                            {t("channels.replyingTo", {
+                              name: repliedMessage.author_type === "human"
+                                ? t("channels.you")
+                                : (agentNames.get(repliedMessage.author_id) ?? repliedMessage.author_id),
+                            })}
+                            <span>{repliedMessage.body}</span>
+                          </button>
+                        ) : undefined}
+                      />
+                    </ChannelMessageWithReplyAction>
                   </MessageBubbleRow>
                 );
               })}

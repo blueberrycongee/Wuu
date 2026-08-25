@@ -37,17 +37,23 @@ func TestNamedAgentOrientationExcludesProjectlessConversations(t *testing.T) {
 	}
 }
 
-func TestRoomAgentOrientationDefinesSingleEntrypointAndVisibleDelegation(t *testing.T) {
+func TestRoomAgentOrientationDefinesHiddenVerifierLoop(t *testing.T) {
 	prompt := namedAgentOrientation(channels.NamedAgent{
 		Kind: "room", RoomID: "room-1", MemoryDir: "/agents/room-1/memory",
 	})
 	for _, want := range []string{
+		"You are the hidden runtime",
+		"Never use chat_send",
 		"You are the room's single collaboration entrypoint",
 		"Ordinary room messages and member reports wake you; they do not wake every member",
-		"calling chat_task create once per member at the room root",
-		"persisted task messages are the room's public assignment facts",
-		"Members publish meaningful progress, handoffs, questions, and results in each task's public thread",
-		"final synthesis",
+		"chat_task create at the room root",
+		"Set verification_required=true for every substantive coding task",
+		"call chat_task revise",
+		"source_message_id, goal_revision, and candidate_revision identify the exact candidate",
+		"use the Subagent plugin's spawn_agent tool to start exactly one fresh-context verifier",
+		"return a first-line PASS, BLOCK, or UNKNOWN",
+		"call chat_verify exactly once",
+		"create one final task owned by a visible lead",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("room orientation missing %q:\n%s", want, prompt)
@@ -60,13 +66,17 @@ func TestNamedAgentOrientationRoutesSharedRoomWorkThroughRoomAgent(t *testing.T)
 		Name: "Andy", MemoryDir: "/agents/agent-1/memory",
 	})
 	for _, want := range []string{
-		"Ordinary shared-room messages, including @mentions, are routed first to the room agent and do not directly wake every member",
+		"Ordinary shared-room messages, including @mentions, are routed first to the hidden room runtime and do not directly wake every member",
 		"Do not independently claim work from the shared transcript",
 		"Act on room tasks assigned to you",
-		"mark it doing when you start",
-		"post only meaningful progress, questions, handoffs, and the result in that task's public thread",
+		"mark a task doing when you start",
+		"do not publish the candidate as final",
+		"kind=candidate_ready and source_message_id=task_id",
+		"returned goal_revision and candidate_revision",
+		"kind verification_feedback",
+		"on BLOCK",
+		"On PASS",
 		"Use the task message as thread_id and reply_to",
-		"A collaboration message is private control traffic",
 		"Direct messages remain private conversations with the human",
 	} {
 		if !strings.Contains(prompt, want) {

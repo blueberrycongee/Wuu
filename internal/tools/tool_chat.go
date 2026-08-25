@@ -220,15 +220,18 @@ func (t *CollaborationSendTool) IsConcurrencySafe() bool { return false }
 func (t *CollaborationSendTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "collaboration_send",
-		Description: "Send a private orchestration message to another agent in the same room. " +
-			"Use this for delegating work and returning results; it does not post to the shared room transcript.",
+		Description: "Send private internal control traffic to another runtime in the same room. " +
+			"Use kind=candidate_ready with source_message_id to hand a checking task to the hidden room runtime; " +
+			"it does not post to the shared transcript.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"room_id":     map[string]any{"type": "string"},
-				"to_agent_id": map[string]any{"type": "string"},
-				"body":        map[string]any{"type": "string", "maxLength": channels.MaxMessageRunes},
-				"reply_to":    map[string]any{"type": "string"},
+				"room_id":           map[string]any{"type": "string"},
+				"to_agent_id":       map[string]any{"type": "string"},
+				"kind":              map[string]any{"type": "string", "enum": []string{"control", "candidate_ready"}},
+				"source_message_id": map[string]any{"type": "string"},
+				"body":              map[string]any{"type": "string", "maxLength": channels.MaxMessageRunes},
+				"reply_to":          map[string]any{"type": "string"},
 			},
 			"required": []string{"room_id", "to_agent_id", "body"},
 		},
@@ -239,16 +242,19 @@ func (t *CollaborationSendTool) Execute(ctx context.Context, argsJSON string) (s
 		return "", errors.New("collaboration_send is available only in a named-agent session")
 	}
 	var args struct {
-		RoomID  string `json:"room_id"`
-		ToAgent string `json:"to_agent_id"`
-		Body    string `json:"body"`
-		ReplyTo string `json:"reply_to"`
+		RoomID          string `json:"room_id"`
+		ToAgent         string `json:"to_agent_id"`
+		Kind            string `json:"kind"`
+		SourceMessageID string `json:"source_message_id"`
+		Body            string `json:"body"`
+		ReplyTo         string `json:"reply_to"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", err
 	}
 	message, err := t.env.ChatAgent.SendCollaboration(ctx, channels.CollaborationSendParams{
-		RoomID: args.RoomID, ToAgentID: args.ToAgent, Body: args.Body, ReplyTo: args.ReplyTo,
+		RoomID: args.RoomID, ToAgentID: args.ToAgent, Kind: channels.CollaborationKind(args.Kind),
+		SourceMessageID: args.SourceMessageID, Body: args.Body, ReplyTo: args.ReplyTo,
 	})
 	if err != nil {
 		return "", err
@@ -326,19 +332,25 @@ func (t *ChatTaskTool) IsReadOnly() bool        { return false }
 func (t *ChatTaskTool) IsConcurrencySafe() bool { return false }
 func (t *ChatTaskTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name:        "chat_task",
-		Description: "Create, update, or list lightweight tasks in a group-chat room. Only the task owner may update it; task progress belongs in the task message's thread.",
+		Name: "chat_task",
+		Description: "Create, update, revise, or list lightweight tasks in a group-chat room. " +
+			"Owners update progress; the hidden task author uses revise for user goal corrections, which invalidates stale verification.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action":    map[string]any{"type": "string", "enum": []string{"create", "update", "list"}},
+				"action":    map[string]any{"type": "string", "enum": []string{"create", "update", "revise", "list"}},
 				"room_id":   map[string]any{"type": "string"},
 				"thread_id": map[string]any{"type": "string"},
 				"task_id":   map[string]any{"type": "string"},
 				"title":     map[string]any{"type": "string"},
 				"body":      map[string]any{"type": "string"},
 				"owner_id":  map[string]any{"type": "string"},
-				"state":     map[string]any{"type": "string", "enum": []string{"open", "doing", "done"}},
+				"verification_required": map[string]any{
+					"type": "boolean", "description": "Require an independent pass before the owner may mark the task done.",
+				},
+				"state": map[string]any{"type": "string", "enum": []string{
+					"open", "doing", "checking", "revising", "needs_human", "done",
+				}},
 			},
 			"required": []string{"action"},
 		},
@@ -349,27 +361,39 @@ func (t *ChatTaskTool) Execute(ctx context.Context, argsJSON string) (string, er
 		return "", errors.New("chat_task is available only in a named-agent session")
 	}
 	var args struct {
-		Action   string `json:"action"`
-		RoomID   string `json:"room_id"`
-		ThreadID string `json:"thread_id"`
-		TaskID   string `json:"task_id"`
-		Title    string `json:"title"`
-		Body     string `json:"body"`
-		OwnerID  string `json:"owner_id"`
-		State    string `json:"state"`
+		Action               string `json:"action"`
+		RoomID               string `json:"room_id"`
+		ThreadID             string `json:"thread_id"`
+		TaskID               string `json:"task_id"`
+		Title                string `json:"title"`
+		Body                 string `json:"body"`
+		OwnerID              string `json:"owner_id"`
+		VerificationRequired bool   `json:"verification_required"`
+		State                string `json:"state"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", err
 	}
 	switch strings.TrimSpace(args.Action) {
 	case "create":
-		message, err := t.env.ChatAgent.CreateTask(ctx, channels.TaskCreateParams{RoomID: args.RoomID, ThreadID: args.ThreadID, Title: args.Title, Body: args.Body, OwnerID: args.OwnerID})
+		message, err := t.env.ChatAgent.CreateTask(ctx, channels.TaskCreateParams{
+			RoomID: args.RoomID, ThreadID: args.ThreadID, Title: args.Title, Body: args.Body,
+			OwnerID: args.OwnerID, VerificationRequired: args.VerificationRequired,
+		})
 		if err != nil {
 			return "", err
 		}
 		return mustJSON(map[string]any{"task": message})
 	case "update":
 		message, err := t.env.ChatAgent.UpdateTask(ctx, channels.TaskUpdateParams{TaskID: args.TaskID, RoomID: args.RoomID, State: channels.TaskState(args.State), OwnerID: args.OwnerID})
+		if err != nil {
+			return "", err
+		}
+		return mustJSON(map[string]any{"task": message})
+	case "revise":
+		message, err := t.env.ChatAgent.UpdateTask(ctx, channels.TaskUpdateParams{
+			TaskID: args.TaskID, RoomID: args.RoomID, OwnerID: args.OwnerID, GoalCorrection: args.Body,
+		})
 		if err != nil {
 			return "", err
 		}
@@ -381,8 +405,66 @@ func (t *ChatTaskTool) Execute(ctx context.Context, argsJSON string) (string, er
 		}
 		return mustJSON(map[string]any{"tasks": tasks})
 	default:
-		return "", errors.New("chat_task action must be create, update, or list")
+		return "", errors.New("chat_task action must be create, update, revise, or list")
 	}
+}
+
+type ChatVerifyTool struct{ env *Env }
+
+func NewChatVerifyTool(env *Env) *ChatVerifyTool  { return &ChatVerifyTool{env: env} }
+func (t *ChatVerifyTool) Name() string            { return "chat_verify" }
+func (t *ChatVerifyTool) IsReadOnly() bool        { return false }
+func (t *ChatVerifyTool) IsConcurrencySafe() bool { return false }
+func (t *ChatVerifyTool) Definition() providers.ToolDefinition {
+	return providers.ToolDefinition{
+		Name: "chat_verify",
+		Description: "Submit one independent verification decision for a room task. " +
+			"The host persists the three-state decision and privately delivers the natural-language report to the visible owner. " +
+			"Only the hidden room runtime may call this tool.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"room_id":            map[string]any{"type": "string"},
+				"task_id":            map[string]any{"type": "string"},
+				"goal_revision":      map[string]any{"type": "integer", "minimum": 1},
+				"candidate_revision": map[string]any{"type": "integer", "minimum": 1},
+				"decision": map[string]any{
+					"type": "string", "enum": []string{"pass", "block", "unknown"},
+				},
+				"report": map[string]any{
+					"type": "string", "maxLength": channels.MaxVerificationReportRunes,
+					"description": "Natural-language evidence, reproduction steps, and remaining unknowns.",
+				},
+			},
+			"required": []string{"room_id", "task_id", "goal_revision", "candidate_revision", "decision", "report"},
+		},
+	}
+}
+
+func (t *ChatVerifyTool) Execute(ctx context.Context, argsJSON string) (string, error) {
+	if t == nil || t.env == nil || t.env.ChatAgent == nil {
+		return "", errors.New("chat_verify is available only in a named-agent session")
+	}
+	var args struct {
+		RoomID            string `json:"room_id"`
+		TaskID            string `json:"task_id"`
+		Decision          string `json:"decision"`
+		Report            string `json:"report"`
+		GoalRevision      int    `json:"goal_revision"`
+		CandidateRevision int    `json:"candidate_revision"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", err
+	}
+	result, err := t.env.ChatAgent.SubmitTaskVerification(ctx, channels.TaskVerificationSubmitParams{
+		RoomID: args.RoomID, TaskID: args.TaskID,
+		Decision: channels.VerificationDecision(args.Decision), Report: args.Report,
+		GoalRevision: args.GoalRevision, CandidateRevision: args.CandidateRevision,
+	})
+	if err != nil {
+		return "", err
+	}
+	return mustJSON(result)
 }
 
 type ChatRemindTool struct{ env *Env }

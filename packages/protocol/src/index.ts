@@ -820,6 +820,9 @@ export type ChannelMessage = {
   task_title?: string;
   task_state?: string;
   task_owner?: string;
+  task_verification_required?: boolean;
+  task_goal_revision?: number;
+  task_candidate_revision?: number;
   created_at: string;
 };
 

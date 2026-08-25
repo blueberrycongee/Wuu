@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChannelRoom, InitializeResult, NamedAgent, WuuDesktopApi } from "../shared/protocol";
 import { graphDensityScale } from "./AgentRelationshipGraph";
 import { groupAvatarRowSizes } from "./ChannelGroupAvatar";
-import { ChannelView, formatChannelUnreadCount } from "./ChannelView";
+import { assignmentState, ChannelView, formatChannelUnreadCount } from "./ChannelView";
 import { clearToasts, ToastViewport } from "./Toast";
 import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
@@ -216,6 +216,12 @@ afterEach(() => {
 });
 
 describe("ChannelView", () => {
+  it("preserves verifier task states for honest room activity", () => {
+    expect(assignmentState("checking")).toBe("checking");
+    expect(assignmentState("revising")).toBe("revising");
+    expect(assignmentState("needs_human")).toBe("needs_human");
+  });
+
   it("caps channel unread counts at 99+", () => {
     expect(formatChannelUnreadCount(1)).toBe("1");
     expect(formatChannelUnreadCount(99)).toBe("99");
@@ -571,6 +577,12 @@ describe("ChannelView", () => {
     expect(agentBubble?.querySelector("img")).toBeNull();
     expect(agentBubble?.textContent).not.toContain("**");
     expect(container.querySelector(".channel-message.own .channel-message-bubble")?.textContent).toBe("Human direction");
+    const messageLines = container.querySelectorAll(".channel-message-bubble-line");
+    expect(messageLines.length).toBeGreaterThan(0);
+    for (const line of messageLines) {
+      expect(line.querySelector(":scope > .channel-message-body .channel-message-bubble")).not.toBeNull();
+      expect(line.querySelector(":scope > .channel-message-actions button")?.textContent).toContain("回复");
+    }
     expect(container.querySelector<HTMLImageElement>(".channel-message.own .composer-image-attachment img")?.src).toContain("data:image/png;base64,aW1hZ2U=");
     expect(container.querySelector(".channel-message.own .composer-file-attachment")?.textContent).toContain("brief.pdf");
     expect(container.querySelector(".channel-message.own .composer-attachments button")).toBeNull();

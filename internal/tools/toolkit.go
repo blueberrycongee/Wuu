@@ -323,7 +323,12 @@ func (t *Toolkit) rebuildRegistry() {
 		NewToolSearchTool(t),
 	}
 	if e.ChatAgent != nil {
-		registered = append(registered, NewChatCheckTool(e), NewChatReadTool(e), NewChatSendTool(e), NewCollaborationSendTool(e), NewChatDraftTool(e), NewChatTaskTool(e), NewChatRemindTool(e))
+		registered = append(registered, NewChatCheckTool(e), NewChatReadTool(e), NewCollaborationSendTool(e), NewChatDraftTool(e), NewChatTaskTool(e), NewChatRemindTool(e))
+		if e.ChatAgent.AgentKind() == "room" {
+			registered = append(registered, NewChatVerifyTool(e))
+		} else {
+			registered = append(registered, NewChatSendTool(e))
+		}
 	}
 	t.registry = NewRegistry(registered...)
 }

@@ -836,7 +836,10 @@
   background: color-mix(in srgb, var(--wuu-accent) 5%, var(--ink-overlay-4));
 }
 
-.channel-assignment-item[data-state="doing"] .channel-assignment-bubble {
+.channel-assignment-item[data-state="doing"] .channel-assignment-bubble,
+.channel-assignment-item[data-state="checking"] .channel-assignment-bubble,
+.channel-assignment-item[data-state="revising"] .channel-assignment-bubble,
+.channel-assignment-item[data-state="needs_human"] .channel-assignment-bubble {
   border-color: color-mix(in srgb, var(--warning) 25%, var(--border-subtle));
 }
 
@@ -910,7 +913,10 @@
   background: var(--wuu-accent);
 }
 
-.channel-assignment-status[data-state="doing"] i {
+.channel-assignment-status[data-state="doing"] i,
+.channel-assignment-status[data-state="checking"] i,
+.channel-assignment-status[data-state="revising"] i,
+.channel-assignment-status[data-state="needs_human"] i {
   background: var(--warning);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 14%, transparent);
 }
@@ -1065,7 +1071,8 @@
   }
 }
 
-.channel-message-content > .composer-attachments {
+.channel-message-content > .composer-attachments,
+.channel-message-body > .composer-attachments {
   margin-top: 8px;
 }
 
@@ -1074,7 +1081,7 @@
 }
 
 .channel-message-actions {
-  margin: 0 0 0 auto;
+  flex: 0 0 auto;
   display: flex;
   gap: 4px;
   opacity: 0;
@@ -1090,6 +1097,30 @@
 
 .channel-message.own .channel-message-actions {
   justify-content: flex-end;
+}
+
+.channel-message-bubble-line {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.channel-message-bubble-line.outgoing {
+  flex-direction: row-reverse;
+}
+
+.channel-message-body {
+  min-width: 0;
+  max-width: calc(100% - 58px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.channel-message-bubble-line.outgoing .channel-message-body {
+  align-items: flex-end;
 }
 
 @media (hover: none) {
@@ -1111,6 +1142,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
   border: 0;
   background: transparent;
   color: var(--text-tertiary);

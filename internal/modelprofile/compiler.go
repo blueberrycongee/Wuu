@@ -291,8 +291,10 @@ func addChatTools(b *surfaceBuilder) {
 	b.addVisible("chat_check", capability.CapabilityChat)
 	b.addVisible("chat_read", capability.CapabilityChat)
 	b.addVisible("chat_send", capability.CapabilityChat)
+	b.addVisible("collaboration_send", capability.CapabilityChat)
 	b.addVisible("chat_draft", capability.CapabilityChat)
 	b.addVisible("chat_task", capability.CapabilityChat)
+	b.addVisible("chat_verify", capability.CapabilityChat)
 	b.addVisible("chat_remind", capability.CapabilityChat)
 }
 

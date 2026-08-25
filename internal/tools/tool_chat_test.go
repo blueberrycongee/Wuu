@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -37,6 +38,7 @@ func TestNamedAgentChatToolsAreIsolatedAndRoundTrip(t *testing.T) {
 	assertDefinitionMissing(t, kit.Definitions(), "chat_check")
 	assertDefinitionMissing(t, kit.Definitions(), "chat_draft")
 	assertDefinitionMissing(t, kit.Definitions(), "chat_task")
+	assertDefinitionMissing(t, kit.Definitions(), "chat_verify")
 	assertDefinitionMissing(t, kit.Definitions(), "chat_remind")
 	if _, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_check", Arguments: `{}`}); err == nil {
 		t.Fatal("ordinary session executed chat_check")
@@ -47,9 +49,10 @@ func TestNamedAgentChatToolsAreIsolatedAndRoundTrip(t *testing.T) {
 		t.Fatalf("BindAgent() error = %v", err)
 	}
 	kit.SetChatAgent(client)
-	for _, name := range []string{"chat_check", "chat_read", "chat_send", "chat_draft", "chat_task", "chat_remind"} {
+	for _, name := range []string{"chat_check", "chat_read", "chat_send", "collaboration_send", "chat_draft", "chat_task", "chat_remind"} {
 		assertDefinitionPresent(t, kit.Definitions(), name)
 	}
+	assertDefinitionMissing(t, kit.Definitions(), "chat_verify")
 
 	sentJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_send", Arguments: `{"room_id":"` + room.ID + `","kind":"text","body":"reviewed","basis_seq":0}`})
 	if err != nil {
@@ -186,6 +189,71 @@ func TestNamedAgentChatToolsAreIsolatedAndRoundTrip(t *testing.T) {
 	cancelledReminderJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_remind", Arguments: `{"action":"cancel","reminder_id":"` + reminderResult.Reminder.ID + `"}`})
 	if err != nil || !strings.Contains(cancelledReminderJSON, `"state":"cancelled"`) {
 		t.Fatalf("chat_remind cancel = %s, err %v", cancelledReminderJSON, err)
+	}
+}
+
+func TestChatVerifyIsAvailableOnlyToHiddenRoomRuntime(t *testing.T) {
+	ctx := context.Background()
+	service, err := channels.Open(filepath.Join(t.TempDir(), "channels"), nil)
+	if err != nil {
+		t.Fatalf("channels.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	owner, err := service.CreateNamedAgent(ctx, channels.CreateNamedAgentParams{Name: "Andy"})
+	if err != nil {
+		t.Fatalf("CreateNamedAgent() error = %v", err)
+	}
+	room, err := service.CreateRoom(ctx, channels.CreateRoomParams{
+		Kind: channels.RoomChannel, Name: "Build", CreatedBy: "local-user",
+		Members: []channels.RoomMember{
+			{MemberType: channels.MemberHuman, MemberID: "local-user"},
+			{MemberType: channels.MemberAgent, MemberID: owner.Agent.ID},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+	client, err := service.BindAgent(ctx, room.AgentID)
+	if err != nil {
+		t.Fatalf("BindAgent(room runtime) error = %v", err)
+	}
+	kit, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("tools.New() error = %v", err)
+	}
+	kit.SetActiveProfile(modelprofile.Profile{ProviderName: "openai", Model: "test", Family: modelprofile.FamilyCodex}, true)
+	kit.SetChatAgent(client)
+	assertDefinitionPresent(t, kit.Definitions(), "chat_verify")
+	assertDefinitionMissing(t, kit.Definitions(), "chat_send")
+
+	taskJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_task", Arguments: `{"action":"create","room_id":"` + room.ID + `","title":"Fix callback","owner_id":"` + owner.Agent.ID + `","verification_required":true}`})
+	if err != nil {
+		t.Fatalf("chat_task create error = %v", err)
+	}
+	var taskResult struct {
+		Task channels.Message `json:"task"`
+	}
+	if err := json.Unmarshal([]byte(taskJSON), &taskResult); err != nil {
+		t.Fatalf("decode task result: %v", err)
+	}
+	revisedJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_task", Arguments: `{"action":"revise","room_id":"` + room.ID + `","task_id":"` + taskResult.Task.ID + `","body":"Reject replayed and expired state"}`})
+	if err != nil || !strings.Contains(revisedJSON, `"task_goal_revision":2`) {
+		t.Fatalf("chat_task revise = %s, err = %v", revisedJSON, err)
+	}
+	checking, err := service.UpdateTask(ctx, channels.TaskUpdateParams{
+		TaskID: taskResult.Task.ID, State: channels.TaskStateChecking,
+		AgentID: owner.Agent.ID, Token: owner.Token,
+	})
+	if err != nil {
+		t.Fatalf("mark task checking: %v", err)
+	}
+	verifyArgs := fmt.Sprintf(
+		`{"room_id":%q,"task_id":%q,"goal_revision":%d,"candidate_revision":%d,"decision":"block","report":"Replay still succeeds."}`,
+		room.ID, taskResult.Task.ID, checking.TaskGoalRevision, checking.TaskCandidateRevision,
+	)
+	verifiedJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_verify", Arguments: verifyArgs})
+	if err != nil || !strings.Contains(verifiedJSON, `"decision":"block"`) || !strings.Contains(verifiedJSON, `"kind":"verification_feedback"`) {
+		t.Fatalf("chat_verify = %s, err = %v", verifiedJSON, err)
 	}
 }
 

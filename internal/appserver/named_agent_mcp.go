@@ -19,7 +19,7 @@ const namedAgentMCPServerName = "wuu_collaboration"
 
 var namedAgentMCPTools = map[string]struct{}{
 	"chat_check": {}, "chat_read": {}, "chat_send": {}, "collaboration_send": {},
-	"chat_draft": {}, "chat_task": {}, "chat_remind": {},
+	"chat_draft": {}, "chat_task": {}, "chat_verify": {}, "chat_remind": {},
 }
 
 type namedAgentMCPRequest struct {
