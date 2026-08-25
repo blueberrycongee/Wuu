@@ -968,6 +968,10 @@
   gap: var(--sidebar-functional-row-gap);
 }
 
+.sidebar-attention-section + .sidebar-attention-section {
+  margin-top: 8px;
+}
+
 .sidebar-unread-empty {
   display: flex;
   min-height: 160px;

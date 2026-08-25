@@ -1,10 +1,46 @@
 import { describe, expect, it } from "vitest";
 import {
+  partitionAttentionThreads,
   reconcileSidebarSectionOrder,
   reorderSidebarSections,
   SIDEBAR_SECTION_PINNED,
 } from "./AppSidebar";
 import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
+import type { ThreadSummary } from "./AppState";
+
+function thread(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
+  return {
+    id: "thread",
+    title: "Thread",
+    preview: "Thread",
+    status: "completed",
+    turns: [{ id: "turn-1", status: "completed" }],
+    turn_count: 1,
+    archived: false,
+    pinned: false,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  } as ThreadSummary;
+}
+
+describe("partitionAttentionThreads", () => {
+  it("puts running sessions before unread sessions and excludes read sessions", () => {
+    const running = thread({ id: "running", status: "in_progress" });
+    const unread = thread({ id: "unread", updated_at: "2026-01-02T00:00:00Z" });
+    const read = thread({ id: "read" });
+
+    const attention = partitionAttentionThreads(
+      [unread, read, running],
+      undefined,
+      undefined,
+      { read: "turn-1" },
+    );
+
+    expect(attention.running.map(({ id }) => id)).toEqual(["running"]);
+    expect(attention.unread.map(({ id }) => id)).toEqual(["unread"]);
+  });
+});
 
 describe("reconcileSidebarSectionOrder", () => {
   it("builds the default order from scratch and project ids", () => {

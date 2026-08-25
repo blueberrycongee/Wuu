@@ -108,6 +108,34 @@ import { PluginSlot } from "./plugins/PluginSlot";
  *   can be reordered with real projects.
  */
 export const SIDEBAR_SECTION_PINNED = "__wuu_pinned__";
+
+export function partitionAttentionThreads(
+  threads: readonly ThreadSummary[],
+  activeThreadID: string | undefined,
+  pendingThreadID: string | undefined,
+  lastViewedTurnByThreadID: Readonly<Record<string, string>>,
+): { running: ThreadSummary[]; unread: ThreadSummary[] } {
+  const candidates = threads.filter((thread) => (
+    !thread.archived &&
+    thread.id !== activeThreadID &&
+    thread.id !== pendingThreadID
+  ));
+  const compare = (left: ThreadSummary, right: ThreadSummary): number => (
+    Number(isThreadExecuting(right)) - Number(isThreadExecuting(left))
+    || Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
+    || threadTime(right) - threadTime(left)
+  );
+  return {
+    running: candidates.filter(isThreadExecuting).sort(compare),
+    unread: candidates
+      .filter((thread) => !isThreadExecuting(thread) && isThreadUnread(
+        thread,
+        lastViewedTurnByThreadID[thread.id],
+      ))
+      .sort(compare),
+  };
+}
+
 const FOLDER_REMOVE_DROP_TARGET = "__wuu_remove_from_folder__";
 const FOLDER_SORTABLE_PREFIX = "__wuu_folder_sort__:";
 const PINNED_THREAD_SORTABLE_PREFIX = "__wuu_pinned_thread_sort__:";
@@ -910,23 +938,20 @@ export function AppSidebar({
     for (const thread of pinnedRows) byID.set(thread.id, thread);
     return [...byID.values()];
   }, [pinnedRows, projectThreadsByProjectID]);
-  const unreadThreads = useMemo(() => allSidebarThreads
-    .filter((thread) => (
-      !thread.archived
-      && thread.id !== activeThreadID
-      && thread.id !== pendingThreadID
-      && isThreadUnread(thread, state.lastViewedTurnByThreadID[thread.id])
-    ))
-    .sort((left, right) => (
-      Number(isThreadExecuting(right)) - Number(isThreadExecuting(left))
-      || Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
-      || threadTime(right) - threadTime(left)
-    )), [
+  const attentionThreads = useMemo(() => partitionAttentionThreads(
+    allSidebarThreads,
+    activeThreadID,
+    pendingThreadID,
+    state.lastViewedTurnByThreadID,
+  ), [
     activeThreadID,
     allSidebarThreads,
     pendingThreadID,
     state.lastViewedTurnByThreadID,
   ]);
+  const runningThreads = attentionThreads.running;
+  const unreadThreads = attentionThreads.unread;
+  const attentionCount = runningThreads.length + unreadThreads.length;
   const visibleProjectThreadsByProjectID = useMemo(() => {
     const next: Record<string, ThreadSummary[]> = {};
     for (const [projectID, threads] of Object.entries(projectThreadsByProjectID)) {
@@ -1536,48 +1561,82 @@ export function AppSidebar({
           collaborationEnabled={groupChatEnabled}
           onChange={(mode) => { if (mode === "collaboration") onSwitchToCollaboration?.(); }}
           unreadViewOpen={unreadViewOpen}
-          unreadCount={unreadThreads.length}
+          unreadCount={attentionCount}
           onToggleUnreadView={() => setUnreadViewOpen((open) => !open)}
           onClearUnread={() => onMarkThreadsViewed(unreadThreads)}
         />
         {unreadViewOpen ? (
           <section
             className="sidebar-unread-view scrollbar-hidden"
-            aria-label={t("sidebar.unreadConversations")}
+            aria-label={t("sidebar.attentionConversations")}
           >
-            <header className="sidebar-unread-heading">
-              <span>{t("sidebar.unreadConversations")}</span>
-              <span className="sidebar-unread-count" aria-live="polite">
-                {unreadThreads.length}
-              </span>
-            </header>
-            {unreadThreads.length > 0 ? (
-              <div className="sidebar-unread-list">
-                {unreadThreads.map((thread) => {
-                  const label = sidebarThreadLabel(thread);
-                  return (
-                    <div
-                      key={thread.id}
-                      className="thread-row sidebar-session-row sidebar-unread-row has-unread"
-                    >
-                      <button
-                        className="thread-row-main"
-                        type="button"
-                        aria-label={label}
-                        onClick={() => onSelectThread(thread.id)}
+            {runningThreads.length > 0 ? (
+              <section className="sidebar-attention-section" aria-labelledby="sidebar-running-heading">
+                <header className="sidebar-unread-heading" id="sidebar-running-heading">
+                  <span>{t("sidebar.runningConversations")}</span>
+                  <span className="sidebar-unread-count" aria-live="polite">
+                    {runningThreads.length}
+                  </span>
+                </header>
+                <div className="sidebar-unread-list">
+                  {runningThreads.map((thread) => {
+                    const label = sidebarThreadLabel(thread);
+                    return (
+                      <div
+                        key={thread.id}
+                        className="thread-row sidebar-session-row sidebar-unread-row running"
                       >
-                        <span className="thread-row-title">{label}</span>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
+                        <span className="thread-row-spinner" aria-hidden="true" />
+                        <button
+                          className="thread-row-main"
+                          type="button"
+                          aria-busy="true"
+                          aria-label={label}
+                          onClick={() => onSelectThread(thread.id)}
+                        >
+                          <span className="thread-row-title">{label}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+            {unreadThreads.length > 0 ? (
+              <section className="sidebar-attention-section" aria-labelledby="sidebar-unread-heading">
+                <header className="sidebar-unread-heading" id="sidebar-unread-heading">
+                  <span>{t("sidebar.unreadConversations")}</span>
+                  <span className="sidebar-unread-count" aria-live="polite">
+                    {unreadThreads.length}
+                  </span>
+                </header>
+                <div className="sidebar-unread-list">
+                  {unreadThreads.map((thread) => {
+                    const label = sidebarThreadLabel(thread);
+                    return (
+                      <div
+                        key={thread.id}
+                        className="thread-row sidebar-session-row sidebar-unread-row has-unread"
+                      >
+                        <button
+                          className="thread-row-main"
+                          type="button"
+                          aria-label={label}
+                          onClick={() => onSelectThread(thread.id)}
+                        >
+                          <span className="thread-row-title">{label}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : attentionCount === 0 ? (
               <div className="sidebar-unread-empty" role="status">
                 <Bell aria-hidden="true" />
-                <span>{t("sidebar.unreadEmpty")}</span>
+                <span>{t("sidebar.attentionEmpty")}</span>
               </div>
-            )}
+            ) : null}
             <p className="sidebar-unread-hint">{t("sidebar.clearUnreadHint")}</p>
           </section>
         ) : (
