@@ -372,9 +372,6 @@
   /* turns.css — conversation body, process fold, waiting animation. */
   --turn-collapsed-focus-ring: var(--focus-ring);
   --user-message-bg-color: var(--wuu-message-user-background, #2a2e33);
-  --user-message-jump-flash-bg: #3a3527;
-  --user-message-jump-shadow-18: rgba(217, 168, 78, 0.22);
-  --user-message-jump-shadow-08: rgba(217, 168, 78, 0.1);
   --user-message-edit-button-primary-hover-bg: var(--gray-900);
   --user-message-edit-button-disabled-fg: rgba(20, 23, 26, 0.7);
   --message-copy-bg: rgba(38, 42, 46, 0.85);

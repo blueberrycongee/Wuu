@@ -3,10 +3,7 @@
 :root {
   --turn-collapsed-focus-ring: var(--focus-ring);
   --user-message-bg-color: var(--wuu-message-user-background, #F3F3F4);
-  --user-message-jump-shadow-0: rgba(138, 91, 16, 0);
-  --user-message-jump-flash-bg: #eee7da;
-  --user-message-jump-shadow-18: rgba(138, 91, 16, 0.18);
-  --user-message-jump-shadow-08: rgba(138, 91, 16, 0.08);
+  --user-message-jump-flash-bg: var(--surface-3);
   --message-copy-bg: rgba(255, 255, 255, 0.72);
   --message-file-bg: rgba(255, 255, 255, 0.82);
   --message-file-fg: var(--wuu-color-text, var(--gray-800));
@@ -357,23 +354,18 @@
                                         
 .user-message-block.user-message-jump-flash > .user-message,
 .user-message-block.user-message-jump-flash > .user-message-edit {
-  animation: user-message-jump-flash 1.6s var(--ease-out);
+  animation: user-message-jump-flash 800ms var(--ease-out);
 }
 
 @keyframes user-message-jump-flash {
   0% {
     background: var(--user-message-background, var(--user-message-bg-color));
-    box-shadow: 0 0 0 0 var(--user-message-jump-shadow-0);
   }
-  12% {
+  18% {
     background: var(--user-message-jump-flash-bg);
-    box-shadow:
-      0 0 0 4px var(--user-message-jump-shadow-18),
-      0 12px 30px var(--user-message-jump-shadow-08);
   }
   100% {
     background: var(--user-message-background, var(--user-message-bg-color));
-    box-shadow: 0 0 0 0 var(--user-message-jump-shadow-0);
   }
 }
 
@@ -382,8 +374,6 @@
   .user-message-block.user-message-jump-flash > .user-message-edit {
     animation: none;
     background: var(--user-message-jump-flash-bg);
-    box-shadow: 0 0 0 4px var(--user-message-jump-shadow-18);
-    transition: background-color 600ms ease;
   }
 }
 

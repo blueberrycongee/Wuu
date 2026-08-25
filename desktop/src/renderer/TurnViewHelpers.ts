@@ -258,7 +258,7 @@ export function formatRelativeTime(iso: string | undefined): string {
 }
 
 const JUMP_HIGHLIGHT_CLASS = "user-message-jump-flash";
-const JUMP_HIGHLIGHT_DURATION_MS = 1600;
+const JUMP_HIGHLIGHT_DURATION_MS = 800;
 // Try, then retry. The first attempt usually wins, but split conversations
 // (and just-mounted threads) can take a frame or two to mount the anchor.
 const JUMP_RETRY_DELAYS_MS: readonly number[] = [0, 80, 200];
