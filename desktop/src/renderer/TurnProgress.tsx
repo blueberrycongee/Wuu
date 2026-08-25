@@ -12,7 +12,11 @@ export function useLiveNow(active: boolean): number {
     return () => window.clearInterval(timer);
   }, [active]);
 
-  return active ? now : Date.now();
+  // `now` is only the render tick. When a session tab is inactive the
+  // interval is stopped, so its value can be arbitrarily old when the tab
+  // becomes active again. Reading the clock for the value itself avoids one
+  // stale frame (for example, showing 1s before jumping to 24s).
+  return active ? Date.now() : now;
 }
 
 // Last live elapsed value per turn id, frozen when the turn leaves
