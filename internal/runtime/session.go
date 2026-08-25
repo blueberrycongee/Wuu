@@ -447,7 +447,11 @@ func NewSession(opts Options) (*Session, error) {
 		kit.SetProcessManager(processMgr)
 		kit.SetSkills(discoveredSkills)
 		ConfigureToolkitPermissions(kit, permissions)
-		configureToolkitSecurityExtensions(kit, pluginKernel.registry)
+		var securityRegistry *pluginhost.ServiceRegistry
+		if pluginKernel != nil {
+			securityRegistry = pluginKernel.registry
+		}
+		configureToolkitSecurityExtensions(kit, securityRegistry)
 		kit.ConfigureSurfaceForProviderModel(ruleProviderName, toolModeModel, true)
 		kit.SetBrowserEnabled(browserEnabledFromEnv())
 		kit.SetToolSearchEnabled(toolSearchEnabled)
