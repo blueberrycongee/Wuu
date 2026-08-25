@@ -131,6 +131,7 @@ export function AgentAvatarMark({ seed, avatarKey, avatarImage, status = "idle" 
         identityTraits={{ ...WUU_MASCOT_TRAITS, shape: shape.trait }}
         accessory={config.accessory}
         activity={status === "thinking" ? "thinking" : status === "sending" ? "compose" : "idle"}
+        animate={status === "idle" ? "hover" : "always"}
       />
     </span>
   );

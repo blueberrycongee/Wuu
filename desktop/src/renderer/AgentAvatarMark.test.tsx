@@ -27,4 +27,29 @@ describe("AgentAvatarMark", () => {
       );
     },
   );
+
+  it("keeps idle avatars still and lets only working avatars animate", () => {
+    renderToStaticMarkup(
+      <AgentAvatarMark seed="agent-1" avatarKey="abstract-1" status="idle" />,
+    );
+    expect(blobatarProps.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ animate: "hover" }),
+    );
+
+    blobatarProps.mockClear();
+    renderToStaticMarkup(
+      <AgentAvatarMark seed="agent-1" avatarKey="abstract-1" status="thinking" />,
+    );
+    expect(blobatarProps.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ animate: "always" }),
+    );
+
+    blobatarProps.mockClear();
+    renderToStaticMarkup(
+      <AgentAvatarMark seed="agent-1" avatarKey="abstract-1" status="sending" />,
+    );
+    expect(blobatarProps.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ animate: "always" }),
+    );
+  });
 });

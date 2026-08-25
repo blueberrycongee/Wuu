@@ -1,4 +1,4 @@
-import { _layout, palette } from "blobatar";
+import { _layout, palette, type Animate } from "blobatar";
 import {
   happy,
   idle as idleExpression,
@@ -250,6 +250,10 @@ type WuuMascotProps = Omit<
   identityName?: string;
   identityHue?: number;
   identityTraits?: Readonly<Record<string, number>>;
+  /** Blobatar idle-motion gate. Defaults to "always" so standalone hero
+   *  mascots keep their ambient loop; multi-avatar surfaces pass "hover"
+   *  so only working avatars move. */
+  animate?: Animate;
 };
 
 export function WuuMascot({
@@ -261,6 +265,7 @@ export function WuuMascot({
   identityName = WUU_MASCOT_NAME,
   identityHue,
   identityTraits = WUU_MASCOT_TRAITS,
+  animate = "always",
   style,
   ...svgProps
 }: WuuMascotProps): JSX.Element {
@@ -392,7 +397,7 @@ export function WuuMascot({
         background={false}
         traits={identityTraits}
         perspective={WUU_MASCOT_ACTIVITY_PERSPECTIVES[activity]}
-        animate="always"
+        animate={animate}
         expression={WUU_MASCOT_ACTIVITY_EXPRESSIONS[activity]}
         focusable={false}
         pointerEvents="none"
