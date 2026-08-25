@@ -49,7 +49,7 @@ func TestNamedAgentChatToolsAreIsolatedAndRoundTrip(t *testing.T) {
 		t.Fatalf("BindAgent() error = %v", err)
 	}
 	kit.SetChatAgent(client)
-	for _, name := range []string{"chat_check", "chat_read", "chat_send", "collaboration_send", "chat_draft", "chat_task", "chat_remind"} {
+	for _, name := range []string{"chat_check", "chat_read", "chat_send", "collaboration_send", "chat_draft", "chat_task", "chat_work", "chat_remind"} {
 		assertDefinitionPresent(t, kit.Definitions(), name)
 	}
 	assertDefinitionMissing(t, kit.Definitions(), "chat_verify")

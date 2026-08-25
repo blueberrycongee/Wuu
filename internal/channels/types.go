@@ -72,8 +72,11 @@ type CollaborationKind string
 
 const (
 	CollaborationControl              CollaborationKind = "control"
+	CollaborationAssignment           CollaborationKind = "assignment"
+	CollaborationPeerResult           CollaborationKind = "peer_result"
 	CollaborationCandidateReady       CollaborationKind = "candidate_ready"
 	CollaborationVerificationFeedback CollaborationKind = "verification_feedback"
+	CollaborationCompletion           CollaborationKind = "completion"
 )
 
 type VerificationDecision string
@@ -364,18 +367,23 @@ type CheckResult struct {
 }
 
 type CollaborationMessage struct {
-	ID                string            `json:"id"`
-	RoomID            string            `json:"room_id"`
-	FromType          MemberType        `json:"from_type"`
-	FromID            string            `json:"from_id"`
-	ToAgentID         string            `json:"to_agent_id"`
-	Kind              CollaborationKind `json:"kind,omitempty"`
-	Body              string            `json:"body"`
-	SourceMessageID   string            `json:"source_message_id,omitempty"`
-	GoalRevision      int               `json:"goal_revision,omitempty"`
-	CandidateRevision int               `json:"candidate_revision,omitempty"`
-	ReplyTo           string            `json:"reply_to,omitempty"`
-	CreatedAt         time.Time         `json:"created_at"`
+	ID                    string            `json:"id"`
+	RoomID                string            `json:"room_id"`
+	FromType              MemberType        `json:"from_type,omitempty"`
+	FromID                string            `json:"from_id,omitempty"`
+	ToAgentID             string            `json:"to_agent_id,omitempty"`
+	WorkID                string            `json:"work_id,omitempty"`
+	RecipientNamedAgentID string            `json:"recipient_named_agent_id,omitempty"`
+	Kind                  CollaborationKind `json:"kind,omitempty"`
+	Body                  string            `json:"body"`
+	ArtifactRefs          []string          `json:"artifact_refs,omitempty"`
+	SourceMessageID       string            `json:"source_message_id,omitempty"`
+	GoalRevision          int               `json:"goal_revision,omitempty"`
+	CandidateRevision     int               `json:"candidate_revision,omitempty"`
+	ReplyTo               string            `json:"reply_to,omitempty"`
+	CreatedAt             time.Time         `json:"created_at"`
+	ConsumedAt            time.Time         `json:"consumed_at,omitempty"`
+	InvalidatedAt         time.Time         `json:"invalidated_at,omitempty"`
 }
 
 type CollaborationSendParams struct {
@@ -385,6 +393,7 @@ type CollaborationSendParams struct {
 	ToAgentID       string
 	Kind            CollaborationKind
 	Body            string
+	ArtifactRefs    []string
 	SourceMessageID string
 	ReplyTo         string
 }
@@ -395,6 +404,8 @@ type TaskVerification struct {
 	OwnerID           string               `json:"owner_id"`
 	Decision          VerificationDecision `json:"decision"`
 	Report            string               `json:"report"`
+	EvidenceRefs      []string             `json:"evidence_refs,omitempty"`
+	RunRef            string               `json:"run_ref,omitempty"`
 	Attempt           int                  `json:"attempt"`
 	GoalRevision      int                  `json:"goal_revision"`
 	CandidateRevision int                  `json:"candidate_revision"`
@@ -406,6 +417,8 @@ type TaskVerificationSubmitParams struct {
 	RoomID            string
 	Decision          VerificationDecision
 	Report            string
+	EvidenceRefs      []string
+	RunRef            string
 	GoalRevision      int
 	CandidateRevision int
 	AgentID           string
@@ -456,9 +469,11 @@ type Reminder struct {
 type TaskCreateParams struct {
 	RoomID               string
 	ThreadID             string
+	SourceMessageID      string
 	Title                string
 	Body                 string
 	OwnerID              string
+	LeadNamedAgentID     string
 	VerificationRequired bool
 	AgentID              string
 	Token                string

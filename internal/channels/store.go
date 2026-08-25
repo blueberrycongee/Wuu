@@ -291,16 +291,21 @@ func (s *Service) migrate() error {
 			from_type TEXT NOT NULL CHECK (from_type IN ('human', 'agent')),
 			from_id TEXT NOT NULL,
 			to_agent_id TEXT NOT NULL,
-			kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'candidate_ready', 'verification_feedback')),
+			kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'assignment', 'peer_result', 'candidate_ready', 'verification_feedback', 'completion')),
 			body TEXT NOT NULL,
+			work_id TEXT,
 			source_message_id TEXT,
 			goal_revision INTEGER NOT NULL DEFAULT 0,
 			candidate_revision INTEGER NOT NULL DEFAULT 0,
+			artifact_refs_json TEXT NOT NULL DEFAULT '[]',
 			reply_to TEXT,
 			created_at INTEGER NOT NULL,
 			pulled_at INTEGER,
+			consumed_at INTEGER,
+			invalidated_at INTEGER,
 			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
 			FOREIGN KEY (to_agent_id) REFERENCES collaboration_principals(id) ON DELETE CASCADE,
+			FOREIGN KEY (work_id) REFERENCES works(id) ON DELETE CASCADE,
 			FOREIGN KEY (source_message_id) REFERENCES room_messages(id) ON DELETE CASCADE,
 			FOREIGN KEY (reply_to) REFERENCES collaboration_messages(id)
 		)`,
@@ -311,6 +316,8 @@ func (s *Service) migrate() error {
 			owner_id TEXT NOT NULL,
 			decision TEXT NOT NULL CHECK (decision IN ('pass', 'block', 'unknown')),
 			report TEXT NOT NULL,
+			evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+			run_ref TEXT,
 			attempt INTEGER NOT NULL DEFAULT 1,
 			goal_revision INTEGER NOT NULL DEFAULT 0,
 			candidate_revision INTEGER NOT NULL DEFAULT 0,
@@ -319,6 +326,81 @@ func (s *Service) migrate() error {
 			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
 			FOREIGN KEY (owner_id) REFERENCES named_agents(id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS works (
+			id TEXT PRIMARY KEY,
+			room_id TEXT NOT NULL,
+			source_message_id TEXT NOT NULL,
+			owner_named_agent_id TEXT NOT NULL,
+			lead_named_agent_id TEXT,
+			title TEXT NOT NULL,
+			brief TEXT NOT NULL DEFAULT '',
+			goal_revision INTEGER NOT NULL DEFAULT 1,
+			candidate_revision INTEGER NOT NULL DEFAULT 0,
+			state TEXT NOT NULL CHECK (state IN ('open', 'working', 'checking', 'revising', 'integrating', 'needs_human', 'completed', 'failed', 'cancelled', 'interrupted')),
+			current_run_ref TEXT,
+			candidate_artifact_ref TEXT,
+			candidate_workspace_revision TEXT,
+			verification_state TEXT NOT NULL DEFAULT 'not_required' CHECK (verification_state IN ('not_required', 'pending', 'pass', 'block', 'unknown')),
+			verification_required INTEGER NOT NULL DEFAULT 0 CHECK (verification_required IN (0, 1)),
+			max_verifier_attempts INTEGER NOT NULL DEFAULT 3,
+			max_candidates INTEGER NOT NULL DEFAULT 1,
+			verifier_attempts_used INTEGER NOT NULL DEFAULT 0,
+			candidates_used INTEGER NOT NULL DEFAULT 0,
+			fanout_reason TEXT NOT NULL DEFAULT '',
+			checks_summary TEXT NOT NULL DEFAULT '',
+			changed_files_count INTEGER NOT NULL DEFAULT 0,
+			unresolved_items TEXT NOT NULL DEFAULT '',
+			failure_reason TEXT NOT NULL DEFAULT '',
+			cancelled_at INTEGER,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (id) REFERENCES room_messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+			FOREIGN KEY (source_message_id) REFERENCES room_messages(id),
+			FOREIGN KEY (owner_named_agent_id) REFERENCES named_agents(id),
+			FOREIGN KEY (lead_named_agent_id) REFERENCES named_agents(id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_works_room_state ON works(room_id, state, updated_at)`,
+		`CREATE TABLE IF NOT EXISTS work_runs (
+			id TEXT PRIMARY KEY,
+			work_id TEXT NOT NULL,
+			kind TEXT NOT NULL CHECK (kind IN ('producer', 'verifier', 'selector', 'integration')),
+			profile TEXT NOT NULL DEFAULT '',
+			session_ref TEXT,
+			state TEXT NOT NULL CHECK (state IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
+			goal_revision INTEGER NOT NULL,
+			candidate_revision INTEGER NOT NULL DEFAULT 0,
+			workspace_revision TEXT NOT NULL DEFAULT '',
+			provider TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL DEFAULT '',
+			input_tokens INTEGER NOT NULL DEFAULT 0,
+			output_tokens INTEGER NOT NULL DEFAULT 0,
+			checks_rerun INTEGER NOT NULL DEFAULT 0,
+			findings_count INTEGER NOT NULL DEFAULT 0,
+			outcome TEXT NOT NULL DEFAULT '',
+			repair_outcome TEXT NOT NULL DEFAULT '',
+			started_at INTEGER,
+			ended_at INTEGER,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (work_id) REFERENCES works(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_work_runs_work ON work_runs(work_id, created_at, id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_work_runs_session ON work_runs(session_ref) WHERE session_ref IS NOT NULL`,
+		`CREATE TABLE IF NOT EXISTS work_artifacts (
+			id TEXT PRIMARY KEY,
+			work_id TEXT NOT NULL,
+			run_id TEXT,
+			kind TEXT NOT NULL CHECK (kind IN ('candidate', 'diff', 'snapshot', 'check_log', 'screenshot', 'report', 'other')),
+			uri TEXT NOT NULL,
+			label TEXT NOT NULL DEFAULT '',
+			summary TEXT NOT NULL DEFAULT '',
+			workspace_revision TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL,
+			FOREIGN KEY (work_id) REFERENCES works(id) ON DELETE CASCADE,
+			FOREIGN KEY (run_id) REFERENCES work_runs(id) ON DELETE SET NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_work_artifacts_work ON work_artifacts(work_id, created_at, id)`,
 		`CREATE TABLE IF NOT EXISTS drafts (
 			id TEXT PRIMARY KEY,
 			agent_id TEXT NOT NULL,
@@ -369,6 +451,12 @@ func (s *Service) migrate() error {
 		return err
 	}
 	if err := s.ensureLegacyColumns(); err != nil {
+		return err
+	}
+	if err := s.migrateInternalDeliveries(); err != nil {
+		return err
+	}
+	if err := s.migrateWorks(); err != nil {
 		return err
 	}
 	if err := s.ensureNamedAgentAvatars(); err != nil {
@@ -531,8 +619,14 @@ func (s *Service) ensureLegacyColumns() error {
 		{table: "collaboration_messages", name: "kind", definition: "TEXT NOT NULL DEFAULT 'control'"},
 		{table: "collaboration_messages", name: "goal_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "collaboration_messages", name: "candidate_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "collaboration_messages", name: "work_id", definition: "TEXT"},
+		{table: "collaboration_messages", name: "artifact_refs_json", definition: "TEXT NOT NULL DEFAULT '[]'"},
+		{table: "collaboration_messages", name: "consumed_at", definition: "INTEGER"},
+		{table: "collaboration_messages", name: "invalidated_at", definition: "INTEGER"},
 		{table: "task_verifications", name: "goal_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "task_verifications", name: "candidate_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "task_verifications", name: "evidence_refs_json", definition: "TEXT NOT NULL DEFAULT '[]'"},
+		{table: "task_verifications", name: "run_ref", definition: "TEXT"},
 	}
 	for _, column := range columns {
 		exists, err := s.tableHasColumn(column.table, column.name)

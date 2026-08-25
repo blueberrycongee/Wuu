@@ -230,6 +230,7 @@ func (t *CollaborationSendTool) Definition() providers.ToolDefinition {
 				"to_agent_id":       map[string]any{"type": "string"},
 				"kind":              map[string]any{"type": "string", "enum": []string{"control", "candidate_ready"}},
 				"source_message_id": map[string]any{"type": "string"},
+				"artifact_refs":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"body":              map[string]any{"type": "string", "maxLength": channels.MaxMessageRunes},
 				"reply_to":          map[string]any{"type": "string"},
 			},
@@ -242,19 +243,21 @@ func (t *CollaborationSendTool) Execute(ctx context.Context, argsJSON string) (s
 		return "", errors.New("collaboration_send is available only in a named-agent session")
 	}
 	var args struct {
-		RoomID          string `json:"room_id"`
-		ToAgent         string `json:"to_agent_id"`
-		Kind            string `json:"kind"`
-		SourceMessageID string `json:"source_message_id"`
-		Body            string `json:"body"`
-		ReplyTo         string `json:"reply_to"`
+		RoomID          string   `json:"room_id"`
+		ToAgent         string   `json:"to_agent_id"`
+		Kind            string   `json:"kind"`
+		SourceMessageID string   `json:"source_message_id"`
+		ArtifactRefs    []string `json:"artifact_refs"`
+		Body            string   `json:"body"`
+		ReplyTo         string   `json:"reply_to"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", err
 	}
 	message, err := t.env.ChatAgent.SendCollaboration(ctx, channels.CollaborationSendParams{
 		RoomID: args.RoomID, ToAgentID: args.ToAgent, Kind: channels.CollaborationKind(args.Kind),
-		SourceMessageID: args.SourceMessageID, Body: args.Body, ReplyTo: args.ReplyTo,
+		SourceMessageID: args.SourceMessageID, ArtifactRefs: args.ArtifactRefs,
+		Body: args.Body, ReplyTo: args.ReplyTo,
 	})
 	if err != nil {
 		return "", err
@@ -338,13 +341,15 @@ func (t *ChatTaskTool) Definition() providers.ToolDefinition {
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action":    map[string]any{"type": "string", "enum": []string{"create", "update", "revise", "list"}},
-				"room_id":   map[string]any{"type": "string"},
-				"thread_id": map[string]any{"type": "string"},
-				"task_id":   map[string]any{"type": "string"},
-				"title":     map[string]any{"type": "string"},
-				"body":      map[string]any{"type": "string"},
-				"owner_id":  map[string]any{"type": "string"},
+				"action":              map[string]any{"type": "string", "enum": []string{"create", "update", "revise", "list"}},
+				"room_id":             map[string]any{"type": "string"},
+				"thread_id":           map[string]any{"type": "string"},
+				"source_message_id":   map[string]any{"type": "string"},
+				"task_id":             map[string]any{"type": "string"},
+				"title":               map[string]any{"type": "string"},
+				"body":                map[string]any{"type": "string"},
+				"owner_id":            map[string]any{"type": "string"},
+				"lead_named_agent_id": map[string]any{"type": "string"},
 				"verification_required": map[string]any{
 					"type": "boolean", "description": "Require an independent pass before the owner may mark the task done.",
 				},
@@ -364,10 +369,12 @@ func (t *ChatTaskTool) Execute(ctx context.Context, argsJSON string) (string, er
 		Action               string `json:"action"`
 		RoomID               string `json:"room_id"`
 		ThreadID             string `json:"thread_id"`
+		SourceMessageID      string `json:"source_message_id"`
 		TaskID               string `json:"task_id"`
 		Title                string `json:"title"`
 		Body                 string `json:"body"`
 		OwnerID              string `json:"owner_id"`
+		LeadNamedAgentID     string `json:"lead_named_agent_id"`
 		VerificationRequired bool   `json:"verification_required"`
 		State                string `json:"state"`
 	}
@@ -377,8 +384,9 @@ func (t *ChatTaskTool) Execute(ctx context.Context, argsJSON string) (string, er
 	switch strings.TrimSpace(args.Action) {
 	case "create":
 		message, err := t.env.ChatAgent.CreateTask(ctx, channels.TaskCreateParams{
-			RoomID: args.RoomID, ThreadID: args.ThreadID, Title: args.Title, Body: args.Body,
-			OwnerID: args.OwnerID, VerificationRequired: args.VerificationRequired,
+			RoomID: args.RoomID, ThreadID: args.ThreadID, SourceMessageID: args.SourceMessageID,
+			Title: args.Title, Body: args.Body, OwnerID: args.OwnerID,
+			LeadNamedAgentID: args.LeadNamedAgentID, VerificationRequired: args.VerificationRequired,
 		})
 		if err != nil {
 			return "", err
@@ -435,6 +443,8 @@ func (t *ChatVerifyTool) Definition() providers.ToolDefinition {
 					"type": "string", "maxLength": channels.MaxVerificationReportRunes,
 					"description": "Natural-language evidence, reproduction steps, and remaining unknowns.",
 				},
+				"evidence_refs": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"run_ref":       map[string]any{"type": "string"},
 			},
 			"required": []string{"room_id", "task_id", "goal_revision", "candidate_revision", "decision", "report"},
 		},
@@ -446,12 +456,14 @@ func (t *ChatVerifyTool) Execute(ctx context.Context, argsJSON string) (string, 
 		return "", errors.New("chat_verify is available only in a named-agent session")
 	}
 	var args struct {
-		RoomID            string `json:"room_id"`
-		TaskID            string `json:"task_id"`
-		Decision          string `json:"decision"`
-		Report            string `json:"report"`
-		GoalRevision      int    `json:"goal_revision"`
-		CandidateRevision int    `json:"candidate_revision"`
+		RoomID            string   `json:"room_id"`
+		TaskID            string   `json:"task_id"`
+		Decision          string   `json:"decision"`
+		Report            string   `json:"report"`
+		GoalRevision      int      `json:"goal_revision"`
+		CandidateRevision int      `json:"candidate_revision"`
+		EvidenceRefs      []string `json:"evidence_refs"`
+		RunRef            string   `json:"run_ref"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", err
@@ -459,6 +471,7 @@ func (t *ChatVerifyTool) Execute(ctx context.Context, argsJSON string) (string, 
 	result, err := t.env.ChatAgent.SubmitTaskVerification(ctx, channels.TaskVerificationSubmitParams{
 		RoomID: args.RoomID, TaskID: args.TaskID,
 		Decision: channels.VerificationDecision(args.Decision), Report: args.Report,
+		EvidenceRefs: args.EvidenceRefs, RunRef: args.RunRef,
 		GoalRevision: args.GoalRevision, CandidateRevision: args.CandidateRevision,
 	})
 	if err != nil {

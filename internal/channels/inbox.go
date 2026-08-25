@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -113,12 +114,15 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 	collaboration := make([]CollaborationMessage, 0, checkLimit)
 	collaborationIDs := make([]string, 0, checkLimit)
 	rows, err = tx.QueryContext(ctx, `
-		SELECT id, room_id, from_type, from_id, to_agent_id, kind, body,
-			COALESCE(source_message_id, ''), goal_revision, candidate_revision,
-			COALESCE(reply_to, ''), created_at
-		FROM collaboration_messages
-		WHERE to_agent_id = ? AND pulled_at IS NULL
-		ORDER BY created_at, rowid LIMIT ?`, agentID, checkLimit+1)
+		SELECT delivery.id, delivery.room_id, delivery.from_type, delivery.from_id, delivery.to_agent_id,
+			CASE WHEN principal.kind = 'named_agent' THEN delivery.to_agent_id ELSE '' END,
+			delivery.kind, delivery.body, COALESCE(delivery.work_id, ''),
+			COALESCE(delivery.source_message_id, ''), delivery.goal_revision, delivery.candidate_revision,
+			delivery.artifact_refs_json, COALESCE(delivery.reply_to, ''), delivery.created_at
+		FROM collaboration_messages delivery
+		JOIN collaboration_principals principal ON principal.id = delivery.to_agent_id
+		WHERE delivery.to_agent_id = ? AND delivery.pulled_at IS NULL AND delivery.invalidated_at IS NULL
+		ORDER BY delivery.created_at, delivery.rowid LIMIT ?`, agentID, checkLimit+1)
 	if err != nil {
 		return CheckResult{}, fmt.Errorf("query collaboration inbox: %w", err)
 	}
@@ -126,10 +130,12 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 	for rows.Next() {
 		var message CollaborationMessage
 		var createdAt int64
+		var artifactRefsJSON string
 		if err := rows.Scan(
 			&message.ID, &message.RoomID, &message.FromType, &message.FromID, &message.ToAgentID,
-			&message.Kind, &message.Body, &message.SourceMessageID, &message.GoalRevision,
-			&message.CandidateRevision, &message.ReplyTo, &createdAt,
+			&message.RecipientNamedAgentID, &message.Kind, &message.Body, &message.WorkID,
+			&message.SourceMessageID, &message.GoalRevision, &message.CandidateRevision,
+			&artifactRefsJSON, &message.ReplyTo, &createdAt,
 		); err != nil {
 			rows.Close()
 			return CheckResult{}, fmt.Errorf("scan collaboration inbox: %w", err)
@@ -140,6 +146,10 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 			continue
 		}
 		message.CreatedAt = fromMillis(createdAt)
+		if err := json.Unmarshal([]byte(artifactRefsJSON), &message.ArtifactRefs); err != nil {
+			rows.Close()
+			return CheckResult{}, fmt.Errorf("decode collaboration artifacts: %w", err)
+		}
 		collaboration = append(collaboration, message)
 		collaborationIDs = append(collaborationIDs, message.ID)
 	}
@@ -150,7 +160,7 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 		return CheckResult{}, fmt.Errorf("iterate collaboration inbox: %w", err)
 	}
 	for _, id := range collaborationIDs {
-		if _, err := tx.ExecContext(ctx, `UPDATE collaboration_messages SET pulled_at = ? WHERE id = ? AND to_agent_id = ?`, toMillis(checkedAt), id, agentID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE collaboration_messages SET pulled_at = ?, consumed_at = ? WHERE id = ? AND to_agent_id = ?`, toMillis(checkedAt), toMillis(checkedAt), id, agentID); err != nil {
 			return CheckResult{}, fmt.Errorf("mark collaboration message pulled: %w", err)
 		}
 	}

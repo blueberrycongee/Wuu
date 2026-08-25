@@ -183,3 +183,77 @@ func (c *AgentClient) ResolveDraft(ctx context.Context, params ResolveDraftParam
 	params.Token = c.token
 	return c.service.ResolveDraft(ctx, params)
 }
+
+func (c *AgentClient) GetWork(ctx context.Context, workID string) (Work, error) {
+	if c == nil || c.service == nil {
+		return Work{}, errors.New("chat agent is not bound")
+	}
+	work, err := c.service.GetWork(ctx, workID)
+	if err != nil {
+		return Work{}, err
+	}
+	if work.OwnerNamedAgentID != c.agentID && work.LeadNamedAgentID != c.agentID {
+		if !c.IsRoomRuntime() {
+			return Work{}, ErrUnauthorized
+		}
+		runtime, err := c.service.GetRoomRuntime(ctx, c.agentID)
+		if err != nil || runtime.RoomID != work.RoomID {
+			return Work{}, ErrUnauthorized
+		}
+	}
+	return work, nil
+}
+
+func (c *AgentClient) ListWorks(ctx context.Context, roomID string) ([]Work, error) {
+	if c == nil || c.service == nil {
+		return nil, errors.New("chat agent is not bound")
+	}
+	return c.service.ListWorks(ctx, roomID, c.agentID, c.token)
+}
+
+func (c *AgentClient) StartWorkRun(ctx context.Context, params WorkRunStartParams) (WorkRun, error) {
+	if c == nil || c.service == nil {
+		return WorkRun{}, errors.New("chat agent is not bound")
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	return c.service.StartWorkRun(ctx, params)
+}
+
+func (c *AgentClient) FinishWorkRun(ctx context.Context, params WorkRunFinishParams) (WorkRun, error) {
+	if c == nil || c.service == nil {
+		return WorkRun{}, errors.New("chat agent is not bound")
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	return c.service.FinishWorkRun(ctx, params)
+}
+
+func (c *AgentClient) AddWorkArtifact(ctx context.Context, params WorkArtifactAddParams) (WorkArtifact, error) {
+	if c == nil || c.service == nil {
+		return WorkArtifact{}, errors.New("chat agent is not bound")
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	return c.service.AddWorkArtifact(ctx, params)
+}
+
+func (c *AgentClient) CancelWork(ctx context.Context, workID, reason string) (Work, error) {
+	if c == nil || c.service == nil {
+		return Work{}, errors.New("chat agent is not bound")
+	}
+	return c.service.CancelWork(ctx, workID, reason, c.agentID, c.token)
+}
+
+func (c *AgentClient) UpdateWorkPolicy(ctx context.Context, params WorkPolicyUpdateParams) (Work, error) {
+	if c == nil || c.service == nil {
+		return Work{}, errors.New("chat agent is not bound")
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	return c.service.UpdateWorkPolicy(ctx, params)
+}
+
+func (c *AgentClient) UpdateWorkEvidence(ctx context.Context, params WorkEvidenceUpdateParams) (Work, error) {
+	if c == nil || c.service == nil {
+		return Work{}, errors.New("chat agent is not bound")
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	return c.service.UpdateWorkEvidence(ctx, params)
+}

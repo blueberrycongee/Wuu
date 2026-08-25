@@ -346,7 +346,7 @@ func TestEnsureNamedAgentThreadReplacesOrdinaryRuntimeAfterLoad(t *testing.T) {
 	}
 	wantTools := map[string]bool{
 		"chat_check": false, "chat_read": false, "chat_send": false, "collaboration_send": false,
-		"chat_draft": false, "chat_task": false, "chat_remind": false,
+		"chat_draft": false, "chat_task": false, "chat_work": false, "chat_remind": false,
 		"read_file": false, "list_files": false, "bash": false,
 	}
 	for _, definition := range loaded.execRuntime.Toolkit.Definitions() {

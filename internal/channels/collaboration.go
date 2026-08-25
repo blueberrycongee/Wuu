@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -18,6 +19,9 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	params.Body = strings.TrimSpace(params.Body)
 	params.SourceMessageID = strings.TrimSpace(params.SourceMessageID)
 	params.ReplyTo = strings.TrimSpace(params.ReplyTo)
+	for index := range params.ArtifactRefs {
+		params.ArtifactRefs[index] = strings.TrimSpace(params.ArtifactRefs[index])
+	}
 	if params.RoomID == "" || params.Body == "" {
 		return CollaborationMessage{}, errors.New("collaboration room and body are required")
 	}
@@ -90,6 +94,7 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	message, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
 		RoomID: params.RoomID, FromType: MemberAgent, FromID: params.AgentID,
 		ToAgentID: params.ToAgentID, Kind: params.Kind, Body: params.Body,
+		WorkID: params.SourceMessageID, ArtifactRefs: params.ArtifactRefs,
 		SourceMessageID: params.SourceMessageID, GoalRevision: goalRevision, CandidateRevision: candidateRevision,
 		ReplyTo: params.ReplyTo, CreatedAt: now,
 	})
@@ -120,13 +125,17 @@ func enqueueCollaborationTx(ctx context.Context, tx *sql.Tx, message Collaborati
 	if message.Kind == "" {
 		message.Kind = CollaborationControl
 	}
-	_, err := tx.ExecContext(ctx, `
+	artifactRefsJSON, err := json.Marshal(message.ArtifactRefs)
+	if err != nil {
+		return CollaborationMessage{}, fmt.Errorf("encode collaboration artifacts: %w", err)
+	}
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO collaboration_messages (
-			id, room_id, from_type, from_id, to_agent_id, kind, body, source_message_id,
-			goal_revision, candidate_revision, reply_to, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, room_id, from_type, from_id, to_agent_id, kind, body, work_id, source_message_id,
+			goal_revision, candidate_revision, artifact_refs_json, reply_to, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		message.ID, message.RoomID, message.FromType, message.FromID, message.ToAgentID, message.Kind, message.Body,
-		nullableString(message.SourceMessageID), message.GoalRevision, message.CandidateRevision,
+		nullableString(message.WorkID), nullableString(message.SourceMessageID), message.GoalRevision, message.CandidateRevision, string(artifactRefsJSON),
 		nullableString(message.ReplyTo), toMillis(message.CreatedAt))
 	if err != nil {
 		return CollaborationMessage{}, fmt.Errorf("enqueue collaboration message: %w", err)

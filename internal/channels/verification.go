@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -21,6 +22,7 @@ func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerific
 	params.TaskID = strings.TrimSpace(params.TaskID)
 	params.RoomID = strings.TrimSpace(params.RoomID)
 	params.Report = strings.TrimSpace(params.Report)
+	params.RunRef = strings.TrimSpace(params.RunRef)
 	if params.TaskID == "" || params.RoomID == "" || params.Report == "" {
 		return TaskVerificationSubmitResult{}, errors.New("verification task, room, and report are required")
 	}
@@ -72,24 +74,30 @@ func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerific
 	now := fromMillis(toMillis(s.now()))
 	verification := TaskVerification{
 		TaskID: task.ID, RoomID: task.RoomID, OwnerID: task.TaskOwner,
-		Decision: params.Decision, Report: params.Report, Attempt: attempt,
+		Decision: params.Decision, Report: params.Report, EvidenceRefs: params.EvidenceRefs, RunRef: params.RunRef, Attempt: attempt,
 		GoalRevision: task.TaskGoalRevision, CandidateRevision: task.TaskCandidateRevision, UpdatedAt: now,
+	}
+	evidenceRefsJSON, err := json.Marshal(verification.EvidenceRefs)
+	if err != nil {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("encode verification evidence: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO task_verifications (
-			task_id, room_id, owner_id, decision, report, attempt, goal_revision, candidate_revision, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			task_id, room_id, owner_id, decision, report, evidence_refs_json, run_ref, attempt, goal_revision, candidate_revision, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(task_id) DO UPDATE SET
 			room_id = excluded.room_id,
 			owner_id = excluded.owner_id,
 			decision = excluded.decision,
 			report = excluded.report,
+			evidence_refs_json = excluded.evidence_refs_json,
+			run_ref = excluded.run_ref,
 			attempt = excluded.attempt,
 			goal_revision = excluded.goal_revision,
 			candidate_revision = excluded.candidate_revision,
 			updated_at = excluded.updated_at`,
 		verification.TaskID, verification.RoomID, verification.OwnerID, verification.Decision,
-		verification.Report, verification.Attempt, verification.GoalRevision, verification.CandidateRevision,
+		verification.Report, string(evidenceRefsJSON), nullableString(verification.RunRef), verification.Attempt, verification.GoalRevision, verification.CandidateRevision,
 		toMillis(verification.UpdatedAt)); err != nil {
 		return TaskVerificationSubmitResult{}, fmt.Errorf("persist task verification: %w", err)
 	}
@@ -103,9 +111,16 @@ func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerific
 	if _, err := tx.ExecContext(ctx, `UPDATE room_messages SET task_state = ? WHERE id = ?`, taskState, task.ID); err != nil {
 		return TaskVerificationSubmitResult{}, fmt.Errorf("project task verification state: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE works SET state = ?, verification_state = ?, verifier_attempts_used = ?,
+			current_run_ref = NULL, updated_at = ? WHERE id = ?`,
+		workStateFromTask(taskState), verification.Decision, verification.Attempt, toMillis(now), task.ID); err != nil {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("project durable work verification: %w", err)
+	}
 	delivery, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
-		RoomID: task.RoomID, FromType: MemberAgent, FromID: runtime.ID, ToAgentID: task.TaskOwner,
-		Kind: CollaborationVerificationFeedback, Body: verificationDeliveryBody(verification),
+		RoomID: task.RoomID, FromType: MemberAgent, FromID: "", ToAgentID: task.TaskOwner,
+		Kind: CollaborationVerificationFeedback, Body: verificationDeliveryBody(verification), WorkID: task.ID,
+		RecipientNamedAgentID: task.TaskOwner, ArtifactRefs: verification.EvidenceRefs,
 		SourceMessageID: task.ID, GoalRevision: verification.GoalRevision,
 		CandidateRevision: verification.CandidateRevision, CreatedAt: now,
 	})
@@ -132,11 +147,12 @@ func (s *Service) GetTaskVerification(ctx context.Context, taskID string) (TaskV
 	}
 	var result TaskVerification
 	var updatedAt int64
+	var evidenceRefsJSON string
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT task_id, room_id, owner_id, decision, report, attempt, goal_revision, candidate_revision, updated_at
+		SELECT task_id, room_id, owner_id, decision, report, evidence_refs_json, COALESCE(run_ref, ''), attempt, goal_revision, candidate_revision, updated_at
 		FROM task_verifications WHERE task_id = ?`, taskID).Scan(
 		&result.TaskID, &result.RoomID, &result.OwnerID, &result.Decision,
-		&result.Report, &result.Attempt, &result.GoalRevision, &result.CandidateRevision, &updatedAt,
+		&result.Report, &evidenceRefsJSON, &result.RunRef, &result.Attempt, &result.GoalRevision, &result.CandidateRevision, &updatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return TaskVerification{}, fmt.Errorf("%w: task verification %q", ErrNotFound, taskID)
@@ -144,6 +160,9 @@ func (s *Service) GetTaskVerification(ctx context.Context, taskID string) (TaskV
 		return TaskVerification{}, fmt.Errorf("get task verification: %w", err)
 	}
 	result.UpdatedAt = fromMillis(updatedAt)
+	if err := json.Unmarshal([]byte(evidenceRefsJSON), &result.EvidenceRefs); err != nil {
+		return TaskVerification{}, fmt.Errorf("decode verification evidence: %w", err)
+	}
 	return result, nil
 }
 

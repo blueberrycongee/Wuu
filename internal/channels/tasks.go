@@ -29,6 +29,8 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 	params.Title = strings.TrimSpace(params.Title)
 	params.Body = strings.TrimSpace(params.Body)
 	params.OwnerID = strings.TrimSpace(params.OwnerID)
+	params.LeadNamedAgentID = strings.TrimSpace(params.LeadNamedAgentID)
+	params.SourceMessageID = strings.TrimSpace(params.SourceMessageID)
 	params.ThreadID = strings.TrimSpace(params.ThreadID)
 	if params.RoomID == "" || params.Title == "" || params.OwnerID == "" {
 		return Message{}, errors.New("task room, title and owner are required")
@@ -42,6 +44,11 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 	defer tx.Rollback()
 	if err := s.requireRoomAgentMemberTx(ctx, tx, params.RoomID, params.OwnerID); err != nil {
 		return Message{}, err
+	}
+	if params.LeadNamedAgentID != "" {
+		if err := s.requireRoomAgentMemberTx(ctx, tx, params.RoomID, params.LeadNamedAgentID); err != nil {
+			return Message{}, err
+		}
 	}
 	if params.AgentID != "" {
 		if err := requireRoomPrincipalAccessTx(ctx, tx, params.RoomID, params.AgentID); err != nil {
@@ -68,6 +75,23 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 	message, err := s.insertTaskMessageTx(ctx, tx, params)
 	if err != nil {
 		return Message{}, err
+	}
+	if err := insertWorkTx(ctx, tx, message, params); err != nil {
+		return Message{}, err
+	}
+	assignmentFromType := MemberAgent
+	assignmentFromID := ""
+	if params.HumanID != "" {
+		assignmentFromType = MemberHuman
+		assignmentFromID = params.HumanID
+	}
+	if _, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
+		RoomID: message.RoomID, FromType: assignmentFromType, FromID: assignmentFromID,
+		ToAgentID: params.OwnerID, WorkID: message.ID, Kind: CollaborationAssignment,
+		Body: params.Body, SourceMessageID: params.SourceMessageID,
+		GoalRevision: message.TaskGoalRevision, CreatedAt: message.CreatedAt,
+	}); err != nil {
+		return Message{}, fmt.Errorf("enqueue work assignment: %w", err)
 	}
 	if err := s.taskEventInboxTx(ctx, tx, message, params.OwnerID, ""); err != nil {
 		return Message{}, err
@@ -172,6 +196,23 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 		message.Body = params.GoalCorrection
 		message.TaskGoalRevision++
 		setState = string(TaskStateOpen)
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE collaboration_messages SET invalidated_at = ?
+			WHERE work_id = ? AND goal_revision < ? AND pulled_at IS NULL`,
+			toMillis(updatedAt), message.ID, message.TaskGoalRevision); err != nil {
+			return Message{}, fmt.Errorf("invalidate stale work deliveries: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE work_runs SET state = 'interrupted', outcome = 'goal revised', ended_at = ?, updated_at = ?
+			WHERE work_id = ? AND goal_revision < ? AND state IN ('queued', 'running')`,
+			toMillis(updatedAt), toMillis(updatedAt), message.ID, message.TaskGoalRevision); err != nil {
+			return Message{}, fmt.Errorf("interrupt stale work runs: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE works SET current_run_ref = NULL, candidate_artifact_ref = NULL,
+				candidate_workspace_revision = NULL WHERE id = ?`, message.ID); err != nil {
+			return Message{}, fmt.Errorf("clear stale work candidate: %w", err)
+		}
 	}
 	if message.TaskVerificationRequired && params.State == TaskStateChecking && message.TaskState != string(TaskStateChecking) {
 		message.TaskCandidateRevision++
@@ -212,6 +253,9 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	}
 	message.TaskState = setState
 	message.TaskOwner = newOwner
+	if err := syncWorkFromTaskTx(ctx, tx, message, updatedAt); err != nil {
+		return Message{}, err
+	}
 	if err := s.taskEventInboxTx(ctx, tx, message, newOwner, oldOwner); err != nil {
 		return Message{}, err
 	}
