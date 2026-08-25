@@ -611,7 +611,7 @@ describe("collapsed sidebar hover drawer", () => {
 
     expect(appShell()?.classList.contains("right-panel-open")).toBe(false);
     expect(appShell()?.classList.contains("right-panel-globalized")).toBe(false);
-    expect(appShell()?.classList.contains("sidebar-drawer-open")).toBe(true);
+    expect(appShell()?.classList.contains("sidebar-drawer-open")).toBe(false);
     expect(container.querySelector(".conversation-pane")?.hasAttribute("inert")).toBe(false);
   });
 

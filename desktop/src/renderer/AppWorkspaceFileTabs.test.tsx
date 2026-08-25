@@ -463,7 +463,7 @@ describe("workspace file tabs", () => {
     });
     await flushAsync();
     expect(shell?.classList.contains("right-panel-globalized")).toBe(true);
-    expect(shell?.classList.contains("sidebar-drawer-open")).toBe(true);
+    expect(shell?.classList.contains("sidebar-drawer-open")).toBe(false);
     expect(
       container
         .querySelector('[data-section-id="project-wuu"] .project-row')

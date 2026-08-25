@@ -53,12 +53,13 @@ describe("EmptyConversationHome", () => {
     );
 
     // The mascot is now an inline-SVG blobatar; "always" animation puts the
-    // mo-root/mo-always classes on an inner <g> and the seeded timing custom
-    // properties on the <svg> itself (see blobatar/react).
+    // mo-root/mo-always classes and seeded motion properties on an inner <g>
+    // so expression changes transition on the same element (see blobatar/react).
     const mascot = view.querySelector<SVGSVGElement>("svg.empty-home-mascot");
+    const motionRoot = mascot?.querySelector<SVGGElement>("g.mo-root.mo-always");
     expect(mascot).not.toBeNull();
     expect(mascot?.getAttribute("aria-hidden")).toBe("true");
-    expect(mascot?.querySelector("g.mo-root.mo-always")).not.toBeNull();
-    expect(mascot?.getAttribute("style")).toContain("--mo-phase");
+    expect(motionRoot).not.toBeNull();
+    expect(motionRoot?.getAttribute("style")).toContain("--mo-phase");
   });
 });

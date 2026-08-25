@@ -65,8 +65,8 @@ func TestM3TaskCreateWakeUpdateDone(t *testing.T) {
 	if err != nil || progress.Status != SendCommitted || progress.Message.ThreadID != task.ID {
 		t.Fatalf("task progress = %#v, err = %v", progress, err)
 	}
-	if got := sink.take(); len(got) != 0 {
-		t.Fatalf("owner progress without an explicit mention should not wake another agent: %v", got)
+	if got := sink.take(); len(got) != 1 || got[0] != room.AgentID {
+		t.Fatalf("shared-room task progress should wake the room agent: %v", got)
 	}
 	threadMessages, err := service.ListMessages(ctx, room.ID, task.Seq, 10)
 	if err != nil || len(threadMessages) != 1 || threadMessages[0].Body != "halfway complete" {
@@ -377,13 +377,10 @@ func TestM3ThreadLoopBudgetSixAgentOnlySuppressedAndHumanReset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendHuman() error = %v", err)
 	}
-	if got := sink.take(); len(got) != 2 {
-		t.Fatalf("human message should wake room agents: %v", got)
+	if got := sink.take(); len(got) != 1 || got[0] != humanRoom.AgentID {
+		t.Fatalf("human message should wake the room agent: %v", got)
 	}
-	if err := service.ClearWakeOnCheck(ctx, alpha.Agent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.ClearWakeOnCheck(ctx, beta.Agent.ID); err != nil {
+	if err := service.ClearWakeOnCheck(ctx, humanRoom.AgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -410,16 +407,11 @@ func TestM3ThreadLoopBudgetSixAgentOnlySuppressedAndHumanReset(t *testing.T) {
 		}
 		basis = result.Message.Seq
 		root.Message = result.Message
-		wakes := sink.take()
-		if i == 5 {
-			if len(wakes) != 1 || wakes[0] != beta.Agent.ID {
-				t.Fatalf("agent @mention should wake Beta, got %v", wakes)
-			}
-			if err := service.ClearWakeOnCheck(ctx, beta.Agent.ID); err != nil {
-				t.Fatal(err)
-			}
-		} else if len(wakes) != 0 {
-			t.Fatalf("agent message %d must not start another agent, got %v", i, wakes)
+		if wakes := sink.take(); len(wakes) != 1 || wakes[0] != humanRoom.AgentID {
+			t.Fatalf("shared-room agent message %d should wake the room agent, got %v", i, wakes)
+		}
+		if err := service.ClearWakeOnCheck(ctx, humanRoom.AgentID); err != nil {
+			t.Fatal(err)
 		}
 	}
 
@@ -435,12 +427,15 @@ func TestM3ThreadLoopBudgetSixAgentOnlySuppressedAndHumanReset(t *testing.T) {
 		t.Fatalf("suppressed mention send = %#v, err = %v", suppressedMention, err)
 	}
 	if got := sink.take(); len(got) != 0 {
-		t.Fatalf("6th @mention should be suppressed, got %v", got)
+		t.Fatalf("6th shared-room message should be suppressed, got %v", got)
 	}
 
-	betaCheck, err := service.Check(ctx, beta.Agent.ID, beta.Token)
-	if err != nil || len(betaCheck.Items) == 0 {
-		t.Fatalf("beta should still have inbox items: %#v", betaCheck)
+	var collaborationCount int
+	if err := service.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM collaboration_messages WHERE to_agent_id = ?`, humanRoom.AgentID).Scan(&collaborationCount); err != nil {
+		t.Fatal(err)
+	}
+	if collaborationCount != ThreadStreakCap {
+		t.Fatalf("room agent collaboration messages = %d, want %d before suppression", collaborationCount, ThreadStreakCap)
 	}
 
 	reset, err := service.SendHuman(ctx, HumanSendParams{
@@ -452,13 +447,10 @@ func TestM3ThreadLoopBudgetSixAgentOnlySuppressedAndHumanReset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("human reset send error = %v", err)
 	}
-	if got := sink.take(); len(got) != 2 {
-		t.Fatalf("human reply reset should wake all room agents, got %v", got)
+	if got := sink.take(); len(got) != 1 || got[0] != humanRoom.AgentID {
+		t.Fatalf("human reply reset should wake the room agent, got %v", got)
 	}
-	if err := service.ClearWakeOnCheck(ctx, alpha.Agent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.ClearWakeOnCheck(ctx, beta.Agent.ID); err != nil {
+	if err := service.ClearWakeOnCheck(ctx, humanRoom.AgentID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -473,8 +465,8 @@ func TestM3ThreadLoopBudgetSixAgentOnlySuppressedAndHumanReset(t *testing.T) {
 	if err != nil || afterReset.Status != SendCommitted {
 		t.Fatalf("after reset send = %#v, err = %v", afterReset, err)
 	}
-	if got := sink.take(); len(got) != 1 || got[0] != beta.Agent.ID {
-		t.Fatalf("agent @mention should wake Beta after human reset, got %v", got)
+	if got := sink.take(); len(got) != 1 || got[0] != humanRoom.AgentID {
+		t.Fatalf("shared-room @mention should wake the room agent after human reset, got %v", got)
 	}
 }
 

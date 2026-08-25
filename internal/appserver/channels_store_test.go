@@ -175,9 +175,13 @@ func TestChannelHumanRPCsCreateRoomAndSendMessage(t *testing.T) {
 	if len(listed.Messages) != 1 || listed.Messages[0].Body != "@Alpha review this" || len(listed.Messages[0].Images) != 1 {
 		t.Fatalf("listed messages = %#v", listed.Messages)
 	}
-	state, err := server.channelService.WakeState(context.Background(), createdAgent.Agent.ID)
+	state, err := server.channelService.WakeState(context.Background(), createdRoom.Room.AgentID)
 	if err != nil || !state.Outstanding {
-		t.Fatalf("agent wake state = %#v, err %v", state, err)
+		t.Fatalf("room-agent wake state = %#v, err %v", state, err)
+	}
+	namedState, err := server.channelService.WakeState(context.Background(), createdAgent.Agent.ID)
+	if err != nil || namedState.Outstanding || namedState.Pending {
+		t.Fatalf("shared-room message directly woke named agent: %#v, err %v", namedState, err)
 	}
 	var createdTask ChannelTaskCreateResult
 	callChannelRPC(t, server, out, MethodChannelTaskCreate, ChannelTaskCreateParams{
@@ -759,15 +763,12 @@ func TestChannelRoomUpdateAndDeleteRPCs(t *testing.T) {
 
 func createAppserverTestRoom(t *testing.T, service *channels.Service, agents ...channels.NamedAgent) channels.Room {
 	t.Helper()
-	members := make([]channels.RoomMember, 0, len(agents))
-	for _, agent := range agents {
-		members = append(members, channels.RoomMember{MemberType: channels.MemberAgent, MemberID: agent.ID})
+	if len(agents) != 1 {
+		t.Fatalf("direct-message fixture requires one named agent, got %d", len(agents))
 	}
-	room, err := service.CreateRoom(context.Background(), channels.CreateRoomParams{
-		Kind: channels.RoomChannel, Name: "test-room", CreatedBy: "human-1", Members: members,
-	})
+	room, err := service.OpenDirectMessage(context.Background(), "human-1", agents[0].ID)
 	if err != nil {
-		t.Fatalf("CreateRoom() error = %v", err)
+		t.Fatalf("OpenDirectMessage() error = %v", err)
 	}
 	return room
 }

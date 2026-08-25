@@ -172,6 +172,15 @@ func createTestRoom(t *testing.T, service *Service, agents ...AgentCredential) R
 	return room
 }
 
+func createTestDirectMessage(t *testing.T, service *Service, agent AgentCredential) Room {
+	t.Helper()
+	room, err := service.OpenDirectMessage(context.Background(), "human-1", agent.Agent.ID)
+	if err != nil {
+		t.Fatalf("OpenDirectMessage(%q) error = %v", agent.Agent.Name, err)
+	}
+	return room
+}
+
 func TestRoomAvatarPersistsOnlyCustomImage(t *testing.T) {
 	service := openTestService(t, nil)
 	const avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
@@ -480,7 +489,7 @@ func TestDeleteRoomCascadesRoomDataAndPreservesNamedAgent(t *testing.T) {
 	ctx := context.Background()
 	service := openTestService(t, nil)
 	agent := createTestAgent(t, service, "Alpha")
-	room := createTestRoom(t, service, agent)
+	room := createTestDirectMessage(t, service, agent)
 	message, err := service.SendHuman(ctx, HumanSendParams{
 		RoomID: room.ID, HumanID: "human-1", Body: "@Alpha review this",
 	})
@@ -641,39 +650,37 @@ func TestMessageTriggersCoalesceWakeAndPersistInbox(t *testing.T) {
 	wake := &recordingWakeSink{}
 	service := openTestService(t, wake)
 	alpha := createTestAgent(t, service, "Alpha")
-	alphaBeta := createTestAgent(t, service, "AlphaBeta")
 	beta := createTestAgent(t, service, "Beta")
-	room := createTestRoom(t, service, alpha, alphaBeta, beta)
+	alphaRoom := createTestDirectMessage(t, service, alpha)
+	betaRoom := createTestDirectMessage(t, service, beta)
 
-	plain, err := service.SendHuman(ctx, HumanSendParams{RoomID: room.ID, HumanID: "human-1", Body: "hello everyone"})
+	plain, err := service.SendHuman(ctx, HumanSendParams{RoomID: alphaRoom.ID, HumanID: "human-1", Body: "hello everyone"})
 	if err != nil {
 		t.Fatalf("plain SendHuman() error = %v", err)
 	}
-	if plain.Message.Seq != 1 || len(plain.WakeAgentIDs) != 3 || len(wake.take()) != 3 {
+	if plain.Message.Seq != 1 || len(plain.WakeAgentIDs) != 1 || len(wake.take()) != 1 {
 		t.Fatalf("plain send = %#v", plain)
 	}
-	for _, agent := range []AgentCredential{alpha, alphaBeta, beta} {
+	for _, agent := range []AgentCredential{alpha, beta} {
 		if err := service.ClearWakeOnCheck(ctx, agent.Agent.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
-	mentioned, err := service.SendHuman(ctx, HumanSendParams{RoomID: room.ID, HumanID: "human-1", Body: "@Alpha, please review"})
+	mentioned, err := service.SendHuman(ctx, HumanSendParams{RoomID: alphaRoom.ID, HumanID: "human-1", Body: "@Alpha, please review"})
 	if err != nil {
 		t.Fatalf("mention SendHuman() error = %v", err)
 	}
 	if got, want := mentioned.Message.Mentions, []string{alpha.Agent.ID}; !equalStrings(got, want) {
 		t.Fatalf("mentions = %v, want %v", got, want)
 	}
-	wantRoomAgents := []string{alpha.Agent.ID, alphaBeta.Agent.ID, beta.Agent.ID}
-	sort.Strings(wantRoomAgents)
-	if got, want := mentioned.WakeAgentIDs, wantRoomAgents; !equalStrings(got, want) {
+	if got, want := mentioned.WakeAgentIDs, []string{alpha.Agent.ID}; !equalStrings(got, want) {
 		t.Fatalf("wake targets = %v, want %v", got, want)
 	}
-	if got := wake.take(); !equalStrings(got, wantRoomAgents) {
+	if got := wake.take(); !equalStrings(got, []string{alpha.Agent.ID}) {
 		t.Fatalf("delivered wake = %v", got)
 	}
 
-	coalesced, err := service.SendHuman(ctx, HumanSendParams{RoomID: room.ID, HumanID: "human-1", Body: "@Alpha another detail"})
+	coalesced, err := service.SendHuman(ctx, HumanSendParams{RoomID: alphaRoom.ID, HumanID: "human-1", Body: "@Alpha another detail"})
 	if err != nil {
 		t.Fatalf("coalesced SendHuman() error = %v", err)
 	}
@@ -692,8 +699,8 @@ func TestMessageTriggersCoalesceWakeAndPersistInbox(t *testing.T) {
 		t.Fatalf("alpha inbox = %#v", items)
 	}
 
-	self, err := service.SendAgent(ctx, AgentSendParams{
-		RoomID: room.ID, AgentID: alpha.Agent.ID, Token: alpha.Token,
+	_, err = service.SendAgent(ctx, AgentSendParams{
+		RoomID: alphaRoom.ID, AgentID: alpha.Agent.ID, Token: alpha.Token,
 		Body: "@Alpha self note", BasisSeq: coalesced.Message.Seq,
 	})
 	if err != nil {
@@ -707,14 +714,14 @@ func TestMessageTriggersCoalesceWakeAndPersistInbox(t *testing.T) {
 		t.Fatalf("clear beta wake: %v", err)
 	}
 	root, err := service.SendAgent(ctx, AgentSendParams{
-		RoomID: room.ID, AgentID: beta.Agent.ID, Token: beta.Token,
-		Body: "proposal", BasisSeq: self.Message.Seq,
+		RoomID: betaRoom.ID, AgentID: beta.Agent.ID, Token: beta.Token,
+		Body: "proposal", BasisSeq: 0,
 	})
 	if err != nil {
 		t.Fatalf("root SendAgent() error = %v", err)
 	}
 	reply, err := service.SendHuman(ctx, HumanSendParams{
-		RoomID: room.ID, HumanID: "human-1", ReplyTo: root.Message.ID, Body: "please expand",
+		RoomID: betaRoom.ID, HumanID: "human-1", ReplyTo: root.Message.ID, Body: "please expand",
 	})
 	if err != nil {
 		t.Fatalf("reply SendHuman() error = %v", err)
@@ -803,7 +810,7 @@ func TestWakeStateRetainsFollowupAndReleasesCompletedAttempt(t *testing.T) {
 	sink := &recordingWakeSink{}
 	service := openTestService(t, sink)
 	agent := createTestAgent(t, service, "Alpha")
-	room := createTestRoom(t, service, agent)
+	room := createTestDirectMessage(t, service, agent)
 
 	if _, err := service.SendHuman(ctx, HumanSendParams{
 		RoomID: room.ID, HumanID: "human-1", Body: "first query",
@@ -861,7 +868,7 @@ func TestWakeCompletionAfterCheckDoesNotCreateFollowup(t *testing.T) {
 	ctx := context.Background()
 	service := openTestService(t, nil)
 	agent := createTestAgent(t, service, "Alpha")
-	room := createTestRoom(t, service, agent)
+	room := createTestDirectMessage(t, service, agent)
 
 	if _, err := service.SendHuman(ctx, HumanSendParams{
 		RoomID: room.ID, HumanID: "human-1", Body: "query",
@@ -889,7 +896,7 @@ func TestCheckAndReadAuthenticateAdvanceAndClearWake(t *testing.T) {
 	service := openTestService(t, nil)
 	alpha := createTestAgent(t, service, "Alpha")
 	outsider := createTestAgent(t, service, "Outsider")
-	room := createTestRoom(t, service, alpha)
+	room := createTestDirectMessage(t, service, alpha)
 	body := "@Alpha " + strings.Repeat("细节", 50)
 	sent, err := service.SendHuman(ctx, HumanSendParams{RoomID: room.ID, HumanID: "human-1", Body: body})
 	if err != nil {
@@ -975,7 +982,7 @@ func TestCheckPaginationDoesNotConsumeOverflowItem(t *testing.T) {
 	ctx := context.Background()
 	service := openTestService(t, nil)
 	alpha := createTestAgent(t, service, "Alpha")
-	room := createTestRoom(t, service, alpha)
+	room := createTestDirectMessage(t, service, alpha)
 	for index := 0; index < checkLimit+1; index++ {
 		if _, err := service.SendHuman(ctx, HumanSendParams{
 			RoomID: room.ID, HumanID: "human-1", Body: fmt.Sprintf("@Alpha item %d", index+1),
@@ -1007,7 +1014,7 @@ func TestOpenMigratesLegacyAgentInboxAndPreservesItems(t *testing.T) {
 		t.Fatalf("Open(current) error = %v", err)
 	}
 	alpha := createTestAgent(t, service, "Alpha")
-	room := createTestRoom(t, service, alpha)
+	room := createTestDirectMessage(t, service, alpha)
 	if _, err := service.SendHuman(ctx, HumanSendParams{
 		RoomID: room.ID, HumanID: "human-1", Body: "@Alpha legacy",
 	}); err != nil {

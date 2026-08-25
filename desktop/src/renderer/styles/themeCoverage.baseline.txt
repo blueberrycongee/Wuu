@@ -5,16 +5,24 @@
 archive-tip.css .archive-tip-action:hover background --ink-overlay-8
 archive-tip.css .archive-tip-dismiss:hover background --ink-overlay-8
 base.css ::selection background --selection-bg
+channels.css .agent-avatar-color-picker input[type="range"] accent-color --agent-avatar-accent
+channels.css .agent-avatar-color-swatches button background --agent-avatar-swatch
+channels.css .agent-avatar-color-swatches button:hover background --agent-avatar-swatch-hover
 channels.css .channel-agent-graph-controls button:hover background --ink-overlay-4
 channels.css .channel-agent-graph-node.room circle fill --ink-overlay-18
 channels.css .channel-agent-preview-loading i background --ink-overlay-6
 channels.css .channel-agent-reset-status background --success-soft
+channels.css .channel-assignment-bubble background --ink-overlay-4
+channels.css .channel-assignment-item[data-state="done"] .channel-assignment-bubble background --ink-overlay-4
+channels.css .channel-assignment-item[data-state="done"] .channel-assignment-bubble background --success-soft
 channels.css .channel-avatar-picker button:hover background --ink-overlay-4
 channels.css .channel-form-danger-row button.danger:hover:not(:disabled), .channel-form-danger-row button.danger:focus-visible:not(:disabled) background --danger-soft
 channels.css .channel-management-primary:hover:not(:disabled) background --ink-overlay-4
 channels.css .channel-management-row:hover background --ink-overlay-4
 channels.css .channel-member-picker-option:hover, .channel-member-picker-option:focus-visible background --ink-overlay-4
 channels.css .channel-message-bubble background --ink-overlay-4
+channels.css .channel-orchestration-message[data-complete="true"] .channel-coordinator-badge background --success-soft
+channels.css .channel-orchestration-summary > button:hover, .channel-orchestration-summary > button:focus-visible background --ink-overlay-4
 channels.css .channel-room-danger-zone button:hover, .channel-room-danger-zone button:focus-visible background --danger-soft
 channels.css .channel-room-member-remove:hover:not(:disabled), .channel-room-member-remove:focus-visible:not(:disabled) background --danger-soft
 channels.css .channel-split-resizer:hover::before, .channel-split-resizer:focus-visible::before, .resizing-channel-split .channel-split-resizer::before background --ink-overlay-18
