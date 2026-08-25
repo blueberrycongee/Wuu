@@ -1635,6 +1635,36 @@ function summarizeThreadsForSidebar(
   );
 }
 
+function summarizeProjectThreadsForSidebar(
+  projectThreadsByProjectID: Record<string, Thread[]>,
+  liveThreads: readonly Thread[],
+  runningThreadIDs?: ReadonlySet<string>,
+): Record<string, ThreadSummary[]> {
+  // Project buckets come from the sidebar's own thread cache, which does not
+  // receive the active renderer's turn lifecycle updates. Overlay the live
+  // thread records before summarizing so a click-time optimistic turn reaches
+  // project rows and the bell's running section right away instead of waiting
+  // for the main process to report it back through runningThreadIDs. The
+  // pinned and scratch buckets already derive from live state; without this
+  // overlay project buckets sit one freshness tier behind them.
+  //
+  // Bucket membership stays owned by the cache: a live record only replaces a
+  // cached one that is already in the bucket, so this never invents rows for a
+  // project the cache has not listed yet.
+  const liveByID = new Map<string, Thread>();
+  for (const thread of liveThreads) {
+    liveByID.set(thread.id, thread);
+  }
+  const next: Record<string, ThreadSummary[]> = {};
+  for (const [projectID, threads] of Object.entries(projectThreadsByProjectID)) {
+    next[projectID] = summarizeThreadsForSidebar(
+      threads.map((thread) => liveByID.get(thread.id) ?? thread),
+      runningThreadIDs,
+    );
+  }
+  return next;
+}
+
 function sortThreadSummaries(threads: ThreadSummary[]): ThreadSummary[] {
   const valid = threads.filter(
     (thread): thread is ThreadSummary =>
@@ -3563,6 +3593,7 @@ export {
   setThreadForPane,
   skillsSessionTabID,
   sortThreads,
+  summarizeProjectThreadsForSidebar,
   summarizeThreadsForSidebar,
   threadItemFromRecord,
   threadForPane,

@@ -135,6 +135,7 @@ import {
   sessionTabForLoadedRuntime,
   setThreadForPane,
   sortThreads,
+  summarizeProjectThreadsForSidebar,
   summarizeThreadsForSidebar,
   threadBelongsToProject,
   threadForTab,
@@ -2397,18 +2398,18 @@ export function App(): JSX.Element {
     sidebarProjectThreadsByProjectID,
     state.threads,
   ]);
-  const sidebarProjectThreadSummariesByProjectID = useMemo(() => {
-    const next: Record<string, ThreadSummary[]> = {};
-    for (const [projectID, threads] of Object.entries(
+  const sidebarProjectThreadSummariesByProjectID = useMemo(
+    () => summarizeProjectThreadsForSidebar(
       sidebarProjectThreadsByProjectID,
-    )) {
-      next[projectID] = summarizeThreadsForSidebar(
-        threads,
-        crossWorkdirRunningThreadIDs,
-      );
-    }
-    return next;
-  }, [crossWorkdirRunningThreadIDs, sidebarProjectThreadsByProjectID]);
+      state.threads,
+      crossWorkdirRunningThreadIDs,
+    ),
+    [
+      crossWorkdirRunningThreadIDs,
+      sidebarProjectThreadsByProjectID,
+      state.threads,
+    ],
+  );
   const sidebarThreadSummaries = useMemo(
     () => summarizeThreadsForSidebar(sidebarThreads, crossWorkdirRunningThreadIDs),
     [crossWorkdirRunningThreadIDs, sidebarThreads],
