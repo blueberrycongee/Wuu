@@ -316,11 +316,14 @@
 
 .sidebar-content {
   --sidebar-row-pad-x: 8px;
-  --sidebar-nav-icon-col: 22px;
-  --sidebar-nav-column-gap: 10px;
-  --sidebar-tree-toggle-col: 16px;
-  --sidebar-tree-icon-col: 18px;
-  --sidebar-tree-column-gap: 6px;
+  /* Keep the 32px hit target, but tighten the visual tree: 16px glyphs sit in
+   * an 18px slot, with an 8px label gap and a compact 26px child indent. */
+  --sidebar-primary-icon-size: 16px;
+  --sidebar-nav-icon-col: 18px;
+  --sidebar-nav-column-gap: 8px;
+  --sidebar-tree-toggle-col: 14px;
+  --sidebar-tree-icon-col: 16px;
+  --sidebar-tree-column-gap: 4px;
   --sidebar-row-action-size: 24px;
   --sidebar-row-control-pad-x: 8px;
   --sidebar-project-unread-size: 8px;
@@ -332,7 +335,7 @@
   --sidebar-section-body-gap: 5px;
   --sidebar-row-gap: 3px;
   --sidebar-list-pad-y: 2px;
-  --sidebar-child-indent: 12px;
+  --sidebar-child-indent: 8px;
   --sidebar-session-status-col: var(--sidebar-nav-icon-col);
   --sidebar-session-status-dot-size: 5px;
   --sidebar-session-status-bg: transparent;
@@ -1501,7 +1504,7 @@
 /* A standalone pinned session is a peer of a pinned folder: its text starts
  * on the folder glyph's left edge, not on the folder's child-session axis. */
 .pinned-sortable-thread .thread-row-main {
-  padding-left: calc((var(--sidebar-nav-icon-col) - var(--icon-size-lg)) / 2);
+  padding-left: calc((var(--sidebar-nav-icon-col) - var(--sidebar-primary-icon-size)) / 2);
 }
 
 .pinned-sortable-thread .thread-row-main,
@@ -1820,6 +1823,8 @@
 
 .project-row-icon svg,
 .project-row > svg:not(.project-row-chevron) {
+  width: var(--sidebar-primary-icon-size);
+  height: var(--sidebar-primary-icon-size);
   flex: 0 0 auto;
   color: currentColor;
 }
