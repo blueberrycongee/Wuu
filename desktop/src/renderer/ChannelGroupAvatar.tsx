@@ -30,16 +30,6 @@ function MemberAvatar({ member, agent }: { member: ChannelRoomMember; agent?: Na
 }
 
 export function ChannelGroupAvatar({ room, agents }: { room: ChannelRoom; agents: NamedAgent[] }): JSX.Element {
-	if (room.agent_id) {
-		return (
-			<AgentAvatarMark
-				seed={room.agent_id}
-				avatarKey={room.avatar_key ?? "abstract-1"}
-				avatarImage={room.avatar_image}
-				status={room.activity_status === "thinking" ? "thinking" : "idle"}
-			/>
-		);
-	}
   if (room.avatar_image) {
     return <img className="channel-group-avatar-image" src={room.avatar_image} alt="" aria-hidden="true" />;
   }
