@@ -2383,6 +2383,7 @@ type ChannelAgentCreateParams struct {
 	Name             string `json:"name"`
 	AvatarKey        string `json:"avatar_key,omitempty"`
 	AvatarImage      string `json:"avatar_image,omitempty"`
+	EngineOverride   string `json:"engine_override,omitempty"`
 	ProviderOverride string `json:"provider_override,omitempty"`
 	ModelOverride    string `json:"model_override,omitempty"`
 	EffortOverride   string `json:"effort_override,omitempty"`
@@ -2397,6 +2398,7 @@ type ChannelAgentUpdateParams struct {
 	Name             string  `json:"name"`
 	AvatarKey        string  `json:"avatar_key,omitempty"`
 	AvatarImage      *string `json:"avatar_image,omitempty"`
+	EngineOverride   string  `json:"engine_override,omitempty"`
 	ProviderOverride string  `json:"provider_override,omitempty"`
 	ModelOverride    string  `json:"model_override,omitempty"`
 	EffortOverride   string  `json:"effort_override,omitempty"`

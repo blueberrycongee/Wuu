@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/channels"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/runtime"
@@ -91,6 +92,7 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 		th.NamedAgentID = agent.ID
 		th.Source = namedAgentSessionSource + agent.ID
 		th.CWD = filepath.Dir(agent.MemoryDir)
+		th.EngineID = string(agentengine.NormalizeEngineID(agent.EngineOverride))
 		if needsNamedAgentRuntime {
 			selection := s.currentSessionRuntimeSelection()
 			selection.Provider, selection.Model, selection.Effort = namedAgentModelSelection(
@@ -148,17 +150,26 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 			return nil, err
 		}
+		if _, err := session.SetEngine(s.rt.SessionDir, threadID, string(agentengine.NormalizeEngineID(agent.EngineOverride))); err != nil {
+			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
+			return nil, err
+		}
 		if _, err := session.SetRuntimeSelection(s.rt.SessionDir, threadID, selection); err != nil {
 			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 			return nil, err
 		}
 		applyThreadRuntimeSelection(th, selection)
+		th.EngineID = string(agentengine.NormalizeEngineID(agent.EngineOverride))
 	} else {
 		if _, err := session.CreateWithMetadata(s.rt.SessionDir, threadID, agentHome); err != nil {
 			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 			return nil, err
 		}
 		if _, err := session.SetSource(s.rt.SessionDir, threadID, namedAgentSessionSource+agent.ID); err != nil {
+			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
+			return nil, err
+		}
+		if _, err := session.SetEngine(s.rt.SessionDir, threadID, string(agentengine.NormalizeEngineID(agent.EngineOverride))); err != nil {
 			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 			return nil, err
 		}
@@ -174,6 +185,7 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 		th = newThreadState(threadID, history, selection.Provider, selection.Model, agentHome, true, time.Now().UTC())
 		th.Source = namedAgentSessionSource + agent.ID
 		th.Title = agent.Name
+		th.EngineID = string(agentengine.NormalizeEngineID(agent.EngineOverride))
 		applyThreadRuntimeSelection(th, selection)
 	}
 	th.NamedAgentID = agent.ID
@@ -196,7 +208,7 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 
 func namedAgentModelSelection(provider, model, effort string, agent channels.NamedAgent) (string, string, string) {
 	if override := strings.TrimSpace(agent.ModelOverride); override != "" {
-		provider = strings.TrimSpace(agent.ProviderOverride)
+		provider = firstNonEmpty(strings.TrimSpace(agent.ProviderOverride), strings.TrimSpace(agent.EngineOverride))
 		model = override
 	}
 	if override := strings.TrimSpace(agent.EffortOverride); override != "" {

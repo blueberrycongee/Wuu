@@ -942,11 +942,6 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	// Stamp the engine the thread is bound to onto the runtime. A cached
 	// runtime keeps its original stamp; threads never silently switch.
 	threadRuntime.EngineID = agentengine.NormalizeEngineID(th.EngineID)
-	if namedAgentID != "" {
-		// Persistent collaboration agents depend on Wuu-owned chat tools and
-		// therefore always execute through the built-in engine.
-		threadRuntime.EngineID = agentengine.EngineWuu
-	}
 	if threadRuntime.Toolkit != nil {
 		// Inject the embedded-browser bridge for every thread here. The bridge
 		// closure must carry this thread's id + workdir so tab operations route

@@ -71,6 +71,7 @@ type NamedAgent struct {
 	MemoryDir        string    `json:"memory_dir"`
 	AvatarKey        string    `json:"avatar_key"`
 	AvatarImage      string    `json:"avatar_image,omitempty"`
+	EngineOverride   string    `json:"engine_override,omitempty"`
 	ProviderOverride string    `json:"provider_override,omitempty"`
 	ModelOverride    string    `json:"model_override,omitempty"`
 	EffortOverride   string    `json:"effort_override,omitempty"`
@@ -89,6 +90,7 @@ type CreateNamedAgentParams struct {
 	Name             string
 	AvatarKey        string
 	AvatarImage      string
+	EngineOverride   string
 	ProviderOverride string
 	ModelOverride    string
 	EffortOverride   string
@@ -100,6 +102,7 @@ type UpdateNamedAgentParams struct {
 	Name             string
 	AvatarKey        string
 	AvatarImage      *string
+	EngineOverride   string
 	ProviderOverride string
 	ModelOverride    string
 	EffortOverride   string

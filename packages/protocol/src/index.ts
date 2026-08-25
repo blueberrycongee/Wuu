@@ -773,6 +773,7 @@ export type NamedAgent = {
   memory_dir: string;
   avatar_key: string;
   avatar_image?: string;
+  engine_override?: string;
   provider_override?: string;
   model_override?: string;
   effort_override?: string;
@@ -796,6 +797,7 @@ export type ChannelRoom = {
   agent_id?: string;
   avatar_key?: string;
   avatar_image?: string;
+  engine_override?: string;
   created_by: string;
   created_at: string;
   members: ChannelRoomMember[];

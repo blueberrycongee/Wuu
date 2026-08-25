@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/channels"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
@@ -59,8 +60,12 @@ func (s *Server) handleChannelAgentCreate(ctx context.Context, req Request) erro
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
+	engineID := agentengine.NormalizeEngineID(params.EngineOverride)
+	if s.rt == nil || !s.rt.EngineAvailable(engineID) {
+		return s.writeResponse(req.ID, nil, agentengine.ErrUnknownEngine)
+	}
 	credential, err := s.channelService.CreateNamedAgent(ctx, channels.CreateNamedAgentParams{
-		Name: params.Name, AvatarKey: params.AvatarKey, AvatarImage: params.AvatarImage, ProviderOverride: params.ProviderOverride, ModelOverride: params.ModelOverride, EffortOverride: params.EffortOverride, Autostart: true,
+		Name: params.Name, AvatarKey: params.AvatarKey, AvatarImage: params.AvatarImage, EngineOverride: string(engineID), ProviderOverride: params.ProviderOverride, ModelOverride: params.ModelOverride, EffortOverride: params.EffortOverride, Autostart: true,
 	})
 	if err == nil {
 		s.invalidateChannelAgentInsights()
@@ -80,14 +85,18 @@ func (s *Server) handleChannelAgentUpdate(ctx context.Context, req Request) erro
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
+	engineID := agentengine.NormalizeEngineID(params.EngineOverride)
+	if s.rt == nil || !s.rt.EngineAvailable(engineID) {
+		return s.writeResponse(req.ID, nil, agentengine.ErrUnknownEngine)
+	}
 	thread := s.thread(namedAgentSessionID(current))
 	agent, err := s.channelService.UpdateNamedAgent(ctx, channels.UpdateNamedAgentParams{
-		ID: params.AgentID, Name: params.Name, AvatarKey: params.AvatarKey, AvatarImage: params.AvatarImage, ProviderOverride: params.ProviderOverride, ModelOverride: params.ModelOverride, EffortOverride: params.EffortOverride,
+		ID: params.AgentID, Name: params.Name, AvatarKey: params.AvatarKey, AvatarImage: params.AvatarImage, EngineOverride: string(engineID), ProviderOverride: params.ProviderOverride, ModelOverride: params.ModelOverride, EffortOverride: params.EffortOverride,
 	})
 	if err == nil && thread != nil {
 		selection := s.currentSessionRuntimeSelection()
 		if agent.ModelOverride != "" {
-			selection.Provider = agent.ProviderOverride
+			selection.Provider = firstNonEmpty(agent.ProviderOverride, agent.EngineOverride)
 			selection.Model = agent.ModelOverride
 		}
 		if agent.EffortOverride != "" {
@@ -95,12 +104,14 @@ func (s *Server) handleChannelAgentUpdate(ctx context.Context, req Request) erro
 		}
 		var detached detachedThreadRuntime
 		thread.mu.Lock()
-		runtimeConfigChanged := current.Name != agent.Name ||
+		runtimeConfigChanged := current.Name != agent.Name || current.EngineOverride != agent.EngineOverride ||
 			thread.ModelProvider != strings.TrimSpace(selection.Provider) ||
 			thread.Model != strings.TrimSpace(selection.Model) ||
 			thread.ModelVariant != strings.TrimSpace(selection.Variant) ||
 			thread.ModelEffort != strings.TrimSpace(selection.Effort)
 		thread.Title = agent.Name
+		thread.EngineID = string(engineID)
+		thread.EngineRef = ""
 		applyThreadRuntimeSelection(thread, selection)
 		if runtimeConfigChanged && thread.execRuntime != nil {
 			if thread.running || threadRuntimeHasOutstandingWork(thread.ID, thread.execRuntime) {
@@ -115,6 +126,8 @@ func (s *Server) handleChannelAgentUpdate(ctx context.Context, req Request) erro
 		}
 		if s.rt != nil {
 			_, _ = session.UpdateTitle(s.rt.SessionDir, thread.ID, agent.Name)
+			_, _ = session.SetEngine(s.rt.SessionDir, thread.ID, string(engineID))
+			_, _ = session.SetEngineRef(s.rt.SessionDir, thread.ID, "")
 			_, _ = session.SetRuntimeSelection(s.rt.SessionDir, thread.ID, selection)
 		}
 	}
