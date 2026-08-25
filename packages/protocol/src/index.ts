@@ -797,7 +797,6 @@ export type ChannelRoom = {
   agent_id?: string;
   avatar_key?: string;
   avatar_image?: string;
-  engine_override?: string;
   created_by: string;
   created_at: string;
   members: ChannelRoomMember[];
@@ -845,6 +844,7 @@ export type ChannelAgentCreateParams = {
   name: string;
   avatar_key?: string;
   avatar_image?: string;
+  engine_override?: string;
   provider_override?: string;
   model_override?: string;
   effort_override?: string;

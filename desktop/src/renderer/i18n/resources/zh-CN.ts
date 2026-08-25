@@ -250,6 +250,7 @@ export const zhCN = {
   "channels.avatarAccessoryRibbon": "蝴蝶结",
   "channels.avatarAccessoryNecktie": "领带",
   "channels.model": "模型",
+  "channels.engine": "Engine",
   "channels.effort": "推理强度",
   "channels.inheritModel": "继承全局模型",
   "channels.providerMissing": "服务商未配置",

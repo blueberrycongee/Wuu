@@ -252,6 +252,7 @@ export const enUS = {
   "channels.avatarAccessoryRibbon": "Ribbon",
   "channels.avatarAccessoryNecktie": "Necktie",
   "channels.model": "Model",
+  "channels.engine": "Engine",
   "channels.effort": "Reasoning effort",
   "channels.inheritModel": "Inherit global model",
   "channels.providerMissing": "Provider not configured",

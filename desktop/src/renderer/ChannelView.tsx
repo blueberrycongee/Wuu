@@ -3,7 +3,7 @@ import { type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPoint
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkCjkStrongBoundary from "./remarkCjkStrongBoundary";
-import type { ChannelAgentInsight, ChannelMessage, ChannelRoom, InitializeResult, NamedAgent } from "../shared/protocol";
+import type { ChannelAgentInsight, ChannelMessage, ChannelRoom, EngineInfo, InitializeResult, NamedAgent } from "../shared/protocol";
 import { AgentAvatarMark, randomAgentAvatarKey } from "./AgentAvatarMark";
 import { AgentAvatarCreator } from "./AgentAvatarCreator";
 import { AgentRelationshipGraph } from "./AgentRelationshipGraph";
@@ -39,6 +39,7 @@ type AgentDetailDraft = {
   name: string;
   avatarKey: string;
   avatarImage: string;
+  engine: string;
   model: string;
   effort: string;
 };
@@ -527,8 +528,9 @@ function taskStateKey(state?: string): "channels.taskState.open" | "channels.tas
   return "channels.taskState.open";
 }
 
-export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = [], onSectionChange, selectedRoomID: controlledRoomID, onSelectRoom, onRoomRead, onOpenMemoryDirectory, composerDraft, onComposerDraftChange, newRoomRequest, onNewRoomRequestHandled, newAgentRequest, onNewAgentRequestHandled, editAgentRequestID, onEditAgentRequestHandled }: {
+export function ChannelView({ initialized, engines = [], section = "rooms", archivedRoomIDs = [], onSectionChange, selectedRoomID: controlledRoomID, onSelectRoom, onRoomRead, onOpenMemoryDirectory, composerDraft, onComposerDraftChange, newRoomRequest, onNewRoomRequestHandled, newAgentRequest, onNewAgentRequestHandled, editAgentRequestID, onEditAgentRequestHandled }: {
   initialized?: InitializeResult;
+  engines?: EngineInfo[];
   section?: ChannelSection;
   archivedRoomIDs?: string[];
   onSectionChange?: (section: ChannelSection) => void;
@@ -626,6 +628,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
   const [agentAvatarKey, setAgentAvatarKey] = useState<string>(() => randomAgentAvatarKey());
   const [agentAvatarImage, setAgentAvatarImage] = useState("");
   const [agentAvatarError, setAgentAvatarError] = useState("");
+  const [agentEngine, setAgentEngine] = useState("wuu");
   const [agentModel, setAgentModel] = useState("");
   const [agentEffort, setAgentEffort] = useState("");
   const [editingAgentID, setEditingAgentID] = useState("");
@@ -644,10 +647,10 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
   const [taskRoomID, setTaskRoomID] = useState("");
   const [taskOwnerID, setTaskOwnerID] = useState("");
   const [composerFooterNode, setComposerFooterNode] = useState<HTMLDivElement | null>(null);
-  const agentDetailDraftRef = useRef<AgentDetailDraft>({ name: "", avatarKey: "", avatarImage: "", model: "", effort: "" });
+  const agentDetailDraftRef = useRef<AgentDetailDraft>({ name: "", avatarKey: "", avatarImage: "", engine: "wuu", model: "", effort: "" });
   const selectedAgentIDRef = useRef("");
   const previousSectionRef = useRef(section);
-  agentDetailDraftRef.current = { name: agentName, avatarKey: agentAvatarKey, avatarImage: agentAvatarImage, model: agentModel, effort: agentEffort };
+  agentDetailDraftRef.current = { name: agentName, avatarKey: agentAvatarKey, avatarImage: agentAvatarImage, engine: agentEngine, model: agentModel, effort: agentEffort };
   selectedAgentIDRef.current = selectedAgentID;
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const composerFooterRef = useRef<HTMLDivElement | null>(null);
@@ -750,6 +753,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
     setAgentAvatarKey(randomAgentAvatarKey());
     setAgentAvatarImage("");
     setAgentAvatarError("");
+    setAgentEngine("wuu");
     setAgentModel("");
     setAgentEffort("");
     setSetupPanel("agent");
@@ -963,7 +967,42 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
       .format(respondingAgents.map(({ agent }) => agent.name)),
     [locale, respondingAgents],
   );
+  const selectableEngines = useMemo(
+    () => engines.filter((engine) => engine.enabled && engine.binary_ok),
+    [engines],
+  );
+  const engineGroups = useMemo<SelectMenuGroup[]>(() => {
+    const options = [
+      { value: "wuu", label: "Wuu" },
+      ...selectableEngines
+        .filter((engine) => engine.id !== "wuu")
+        .map((engine) => ({
+          value: engine.id,
+          label: engine.id === "codex" ? "Codex" : engine.id === "claude" ? "Claude Code" : engine.id,
+        })),
+    ];
+    if (agentEngine !== "wuu" && !options.some((option) => option.value === agentEngine)) {
+      options.push({ value: agentEngine, label: agentEngine });
+    }
+    return [{ options }];
+  }, [agentEngine, selectableEngines]);
   const modelGroups = useMemo<SelectMenuGroup[]>(() => {
+    if (agentEngine !== "wuu") {
+      const engine = selectableEngines.find((candidate) => candidate.id === agentEngine);
+      const groups: SelectMenuGroup[] = [{
+        label: engine?.id,
+        options: (engine?.models ?? []).map((model) => ({
+          value: `\u0000${model.id}`,
+          label: model.display_name || model.id,
+          hint: model.id,
+        })),
+      }];
+      if (agentModel && !groups.some((group) => group.options.some((option) => option.value === agentModel))) {
+        const modelID = agentModel.split("\u0000")[1] || agentModel;
+        groups.push({ options: [{ value: agentModel, label: modelID, hint: t("channels.providerMissing") }] });
+      }
+      return groups;
+    }
     const inherited = initialized ? `${initialized.provider} · ${initialized.model}` : undefined;
     const groups: SelectMenuGroup[] = [{ options: [{ value: "", label: t("channels.inheritModel"), hint: inherited }] }];
     for (const provider of initialized?.providers ?? []) {
@@ -989,10 +1028,28 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
       });
     }
     return groups;
-  }, [initialized, agentModel, t]);
+  }, [agentEngine, initialized, agentModel, selectableEngines, t]);
   const [agentProviderName, agentModelID] = agentModel.split("\u0000");
   const agentProvider = initialized?.providers?.find((provider) => provider.name === agentProviderName);
-  const agentEffortOptions = providerModelEffortOptions(agentProvider, agentModelID ?? "", agentEffort);
+  const externalAgentModel = selectableEngines
+    .find((engine) => engine.id === agentEngine)
+    ?.models?.find((model) => model.id === agentModelID);
+  const agentEffortOptions = agentEngine === "wuu"
+    ? providerModelEffortOptions(agentProvider, agentModelID ?? "", agentEffort)
+    : Array.from(new Set([...(externalAgentModel?.supported_efforts ?? []), agentEffort].filter(Boolean)));
+
+  function selectAgentEngine(value: string): void {
+    setAgentEngine(value);
+    setAgentEffort("");
+    if (value === "wuu") {
+      setAgentModel("");
+      return;
+    }
+    const engine = selectableEngines.find((candidate) => candidate.id === value);
+    const model = engine?.models?.find((candidate) => candidate.is_default) ?? engine?.models?.[0];
+    setAgentModel(model ? `\u0000${model.id}` : "");
+    setAgentEffort(model?.default_effort ?? "");
+  }
 
   function selectAgentModel(value: string): void {
     setAgentModel(value);
@@ -1211,6 +1268,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
         name: agentName.trim(),
         avatar_key: agentAvatarKey,
         avatar_image: agentAvatarImage,
+        engine_override: agentEngine === "wuu" ? undefined : agentEngine,
         provider_override: providerOverride || undefined,
         model_override: modelOverride || undefined,
         effort_override: modelOverride && agentEffort ? agentEffort : undefined,
@@ -1396,7 +1454,9 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
     setAgentAvatarKey(agent.avatar_key);
     setAgentAvatarImage(agent.avatar_image ?? "");
     setAgentAvatarError("");
-    setAgentModel(agent.provider_override && agent.model_override ? `${agent.provider_override}\u0000${agent.model_override}` : "");
+    const engine = agent.engine_override || "wuu";
+    setAgentEngine(engine);
+    setAgentModel(agent.model_override ? `${engine === "wuu" ? agent.provider_override ?? "" : ""}\u0000${agent.model_override}` : "");
     setAgentEffort(agent.effort_override ?? "");
     setAgentResetStatus("");
   }
@@ -1417,6 +1477,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
       && currentAgent.name === draft.name.trim()
       && currentAgent.avatar_key === draft.avatarKey
       && (currentAgent.avatar_image ?? "") === draft.avatarImage
+      && (currentAgent.engine_override || "wuu") === draft.engine
       && (currentAgent.provider_override ?? "") === (providerOverride ?? "")
       && (currentAgent.model_override ?? "") === (modelOverride ?? "")
       && (currentAgent.effort_override ?? "") === (effortOverride ?? "")) return;
@@ -1427,6 +1488,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
         name: draft.name.trim(),
         avatar_key: draft.avatarKey,
         avatar_image: draft.avatarImage,
+        engine_override: draft.engine === "wuu" ? undefined : draft.engine,
         provider_override: providerOverride || undefined,
         model_override: modelOverride || undefined,
         effort_override: effortOverride,
@@ -1446,6 +1508,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
     setAgentAvatarKey(randomAgentAvatarKey());
     setAgentAvatarImage("");
     setAgentAvatarError("");
+    setAgentEngine("wuu");
     setAgentModel("");
     setAgentEffort("");
     setAgentResetStatus("");
@@ -1951,6 +2014,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                     setAgentAvatarKey(randomAgentAvatarKey());
                     setAgentAvatarImage("");
                     setAgentAvatarError("");
+                    setAgentEngine("wuu");
                     setAgentModel("");
                     setAgentEffort("");
                     setSetupPanel("agent");
@@ -2060,6 +2124,10 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
                             setAgentAvatarError("");
                           }}
                         />
+                        <label className="channel-form-field">
+                          <span>{t("channels.engine")}</span>
+                          <SelectMenu value={agentEngine} onChange={selectAgentEngine} groups={engineGroups} ariaLabel={t("channels.engine")} />
+                        </label>
                         <label className="channel-form-field">
                           <span>{t("channels.model")}</span>
                           <SelectMenu value={agentModel} onChange={selectAgentModel} groups={modelGroups} ariaLabel={t("channels.model")} />
@@ -2208,7 +2276,7 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
         icon={Bot}
         submitLabel={editingAgentID ? t("channels.save") : t("channels.create")}
         cancelLabel={t("channels.cancel")}
-        submitDisabled={!agentName.trim() || Boolean(resettingAgentID)}
+        submitDisabled={!agentName.trim() || Boolean(resettingAgentID) || (agentEngine !== "wuu" && !agentModel)}
         content={<div className="channel-setup-form">
           {agentResetStatus ? <div className="channel-agent-reset-status" role="status">{agentResetStatus}</div> : null}
           <div className="channel-identity-row">
@@ -2256,6 +2324,10 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
             }}
           />
           <div className="channel-form-section">
+            <label className="channel-form-field">
+              <span>{t("channels.engine")}</span>
+              <SelectMenu value={agentEngine} onChange={selectAgentEngine} groups={engineGroups} ariaLabel={t("channels.engine")} flip />
+            </label>
             <label className="channel-form-field">
               <span>{t("channels.model")}</span>
               <SelectMenu value={agentModel} onChange={selectAgentModel} groups={modelGroups} ariaLabel={t("channels.model")} flip />

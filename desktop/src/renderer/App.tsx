@@ -5058,6 +5058,7 @@ export function App(): JSX.Element {
             </header>
             <ChannelView
               initialized={sessionRuntime ?? state.initialized}
+              engines={engineInventory?.engines}
               section={collaborationSection}
               archivedRoomIDs={channelRoomPreferences.archivedRoomIDs}
               selectedRoomID={selectedChannelRoomID}
