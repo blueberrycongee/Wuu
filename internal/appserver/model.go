@@ -332,6 +332,11 @@ func (th *threadState) finishTurnLocked(turnID string, status TurnStatus, err er
 	if th.activeAgentItemID != "" {
 		if item, ok := th.itemLocked(turnID, th.activeAgentItemID); ok && status == TurnStatusCompleted {
 			item.Status = ThreadItemStatusCompleted
+			// Some engines finish after streaming the final text without
+			// emitting a provider ChatMessage. The turn completion boundary is
+			// still authoritative: that active assistant item is the final
+			// answer and must be actionable in the renderer.
+			item.Terminal = true
 			item.FinishReason = finishReason
 			item.StopReason = stopReason
 			item.Truncated = truncated

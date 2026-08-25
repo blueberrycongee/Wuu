@@ -92,6 +92,25 @@ func TestThreadStateRetainsExecutionLeaseUntilRelease(t *testing.T) {
 	}
 }
 
+func TestThreadStateMarksStreamedFinalAnswerTerminalOnTurnCompletion(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "inspect"}, now)
+	th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type:    providers.EventContentDelta,
+		Content: "The final answer.",
+	}, now)
+
+	turn := th.finishTurnLocked("turn", TurnStatusCompleted, nil, now.Add(time.Second), "stop", "", false)
+	if len(turn.Items) != 2 {
+		t.Fatalf("turn items = %+v, want user and assistant", turn.Items)
+	}
+	answer := turn.Items[1]
+	if answer.Type != ThreadItemAgentMessage || answer.Status != ThreadItemStatusCompleted || !answer.Terminal {
+		t.Fatalf("final streamed answer = %+v, want completed terminal agent message", answer)
+	}
+}
+
 func TestThreadStateCompletesPreambleBeforeToolStart(t *testing.T) {
 	now := time.Unix(0, 0).UTC()
 	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
