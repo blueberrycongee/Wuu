@@ -47,7 +47,7 @@ export type ThreadActivationActionsDeps = {
     kind: "thread" | "project" | "runtime",
     targetID: string,
   ) => number;
-  beginInstantThreadSwitch: () => number;
+  beginInstantThreadSwitch: (targetID?: string) => number;
   finishViewSwitch: (requestID: number) => boolean;
   cancelViewSwitch: () => void;
   isCurrentViewSwitchRequest: (requestID: number) => boolean;
@@ -90,7 +90,15 @@ export function createThreadActivationActions(
       threadID === deps.getActiveThreadID() &&
       !threadNeedsResumeOnReselect(currentState, threadID)
     ) {
-      if (deps.getPendingViewSwitch()) {
+      const pendingViewSwitch = deps.getPendingViewSwitch();
+      if (
+        pendingViewSwitch?.kind === "thread" &&
+        pendingViewSwitch.targetID === threadID &&
+        !pendingViewSwitch.visible
+      ) {
+        return;
+      }
+      if (pendingViewSwitch) {
         deps.cancelViewSwitch();
       }
       return;
@@ -143,7 +151,7 @@ export function createThreadActivationActions(
       localThreadContext &&
       sameRuntimeContext(localThreadContext, sourceContext)
     ) {
-      const requestID = deps.beginInstantThreadSwitch();
+      const requestID = deps.beginInstantThreadSwitch(threadID);
       deps.restorePrimaryComposerDraft(targetDraft);
       deps.resetSplitComposerDrafts();
       deps.setAppState((current) => {
@@ -184,6 +192,7 @@ export function createThreadActivationActions(
           ) {
             return;
           }
+          deps.finishViewSwitch(requestID);
           deps.setAppState((current) => {
             if (current.thread?.id !== threadID) {
               return current;
@@ -222,6 +231,7 @@ export function createThreadActivationActions(
           ) {
             return;
           }
+          deps.finishViewSwitch(requestID);
           deps.setAppState((current) =>
             current.thread?.id === threadID
               ? {
@@ -302,7 +312,7 @@ export function createThreadActivationActions(
         targetContext,
       );
     const requestID = canSwitchInstantly
-      ? deps.beginInstantThreadSwitch()
+      ? deps.beginInstantThreadSwitch(threadID)
       : deps.beginViewSwitch("thread", threadID);
     if (canSwitchInstantly) {
       deps.restorePrimaryComposerDraft(targetDraft);

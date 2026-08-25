@@ -243,7 +243,7 @@ describe("createThreadActivationActions", () => {
 
     const activation = harness.actions.activateThread(targetThread.id);
 
-    expect(harness.beginInstantThreadSwitch).toHaveBeenCalledOnce();
+    expect(harness.beginInstantThreadSwitch).toHaveBeenCalledWith(targetThread.id);
     expect(harness.getAppState().activeContext).toEqual(targetContext);
     expect(harness.getAppState().thread?.id).toBe(targetThread.id);
     runtimeSelection.resolve({});

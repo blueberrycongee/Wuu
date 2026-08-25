@@ -151,7 +151,7 @@ export function SplitPaneComposer({
   // Match the dock composer: the button is a stop control only while running
   // with an empty input. Once there is a draft, it flips to send (queuing
   // mid-turn) so a typed follow-up is never blocked by the stop state.
-  const showStop = running && !hasDraft;
+  const showStop = running && !viewSwitchPending && !hasDraft;
   const sendLabel = running ? t("composer.queueSend") : t("composer.send");
   const statusText = composerStatusText(status);
   const statusIsLiveProgress = composerStatusIsLiveProgress(statusLiveProgress);
@@ -377,7 +377,7 @@ export function SplitPaneComposer({
                         onClick={submitComposer}
                         aria-label={sendLabel}
                         title={sendLabel}
-                        disabled={readOnly || !hasDraft}
+                        disabled={readOnly || viewSwitchPending || !hasDraft}
                       >
                         <Send aria-hidden="true" />
                       </button>

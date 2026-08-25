@@ -82,8 +82,18 @@ function initialized(): InitializeResult {
     workspace_root: workspace,
     permissions: { mode: "standard" },
     providers: [
-      { name: "provider-a", type: "openai-compatible", model: "model-a" },
-      { name: "provider-b", type: "openai-compatible", model: "model-b" },
+      {
+        name: "provider-a",
+        type: "openai-compatible",
+        model: "model-a",
+        api_key_configured: true,
+      },
+      {
+        name: "provider-b",
+        type: "openai-compatible",
+        model: "model-b",
+        api_key_configured: true,
+      },
     ],
     advanced_settings: {
       max_steps: 64,
@@ -184,6 +194,7 @@ function installWindowStubs(): void {
 
 function installWuuApi(): {
   resumeThread: ReturnType<typeof vi.fn>;
+  startTurn: ReturnType<typeof vi.fn>;
   threadsByID: Map<string, Thread>;
 } {
   const threadsByID = new Map<string, Thread>([
@@ -195,6 +206,14 @@ function installWuuApi(): {
     .mockImplementation((threadID: string) =>
       Promise.resolve({ thread: threadsByID.get(threadID) }),
     );
+  const startTurn = vi.fn().mockResolvedValue({
+    turn: {
+      id: "turn-after-switch",
+      items_view: "full",
+      status: "in_progress",
+      items: [],
+    },
+  });
   const api = {
     listProjects: vi.fn().mockResolvedValue({
       projects: [],
@@ -210,6 +229,7 @@ function installWuuApi(): {
     }),
     listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
     resumeThread,
+    startTurn,
     getActiveGoalSummary: vi.fn().mockResolvedValue(null),
     gitStatus: vi.fn().mockResolvedValue({
       is_repo: false,
@@ -233,7 +253,7 @@ function installWuuApi(): {
     configurable: true,
     value: api,
   });
-  return { resumeThread, threadsByID };
+  return { resumeThread, startTurn, threadsByID };
 }
 
 async function flushAsync(): Promise<void> {
@@ -271,6 +291,36 @@ function visibleRuntimeModel(): string {
     container.querySelector<HTMLButtonElement>(".codex-runtime-trigger")
       ?.textContent ?? ""
   );
+}
+
+function mainComposerTextarea(): HTMLTextAreaElement {
+  const textarea = container.querySelector<HTMLTextAreaElement>(
+    '[data-main-conversation-composer="dock"] textarea[data-wuu-component="composer-input"]',
+  );
+  if (!textarea) {
+    throw new Error("main composer textarea was not rendered");
+  }
+  return textarea;
+}
+
+function mainComposerSendButton(): HTMLButtonElement {
+  const button = container.querySelector<HTMLButtonElement>(
+    '[data-main-conversation-composer="dock"] .composer-send-button',
+  );
+  if (!button) {
+    throw new Error("main composer send button was not rendered");
+  }
+  return button;
+}
+
+function setMainComposerPrompt(value: string): void {
+  const textarea = mainComposerTextarea();
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    "value",
+  )?.set;
+  setter?.call(textarea, value);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function emitNotification(method: string, params: Record<string, unknown>): void {
@@ -356,6 +406,56 @@ describe("session tab switch latency", () => {
     expect(activeSessionTabLabel()).toContain("session switch A");
     expect(activeThreadProbe()?.dataset.threadId).toBe(threadAID);
     expect(activeThreadProbe()?.dataset.turnCount).toBe("2");
+  });
+
+  it("blocks a send during a cached switch and routes the next send to the target thread", async () => {
+    const { resumeThread, startTurn } = installWuuApi();
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<App />);
+    });
+    await flushAsync();
+
+    const delayedResumeB = deferred<{ thread: Thread }>();
+    resumeThread.mockImplementation((threadID: string) =>
+      threadID === threadBID
+        ? delayedResumeB.promise
+        : Promise.resolve({ thread: threadA() }),
+    );
+
+    const rowB = threadRowButton("session switch B");
+    expect(rowB).toBeDefined();
+    await act(async () => {
+      rowB?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(activeThreadProbe()?.dataset.threadId).toBe(threadBID);
+
+    await act(async () => {
+      setMainComposerPrompt("send after switching");
+    });
+    await act(async () => {
+      mainComposerSendButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(startTurn).not.toHaveBeenCalled();
+
+    delayedResumeB.resolve({ thread: threadB() });
+    await flushAsync();
+    expect(mainComposerTextarea().value).toBe("send after switching");
+    expect(mainComposerSendButton().disabled).toBe(false);
+    await act(async () => {
+      mainComposerSendButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(startTurn).toHaveBeenCalledWith(
+      threadBID,
+      "send after switching",
+      expect.any(Array),
+      expect.any(Array),
+      expect.anything(),
+      undefined,
+    );
   });
 
   it("shows the admitted model during a turn and the session pin after it settles", async () => {
