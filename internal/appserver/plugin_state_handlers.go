@@ -190,6 +190,11 @@ func (s *Server) activePluginSetting(id, fingerprint, key string) (pluginpkg.Plu
 		return pluginpkg.Plugin{}, pluginpkg.SettingDefinition{}, "", err
 	}
 	key = strings.TrimSpace(key)
+	// Inventory descriptors expose manifest setting IDs in their qualified
+	// form (for example, "note-compaction.checkpoint_interval_tokens"), while
+	// plugin host calls use the manifest-local key. Accept both at this desktop
+	// boundary and persist only the local key.
+	key = strings.TrimPrefix(key, plugin.ID+".")
 	definition, ok := plugin.Settings[plugin.ID+"."+key]
 	if !ok {
 		return pluginpkg.Plugin{}, pluginpkg.SettingDefinition{}, "", fmt.Errorf("plugin %q does not own setting %q", id, key)

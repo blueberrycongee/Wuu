@@ -2862,14 +2862,27 @@ html.resizing-workspace-terminal-split * {
 }
 
 .plugin-settings-editor-page {
+  display: flex;
   grid-column: auto;
+  flex-direction: column;
+  gap: 0;
   width: 100%;
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
 }
 
 .plugin-setting {
-  display: grid;
+  display: flex;
   min-width: 0;
-  gap: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 16px 0;
+}
+
+.plugin-settings-editor-page .plugin-setting:first-of-type {
+  border-top: 1px solid var(--hairline-soft);
 }
 
 .plugin-contribution-conflict,
@@ -2905,18 +2918,29 @@ html.resizing-workspace-terminal-split * {
 .plugin-setting-control,
 .plugin-setting-status {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  min-width: 0;
+  gap: 8px;
 }
 
 .plugin-setting-heading {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
   justify-content: space-between;
 }
 
 .plugin-setting-heading label {
+  min-width: 0;
+  flex: 1 1 240px;
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--font-ui);
   font-weight: var(--weight-medium);
+  line-height: 1.4;
+}
+
+.plugin-setting-heading span {
+  flex: none;
+  white-space: nowrap;
 }
 
 .plugin-setting-heading span,
@@ -2930,18 +2954,38 @@ html.resizing-workspace-terminal-split * {
 
 .plugin-setting p {
   margin: 0;
+  max-width: 68ch;
+  overflow-wrap: anywhere;
+}
+
+.plugin-setting-control {
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .plugin-setting input[type="text"],
 .plugin-setting input[type="number"],
 .plugin-setting select {
-  min-width: 180px;
-  min-height: 30px;
+  width: min(240px, 100%);
+  min-width: 0;
+  min-height: 32px;
+  flex: 0 1 240px;
   border: 1px solid var(--skills-section-border);
   border-radius: var(--radius-sm);
-  padding: 4px 8px;
+  padding: 5px 9px;
   background: var(--surface);
   color: var(--ink);
+}
+
+.plugin-setting-status {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  overflow-wrap: anywhere;
+}
+
+.plugin-setting-status span {
+  min-width: 0;
+  flex: 1 1 320px;
 }
 
 .plugin-setting-status.is-error {

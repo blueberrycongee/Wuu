@@ -25,6 +25,15 @@ func TestPluginSettingsValidateOwnershipTypeScopeAndGeneration(t *testing.T) {
 	if defaultResult.Scope != PluginValueScopeWorkspace || string(defaultResult.Value) != "true" {
 		t.Fatalf("default result = %+v", defaultResult)
 	}
+	callPluginPackageRPC(t, srv, "qualified", MethodPluginSettingGet, PluginSettingGetParams{ID: item.SubjectID, Fingerprint: item.Fingerprint, Key: item.ID + ".enabled"})
+	qualifiedResponse := responseByID(t, parseOutput(t, out.String()), "qualified")
+	if qualifiedResponse["error"] != nil {
+		t.Fatalf("qualified response = %+v", qualifiedResponse)
+	}
+	qualifiedResult := remarshal[PluginSettingResult](t, qualifiedResponse["result"])
+	if qualifiedResult.Key != "enabled" || string(qualifiedResult.Value) != "true" {
+		t.Fatalf("qualified result = %+v", qualifiedResult)
+	}
 
 	callPluginPackageRPC(t, srv, "set", MethodPluginSettingSet, PluginSettingSetParams{ID: item.SubjectID, Fingerprint: item.Fingerprint, Key: "enabled", Value: json.RawMessage(`false`)})
 	setResult := remarshal[PluginSettingResult](t, responseByID(t, parseOutput(t, out.String()), "set")["result"])
