@@ -826,8 +826,17 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	case CapabilityPluginClientRequest:
 		requiredKind = SeamDecision
 	}
-	if requiredKind != "" && (c.Kind != requiredKind || c.Version != 1) {
-		return fmt.Errorf("capability %s requires kind %q and version 1", id, requiredKind)
+	if requiredKind != "" && c.Kind != requiredKind {
+		return fmt.Errorf("capability %s requires kind %q", id, requiredKind)
+	}
+	if requiredKind != "" {
+		maxVersion := 1
+		if c.ID == CapabilityAgentCompaction {
+			maxVersion = 2
+		}
+		if c.Version > maxVersion {
+			return fmt.Errorf("capability %s requires a supported version between 1 and %d", id, maxVersion)
+		}
 	}
 	if err := validateCapabilityRelations(c); err != nil {
 		return err

@@ -5,7 +5,7 @@
   "description": "Experimental context compaction driven by hidden session-scoped Markdown notes.",
   "icon": { "path": "assets/icon.svg" },
   "version": "0.1.0",
-  "defaultEnabled": false,
+  "defaultEnabled": true,
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",
   "runtime": { "protocol": "wuu-plugin-v1", "command": "@wuu-official-helper:note-compaction", "timeout": 30 },

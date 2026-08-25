@@ -72,8 +72,13 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "compaction requires decision v1",
+			name:    "compaction note fork supports decision v2",
 			desc:    CapabilityDescriptor{ID: CapabilityAgentCompaction, Kind: "decision", Version: 2},
+			wantErr: false,
+		},
+		{
+			name:    "compaction rejects unsupported v3",
+			desc:    CapabilityDescriptor{ID: CapabilityAgentCompaction, Kind: "decision", Version: 3},
 			wantErr: true,
 		},
 		{
