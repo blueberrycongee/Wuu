@@ -37,6 +37,71 @@ type streamOnlyNoteClient struct {
 	streamCalls int
 }
 
+type cancelDuringNoteClient struct {
+	mu          sync.Mutex
+	streamCalls int
+	noteStarted chan struct{}
+	noteOnce    sync.Once
+}
+
+func (c *cancelDuringNoteClient) Chat(context.Context, providers.ChatRequest) (providers.ChatResponse, error) {
+	return providers.ChatResponse{}, errors.New("unary chat is unsupported")
+}
+
+func (c *cancelDuringNoteClient) StreamChat(ctx context.Context, _ providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	c.mu.Lock()
+	c.streamCalls++
+	call := c.streamCalls
+	c.mu.Unlock()
+	if call == 1 {
+		events := make(chan providers.StreamEvent, 2)
+		events <- providers.StreamEvent{Type: providers.EventContentDelta, Content: "main response"}
+		events <- providers.StreamEvent{Type: providers.EventDone, FinishReason: providers.FinishReasonStop}
+		close(events)
+		return events, nil
+	}
+	c.noteOnce.Do(func() { close(c.noteStarted) })
+	events := make(chan providers.StreamEvent, 1)
+	go func() {
+		<-ctx.Done()
+		events <- providers.StreamEvent{Type: providers.EventError, Error: fmt.Errorf("stream request failed: %w", ctx.Err())}
+		close(events)
+	}()
+	return events, nil
+}
+
+type cancellationNoteProvider struct{}
+
+func (cancellationNoteProvider) CompactionKey() string   { return "cancel-note" }
+func (cancellationNoteProvider) CompactionPriority() int { return 10 }
+func (cancellationNoteProvider) CompactionNotesEnabled() bool {
+	return true
+}
+func (cancellationNoteProvider) Compact(_ context.Context, _ string, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+	return messages, nil
+}
+func (cancellationNoteProvider) PlanCompactionNote(_ context.Context, _ string, _, _ []providers.ChatMessage, _ CompactionNote) (CompactionNotePlan, error) {
+	return CompactionNotePlan{Prompt: "update the note", MaxBytes: 24_000}, nil
+}
+func (cancellationNoteProvider) CompactWithNote(_ context.Context, _ string, messages []providers.ChatMessage, _ CompactionNote) (CompactionNoteReplacement, error) {
+	return CompactionNoteReplacement{Messages: messages, CoveredMessages: len(messages)}, nil
+}
+
+type cancellationNoteStore struct {
+	note       CompactionNote
+	storeCalls int
+}
+
+func (s *cancellationNoteStore) LoadCompactionNote(context.Context, string) (CompactionNote, bool, error) {
+	return s.note, true, nil
+}
+
+func (s *cancellationNoteStore) StoreCompactionNote(_ context.Context, _ string, note CompactionNote) error {
+	s.storeCalls++
+	s.note = note
+	return nil
+}
+
 func (c *streamOnlyNoteClient) Chat(context.Context, providers.ChatRequest) (providers.ChatResponse, error) {
 	c.chatCalls++
 	return providers.ChatResponse{}, errors.New("unary chat is unsupported")
@@ -69,6 +134,68 @@ func TestCompactionNoteForkUsesStreamingProviderPath(t *testing.T) {
 	}
 	if !strings.Contains(result.Markdown, "Context note") || result.Usage == nil || result.Usage.OutputTokens != 4 {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestStreamRunner_UserCancellationDuringNoteForkDoesNotEmitFailure(t *testing.T) {
+	history := []providers.ChatMessage{{Role: "user", Content: "existing history"}}
+	existing := CompactionNote{
+		Markdown:        "# Existing note",
+		CoveredMessages: len(history),
+		CoveredHash:     CompactionHistoryHash(history),
+	}
+	store := &cancellationNoteStore{note: existing}
+	registry := NewCompactionRegistry()
+	registry.Register(cancellationNoteProvider{})
+	client := &cancelDuringNoteClient{noteStarted: make(chan struct{})}
+	runner := &StreamRunner{
+		Client:              client,
+		ProviderName:        "test",
+		Model:               "test-model",
+		CompactionRegistry:  registry,
+		CompactionNoteStore: store,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var events []providers.StreamEvent
+	type runResult struct {
+		result LoopResult
+		err    error
+	}
+	done := make(chan runResult, 1)
+	go func() {
+		result, err := runner.RunWithCallback(ctx, history, func(event providers.StreamEvent) {
+			events = append(events, event)
+		})
+		done <- runResult{result: result, err: err}
+	}()
+
+	select {
+	case <-client.noteStarted:
+		cancel()
+	case <-time.After(time.Second):
+		t.Fatal("context note fork did not start")
+	}
+
+	var run runResult
+	select {
+	case run = <-done:
+	case <-time.After(time.Second):
+		t.Fatal("runner did not return after cancellation")
+	}
+	if run.err != nil {
+		t.Fatalf("main turn returned an error: %v", run.err)
+	}
+	if run.result.Content != "main response" {
+		t.Fatalf("main response = %q", run.result.Content)
+	}
+	for _, event := range events {
+		if event.Type == providers.EventCompact && strings.Contains(event.Content, "Context note failed") {
+			t.Fatalf("user cancellation emitted a note failure: %+v", event)
+		}
+	}
+	if store.storeCalls != 0 || !reflect.DeepEqual(store.note, existing) {
+		t.Fatalf("cancellation changed the existing note: calls=%d note=%+v", store.storeCalls, store.note)
 	}
 }
 

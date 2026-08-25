@@ -640,6 +640,11 @@ func emitCompactionNoteEvent(onEvent StreamCallback, status string, noteErr erro
 	if onEvent == nil {
 		return
 	}
+	// Stopping a turn also stops its hidden note fork. That is an expected
+	// interruption, not a compaction failure that should be shown to the user.
+	if status == "failed" && errors.Is(noteErr, context.Canceled) {
+		return
+	}
 	content := "Context note used."
 	switch status {
 	case "updated":
