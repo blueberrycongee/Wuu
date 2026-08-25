@@ -1850,7 +1850,23 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
             );
           })}
           {!loading && loadedRoomIDs.has(selectedRoomID) && selectedRoom && channelTimeline.length === 0 ? (
-            <div className="channel-stream-empty">{t("channels.empty")}</div>
+            selectedRoomAgents[0] ? (
+              <div className="channel-onboarding">
+                <div className="channel-onboarding-avatar" aria-hidden="true">
+                  <AgentAvatarMark
+                    seed={selectedRoomAgents[0].id}
+                    avatarKey={selectedRoomAgents[0].avatar_key}
+                    avatarImage={selectedRoomAgents[0].avatar_image}
+                    status={activityFor(selectedRoomAgents[0]) === "thinking" ? "thinking" : "idle"}
+                  />
+                </div>
+                <h2>{t("channels.onboardingReady", { name: selectedRoomAgents[0].name })}</h2>
+                <p>{t("channels.onboardingIntro", { name: selectedRoomAgents[0].name })}</p>
+                <button type="button" onClick={() => roomComposerRef.current?.focus()}>
+                  {t("channels.onboardingStart")}
+                </button>
+              </div>
+            ) : <div className="channel-stream-empty">{t("channels.empty")}</div>
           ) : null}
         </div>
         <JumpToLatestPill

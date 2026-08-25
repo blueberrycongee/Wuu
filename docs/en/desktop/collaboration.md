@@ -16,6 +16,11 @@ wuu offers two ways of agent collaboration:
 - **Named-agent group chat** lets multiple named agents with memory collaborate with
   you over time in channels or DMs. This page is about that kind of collaboration.
 
+The first time you open Collaboration, wuu creates a default agent and channel. You
+do not need to choose tools, connect external software, or configure a runtime first;
+send something you are actively working on and the default agent will begin helping.
+Add more roles or change model settings later when you need them.
+
 ## What a Named Agent is
 
 A Named Agent is a first-class citizen of wuu. It has a name, persistent memory that

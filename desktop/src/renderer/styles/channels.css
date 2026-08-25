@@ -1233,6 +1233,54 @@
   font-size: 13px;
 }
 
+.channel-onboarding {
+  display: flex;
+  min-height: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 48px 24px calc(var(--channel-composer-height, 120px) + 36px);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+}
+
+.channel-onboarding-avatar {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 18px;
+}
+
+.channel-onboarding h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.channel-onboarding p {
+  margin: 10px 0 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.channel-onboarding button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.channel-onboarding button:hover {
+  background: var(--surface-hover);
+}
+
 .channel-conversation-footer {
   position: absolute;
   right: 0;

@@ -17,6 +17,7 @@ const noop = () => {};
 type MentionRange = { start: number; end: number; query: string };
 
 export type ChannelComposerHandle = {
+  focus: () => void;
   insertMention: (name: string) => void;
 };
 
@@ -124,7 +125,10 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
     });
   }, [draft, onChangeDraft, textarea]);
 
-  useImperativeHandle(ref, () => ({ insertMention: (name) => insertMention(name) }), [insertMention]);
+  useImperativeHandle(ref, () => ({
+    focus: () => textarea()?.focus(),
+    insertMention: (name) => insertMention(name),
+  }), [insertMention, textarea]);
 
   function handleKeyDownCapture(event: KeyboardEvent<HTMLDivElement>): void {
     if (!mentionRange) return;
