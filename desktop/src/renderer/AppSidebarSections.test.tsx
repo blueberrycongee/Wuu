@@ -40,6 +40,31 @@ describe("partitionAttentionThreads", () => {
     expect(attention.running.map(({ id }) => id)).toEqual(["running"]);
     expect(attention.unread.map(({ id }) => id)).toEqual(["unread"]);
   });
+
+  it("includes the active running session without treating an active settled session as unread", () => {
+    const activeRunning = thread({ id: "active-running", status: "in_progress" });
+    const backgroundRunning = thread({ id: "background-running", status: "in_progress" });
+    const activeUnread = thread({ id: "active-unread" });
+
+    const runningAttention = partitionAttentionThreads(
+      [activeRunning, backgroundRunning],
+      activeRunning.id,
+      undefined,
+      {},
+    );
+    const settledAttention = partitionAttentionThreads(
+      [activeUnread],
+      activeUnread.id,
+      undefined,
+      {},
+    );
+
+    expect(runningAttention.running.map(({ id }) => id)).toEqual([
+      "active-running",
+      "background-running",
+    ]);
+    expect(settledAttention.unread).toEqual([]);
+  });
 });
 
 describe("reconcileSidebarSectionOrder", () => {

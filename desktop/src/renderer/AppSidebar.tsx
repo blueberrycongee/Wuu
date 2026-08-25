@@ -115,11 +115,7 @@ export function partitionAttentionThreads(
   pendingThreadID: string | undefined,
   lastViewedTurnByThreadID: Readonly<Record<string, string>>,
 ): { running: ThreadSummary[]; unread: ThreadSummary[] } {
-  const candidates = threads.filter((thread) => (
-    !thread.archived &&
-    thread.id !== activeThreadID &&
-    thread.id !== pendingThreadID
-  ));
+  const candidates = threads.filter((thread) => !thread.archived);
   const compare = (left: ThreadSummary, right: ThreadSummary): number => (
     Number(isThreadExecuting(right)) - Number(isThreadExecuting(left))
     || Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
@@ -128,9 +124,11 @@ export function partitionAttentionThreads(
   return {
     running: candidates.filter(isThreadExecuting).sort(compare),
     unread: candidates
-      .filter((thread) => !isThreadExecuting(thread) && isThreadUnread(
-        thread,
-        lastViewedTurnByThreadID[thread.id],
+      .filter((thread) => (
+        thread.id !== activeThreadID &&
+        thread.id !== pendingThreadID &&
+        !isThreadExecuting(thread) &&
+        isThreadUnread(thread, lastViewedTurnByThreadID[thread.id])
       ))
       .sort(compare),
   };
