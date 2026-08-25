@@ -106,6 +106,9 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 	if requested && s.wake != nil {
 		s.wake.Deliver(params.OwnerID)
 	}
+	if work, err := s.GetWork(ctx, message.ID); err == nil {
+		message.Work = &work
+	}
 	return message, nil
 }
 
@@ -213,6 +216,12 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 				candidate_workspace_revision = NULL WHERE id = ?`, message.ID); err != nil {
 			return Message{}, fmt.Errorf("clear stale work candidate: %w", err)
 		}
+		if err := insertWorkEventTx(ctx, tx, WorkEvent{
+			WorkID: message.ID, Kind: "correction", State: string(WorkOpen), Summary: "User goal revised",
+			GoalRevision: message.TaskGoalRevision, CandidateRevision: message.TaskCandidateRevision, CreatedAt: updatedAt,
+		}); err != nil {
+			return Message{}, err
+		}
 	}
 	if message.TaskVerificationRequired && params.State == TaskStateChecking && message.TaskState != string(TaskStateChecking) {
 		message.TaskCandidateRevision++
@@ -269,6 +278,9 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if requested && s.wake != nil {
 		s.wake.Deliver(newOwner)
 	}
+	if work, err := s.GetWork(ctx, message.ID); err == nil {
+		message.Work = &work
+	}
 	return message, nil
 }
 
@@ -311,7 +323,6 @@ func (s *Service) ListTasks(ctx context.Context, params TaskListParams) ([]Messa
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
-	defer rows.Close()
 	messages := make([]Message, 0)
 	for rows.Next() {
 		message, err := scanMessage(rows)
@@ -321,7 +332,14 @@ func (s *Service) ListTasks(ctx context.Context, params TaskListParams) ([]Messa
 		messages = append(messages, message)
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, fmt.Errorf("list tasks: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close tasks: %w", err)
+	}
+	if err := s.attachWorkDetails(ctx, messages); err != nil {
+		return nil, err
 	}
 	return messages, nil
 }

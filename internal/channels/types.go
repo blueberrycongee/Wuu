@@ -219,6 +219,7 @@ type Message struct {
 	TaskVerificationRequired bool           `json:"task_verification_required,omitempty"`
 	TaskGoalRevision         int            `json:"task_goal_revision,omitempty"`
 	TaskCandidateRevision    int            `json:"task_candidate_revision,omitempty"`
+	Work                     *Work          `json:"work,omitempty"`
 	CreatedAt                time.Time      `json:"created_at"`
 }
 

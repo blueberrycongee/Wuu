@@ -401,6 +401,18 @@ func (s *Service) migrate() error {
 			FOREIGN KEY (run_id) REFERENCES work_runs(id) ON DELETE SET NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_work_artifacts_work ON work_artifacts(work_id, created_at, id)`,
+		`CREATE TABLE IF NOT EXISTS work_events (
+			id TEXT PRIMARY KEY,
+			work_id TEXT NOT NULL,
+			kind TEXT NOT NULL CHECK (kind IN ('state', 'verification', 'correction', 'cancellation', 'recovery')),
+			state TEXT NOT NULL DEFAULT '',
+			summary TEXT NOT NULL DEFAULT '',
+			goal_revision INTEGER NOT NULL DEFAULT 0,
+			candidate_revision INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL,
+			FOREIGN KEY (work_id) REFERENCES works(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_work_events_work ON work_events(work_id, created_at, id)`,
 		`CREATE TABLE IF NOT EXISTS drafts (
 			id TEXT PRIMARY KEY,
 			agent_id TEXT NOT NULL,

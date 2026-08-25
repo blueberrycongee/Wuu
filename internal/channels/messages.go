@@ -263,7 +263,6 @@ func (s *Service) ListMessages(ctx context.Context, roomID string, afterSeq int6
 	if err != nil {
 		return nil, fmt.Errorf("list room messages: %w", err)
 	}
-	defer rows.Close()
 	messages := make([]Message, 0)
 	for rows.Next() {
 		message, err := scanMessage(rows)
@@ -273,9 +272,33 @@ func (s *Service) ListMessages(ctx context.Context, roomID string, afterSeq int6
 		messages = append(messages, message)
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, fmt.Errorf("list room messages: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close room messages: %w", err)
+	}
+	if err := s.attachWorkDetails(ctx, messages); err != nil {
+		return nil, err
+	}
 	return messages, nil
+}
+
+func (s *Service) attachWorkDetails(ctx context.Context, messages []Message) error {
+	for index := range messages {
+		if messages[index].Kind != MessageTask {
+			continue
+		}
+		work, err := s.GetWork(ctx, messages[index].ID)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			return err
+		}
+		messages[index].Work = &work
+	}
+	return nil
 }
 
 func (s *Service) ListInbox(ctx context.Context, agentID string, unpulledOnly bool) ([]InboxItem, error) {

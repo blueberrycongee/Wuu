@@ -123,6 +123,13 @@ func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerific
 		workStateFromTask(taskState), verification.Decision, verification.Attempt, toMillis(now), task.ID); err != nil {
 		return TaskVerificationSubmitResult{}, fmt.Errorf("project durable work verification: %w", err)
 	}
+	if err := insertWorkEventTx(ctx, tx, WorkEvent{
+		WorkID: task.ID, Kind: "verification", State: string(verification.Decision),
+		Summary: verification.Report, GoalRevision: verification.GoalRevision,
+		CandidateRevision: verification.CandidateRevision, CreatedAt: now,
+	}); err != nil {
+		return TaskVerificationSubmitResult{}, err
+	}
 	delivery, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
 		RoomID: task.RoomID, FromType: MemberAgent, FromID: "", ToAgentID: task.TaskOwner,
 		Kind: CollaborationVerificationFeedback, Body: verificationDeliveryBody(verification), WorkID: task.ID,

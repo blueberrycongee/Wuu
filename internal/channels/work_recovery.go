@@ -113,6 +113,9 @@ func (s *Service) reconcileWorkRun(ctx context.Context, recovery WorkRunRecovery
 		WHERE id = ?`, workState, verificationState, runState, outcome, toMillis(now), work.ID); err != nil {
 		return fmt.Errorf("settle recovered work: %w", err)
 	}
+	if err := insertWorkEventTx(ctx, tx, WorkEvent{WorkID: work.ID, Kind: "recovery", State: string(workState), Summary: outcome, GoalRevision: run.GoalRevision, CandidateRevision: run.CandidateRevision, CreatedAt: now}); err != nil {
+		return err
+	}
 	shouldDeliver := false
 	if recipientID != "" {
 		kind := CollaborationCompletion

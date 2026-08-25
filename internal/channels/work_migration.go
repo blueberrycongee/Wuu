@@ -109,5 +109,12 @@ func (s *Service) migrateWorks() error {
 	if err != nil {
 		return fmt.Errorf("backfill durable works: %w", err)
 	}
+	if _, err := s.db.Exec(`
+		INSERT OR IGNORE INTO work_events(id, work_id, kind, state, summary, goal_revision, candidate_revision, created_at)
+		SELECT 'event-initial-' || id, id, 'state', state, 'Recovered initial Work state', goal_revision, candidate_revision, created_at
+		FROM works work
+		WHERE NOT EXISTS (SELECT 1 FROM work_events event WHERE event.work_id = work.id)`); err != nil {
+		return fmt.Errorf("backfill work state events: %w", err)
+	}
 	return nil
 }

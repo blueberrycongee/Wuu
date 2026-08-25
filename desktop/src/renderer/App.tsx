@@ -5065,6 +5065,7 @@ export function App(): JSX.Element {
               onSelectRoom={selectChannelRoom}
               onRoomRead={clearChannelRoomUnread}
               onOpenMemoryDirectory={openAgentMemoryDirectory}
+              onOpenSession={handleOpenThreadInSplit}
               composerDraft={activeChannelComposerDraft}
               onComposerDraftChange={updateSelectedChannelRoomDraft}
               newRoomRequest={newRoomRequest}

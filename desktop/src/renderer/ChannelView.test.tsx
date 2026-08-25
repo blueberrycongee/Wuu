@@ -222,6 +222,56 @@ describe("ChannelView", () => {
     expect(assignmentState("needs_human")).toBe("needs_human");
   });
 
+  it("renders durable Work evidence under the visible owner without hidden personas", async () => {
+    const api = createApi();
+    api.listChannelMessages = vi.fn(async ({ room_id }) => ({ messages: room_id === "room-1" ? [{
+      id: "work-1", room_id, seq: 1, author_type: "agent" as const, author_id: "agent-1",
+      kind: "task" as const, body: "Reject callback replay", task_title: "Fix callback",
+      task_state: "checking", task_owner: "agent-1", created_at: "2026-07-23T00:00:00Z",
+      work: {
+        id: "work-1", room_id, source_message_id: "source-1", owner_named_agent_id: "agent-1",
+        title: "Fix callback", brief: "Reject callback replay", goal_revision: 1, candidate_revision: 2,
+        state: "checking" as const, verification_state: "block" as const, verification_required: true,
+        max_verifier_attempts: 3, max_candidates: 1, verifier_attempts_used: 1, candidates_used: 1,
+        checks_summary: "focused tests passed", changed_files_count: 3, unresolved_items: "full suite unavailable",
+        created_at: "2026-07-23T00:00:00Z", updated_at: "2026-07-23T00:08:00Z",
+        events: [
+          { id: "event-1", work_id: "work-1", kind: "state" as const, state: "working", goal_revision: 1, candidate_revision: 0, created_at: "2026-07-23T00:00:00Z" },
+          { id: "event-2", work_id: "work-1", kind: "state" as const, state: "checking", goal_revision: 1, candidate_revision: 1, created_at: "2026-07-23T00:04:00Z" },
+          { id: "event-3", work_id: "work-1", kind: "state" as const, state: "revising", goal_revision: 1, candidate_revision: 1, created_at: "2026-07-23T00:05:00Z" },
+          { id: "event-4", work_id: "work-1", kind: "state" as const, state: "checking", goal_revision: 1, candidate_revision: 2, created_at: "2026-07-23T00:08:00Z" },
+        ],
+        verification: {
+          task_id: "work-1", room_id, owner_id: "agent-1", decision: "block" as const,
+          report: "Replay still created a session before repair.", attempt: 1,
+          goal_revision: 1, candidate_revision: 1, updated_at: "2026-07-23T00:05:00Z",
+        },
+        artifacts: [{ id: "artifact-1", work_id: "work-1", kind: "diff" as const, uri: "artifact://diff-1", summary: "callback diff", created_at: "2026-07-23T00:04:00Z" }],
+        runs: [{
+          id: "run-1", work_id: "work-1", kind: "verifier" as const, profile: "security",
+          session_ref: "session-check-1", state: "completed" as const, goal_revision: 1,
+          candidate_revision: 1, created_at: "2026-07-23T00:04:00Z", updated_at: "2026-07-23T00:05:00Z",
+        }],
+      },
+    }] : [] }));
+    Object.defineProperty(window, "wuu", { configurable: true, value: api });
+    const onOpenSession = vi.fn();
+    root = createRoot(container);
+    act(() => root?.render(<ChannelView selectedRoomID="room-1" onOpenSession={onOpenSession} />));
+    await settle();
+
+    expect(container.querySelector(".channel-work-activity")?.textContent).toBe("working → checking → revising → checking");
+    expect(container.querySelector(".channel-work-summary-line")?.textContent).toContain("3");
+    const evidence = container.querySelector<HTMLDetailsElement>(".channel-work-evidence");
+    expect(evidence).not.toBeNull();
+    act(() => evidence?.querySelector("summary")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(evidence?.textContent).toContain("Replay still created a session before repair.");
+    expect(evidence?.textContent).toContain("session-check-1");
+    act(() => evidence?.querySelector<HTMLButtonElement>(".channel-work-session-link")?.click());
+    expect(onOpenSession).toHaveBeenCalledWith("session-check-1");
+    expect(container.textContent).not.toContain("Verifier Bot");
+  });
+
   it("caps channel unread counts at 99+", () => {
     expect(formatChannelUnreadCount(1)).toBe("1");
     expect(formatChannelUnreadCount(99)).toBe("99");
@@ -589,7 +639,8 @@ describe("ChannelView", () => {
     expect(container.querySelector(".channel-message.own .channel-human-avatar")).toBeNull();
     expect(container.querySelector(".channel-message.own .channel-message-meta strong")).toBeNull();
     expect(container.querySelector(".channel-task-card")).toBeNull();
-    expect(container.querySelector(".channel-message-stream")?.textContent).not.toContain("Investigate flaky build");
+    expect(container.querySelector(".channel-orchestration-message")).not.toBeNull();
+    expect(container.querySelector(".channel-message-stream")?.textContent).toContain("Investigate flaky build");
     expect(container.querySelector('[aria-label="Alpha: 处理中"]')).not.toBeNull();
     expect(container.querySelector(".channel-agent-status-dot.thinking")).not.toBeNull();
     expect(container.querySelector(".channel-agent-status-card")?.textContent).toBe("处理中");

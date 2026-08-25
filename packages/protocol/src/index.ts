@@ -820,7 +820,107 @@ export type ChannelMessage = {
   task_verification_required?: boolean;
   task_goal_revision?: number;
   task_candidate_revision?: number;
+  work?: ChannelWork;
   created_at: string;
+};
+
+export type ChannelWorkState = "open" | "working" | "checking" | "revising" | "integrating" | "needs_human" | "completed" | "failed" | "cancelled" | "interrupted";
+export type ChannelWorkVerificationState = "not_required" | "pending" | "pass" | "block" | "unknown";
+
+export type ChannelWorkRun = {
+  id: string;
+  work_id: string;
+  kind: "producer" | "verifier" | "selector" | "integration";
+  profile?: string;
+  session_ref?: string;
+  state: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
+  goal_revision: number;
+  candidate_revision: number;
+  workspace_revision?: string;
+  provider?: string;
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  checks_rerun?: number;
+  findings_count?: number;
+  outcome?: string;
+  repair_outcome?: string;
+  started_at?: string;
+  ended_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChannelWorkArtifact = {
+  id: string;
+  work_id: string;
+  run_id?: string;
+  kind: "candidate" | "diff" | "snapshot" | "check_log" | "screenshot" | "report" | "other";
+  uri: string;
+  label?: string;
+  summary?: string;
+  workspace_revision?: string;
+  created_at: string;
+};
+
+export type ChannelWorkEvent = {
+  id: string;
+  work_id: string;
+  kind: "state" | "verification" | "correction" | "cancellation" | "recovery";
+  state?: string;
+  summary?: string;
+  goal_revision: number;
+  candidate_revision: number;
+  created_at: string;
+};
+
+export type ChannelTaskVerification = {
+  task_id: string;
+  room_id: string;
+  owner_id: string;
+  decision: "pass" | "block" | "unknown";
+  report: string;
+  evidence_refs?: string[];
+  run_ref?: string;
+  attempt: number;
+  goal_revision: number;
+  candidate_revision: number;
+  updated_at: string;
+};
+
+export type ChannelWork = {
+  id: string;
+  room_id: string;
+  source_message_id: string;
+  owner_named_agent_id: string;
+  lead_named_agent_id?: string;
+  title: string;
+  brief: string;
+  goal_revision: number;
+  candidate_revision: number;
+  state: ChannelWorkState;
+  current_run_ref?: string;
+  candidate_artifact_ref?: string;
+  candidate_workspace_revision?: string;
+  verification_state: ChannelWorkVerificationState;
+  verification_required: boolean;
+  pending_delivery_refs?: string[];
+  max_verifier_attempts: number;
+  max_candidates: number;
+  verifier_attempts_used: number;
+  candidates_used: number;
+  fanout_reason?: string;
+  checks_summary?: string;
+  changed_files_count?: number;
+  unresolved_items?: string;
+  failure_reason?: string;
+  cancelled_at?: string;
+  created_at: string;
+  updated_at: string;
+  runs?: ChannelWorkRun[];
+  artifacts?: ChannelWorkArtifact[];
+  events?: ChannelWorkEvent[];
+  verification?: ChannelTaskVerification;
 };
 
 export type ChannelAgentListResult = { agents: NamedAgent[] };

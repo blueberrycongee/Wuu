@@ -246,24 +246,13 @@ type ChannelTimelineItem =
   | { kind: "message"; message: ChannelMessage }
   | { kind: "orchestration"; tasks: ChannelMessage[] };
 
-function buildChannelTimeline(messages: ChannelMessage[], roomAgentID?: string): ChannelTimelineItem[] {
+function buildChannelTimeline(messages: ChannelMessage[]): ChannelTimelineItem[] {
   const timeline: ChannelTimelineItem[] = [];
   for (const message of messages) {
     if (message.thread_id) continue;
-    const isRoomAssignment = Boolean(roomAgentID)
-      && message.kind === "task"
-      && message.author_type === "agent"
-      && message.author_id === roomAgentID;
-    // A room agent is the room's routing/coordination layer, not a visible
-    // participant. Its public text would make the room look like another
-    // person in the conversation; task messages are rendered below as
-    // coordination activity instead.
-    const isRoomAgentText = Boolean(roomAgentID)
-      && message.author_type === "agent"
-      && message.author_id === roomAgentID
-      && message.kind !== "task";
-    if (isRoomAgentText) continue;
-    if (isRoomAssignment) {
+    // Tasks are Work/activity facts, not messages authored by a hidden
+    // coordinator. Render every root task as an owner-facing Work Card.
+    if (message.kind === "task") {
       const previous = timeline[timeline.length - 1];
       const previousTask = previous?.kind === "orchestration" ? previous.tasks[previous.tasks.length - 1] : undefined;
       if (previous?.kind === "orchestration" && previousTask && previousTask.seq + 1 === message.seq) {
@@ -273,7 +262,7 @@ function buildChannelTimeline(messages: ChannelMessage[], roomAgentID?: string):
       }
       continue;
     }
-    if (message.kind !== "task") timeline.push({ kind: "message", message });
+    timeline.push({ kind: "message", message });
   }
   return timeline;
 }
@@ -297,6 +286,7 @@ function ChannelOrchestrationCluster({
   agents,
   repliesByThread,
   onOpenThread,
+  onOpenSession,
   onMention,
 }: {
   room: ChannelRoom;
@@ -304,6 +294,7 @@ function ChannelOrchestrationCluster({
   agents: NamedAgent[];
   repliesByThread: Map<string, ChannelMessage[]>;
   onOpenThread: (messageID: string) => void;
+  onOpenSession?: (sessionID: string) => void;
   onMention: (name: string) => void;
 }): JSX.Element {
   const { formatDate, t } = useI18n();
@@ -373,7 +364,37 @@ function ChannelOrchestrationCluster({
             {tasks.map((task, index) => {
               const owner = agentByID.get(task.task_owner ?? "");
               const ownerName = owner?.name ?? task.task_owner ?? t("channels.taskOwnerLabel");
+              const work = task.work;
               const state = assignmentState(task.task_state);
+              const workState = work?.state ?? state;
+              const statusLabel = workState === "cancelled"
+                ? t("channels.workStatus.cancelled")
+                : workState === "failed"
+                  ? t("channels.workStatus.failed")
+                  : workState === "interrupted"
+                    ? t("channels.workStatus.interrupted")
+                    : workState === "integrating"
+                      ? t("channels.workStatus.integrating")
+                      : t(`channels.assignmentStatus.${assignmentStatusKey(state)}`);
+              const activity = (work?.events ?? [])
+                .filter((event) => event.kind === "state" && event.state)
+                .map((event) => event.state)
+                .filter((eventState, eventIndex, values) => eventIndex === 0 || eventState !== values[eventIndex - 1]);
+              const elapsedMilliseconds = work
+                ? Math.max(0, Date.parse(work.updated_at) - Date.parse(work.created_at))
+                : 0;
+              const elapsedMinutes = Math.max(1, Math.round(elapsedMilliseconds / 60_000));
+              const elapsed = elapsedMinutes >= 60
+                ? `${Math.floor(elapsedMinutes / 60)}h ${elapsedMinutes % 60}m`
+                : `${elapsedMinutes}m`;
+              const hasEvidence = Boolean(
+                work?.checks_summary
+                || work?.changed_files_count
+                || work?.verification?.report
+                || work?.artifacts?.length
+                || work?.runs?.length
+                || work?.unresolved_items,
+              );
               const title = task.task_title?.trim() || task.body.trim() || t("channels.newTask");
               const body = task.task_title?.trim() && task.body.trim() !== task.task_title.trim()
                 ? task.body.trim()
@@ -382,7 +403,7 @@ function ChannelOrchestrationCluster({
               return (
                 <div
                   className="channel-assignment-item"
-                  data-state={state}
+                  data-state={workState}
                   key={task.id}
                   style={{ "--channel-assignment-index": index } as CSSProperties}
                 >
@@ -400,9 +421,9 @@ function ChannelOrchestrationCluster({
                       <strong>{title}</strong>
                       {body ? <div className="channel-assignment-body"><RichContent text={body} /></div> : null}
                     </div>
-                    <span className="channel-assignment-status" data-state={state}>
+                    <span className="channel-assignment-status" data-state={workState}>
                       <i aria-hidden="true" />
-                      {t(`channels.assignmentStatus.${assignmentStatusKey(state)}`)}
+                      {statusLabel}
                     </span>
                     <button
                       className="channel-assignment-thread-button"
@@ -413,6 +434,57 @@ function ChannelOrchestrationCluster({
                       <MessageCircle aria-hidden="true" />
                     </button>
                   </MessageBubble>
+                  {work ? (
+                    <div className="channel-work-card-details">
+                      {activity.length > 0 ? (
+                        <div className="channel-work-activity" aria-label={activity.join(" → ")}>
+                          {activity.join(" → ")}
+                        </div>
+                      ) : null}
+                      <div className="channel-work-summary-line">
+                        {work.checks_summary ? <span>{t("channels.workChecks", { summary: work.checks_summary })}</span> : null}
+                        {work.changed_files_count ? <span>{t("channels.workFilesChanged", { count: work.changed_files_count })}</span> : null}
+                        <span>{t("channels.workElapsed", { duration: elapsed })}</span>
+                      </div>
+                      {hasEvidence ? (
+                        <details className="channel-work-evidence">
+                          <summary>{t("channels.workEvidence")}</summary>
+                          <div className="channel-work-evidence-body">
+                            {work.verification?.report ? (
+                              <section>
+                                <strong>{t("channels.workVerifierReport")}</strong>
+                                <RichContent text={work.verification.report} />
+                              </section>
+                            ) : null}
+                            {work.artifacts?.length ? (
+                              <section>
+                                <strong>{t("channels.workArtifacts")}</strong>
+                                <ul>{work.artifacts.map((artifact) => (
+                                  <li key={artifact.id}><a href={artifact.uri}>{artifact.label || artifact.summary || artifact.kind}</a></li>
+                                ))}</ul>
+                              </section>
+                            ) : null}
+                            {work.runs?.length ? (
+                              <section>
+                                <strong>{t("channels.workRuns")}</strong>
+                                <ul>{work.runs.map((run) => (
+                                  <li key={run.id}>
+                                    <span>{run.profile || run.kind} · {run.state}</span>
+                                    {run.session_ref ? (
+                                      <button className="channel-work-session-link" type="button" onClick={() => onOpenSession?.(run.session_ref ?? "")}>
+                                        <code>{run.session_ref}</code>
+                                      </button>
+                                    ) : null}
+                                  </li>
+                                ))}</ul>
+                              </section>
+                            ) : null}
+                            {work.unresolved_items ? <p>{t("channels.workUnresolved", { items: work.unresolved_items })}</p> : null}
+                          </div>
+                        </details>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {replies.length > 0 ? (
                     <ChannelThreadDigest
                       replies={replies}
@@ -558,7 +630,7 @@ function taskStateKey(state?: string): "channels.taskState.open" | "channels.tas
   return "channels.taskState.open";
 }
 
-export function ChannelView({ initialized, engines = [], section = "rooms", archivedRoomIDs = [], onSectionChange, selectedRoomID: controlledRoomID, onSelectRoom, onRoomRead, onOpenMemoryDirectory, composerDraft, onComposerDraftChange, newRoomRequest, onNewRoomRequestHandled, newAgentRequest, onNewAgentRequestHandled, editAgentRequestID, onEditAgentRequestHandled }: {
+export function ChannelView({ initialized, engines = [], section = "rooms", archivedRoomIDs = [], onSectionChange, selectedRoomID: controlledRoomID, onSelectRoom, onRoomRead, onOpenMemoryDirectory, onOpenSession, composerDraft, onComposerDraftChange, newRoomRequest, onNewRoomRequestHandled, newAgentRequest, onNewAgentRequestHandled, editAgentRequestID, onEditAgentRequestHandled }: {
   initialized?: InitializeResult;
   engines?: EngineInfo[];
   section?: ChannelSection;
@@ -571,6 +643,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
   onSelectRoom?: (roomID: string) => void;
   onRoomRead?: (roomID: string) => void;
   onOpenMemoryDirectory?: (path: string) => void;
+  onOpenSession?: (sessionID: string) => void;
   composerDraft?: {
     prompt: string;
     images: ComposerImage[];
@@ -1791,6 +1864,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                     const task = messageByID.get(messageID);
                     if (task) openThread(task);
                   }}
+                  onOpenSession={onOpenSession}
                   onMention={(name) => roomComposerRef.current?.insertMention(name)}
                 />
               );

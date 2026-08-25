@@ -822,7 +822,8 @@
   animation-delay: calc(var(--channel-assignment-index, 0) * 150ms);
 }
 
-.channel-assignment-item[data-state="done"] {
+.channel-assignment-item[data-state="done"],
+.channel-assignment-item[data-state="completed"] {
   animation: none;
 }
 
@@ -837,15 +838,23 @@
 }
 
 .channel-assignment-item[data-state="doing"] .channel-assignment-bubble,
+.channel-assignment-item[data-state="working"] .channel-assignment-bubble,
 .channel-assignment-item[data-state="checking"] .channel-assignment-bubble,
 .channel-assignment-item[data-state="revising"] .channel-assignment-bubble,
 .channel-assignment-item[data-state="needs_human"] .channel-assignment-bubble {
   border-color: color-mix(in srgb, var(--warning) 25%, var(--border-subtle));
 }
 
-.channel-assignment-item[data-state="done"] .channel-assignment-bubble {
+.channel-assignment-item[data-state="done"] .channel-assignment-bubble,
+.channel-assignment-item[data-state="completed"] .channel-assignment-bubble {
   border-color: color-mix(in srgb, var(--success) 22%, var(--border-subtle));
   background: color-mix(in srgb, var(--success-soft) 42%, var(--ink-overlay-4));
+}
+
+.channel-assignment-item[data-state="failed"] .channel-assignment-bubble,
+.channel-assignment-item[data-state="cancelled"] .channel-assignment-bubble,
+.channel-assignment-item[data-state="interrupted"] .channel-assignment-bubble {
+  border-color: color-mix(in srgb, var(--danger) 24%, var(--border-subtle));
 }
 
 .channel-assignment-target {
@@ -893,6 +902,93 @@
 
 .channel-assignment-body .rich-content {
   gap: 4px;
+}
+
+.channel-work-card-details {
+  display: grid;
+  gap: 5px;
+  margin: 4px 10px 0 36px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.channel-work-activity {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-work-summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.channel-work-evidence {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 5px;
+}
+
+.channel-work-evidence summary {
+  width: max-content;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 620;
+}
+
+.channel-work-evidence-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--ink-overlay-4);
+}
+
+.channel-work-evidence-body section {
+  display: grid;
+  gap: 4px;
+}
+
+.channel-work-evidence-body ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-inline-start: 18px;
+}
+
+.channel-work-evidence-body li {
+  min-width: 0;
+}
+
+.channel-work-evidence-body code {
+  display: block;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-work-session-link {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+}
+
+.channel-work-session-link:hover code,
+.channel-work-session-link:focus-visible code {
+  color: var(--wuu-accent);
+}
+
+.channel-work-evidence-body a {
+  color: var(--wuu-accent);
+  overflow-wrap: anywhere;
 }
 
 .channel-assignment-status {

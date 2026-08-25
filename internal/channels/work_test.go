@@ -38,6 +38,10 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	if work.SourceMessageID != source.Message.ID || work.OwnerNamedAgentID != owner.Agent.ID || work.State != WorkOpen || work.VerificationState != WorkVerificationPending || len(work.PendingDeliveryRefs) != 1 {
 		t.Fatalf("initial work = %#v", work)
 	}
+	listedMessages, err := service.ListMessages(ctx, room.ID, 0, 100)
+	if err != nil || len(listedMessages) < 2 || listedMessages[1].Work == nil || len(listedMessages[1].Work.Events) != 1 {
+		t.Fatalf("task Work projection = %#v, err = %v", listedMessages, err)
+	}
 	check, err := ownerClient.Check(ctx)
 	if err != nil || len(check.Collaboration) != 1 || check.Collaboration[0].Kind != CollaborationAssignment || check.Collaboration[0].WorkID != task.ID {
 		t.Fatalf("assignment delivery = %#v, err = %v", check.Collaboration, err)
@@ -100,6 +104,9 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	verified, err := ownerClient.GetWork(ctx, task.ID)
 	if err != nil || verified.VerificationState != WorkVerificationPass || verified.Verification == nil || verified.Verification.RunRef != run.ID || len(verified.Verification.EvidenceRefs) != 1 {
 		t.Fatalf("verified work = %#v, err = %v", verified, err)
+	}
+	if len(verified.Events) < 4 || verified.Events[len(verified.Events)-1].Kind != "verification" {
+		t.Fatalf("work event history = %#v", verified.Events)
 	}
 }
 

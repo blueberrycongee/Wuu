@@ -58,7 +58,19 @@ type Work struct {
 	UpdatedAt                  time.Time             `json:"updated_at"`
 	Runs                       []WorkRun             `json:"runs,omitempty"`
 	Artifacts                  []WorkArtifact        `json:"artifacts,omitempty"`
+	Events                     []WorkEvent           `json:"events,omitempty"`
 	Verification               *TaskVerification     `json:"verification,omitempty"`
+}
+
+type WorkEvent struct {
+	ID                string    `json:"id"`
+	WorkID            string    `json:"work_id"`
+	Kind              string    `json:"kind"`
+	State             string    `json:"state,omitempty"`
+	Summary           string    `json:"summary,omitempty"`
+	GoalRevision      int       `json:"goal_revision"`
+	CandidateRevision int       `json:"candidate_revision"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 type WorkRunKind string

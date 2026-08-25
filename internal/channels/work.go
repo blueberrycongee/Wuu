@@ -43,11 +43,19 @@ func insertWorkTx(ctx context.Context, tx *sql.Tx, task Message, params TaskCrea
 	if err != nil {
 		return fmt.Errorf("insert durable work: %w", err)
 	}
+	if err := insertWorkEventTx(ctx, tx, WorkEvent{
+		WorkID: task.ID, Kind: "state", State: string(WorkOpen), Summary: "Work created",
+		GoalRevision: task.TaskGoalRevision, CandidateRevision: task.TaskCandidateRevision, CreatedAt: task.CreatedAt,
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
 func syncWorkFromTaskTx(ctx context.Context, tx *sql.Tx, task Message, updatedAt time.Time) error {
 	state := workStateFromTask(TaskState(task.TaskState))
+	var previousState WorkState
+	_ = tx.QueryRowContext(ctx, `SELECT state FROM works WHERE id = ?`, task.ID).Scan(&previousState)
 	verification := WorkVerificationNotRequired
 	if task.TaskVerificationRequired {
 		verification = WorkVerificationPending
@@ -67,6 +75,32 @@ func syncWorkFromTaskTx(ctx context.Context, tx *sql.Tx, task Message, updatedAt
 		state, verification, toMillis(updatedAt), task.ID)
 	if err != nil {
 		return fmt.Errorf("sync durable work projection: %w", err)
+	}
+	if previousState != state {
+		if err := insertWorkEventTx(ctx, tx, WorkEvent{
+			WorkID: task.ID, Kind: "state", State: string(state), Summary: "Work state changed",
+			GoalRevision: task.TaskGoalRevision, CandidateRevision: task.TaskCandidateRevision, CreatedAt: updatedAt,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func insertWorkEventTx(ctx context.Context, tx *sql.Tx, event WorkEvent) error {
+	if event.ID == "" {
+		id, err := randomID("workevent", 12)
+		if err != nil {
+			return err
+		}
+		event.ID = id
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO work_events(id, work_id, kind, state, summary, goal_revision, candidate_revision, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, event.ID, event.WorkID, event.Kind, event.State,
+		event.Summary, event.GoalRevision, event.CandidateRevision, toMillis(event.CreatedAt))
+	if err != nil {
+		return fmt.Errorf("insert work event: %w", err)
 	}
 	return nil
 }
@@ -195,6 +229,10 @@ func (s *Service) loadWorkDetails(ctx context.Context, work *Work) error {
 		return err
 	}
 	work.Artifacts, err = s.listWorkArtifacts(ctx, work.ID)
+	if err != nil {
+		return err
+	}
+	work.Events, err = s.listWorkEvents(ctx, work.ID)
 	if err != nil {
 		return err
 	}
@@ -425,6 +463,9 @@ func (s *Service) CancelWork(ctx context.Context, workID, reason, agentID, token
 	if _, err := tx.ExecContext(ctx, `UPDATE work_runs SET state = 'cancelled', ended_at = ?, updated_at = ? WHERE work_id = ? AND state IN ('queued', 'running')`, toMillis(now), toMillis(now), work.ID); err != nil {
 		return Work{}, err
 	}
+	if err := insertWorkEventTx(ctx, tx, WorkEvent{WorkID: work.ID, Kind: "cancellation", State: string(WorkCancelled), Summary: strings.TrimSpace(reason), GoalRevision: work.GoalRevision, CandidateRevision: work.CandidateRevision, CreatedAt: now}); err != nil {
+		return Work{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Work{}, err
 	}
@@ -602,4 +643,25 @@ func (s *Service) listWorkArtifacts(ctx context.Context, workID string) ([]WorkA
 		artifacts = append(artifacts, artifact)
 	}
 	return artifacts, rows.Err()
+}
+
+func (s *Service) listWorkEvents(ctx context.Context, workID string) ([]WorkEvent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, work_id, kind, state, summary, goal_revision, candidate_revision, created_at
+		FROM work_events WHERE work_id = ? ORDER BY created_at, id`, workID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []WorkEvent
+	for rows.Next() {
+		var event WorkEvent
+		var createdAt int64
+		if err := rows.Scan(&event.ID, &event.WorkID, &event.Kind, &event.State, &event.Summary, &event.GoalRevision, &event.CandidateRevision, &createdAt); err != nil {
+			return nil, err
+		}
+		event.CreatedAt = fromMillis(createdAt)
+		events = append(events, event)
+	}
+	return events, rows.Err()
 }
