@@ -461,6 +461,38 @@ type codexAgentItem struct {
 	AgentPath         string                         `json:"agentPath"`
 }
 
+// codexStreamItem is the provider-facing subset of Codex v2 ThreadItem. Codex
+// executes these tools itself; translating their item lifecycle into Wuu's
+// ordinary stream events lets the existing conversation UI render them without
+// a Codex-specific message path.
+type codexStreamItem struct {
+	ID                string          `json:"id"`
+	Type              string          `json:"type"`
+	Status            string          `json:"status"`
+	Command           string          `json:"command"`
+	CWD               string          `json:"cwd"`
+	CommandActions    json.RawMessage `json:"commandActions"`
+	AggregatedOutput  *string         `json:"aggregatedOutput"`
+	ExitCode          *int            `json:"exitCode"`
+	Server            string          `json:"server"`
+	Tool              string          `json:"tool"`
+	Namespace         string          `json:"namespace"`
+	Arguments         json.RawMessage `json:"arguments"`
+	Result            json.RawMessage `json:"result"`
+	Error             json.RawMessage `json:"error"`
+	Query             string          `json:"query"`
+	Action            json.RawMessage `json:"action"`
+	Changes           json.RawMessage `json:"changes"`
+	ContentItems      json.RawMessage `json:"contentItems"`
+	Success           *bool           `json:"success"`
+	Summary           []string        `json:"summary"`
+	Content           []string        `json:"content"`
+	ReceiverThreadIDs []string        `json:"receiverThreadIds"`
+	Prompt            string          `json:"prompt"`
+	Model             string          `json:"model"`
+	ReasoningEffort   string          `json:"reasoningEffort"`
+}
+
 type codexAgentItemState struct {
 	Status string `json:"status"`
 }
@@ -473,24 +505,29 @@ type turnSubscription struct {
 	sink   agentengine.EventSink
 	done   chan turnOutcome
 
-	events chan turnNotification
-	mu     sync.Mutex
-	closed bool
-	unsubs []func()
-	labels map[string]string
+	events    chan turnNotification
+	mu        sync.Mutex
+	closed    bool
+	unsubs    []func()
+	labels    map[string]string
+	tools     map[string]struct{}
+	reasoning map[string]struct{}
 }
 
 func newTurnSubscription(client *Client, sink agentengine.EventSink, done chan turnOutcome) *turnSubscription {
 	sub := &turnSubscription{
-		client: client,
-		sink:   sink,
-		done:   done,
-		events: make(chan turnNotification, 512),
-		labels: make(map[string]string),
+		client:    client,
+		sink:      sink,
+		done:      done,
+		events:    make(chan turnNotification, 512),
+		labels:    make(map[string]string),
+		tools:     make(map[string]struct{}),
+		reasoning: make(map[string]struct{}),
 	}
 	handlers := map[string]struct{}{
 		NotifyAgentMessageDelta:     {},
 		NotifyReasoningTextDelta:    {},
+		NotifyReasoningSummaryAdded: {},
 		NotifyReasoningSummaryDelta: {},
 		NotifyItemStarted:           {},
 		NotifyItemCompleted:         {},
@@ -554,10 +591,11 @@ func (sub *turnSubscription) run() {
 			continue
 		}
 		var envelope struct {
-			TurnID string `json:"turnId"`
-			ItemID string `json:"itemId"`
-			Delta  string `json:"delta"`
-			Turn   struct {
+			TurnID       string `json:"turnId"`
+			ItemID       string `json:"itemId"`
+			Delta        string `json:"delta"`
+			SummaryIndex int    `json:"summaryIndex"`
+			Turn         struct {
 				ID     string `json:"id"`
 				Status string `json:"status"`
 			} `json:"turn"`
@@ -596,14 +634,26 @@ func (sub *turnSubscription) run() {
 		case NotifyReasoningTextDelta, NotifyReasoningSummaryDelta:
 			if envelope.Delta != "" {
 				reasoning.WriteString(envelope.Delta)
+				sub.reasoning[envelope.ItemID] = struct{}{}
 				sub.emit(providers.StreamEvent{
 					Type:           providers.EventThinkingDelta,
 					Content:        envelope.Delta,
 					ProviderItemID: envelope.ItemID,
 				})
 			}
+		case NotifyReasoningSummaryAdded:
+			if envelope.SummaryIndex > 0 {
+				reasoning.WriteString("\n\n")
+				sub.reasoning[envelope.ItemID] = struct{}{}
+				sub.emit(providers.StreamEvent{
+					Type:           providers.EventThinkingDelta,
+					Content:        "\n\n",
+					ProviderItemID: envelope.ItemID,
+				})
+			}
 		case NotifyItemStarted, NotifyItemCompleted:
 			sub.emitAgentActivities(envelope.Item)
+			sub.emitItem(notification.method, envelope.Item)
 		case NotifyTokenUsageUpdated:
 			if envelope.TokenUsage != nil {
 				// "last" is this turn's increment; "total" is the thread
@@ -654,6 +704,167 @@ func (sub *turnSubscription) run() {
 	}
 	// Stream closed without a terminal notification.
 	sub.finish(agent.LoopResult{}, errors.New("codex turn stream closed before completion"))
+}
+
+func (sub *turnSubscription) emitItem(method string, raw json.RawMessage) {
+	if len(raw) == 0 {
+		return
+	}
+	var item codexStreamItem
+	if err := json.Unmarshal(raw, &item); err != nil || strings.TrimSpace(item.ID) == "" {
+		return
+	}
+
+	if item.Type == "reasoning" {
+		text := strings.Join(item.Summary, "\n\n")
+		if text == "" {
+			text = strings.Join(item.Content, "\n\n")
+		}
+		if text != "" {
+			sub.reasoning[item.ID] = struct{}{}
+			sub.emit(providers.StreamEvent{
+				Type:           providers.EventThinkingReplace,
+				Content:        text,
+				ProviderItemID: item.ID,
+			})
+		}
+		if method == NotifyItemCompleted {
+			if _, ok := sub.reasoning[item.ID]; ok {
+				sub.emit(providers.StreamEvent{Type: providers.EventThinkingDone, ProviderItemID: item.ID})
+				delete(sub.reasoning, item.ID)
+			}
+		}
+		return
+	}
+
+	call, ok := codexToolCall(item)
+	if !ok {
+		return
+	}
+	_, started := sub.tools[item.ID]
+	if !started {
+		sub.tools[item.ID] = struct{}{}
+		sub.emit(providers.StreamEvent{Type: providers.EventToolUseStart, ToolCall: &call})
+	}
+	if method != NotifyItemCompleted {
+		return
+	}
+	delete(sub.tools, item.ID)
+	sub.emit(providers.StreamEvent{
+		Type:       providers.EventToolUseEnd,
+		ToolCall:   &call,
+		ToolResult: codexToolResult(item),
+	})
+}
+
+func codexToolCall(item codexStreamItem) (providers.ToolCall, bool) {
+	call := providers.ToolCall{ID: item.ID, ProviderItemID: item.ID}
+	var arguments any
+	switch item.Type {
+	case "commandExecution":
+		call.Name = "exec"
+		arguments = map[string]any{
+			"command":        item.Command,
+			"cwd":            item.CWD,
+			"commandActions": rawJSONValue(item.CommandActions),
+		}
+	case "mcpToolCall":
+		call.Name = "mcp:" + item.Server + ":" + item.Tool
+		arguments = rawJSONValue(item.Arguments)
+	case "dynamicToolCall":
+		call.Name = "dynamic:" + item.Tool
+		if strings.TrimSpace(item.Namespace) != "" {
+			call.Name = "dynamic:" + item.Namespace + ":" + item.Tool
+		}
+		arguments = rawJSONValue(item.Arguments)
+	case "webSearch":
+		call.Name = "web_search"
+		arguments = map[string]any{"query": item.Query, "action": rawJSONValue(item.Action)}
+	case "fileChange":
+		call.Name = "apply_patch"
+		arguments = map[string]any{"changes": rawJSONValue(item.Changes)}
+	case "collabAgentToolCall":
+		call.Name = "codex_collab_" + item.Tool
+		arguments = map[string]any{
+			"receiverThreadIds": item.ReceiverThreadIDs,
+			"prompt":            item.Prompt,
+			"model":             item.Model,
+			"reasoningEffort":   item.ReasoningEffort,
+		}
+	default:
+		return providers.ToolCall{}, false
+	}
+	encoded, err := json.Marshal(arguments)
+	if err != nil {
+		encoded = []byte("{}")
+	}
+	call.Arguments = string(encoded)
+	return call, true
+}
+
+func codexToolResult(item codexStreamItem) string {
+	var result string
+	switch item.Type {
+	case "commandExecution":
+		if item.AggregatedOutput != nil {
+			result = *item.AggregatedOutput
+		}
+		if result == "" && item.ExitCode != nil {
+			result = fmt.Sprintf("Exit %d", *item.ExitCode)
+		}
+	case "mcpToolCall":
+		if rawJSONPresent(item.Error) {
+			result = compactJSON(item.Error)
+		} else {
+			result = compactJSON(item.Result)
+		}
+	case "dynamicToolCall":
+		result = compactJSON(item.ContentItems)
+	case "fileChange":
+		result = compactJSON(item.Changes)
+	case "webSearch":
+		result = "done"
+	case "collabAgentToolCall":
+		result = item.Status
+	}
+	if strings.TrimSpace(result) == "" {
+		result = item.Status
+	}
+	if strings.TrimSpace(result) == "" {
+		result = "completed"
+	}
+	return result
+}
+
+func rawJSONValue(raw json.RawMessage) any {
+	if !rawJSONPresent(raw) {
+		return map[string]any{}
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return map[string]any{}
+	}
+	return value
+}
+
+func rawJSONPresent(raw json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(raw))
+	return trimmed != "" && trimmed != "null" && trimmed != "{}" && trimmed != "[]"
+}
+
+func compactJSON(raw json.RawMessage) string {
+	if !rawJSONPresent(raw) {
+		return ""
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return string(raw)
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return string(raw)
+	}
+	return string(encoded)
 }
 
 func (sub *turnSubscription) emitAgentActivities(raw json.RawMessage) {
