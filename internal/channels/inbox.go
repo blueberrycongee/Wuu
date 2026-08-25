@@ -16,7 +16,7 @@ const (
 )
 
 func (s *Service) Check(ctx context.Context, agentID, token string) (CheckResult, error) {
-	if _, err := s.AuthenticateAgent(ctx, agentID, token); err != nil {
+	if _, err := s.AuthenticatePrincipal(ctx, agentID, token); err != nil {
 		return CheckResult{}, err
 	}
 	return s.checkAgent(ctx, agentID)
@@ -176,7 +176,7 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 }
 
 func (s *Service) ReadInboxMessages(ctx context.Context, agentID, token string, itemIDs []string) ([]Message, error) {
-	if _, err := s.AuthenticateAgent(ctx, agentID, token); err != nil {
+	if _, err := s.AuthenticatePrincipal(ctx, agentID, token); err != nil {
 		return nil, err
 	}
 	return s.readInboxMessages(ctx, agentID, itemIDs)
@@ -218,7 +218,7 @@ func (s *Service) readInboxMessages(ctx context.Context, agentID string, itemIDs
 }
 
 func (s *Service) ReadAgentMessages(ctx context.Context, agentID, token, roomID string, afterSeq int64, limit int) ([]Message, error) {
-	if _, err := s.AuthenticateAgent(ctx, agentID, token); err != nil {
+	if _, err := s.AuthenticatePrincipal(ctx, agentID, token); err != nil {
 		return nil, err
 	}
 	return s.readAgentMessages(ctx, agentID, roomID, afterSeq, limit)
@@ -229,15 +229,16 @@ func (s *Service) readAgentMessages(ctx context.Context, agentID, roomID string,
 	if roomID == "" {
 		return nil, errors.New("chat read room is required")
 	}
-	var exists int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT 1 FROM room_members WHERE room_id = ? AND member_type = 'agent' AND member_id = ?`,
-		roomID, strings.TrimSpace(agentID)).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrUnauthorized
-	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, fmt.Errorf("validate chat read membership: %w", err)
+		return nil, fmt.Errorf("begin chat read access check: %w", err)
+	}
+	defer tx.Rollback()
+	if err := requireRoomPrincipalAccessTx(ctx, tx, roomID, strings.TrimSpace(agentID)); err != nil {
+		return nil, err
+	}
+	if err := tx.Rollback(); err != nil {
+		return nil, fmt.Errorf("finish chat read access check: %w", err)
 	}
 	return s.ListMessages(ctx, roomID, afterSeq, limit)
 }

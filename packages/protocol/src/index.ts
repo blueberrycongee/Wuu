@@ -768,8 +768,6 @@ export type SkillContentResult = {
 export type NamedAgent = {
   id: string;
   name: string;
-  kind?: "named" | "room";
-  room_id?: string;
   memory_dir: string;
   avatar_key: string;
   avatar_image?: string;
@@ -794,7 +792,6 @@ export type ChannelRoom = {
   id: string;
   kind: "channel" | "dm";
   name: string;
-  agent_id?: string;
   avatar_key?: string;
   avatar_image?: string;
   created_by: string;

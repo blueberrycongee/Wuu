@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSendParams) (CollaborationMessage, error) {
-	if _, err := s.AuthenticateAgent(ctx, params.AgentID, params.Token); err != nil {
+	if _, err := s.AuthenticatePrincipal(ctx, params.AgentID, params.Token); err != nil {
 		return CollaborationMessage{}, err
 	}
 	params.RoomID = strings.TrimSpace(params.RoomID)
@@ -18,11 +18,8 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	params.Body = strings.TrimSpace(params.Body)
 	params.SourceMessageID = strings.TrimSpace(params.SourceMessageID)
 	params.ReplyTo = strings.TrimSpace(params.ReplyTo)
-	if params.RoomID == "" || params.ToAgentID == "" || params.Body == "" {
-		return CollaborationMessage{}, errors.New("collaboration room, recipient, and body are required")
-	}
-	if params.ToAgentID == params.AgentID {
-		return CollaborationMessage{}, errors.New("collaboration recipient must be another agent")
+	if params.RoomID == "" || params.Body == "" {
+		return CollaborationMessage{}, errors.New("collaboration room and body are required")
 	}
 	if utf8.RuneCountInString(params.Body) > MaxMessageRunes {
 		return CollaborationMessage{}, fmt.Errorf("collaboration message exceeds %d characters", MaxMessageRunes)
@@ -33,6 +30,9 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	if params.Kind != CollaborationControl && params.Kind != CollaborationCandidateReady {
 		return CollaborationMessage{}, fmt.Errorf("invalid collaboration kind %q", params.Kind)
 	}
+	if params.Kind == CollaborationControl && params.ToAgentID == "" {
+		return CollaborationMessage{}, errors.New("control delivery recipient is required")
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -41,8 +41,16 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 		return CollaborationMessage{}, fmt.Errorf("begin collaboration send: %w", err)
 	}
 	defer tx.Rollback()
+	if params.Kind == CollaborationCandidateReady && params.ToAgentID == "" {
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM room_runtimes WHERE room_id = ?`, params.RoomID).Scan(&params.ToAgentID); err != nil {
+			return CollaborationMessage{}, fmt.Errorf("resolve candidate-ready room runtime: %w", err)
+		}
+	}
+	if params.ToAgentID == params.AgentID {
+		return CollaborationMessage{}, errors.New("collaboration recipient must be another principal")
+	}
 	for _, agentID := range []string{params.AgentID, params.ToAgentID} {
-		if err := requireMemberTx(ctx, tx, params.RoomID, MemberAgent, agentID); err != nil {
+		if err := requireRoomPrincipalAccessTx(ctx, tx, params.RoomID, agentID); err != nil {
 			return CollaborationMessage{}, err
 		}
 	}
@@ -59,11 +67,11 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 			task.TaskOwner != params.AgentID || task.TaskState != string(TaskStateChecking) {
 			return CollaborationMessage{}, fmt.Errorf("%w: candidate-ready source must be the sender's checking task", ErrConflict)
 		}
-		var recipientKind, recipientRoomID string
-		if err := tx.QueryRowContext(ctx, `SELECT kind, COALESCE(room_id, '') FROM named_agents WHERE id = ?`, params.ToAgentID).Scan(&recipientKind, &recipientRoomID); err != nil {
+		var recipientRoomID string
+		if err := tx.QueryRowContext(ctx, `SELECT room_id FROM room_runtimes WHERE id = ?`, params.ToAgentID).Scan(&recipientRoomID); err != nil {
 			return CollaborationMessage{}, fmt.Errorf("validate candidate-ready recipient: %w", err)
 		}
-		if recipientKind != "room" || recipientRoomID != params.RoomID {
+		if recipientRoomID != params.RoomID {
 			return CollaborationMessage{}, fmt.Errorf("%w: candidate-ready recipient must be the hidden room runtime", ErrUnauthorized)
 		}
 		goalRevision = task.TaskGoalRevision

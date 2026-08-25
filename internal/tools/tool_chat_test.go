@@ -213,7 +213,7 @@ func TestChatVerifyIsAvailableOnlyToHiddenRoomRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRoom() error = %v", err)
 	}
-	client, err := service.BindAgent(ctx, room.AgentID)
+	client, err := service.BindRuntime(ctx, room.RuntimeID)
 	if err != nil {
 		t.Fatalf("BindAgent(room runtime) error = %v", err)
 	}

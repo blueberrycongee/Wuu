@@ -149,6 +149,9 @@ func TestChannelHumanRPCsCreateRoomAndSendMessage(t *testing.T) {
 	if len(createdRoom.Room.Members) != 2 || createdRoom.Room.AvatarImage != roomAvatar {
 		t.Fatalf("created room members = %#v", createdRoom.Room.Members)
 	}
+	if createdRoom.Room.RuntimeID != "" || createdRoom.Room.AgentID != "" {
+		t.Fatal("room RPC exposed its hidden execution runtime")
+	}
 	var updatedRoom ChannelRoomUpdateResult
 	emptyAvatar := ""
 	callChannelRPC(t, server, out, MethodChannelRoomUpdate, ChannelRoomUpdateParams{
@@ -175,7 +178,11 @@ func TestChannelHumanRPCsCreateRoomAndSendMessage(t *testing.T) {
 	if len(listed.Messages) != 1 || listed.Messages[0].Body != "@Alpha review this" || len(listed.Messages[0].Images) != 1 {
 		t.Fatalf("listed messages = %#v", listed.Messages)
 	}
-	state, err := server.channelService.WakeState(context.Background(), createdRoom.Room.AgentID)
+	storedRoom, err := server.channelService.GetRoom(context.Background(), createdRoom.Room.ID)
+	if err != nil {
+		t.Fatalf("GetRoom() error = %v", err)
+	}
+	state, err := server.channelService.WakeState(context.Background(), storedRoom.RuntimeID)
 	if err != nil || !state.Outstanding {
 		t.Fatalf("room-agent wake state = %#v, err %v", state, err)
 	}

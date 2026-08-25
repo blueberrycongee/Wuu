@@ -38,8 +38,8 @@ func TestNamedAgentOrientationExcludesProjectlessConversations(t *testing.T) {
 }
 
 func TestRoomAgentOrientationDefinesHiddenVerifierLoop(t *testing.T) {
-	prompt := namedAgentOrientation(channels.NamedAgent{
-		Kind: "room", RoomID: "room-1", MemoryDir: "/agents/room-1/memory",
+	prompt := agentRuntimeOrientation(channels.AgentRuntime{
+		Kind: channels.PrincipalRoomRuntime, RoomID: "room-1", MemoryDir: "/runtimes/room-1/memory",
 	})
 	for _, want := range []string{
 		"You are the hidden runtime",

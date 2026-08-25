@@ -36,8 +36,8 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 		return nil
 	}
 	ctx := context.Background()
-	currentAgent, currentAgentErr := s.channelService.GetNamedAgent(ctx, agentID)
-	roomAgent := currentAgentErr == nil && currentAgent.Kind == "room"
+	currentAgent, currentAgentErr := s.channelService.GetAgentRuntime(ctx, agentID)
+	roomAgent := currentAgentErr == nil && currentAgent.IsRoomRuntime()
 	rooms, err := s.channelService.ListRooms(ctx)
 	if err != nil {
 		providers.DebugLogf("read named agent room context for %q: %v", agentID, err)
@@ -120,7 +120,7 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 }
 
 func roomContainsAgent(room channels.Room, agentID string) bool {
-	if room.AgentID == agentID {
+	if room.RuntimeID == agentID {
 		return true
 	}
 	for _, member := range room.Members {

@@ -221,7 +221,7 @@ func (t *CollaborationSendTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "collaboration_send",
 		Description: "Send private internal control traffic to another runtime in the same room. " +
-			"Use kind=candidate_ready with source_message_id to hand a checking task to the hidden room runtime; " +
+			"Use kind=candidate_ready with source_message_id to hand a checking task to its room runtime; the host routes it without exposing that runtime's identity. " +
 			"it does not post to the shared transcript.",
 		InputSchema: map[string]any{
 			"type": "object",
@@ -233,7 +233,7 @@ func (t *CollaborationSendTool) Definition() providers.ToolDefinition {
 				"body":              map[string]any{"type": "string", "maxLength": channels.MaxMessageRunes},
 				"reply_to":          map[string]any{"type": "string"},
 			},
-			"required": []string{"room_id", "to_agent_id", "body"},
+			"required": []string{"room_id", "body"},
 		},
 	}
 }

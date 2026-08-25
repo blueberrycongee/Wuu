@@ -14,7 +14,7 @@ import (
 // The room runtime is deliberately the only caller allowed to submit: verifier
 // child sessions report to it through the normal Session completion path.
 func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerificationSubmitParams) (TaskVerificationSubmitResult, error) {
-	agent, err := s.AuthenticateAgent(ctx, params.AgentID, params.Token)
+	runtime, err := s.AuthenticatePrincipal(ctx, params.AgentID, params.Token)
 	if err != nil {
 		return TaskVerificationSubmitResult{}, err
 	}
@@ -24,7 +24,7 @@ func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerific
 	if params.TaskID == "" || params.RoomID == "" || params.Report == "" {
 		return TaskVerificationSubmitResult{}, errors.New("verification task, room, and report are required")
 	}
-	if agent.Kind != "room" || agent.RoomID != params.RoomID {
+	if !runtime.IsRoomRuntime() || runtime.RoomID != params.RoomID {
 		return TaskVerificationSubmitResult{}, fmt.Errorf("%w: only the room runtime may verify room tasks", ErrUnauthorized)
 	}
 	if !validVerificationDecision(params.Decision) {
@@ -104,7 +104,7 @@ func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerific
 		return TaskVerificationSubmitResult{}, fmt.Errorf("project task verification state: %w", err)
 	}
 	delivery, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
-		RoomID: task.RoomID, FromType: MemberAgent, FromID: agent.ID, ToAgentID: task.TaskOwner,
+		RoomID: task.RoomID, FromType: MemberAgent, FromID: runtime.ID, ToAgentID: task.TaskOwner,
 		Kind: CollaborationVerificationFeedback, Body: verificationDeliveryBody(verification),
 		SourceMessageID: task.ID, GoalRevision: verification.GoalRevision,
 		CandidateRevision: verification.CandidateRevision, CreatedAt: now,

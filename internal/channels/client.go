@@ -8,10 +8,10 @@ import (
 )
 
 type AgentClient struct {
-	service   *Service
-	agentID   string
-	agentKind string
-	token     string
+	service       *Service
+	agentID       string
+	principalKind PrincipalKind
+	token         string
 }
 
 func (s *Service) BindAgent(ctx context.Context, agentID string) (*AgentClient, error) {
@@ -23,11 +23,27 @@ func (s *Service) BindAgent(ctx context.Context, agentID string) (*AgentClient, 
 	if err != nil {
 		return nil, err
 	}
-	agent, err := s.GetNamedAgent(ctx, agentID)
+	_, err = s.GetNamedAgent(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
-	return &AgentClient{service: s, agentID: agentID, agentKind: agent.Kind, token: token}, nil
+	return &AgentClient{service: s, agentID: agentID, principalKind: PrincipalNamedAgent, token: token}, nil
+}
+
+func (s *Service) BindRuntime(ctx context.Context, runtimeID string) (*AgentClient, error) {
+	runtimeID = strings.TrimSpace(runtimeID)
+	if runtimeID == "" {
+		return nil, errors.New("room runtime id is required")
+	}
+	runtime, err := s.GetRoomRuntime(ctx, runtimeID)
+	if err != nil {
+		return nil, err
+	}
+	token, err := s.loadPrincipalToken(ctx, runtimeID)
+	if err != nil {
+		return nil, err
+	}
+	return &AgentClient{service: s, agentID: runtimeID, principalKind: runtime.Kind, token: token}, nil
 }
 
 func (c *AgentClient) AgentID() string {
@@ -37,11 +53,11 @@ func (c *AgentClient) AgentID() string {
 	return c.agentID
 }
 
-func (c *AgentClient) AgentKind() string {
+func (c *AgentClient) IsRoomRuntime() bool {
 	if c == nil {
-		return ""
+		return false
 	}
-	return c.agentKind
+	return c.principalKind == PrincipalRoomRuntime
 }
 
 func (c *AgentClient) Check(ctx context.Context) (CheckResult, error) {

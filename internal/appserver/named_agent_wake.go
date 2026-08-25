@@ -41,11 +41,11 @@ func (s *Server) deliverNamedAgentWake(ctx context.Context, agentID string) erro
 	if s.rt == nil {
 		return errors.New("runtime session is unavailable")
 	}
-	agent, err := s.channelService.GetNamedAgent(ctx, agentID)
+	agent, err := s.channelService.GetAgentRuntime(ctx, agentID)
 	if err != nil {
 		return err
 	}
-	threadID := namedAgentSessionID(agent)
+	threadID := agentRuntimeSessionID(agent)
 	th := s.thread(threadID)
 	if th == nil && !agent.Autostart {
 		_, found, err := session.Find(s.rt.SessionDir, threadID)
@@ -56,7 +56,7 @@ func (s *Server) deliverNamedAgentWake(ctx context.Context, agentID string) erro
 			return nil
 		}
 	}
-	th, err = s.ensureNamedAgentThreadLocked(agent)
+	th, err = s.ensureAgentRuntimeThreadLocked(agent)
 	if err != nil {
 		return err
 	}
@@ -67,14 +67,18 @@ func (s *Server) deliverNamedAgentWake(ctx context.Context, agentID string) erro
 		return s.holdNamedAgentWake(th.ID, agent.ID)
 	}
 	_, _, _, _ = s.removeHeldUserTurn(th.ID, namedAgentWakeID(agent.ID))
-	return s.startNamedAgentWakeLocked(agent, th)
+	return s.startAgentRuntimeWakeLocked(agent, th)
 }
 
 func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threadState, error) {
+	return s.ensureAgentRuntimeThreadLocked(agentRuntimeFromNamed(agent))
+}
+
+func (s *Server) ensureAgentRuntimeThreadLocked(agent channels.AgentRuntime) (*threadState, error) {
 	if s.rt == nil {
 		return nil, errors.New("runtime session is unavailable")
 	}
-	threadID := namedAgentSessionID(agent)
+	threadID := agentRuntimeSessionID(agent)
 	if th := s.thread(threadID); th != nil {
 		th.mu.Lock()
 		defer th.mu.Unlock()
@@ -95,10 +99,10 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 		th.EngineID = string(agentengine.NormalizeEngineID(agent.EngineOverride))
 		if needsNamedAgentRuntime {
 			selection := s.currentSessionRuntimeSelection()
-			selection.Provider, selection.Model, selection.Effort = namedAgentModelSelection(
+			selection.Provider, selection.Model, selection.Effort = agentRuntimeModelSelection(
 				selection.Provider, selection.Model, selection.Effort, agent,
 			)
-			threadRuntime, err := s.newNamedAgentRuntime(threadID, agent, runtime.ThreadModelSelection{
+			threadRuntime, err := s.newAgentExecutionRuntime(threadID, agent, runtime.ThreadModelSelection{
 				Provider: selection.Provider, Model: selection.Model, Variant: selection.Variant,
 				Effort: selection.Effort, PermissionMode: selection.PermissionMode,
 			})
@@ -123,10 +127,10 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 	}
 	agentHome := filepath.Dir(agent.MemoryDir)
 	selection := s.currentSessionRuntimeSelection()
-	selection.Provider, selection.Model, selection.Effort = namedAgentModelSelection(
+	selection.Provider, selection.Model, selection.Effort = agentRuntimeModelSelection(
 		selection.Provider, selection.Model, selection.Effort, agent,
 	)
-	threadRuntime, err := s.newNamedAgentRuntime(threadID, agent, runtime.ThreadModelSelection{
+	threadRuntime, err := s.newAgentExecutionRuntime(threadID, agent, runtime.ThreadModelSelection{
 		Provider: selection.Provider, Model: selection.Model, Variant: selection.Variant,
 		Effort: selection.Effort, PermissionMode: selection.PermissionMode,
 	})
@@ -207,6 +211,10 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 }
 
 func namedAgentModelSelection(provider, model, effort string, agent channels.NamedAgent) (string, string, string) {
+	return agentRuntimeModelSelection(provider, model, effort, agentRuntimeFromNamed(agent))
+}
+
+func agentRuntimeModelSelection(provider, model, effort string, agent channels.AgentRuntime) (string, string, string) {
 	if override := strings.TrimSpace(agent.ModelOverride); override != "" {
 		provider = firstNonEmpty(strings.TrimSpace(agent.ProviderOverride), strings.TrimSpace(agent.EngineOverride))
 		model = override
@@ -218,14 +226,23 @@ func namedAgentModelSelection(provider, model, effort string, agent channels.Nam
 }
 
 func (s *Server) newNamedAgentRuntime(threadID string, agent channels.NamedAgent, selection runtime.ThreadModelSelection) (*runtime.ThreadRuntime, error) {
+	return s.newAgentExecutionRuntime(threadID, agentRuntimeFromNamed(agent), selection)
+}
+
+func (s *Server) newAgentExecutionRuntime(threadID string, agent channels.AgentRuntime, selection runtime.ThreadModelSelection) (*runtime.ThreadRuntime, error) {
 	agentHome := filepath.Dir(agent.MemoryDir)
 	threadRuntime, err := s.rt.NewNamedAgentThreadRuntime(
-		threadID, agentHome, agent.MemoryDir, namedAgentOrientation(agent), selection,
+		threadID, agentHome, agent.MemoryDir, agentRuntimeOrientation(agent), selection,
 	)
 	if err != nil {
 		return nil, err
 	}
-	chatAgent, err := s.channelService.BindAgent(context.Background(), agent.ID)
+	var chatAgent *channels.AgentClient
+	if agent.IsRoomRuntime() {
+		chatAgent, err = s.channelService.BindRuntime(context.Background(), agent.ID)
+	} else {
+		chatAgent, err = s.channelService.BindAgent(context.Background(), agent.ID)
+	}
 	if err != nil {
 		releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 		return nil, err
@@ -237,7 +254,7 @@ func (s *Server) newNamedAgentRuntime(threadID string, agent channels.NamedAgent
 	threadRuntime.Toolkit.SetChatAgent(chatAgent)
 	if err := s.rt.ConfigureNamedAgentThreadRuntime(
 		threadRuntime, agentHome, agent.MemoryDir,
-		namedAgentOrientation(agent),
+		agentRuntimeOrientation(agent),
 	); err != nil {
 		releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 		return nil, err
@@ -247,6 +264,10 @@ func (s *Server) newNamedAgentRuntime(threadID string, agent channels.NamedAgent
 }
 
 func (s *Server) startNamedAgentWakeLocked(agent channels.NamedAgent, th *threadState) error {
+	return s.startAgentRuntimeWakeLocked(agentRuntimeFromNamed(agent), th)
+}
+
+func (s *Server) startAgentRuntimeWakeLocked(agent channels.AgentRuntime, th *threadState) error {
 	inbox, err := s.channelService.ListInbox(context.Background(), agent.ID, true)
 	if err != nil {
 		return err
@@ -361,13 +382,13 @@ func (s *Server) completeNamedAgentTurn(agentID string) {
 		return
 	}
 	threadID := ""
-	if agent, getErr := s.channelService.GetNamedAgent(context.Background(), agentID); getErr == nil {
-		threadID = namedAgentSessionID(agent)
+	if agent, getErr := s.channelService.GetAgentRuntime(context.Background(), agentID); getErr == nil {
+		threadID = agentRuntimeSessionID(agent)
 		_, _, _, _ = s.removeHeldUserTurn(threadID, namedAgentWakeID(agentID))
 		if followup {
-			th, ensureErr := s.ensureNamedAgentThreadLocked(agent)
+			th, ensureErr := s.ensureAgentRuntimeThreadLocked(agent)
 			if ensureErr == nil {
-				ensureErr = s.startNamedAgentWakeLocked(agent, th)
+				ensureErr = s.startAgentRuntimeWakeLocked(agent, th)
 			}
 			if ensureErr != nil {
 				providers.DebugLogf("inject pending named agent wake %q: %v", agentID, ensureErr)
@@ -417,8 +438,16 @@ func (s *Server) restoreNamedAgentWakes() {
 }
 
 func namedAgentSessionID(agent channels.NamedAgent) string {
-	sum := sha256.Sum256([]byte(agent.ID))
-	return agent.CreatedAt.UTC().Format("20060102-150405") + fmt.Sprintf("-%x", sum[:8])
+	return principalSessionID(agent.ID, agent.CreatedAt)
+}
+
+func agentRuntimeSessionID(agent channels.AgentRuntime) string {
+	return principalSessionID(agent.ID, agent.CreatedAt)
+}
+
+func principalSessionID(id string, createdAt time.Time) string {
+	sum := sha256.Sum256([]byte(id))
+	return createdAt.UTC().Format("20060102-150405") + fmt.Sprintf("-%x", sum[:8])
 }
 
 func namedAgentWakeID(agentID string) string {
@@ -430,8 +459,21 @@ func namedAgentWakeTurnID(agentID string) string {
 }
 
 func namedAgentOrientation(agent channels.NamedAgent) string {
+	return agentRuntimeOrientation(agentRuntimeFromNamed(agent))
+}
+
+func agentRuntimeFromNamed(agent channels.NamedAgent) channels.AgentRuntime {
+	return channels.AgentRuntime{
+		ID: agent.ID, Kind: channels.PrincipalNamedAgent, Name: agent.Name, MemoryDir: agent.MemoryDir,
+		EngineOverride: agent.EngineOverride, ProviderOverride: agent.ProviderOverride,
+		ModelOverride: agent.ModelOverride, EffortOverride: agent.EffortOverride,
+		Autostart: agent.Autostart, CreatedAt: agent.CreatedAt,
+	}
+}
+
+func agentRuntimeOrientation(agent channels.AgentRuntime) string {
 	agentHome := filepath.Dir(agent.MemoryDir)
-	if agent.Kind == "room" {
+	if agent.IsRoomRuntime() {
 		return fmt.Sprintf(`# Room agent
 
 You are the hidden runtime for your mapped Wuu room. Its current name and visible Named Agent membership are provided in request context. Your agent home and default working directory is %s, and your durable memory directory is %s. You are not a room participant or a user-facing persona. Never use chat_send: all user-visible prose must come from a visible Named Agent.
@@ -462,7 +504,7 @@ Wake notifications contain no chat content. On wake, call chat_check. Direct mes
 
 Ordinary shared-room messages, including @mentions, are routed first to the hidden room runtime and do not directly wake every member. Do not independently claim work from the shared transcript. Act on room tasks assigned to you and use chat_task to mark a task doing when you start. Public task-thread messages are for meaningful progress, questions, and verified results; keep acknowledgements, retries, heartbeats, and raw tool logs private.
 
-For a substantive coding task, do the work and focused mechanical checks, but do not publish the candidate as final and do not mark the task done yet. Mark the task checking and read the returned goal_revision and candidate_revision. Then call collaboration_send to the task author (the hidden room runtime) with kind=candidate_ready and source_message_id=task_id; summarize the change and checks, and give relevant absolute paths or artifact references in the natural-language body. A collaboration message with kind verification_feedback carries the independent result: on BLOCK, the task becomes revising; use the evidence, mark it doing when repair starts, and submit the same task again. On UNKNOWN, the task becomes needs_human; supply evidence or ask the human when only they can decide. On PASS, publish the result in the task thread with chat_send and then mark the task done. Use the task message as thread_id and reply_to. The host only accepts completion directly from checking with a pass for the current goal and candidate revisions. The hidden runtime and verifier never speak for you.
+For a substantive coding task, do the work and focused mechanical checks, but do not publish the candidate as final and do not mark the task done yet. Mark the task checking and read the returned goal_revision and candidate_revision. Then call collaboration_send with kind=candidate_ready and source_message_id=task_id; omit to_agent_id because the host routes this handoff to the hidden room runtime without exposing its identity. Summarize the change and checks, and give relevant absolute paths or artifact references in the natural-language body. A collaboration message with kind verification_feedback carries the independent result: on BLOCK, the task becomes revising; use the evidence, mark it doing when repair starts, and submit the same task again. On UNKNOWN, the task becomes needs_human; supply evidence or ask the human when only they can decide. On PASS, publish the result in the task thread with chat_send and then mark the task done. Use the task message as thread_id and reply_to. The host only accepts completion directly from checking with a pass for the current goal and candidate revisions. The hidden runtime and verifier never speak for you.
 
 Other collaboration messages are private control traffic: answer with collaboration_send unless one explicitly authorizes a public contribution. Direct messages remain private conversations with the human and should be answered with chat_send.
 

@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Service) CreateTask(ctx context.Context, params TaskCreateParams) (Message, error) {
-	if _, err := s.AuthenticateAgent(ctx, params.AgentID, params.Token); err != nil {
+	if _, err := s.AuthenticatePrincipal(ctx, params.AgentID, params.Token); err != nil {
 		return Message{}, err
 	}
 	return s.createTask(ctx, params)
@@ -44,7 +44,7 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 		return Message{}, err
 	}
 	if params.AgentID != "" {
-		if err := s.requireRoomAgentMemberTx(ctx, tx, params.RoomID, params.AgentID); err != nil {
+		if err := requireRoomPrincipalAccessTx(ctx, tx, params.RoomID, params.AgentID); err != nil {
 			return Message{}, err
 		}
 	}
@@ -86,7 +86,7 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 }
 
 func (s *Service) UpdateTask(ctx context.Context, params TaskUpdateParams) (Message, error) {
-	if _, err := s.AuthenticateAgent(ctx, params.AgentID, params.Token); err != nil {
+	if _, err := s.AuthenticatePrincipal(ctx, params.AgentID, params.Token); err != nil {
 		return Message{}, err
 	}
 	return s.updateTask(ctx, params)
@@ -132,11 +132,19 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if params.RoomID != "" && message.RoomID != params.RoomID {
 		return Message{}, errors.New("task does not belong to room")
 	}
+	if params.AgentID != "" {
+		if err := requireRoomPrincipalAccessTx(ctx, tx, message.RoomID, params.AgentID); err != nil {
+			return Message{}, err
+		}
+	}
 	callerOk := params.AgentID != "" && message.TaskOwner == params.AgentID
 	correctionOk := params.GoalCorrection == ""
-	if params.GoalCorrection != "" && params.AgentID != "" && message.AuthorType == MemberAgent && message.AuthorID == params.AgentID {
-		callerOk = true
-		correctionOk = true
+	if params.GoalCorrection != "" && params.AgentID != "" {
+		var runtimeRoomID string
+		if err := tx.QueryRowContext(ctx, `SELECT room_id FROM room_runtimes WHERE id = ?`, params.AgentID).Scan(&runtimeRoomID); err == nil && runtimeRoomID == message.RoomID {
+			callerOk = true
+			correctionOk = true
+		}
 	}
 	if params.HumanID != "" {
 		if err := requireMemberTx(ctx, tx, message.RoomID, MemberHuman, params.HumanID); err == nil {
@@ -224,12 +232,18 @@ func (s *Service) ListTasks(ctx context.Context, params TaskListParams) ([]Messa
 	params.RoomID = strings.TrimSpace(params.RoomID)
 	params.OwnerID = strings.TrimSpace(params.OwnerID)
 	if params.AgentID != "" {
-		if _, err := s.AuthenticateAgent(ctx, params.AgentID, params.Token); err != nil {
+		if _, err := s.AuthenticatePrincipal(ctx, params.AgentID, params.Token); err != nil {
 			return nil, err
 		}
-		if err := s.requireAgentMember(ctx, params.RoomID, params.AgentID); err != nil {
+		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			return nil, fmt.Errorf("begin task list access check: %w", err)
+		}
+		if err := requireRoomPrincipalAccessTx(ctx, tx, params.RoomID, params.AgentID); err != nil {
+			tx.Rollback()
 			return nil, err
 		}
+		_ = tx.Rollback()
 	} else if params.HumanID != "" {
 		if err := s.requireHumanMember(ctx, params.RoomID, params.HumanID); err != nil {
 			return nil, err
@@ -296,6 +310,15 @@ func (s *Service) insertTaskMessageTx(ctx context.Context, tx *sql.Tx, params Ta
 		TaskGoalRevision:         1,
 		CreatedAt:                now,
 	}
+	var runtimeRoomID string
+	if params.AgentID != "" {
+		if err := tx.QueryRowContext(ctx, `SELECT room_id FROM room_runtimes WHERE id = ?`, params.AgentID).Scan(&runtimeRoomID); err == nil && runtimeRoomID == params.RoomID {
+			// A task is a Work/activity projection, not a hidden-runtime bubble.
+			// Attribute the card to its visible owner so no internal principal enters
+			// the room author namespace.
+			message.AuthorID = params.OwnerID
+		}
+	}
 	if params.AgentID == "" && params.HumanID != "" {
 		message.AuthorType = MemberHuman
 		message.AuthorID = params.HumanID
@@ -333,8 +356,11 @@ func (s *Service) taskEventInboxTx(ctx context.Context, tx *sql.Tx, message Mess
 		}
 	}
 	rows, err := tx.QueryContext(ctx, `
-		SELECT DISTINCT author_id FROM room_messages
-		WHERE room_id = ? AND author_type = 'agent' AND (id = ? OR thread_id = ?)`,
+		SELECT DISTINCT message.author_id
+		FROM room_messages message
+		JOIN room_members member ON member.room_id = message.room_id
+			AND member.member_type = 'agent' AND member.member_id = message.author_id
+		WHERE message.room_id = ? AND message.author_type = 'agent' AND (message.id = ? OR message.thread_id = ?)`,
 		message.RoomID, threadRoot, threadRoot)
 	if err != nil {
 		return fmt.Errorf("list task thread participants: %w", err)

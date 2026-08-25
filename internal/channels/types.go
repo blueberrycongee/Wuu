@@ -32,6 +32,13 @@ const (
 	MemberAgent MemberType = "agent"
 )
 
+type PrincipalKind string
+
+const (
+	PrincipalNamedAgent  PrincipalKind = "named_agent"
+	PrincipalRoomRuntime PrincipalKind = "room_runtime"
+)
+
 type MessageKind string
 
 const (
@@ -88,8 +95,6 @@ const (
 type NamedAgent struct {
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
-	Kind             string    `json:"kind,omitempty"`
-	RoomID           string    `json:"room_id,omitempty"`
 	MemoryDir        string    `json:"memory_dir"`
 	AvatarKey        string    `json:"avatar_key"`
 	AvatarImage      string    `json:"avatar_image,omitempty"`
@@ -102,6 +107,24 @@ type NamedAgent struct {
 	ActivityStatus   string    `json:"activity_status,omitempty"`
 	ActivityRoomIDs  []string  `json:"activity_room_ids,omitempty"`
 }
+
+// AgentRuntime is the internal execution identity used by the wake/session
+// host. Room runtimes deliberately do not use NamedAgent or participant data.
+type AgentRuntime struct {
+	ID               string
+	Kind             PrincipalKind
+	RoomID           string
+	Name             string
+	MemoryDir        string
+	EngineOverride   string
+	ProviderOverride string
+	ModelOverride    string
+	EffortOverride   string
+	Autostart        bool
+	CreatedAt        time.Time
+}
+
+func (r AgentRuntime) IsRoomRuntime() bool { return r.Kind == PrincipalRoomRuntime }
 
 type AgentCredential struct {
 	Agent NamedAgent `json:"agent"`
@@ -143,10 +166,14 @@ type RoomMember struct {
 }
 
 type Room struct {
-	ID             string       `json:"id"`
-	Kind           RoomKind     `json:"kind"`
-	Name           string       `json:"name"`
-	AgentID        string       `json:"agent_id,omitempty"`
+	ID   string   `json:"id"`
+	Kind RoomKind `json:"kind"`
+	Name string   `json:"name"`
+	// RuntimeID is internal routing state, not a participant identity.
+	RuntimeID string `json:"-"`
+	// AgentID is a source-compatible internal alias for migrations and tests.
+	// It is never serialized and is not a Named Agent identity.
+	AgentID        string       `json:"-"`
 	AvatarKey      string       `json:"avatar_key,omitempty"`
 	AvatarImage    string       `json:"avatar_image,omitempty"`
 	CreatedBy      string       `json:"created_by"`

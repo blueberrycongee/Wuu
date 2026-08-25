@@ -240,15 +240,15 @@ func (s *Server) attachLocalHumanUnreadCounts(ctx context.Context, rooms []chann
 	}
 	for index := range rooms {
 		rooms[index].UnreadCount = byRoom[rooms[index].ID]
-		if rooms[index].AgentID == "" {
+		if rooms[index].RuntimeID == "" {
 			continue
 		}
 		rooms[index].ActivityStatus = "idle"
-		agent, getErr := s.channelService.GetNamedAgent(ctx, rooms[index].AgentID)
+		agent, getErr := s.channelService.GetRoomRuntime(ctx, rooms[index].RuntimeID)
 		if getErr != nil {
 			return getErr
 		}
-		threadID := namedAgentSessionID(agent)
+		threadID := agentRuntimeSessionID(agent)
 		if thread := s.thread(threadID); thread != nil && threadIsRunning(thread) {
 			rooms[index].ActivityStatus = "thinking"
 			continue

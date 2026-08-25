@@ -287,7 +287,7 @@ export function assignmentState(state?: string): "open" | "doing" | "checking" |
   return "open";
 }
 
-function assignmentStatusKey(state: ReturnType<typeof assignmentState>): string {
+function assignmentStatusKey(state: ReturnType<typeof assignmentState>): "open" | "doing" | "checking" | "revising" | "needsHuman" | "done" {
   return state === "needs_human" ? "needsHuman" : state;
 }
 
@@ -864,22 +864,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
   const roomIncludesCurrentUser = selectedRoom?.members.some(
     (member) => member.member_type === "human" && member.member_id === "local-user",
   ) ?? false;
-  const messageAgents = useMemo(() => {
-    const roomAgents = rooms.flatMap((room): NamedAgent[] => room.agent_id ? [{
-      id: room.agent_id,
-      name: room.name,
-      kind: "room",
-      room_id: room.id,
-      memory_dir: "",
-      avatar_key: room.avatar_key ?? "abstract-1",
-      avatar_image: room.avatar_image,
-      autostart: true,
-      created_at: room.created_at,
-      activity_status: room.activity_status,
-      activity_room_ids: [room.id],
-    }] : []);
-    return [...agents, ...roomAgents];
-  }, [agents, rooms]);
+  const messageAgents = agents;
   const agentNames = useMemo(
     () => new Map(messageAgents.map((agent) => [agent.id, agent.name])),
     [messageAgents],
@@ -936,21 +921,19 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     [messages],
   );
   const channelTimeline = useMemo(
-    () => buildChannelTimeline(messages, selectedRoom?.agent_id),
-    [messages, selectedRoom?.agent_id],
+    () => buildChannelTimeline(messages),
+    [messages],
   );
   const repliesByThread = useMemo(() => {
     const replies = new Map<string, ChannelMessage[]>();
-    const roomAgentIDs = new Set(rooms.flatMap((room) => room.agent_id ? [room.agent_id] : []));
     for (const message of messages) {
       if (!message.thread_id || message.kind === "task") continue;
-      if (message.author_type === "agent" && roomAgentIDs.has(message.author_id)) continue;
       const current = replies.get(message.thread_id) ?? [];
       current.push(message);
       replies.set(message.thread_id, current);
     }
     return replies;
-  }, [messages, rooms]);
+  }, [messages]);
   const activeThreadRoot = activeThreadRootID ? messageByID.get(activeThreadRootID) : undefined;
   const activeThreadMessages = useMemo(
     () => activeThreadRootID ? (repliesByThread.get(activeThreadRootID) ?? []) : [],
@@ -1819,7 +1802,6 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
             const threadReplies = repliesByThread.get(message.id) ?? [];
             const agent = own ? undefined : messageAgents.find((candidate) => candidate.id === message.author_id);
             const status = activityFor(agent);
-            const isRoomAgentMessage = agent?.kind === "room" && selectedRoom?.agent_id === agent.id;
             return (
               <MessageBubbleRow
                 key={message.id}
@@ -1827,22 +1809,11 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                 className={`channel-message ${own ? "own" : "agent"}`}
                 contentClassName={`channel-message-content${threadReplies.length ? " has-thread-digest" : ""}`}
                 avatar={!own ? (
-                  isRoomAgentMessage && selectedRoom ? (
-                    <span className="channel-agent-avatar channel-orchestration-avatar" role="img" aria-label={selectedRoom.name}>
-                      <ChannelGroupAvatar room={selectedRoom} agents={agents} />
-                    </span>
-                  ) : (
-                    <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
-                  )
+                  <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
                 ) : undefined}
                 meta={(
                   <div className="channel-message-meta">
-                    {isRoomAgentMessage ? (
-                      <>
-                        <strong>{author}</strong>
-                        <span className="channel-coordinator-badge">{t("channels.coordinator")}</span>
-                      </>
-                    ) : !own ? (
+                    {!own ? (
                       <ChannelAuthorName
                         name={author}
                         mentionLabel={t("channels.mentionAgent", { name: author })}
@@ -1942,7 +1913,6 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                 const repliedMessage = message.reply_to ? messageByID.get(message.reply_to) : undefined;
                 const agent = own ? undefined : messageAgents.find((candidate) => candidate.id === message.author_id);
                 const status = activityFor(agent);
-                const isRoomAgentMessage = agent?.kind === "room" && selectedRoom?.agent_id === agent.id;
                 return (
                   <MessageBubbleRow
                     key={message.id}
@@ -1950,22 +1920,11 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                     className={`channel-message channel-thread-message ${own ? "own" : "agent"}`}
                     contentClassName="channel-message-content"
                     avatar={!own ? (
-                      isRoomAgentMessage && selectedRoom ? (
-                        <span className="channel-agent-avatar channel-orchestration-avatar" role="img" aria-label={selectedRoom.name}>
-                          <ChannelGroupAvatar room={selectedRoom} agents={agents} />
-                        </span>
-                      ) : (
-                        <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
-                      )
+                      <AgentAvatar id={agent?.id ?? message.author_id} name={author} avatarKey={agent?.avatar_key ?? "abstract-1"} avatarImage={agent?.avatar_image} status={status} statusText={activityText(status)} model={agent?.model_override || initialized?.model} modelLabel={t("channels.model")} />
                     ) : undefined}
                     meta={(
                       <div className="channel-message-meta">
-                        {isRoomAgentMessage ? (
-                          <>
-                            <strong>{author}</strong>
-                            <span className="channel-coordinator-badge">{t("channels.coordinator")}</span>
-                          </>
-                        ) : !own ? (
+                        {!own ? (
                           <ChannelAuthorName
                             name={author}
                             mentionLabel={t("channels.mentionAgent", { name: author })}

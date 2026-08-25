@@ -324,7 +324,7 @@ func (t *Toolkit) rebuildRegistry() {
 	}
 	if e.ChatAgent != nil {
 		registered = append(registered, NewChatCheckTool(e), NewChatReadTool(e), NewCollaborationSendTool(e), NewChatDraftTool(e), NewChatTaskTool(e), NewChatRemindTool(e))
-		if e.ChatAgent.AgentKind() == "room" {
+		if e.ChatAgent.IsRoomRuntime() {
 			registered = append(registered, NewChatVerifyTool(e))
 		} else {
 			registered = append(registered, NewChatSendTool(e))

@@ -22,9 +22,9 @@ func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRoom() error = %v", err)
 	}
-	roomRuntime, err := service.BindAgent(ctx, room.AgentID)
+	roomRuntime, err := service.BindRuntime(ctx, room.RuntimeID)
 	if err != nil {
-		t.Fatalf("BindAgent(room runtime) error = %v", err)
+		t.Fatalf("BindRuntime() error = %v", err)
 	}
 	task, err := roomRuntime.CreateTask(ctx, TaskCreateParams{
 		RoomID: room.ID, Title: "Fix callback", Body: "Reject replayed state", OwnerID: owner.Agent.ID,
@@ -142,7 +142,7 @@ func TestTaskVerificationRejectsVisibleAgentAndInvalidDecision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRoom() error = %v", err)
 	}
-	roomRuntime, _ := service.BindAgent(ctx, room.AgentID)
+	roomRuntime, _ := service.BindRuntime(ctx, room.RuntimeID)
 	task, err := roomRuntime.CreateTask(ctx, TaskCreateParams{
 		RoomID: room.ID, Title: "Fix", OwnerID: owner.Agent.ID,
 	})
@@ -178,7 +178,7 @@ func TestTaskVerificationRejectsStaleGoalAndCandidateRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRoom() error = %v", err)
 	}
-	roomRuntime, _ := service.BindAgent(ctx, room.AgentID)
+	roomRuntime, _ := service.BindRuntime(ctx, room.RuntimeID)
 	task, err := roomRuntime.CreateTask(ctx, TaskCreateParams{
 		RoomID: room.ID, Title: "Fix callback", Body: "Reject replayed state",
 		OwnerID: owner.Agent.ID, VerificationRequired: true,
@@ -247,7 +247,7 @@ func TestCandidateAndFeedbackDeliveriesRecoverAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRoom() error = %v", err)
 	}
-	roomRuntime, _ := service.BindAgent(ctx, room.AgentID)
+	roomRuntime, _ := service.BindRuntime(ctx, room.RuntimeID)
 	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
 	task, err := roomRuntime.CreateTask(ctx, TaskCreateParams{
 		RoomID: room.ID, Title: "Fix callback", OwnerID: owner.Agent.ID, VerificationRequired: true,
@@ -283,7 +283,7 @@ func TestCandidateAndFeedbackDeliveriesRecoverAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(candidate recovery) error = %v", err)
 	}
-	roomRuntime, _ = service.BindAgent(ctx, room.AgentID)
+	roomRuntime, _ = service.BindRuntime(ctx, room.RuntimeID)
 	recovered, err := roomRuntime.Check(ctx)
 	if err != nil || len(recovered.Collaboration) != 1 || recovered.Collaboration[0].ID != delivery.ID {
 		t.Fatalf("recovered candidate = %#v, err = %v", recovered.Collaboration, err)

@@ -483,15 +483,15 @@ func evaluateTriggersTx(ctx context.Context, tx *sql.Tx, message Message, mentio
 		return nil, err
 	}
 	var roomKind RoomKind
-	var roomAgentID string
+	var roomRuntimeID string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT room.kind, COALESCE(agent.id, '')
+		SELECT room.kind, COALESCE(runtime.id, '')
 		FROM rooms room
-		LEFT JOIN named_agents agent ON agent.room_id = room.id AND agent.kind = 'room'
-		WHERE room.id = ?`, message.RoomID).Scan(&roomKind, &roomAgentID); err != nil {
+		LEFT JOIN room_runtimes runtime ON runtime.room_id = room.id
+		WHERE room.id = ?`, message.RoomID).Scan(&roomKind, &roomRuntimeID); err != nil {
 		return nil, fmt.Errorf("resolve room orchestration: %w", err)
 	}
-	if roomKind == RoomChannel && roomAgentID != "" {
+	if roomKind == RoomChannel && roomRuntimeID != "" {
 		for _, mention := range mentions {
 			if mention.MemberType != MemberHuman {
 				continue
@@ -500,21 +500,21 @@ func evaluateTriggersTx(ctx context.Context, tx *sql.Tx, message Message, mentio
 				return nil, err
 			}
 		}
-		if suppressed || (message.AuthorType == MemberAgent && message.AuthorID == roomAgentID) {
+		if suppressed {
 			return nil, nil
 		}
 		if _, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
 			RoomID: message.RoomID, FromType: message.AuthorType, FromID: message.AuthorID,
-			ToAgentID: roomAgentID, Body: message.Body, SourceMessageID: message.ID, CreatedAt: fromMillis(now),
+			ToAgentID: roomRuntimeID, Body: message.Body, SourceMessageID: message.ID, CreatedAt: fromMillis(now),
 		}); err != nil {
 			return nil, err
 		}
-		requested, err := requestWakeTx(ctx, tx, roomAgentID, now)
+		requested, err := requestWakeTx(ctx, tx, roomRuntimeID, now)
 		if err != nil {
 			return nil, fmt.Errorf("request room agent wake: %w", err)
 		}
 		if requested {
-			return []string{roomAgentID}, nil
+			return []string{roomRuntimeID}, nil
 		}
 		return nil, nil
 	}
