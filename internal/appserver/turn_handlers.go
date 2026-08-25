@@ -1895,6 +1895,19 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if metadata, ok, err := session.Find(s.rt.SessionDir, th.ID); err == nil && ok {
 		sessionInstructions = metadata.Instructions
 	}
+	namedAgentID := strings.TrimSpace(th.NamedAgentID)
+	var hostMCPServers []agentengine.MCPServer
+	var hostMCPError error
+	if namedAgentID != "" && agentengine.NormalizeEngineID(th.EngineID) != agentengine.EngineWuu {
+		if threadRuntime != nil && threadRuntime.StreamRunner != nil {
+			sessionInstructions = threadRuntime.StreamRunner.SystemPrompt
+		}
+		var endpoint string
+		endpoint, hostMCPError = s.namedAgentMCPURL(namedAgentID)
+		if hostMCPError == nil {
+			hostMCPServers = []agentengine.MCPServer{{Name: namedAgentMCPServerName, URL: endpoint}}
+		}
+	}
 	engine := s.rt.EngineSessionForThread(ctx, threadRuntime, agentengine.ThreadBinding{
 		ThreadID:       th.ID,
 		RootDir:        firstNonEmpty(th.CWD, s.rt.RootDir),
@@ -1902,6 +1915,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		Effort:         th.ModelEffort,
 		PermissionMode: th.PermissionMode,
 		Instructions:   sessionInstructions,
+		MCPServers:     hostMCPServers,
 		ExternalRef:    th.EngineRef,
 		PersistRef: func(ref string) error {
 			return s.persistThreadEngineRef(th.ID, ref)
@@ -1910,6 +1924,9 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			return s.requestEngineApproval(approvalCtx, th.ID, turnID, request)
 		},
 	})
+	if hostMCPError != nil {
+		engine = agentengine.FailedSession(hostMCPError)
+	}
 	if engine == nil {
 		engine = s.rt.WuuEngine().SessionForRunner(s.rt.StreamRunner)
 	}

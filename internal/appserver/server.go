@@ -268,6 +268,10 @@ type Server struct {
 	channelMaintenanceDone     chan struct{}
 	channelMaintenanceStopOnce sync.Once
 	namedAgentMu               sync.Mutex
+	namedAgentMCPMu            sync.Mutex
+	namedAgentMCPServer        *http.Server
+	namedAgentMCPBaseURL       string
+	namedAgentMCPSecret        string
 	sideTurnMu                 sync.Mutex
 	sideTurns                  map[string]*sideThreadTurn
 }
@@ -791,6 +795,7 @@ func (s *Server) Close() {
 		for _, th := range threads {
 			releaseThreadRuntime(th)
 		}
+		s.closeNamedAgentMCP()
 		if s.channelService != nil {
 			if err := s.channelService.Close(); err != nil {
 				log.Printf("wuu: close channels store: %v", err)

@@ -93,6 +93,7 @@ func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.Threa
 		effort:         binding.Effort,
 		permissionMode: binding.PermissionMode,
 		instructions:   binding.Instructions,
+		mcpServers:     binding.MCPServers,
 		externalRef:    binding.ExternalRef,
 		persistRef:     binding.PersistRef,
 	})
@@ -105,6 +106,7 @@ type sessionOptions struct {
 	effort         string
 	permissionMode string
 	instructions   string
+	mcpServers     []agentengine.MCPServer
 	externalRef    string
 	persistRef     func(string) error
 }
@@ -120,6 +122,7 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 		effort:         opts.effort,
 		permissionMode: opts.permissionMode,
 		instructions:   opts.instructions,
+		mcpServers:     append([]agentengine.MCPServer(nil), opts.mcpServers...),
 		ref:            opts.externalRef,
 		persist:        opts.persistRef,
 	}, nil
@@ -135,6 +138,7 @@ type Session struct {
 	effort         string
 	permissionMode string
 	instructions   string
+	mcpServers     []agentengine.MCPServer
 
 	mu      sync.Mutex
 	ref     string
@@ -244,6 +248,21 @@ func (s *Session) spawn(ctx context.Context, sub *turnSubscription) (*Transport,
 	}
 	if instructions := strings.TrimSpace(s.instructions); instructions != "" {
 		args = append(args, "--append-system-prompt", instructions)
+	}
+	if len(s.mcpServers) > 0 {
+		servers := make(map[string]any, len(s.mcpServers))
+		for _, server := range s.mcpServers {
+			if strings.TrimSpace(server.Name) != "" && strings.TrimSpace(server.URL) != "" {
+				servers[server.Name] = map[string]any{"type": "http", "url": server.URL}
+			}
+		}
+		if len(servers) > 0 {
+			encoded, err := json.Marshal(map[string]any{"mcpServers": servers})
+			if err != nil {
+				return nil, fmt.Errorf("encode named agent MCP config: %w", err)
+			}
+			args = append(args, "--mcp-config", string(encoded))
+		}
 	}
 	if model := strings.TrimSpace(s.model); model != "" {
 		args = append(args, "--model", model)

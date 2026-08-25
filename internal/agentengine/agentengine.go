@@ -188,6 +188,9 @@ type ThreadBinding struct {
 	// Engines map them to their native instruction surface; they are not user
 	// prompt text and must not be silently discarded.
 	Instructions string
+	// MCPServers are host-owned, thread-scoped tool servers attached only to
+	// external engines. The built-in engine ignores them.
+	MCPServers []MCPServer
 	// ExternalRef is the engine's persisted native session reference (for
 	// example a codex thread id); empty means the engine must create one.
 	ExternalRef string
@@ -198,6 +201,12 @@ type ThreadBinding struct {
 	// broker and conversation card. Nil means interactive approval is not
 	// available and the engine must decline.
 	RequestApproval ApprovalHandler
+}
+
+// MCPServer is one host-provided Streamable HTTP MCP endpoint.
+type MCPServer struct {
+	Name string
+	URL  string
 }
 
 // ThreadBoundFactory is an optional factory extension for engines that bind

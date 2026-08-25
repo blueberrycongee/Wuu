@@ -72,6 +72,7 @@ func (e *Engine) SessionForThread(ctx context.Context, binding agentengine.Threa
 		effort:         ReasoningEffort(binding.Effort),
 		permissionMode: binding.PermissionMode,
 		instructions:   binding.Instructions,
+		mcpServers:     binding.MCPServers,
 		externalRef:    binding.ExternalRef,
 		persistRef:     binding.PersistRef,
 		approval:       binding.RequestApproval,
@@ -85,6 +86,7 @@ type sessionOptions struct {
 	effort         ReasoningEffort
 	permissionMode string
 	instructions   string
+	mcpServers     []agentengine.MCPServer
 	externalRef    string
 	persistRef     func(string) error
 	approval       agentengine.ApprovalHandler
@@ -111,6 +113,7 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 		effort:         opts.effort,
 		permissionMode: opts.permissionMode,
 		instructions:   opts.instructions,
+		mcpServers:     append([]agentengine.MCPServer(nil), opts.mcpServers...),
 		ref:            opts.externalRef,
 		persist:        opts.persistRef,
 		approval:       approval,
@@ -131,6 +134,7 @@ type Session struct {
 	effort         ReasoningEffort
 	permissionMode string
 	instructions   string
+	mcpServers     []agentengine.MCPServer
 
 	mu          sync.Mutex
 	ref         string
@@ -303,12 +307,25 @@ func (s *Session) ensureThread(ctx context.Context) error {
 	}
 	var resp ThreadStartResponse
 	sandbox, approval, _ := codexPermissionSettings(s.permissionMode)
+	config := map[string]any{}
+	if len(s.mcpServers) > 0 {
+		servers := make(map[string]any, len(s.mcpServers))
+		for _, server := range s.mcpServers {
+			if strings.TrimSpace(server.Name) != "" && strings.TrimSpace(server.URL) != "" {
+				servers[server.Name] = map[string]any{"url": server.URL}
+			}
+		}
+		if len(servers) > 0 {
+			config["mcp_servers"] = servers
+		}
+	}
 	err := s.client.Request(ctx, MethodThreadStart, ThreadStartParams{
 		Model:              s.model,
 		CWD:                s.rootDir,
 		DeveloperInstructs: strings.TrimSpace(s.instructions),
 		ApprovalPolicy:     approval,
 		Sandbox:            sandbox,
+		Config:             config,
 	}, &resp)
 	if err != nil {
 		return fmt.Errorf("codex thread/start: %w", err)
