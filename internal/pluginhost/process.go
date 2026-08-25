@@ -24,7 +24,7 @@ const (
 
 	// maxResponseLineSize must accommodate transcript-bearing compaction
 	// responses while still bounding scanner growth from a misbehaving plugin.
-	maxResponseLineSize = 32 << 20 // 32 MiB
+	maxResponseLineSize = 64 << 20 // 64 MiB
 )
 
 type ProcessConfig struct {

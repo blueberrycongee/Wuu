@@ -371,10 +371,18 @@ func (p *pluginCompactionProvider) PlanCompactionNote(ctx context.Context, model
 	if p.capability.Descriptor.Version < 2 {
 		return agent.CompactionNotePlan{}, agent.ErrCompactionNoteUnsupported
 	}
+	// With no prior note, messages and delta describe the same transcript.
+	// Sending both doubles the largest plugin-protocol frame for no additional
+	// information; update plans still receive only the messages added since the
+	// previous checkpoint.
+	pluginDelta := delta
+	if strings.TrimSpace(previous.Markdown) == "" {
+		pluginDelta = nil
+	}
 	output := pluginhost.CompactionOutput{}
 	if err := p.host.InvokeCapability(ctx, p.capability, pluginhost.CompactionInput{
 		Operation: "note_plan", Model: model, Messages: providers.CloneChatMessages(messages),
-		Delta: providers.CloneChatMessages(delta), PreviousNote: previous.Markdown,
+		Delta: providers.CloneChatMessages(pluginDelta), PreviousNote: previous.Markdown,
 		PreviousCoveredMessages: previous.CoveredMessages,
 	}, &output); err != nil {
 		if policyErr := p.host.HandleCapabilityError(p.capability, err); policyErr != nil {

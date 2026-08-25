@@ -37,8 +37,8 @@ func TestServeNegotiatesAndInvokesCapability(t *testing.T) {
 	}
 }
 
-func TestServeAcceptsTranscriptBearingCapabilityRequestOverFourMiB(t *testing.T) {
-	largeValue := strings.Repeat("x", 5<<20)
+func TestServeAcceptsTranscriptBearingCapabilityRequestOverThirtyTwoMiB(t *testing.T) {
+	largeValue := strings.Repeat("x", 33<<20)
 	input := strings.Join([]string{
 		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":2,"plugin_id":"test"}}`,
 		fmt.Sprintf(`{"id":"2","method":"capability.invoke","params":{"capability":"test.decision","input":{"transcript":%q}}}`, largeValue),
