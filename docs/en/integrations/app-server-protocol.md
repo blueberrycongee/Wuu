@@ -265,6 +265,7 @@ stdout:
 - `turn/error`
 - `item/started`
 - `item/completed`
+- `item/removed`
 - `item/agentMessage/delta`
 - `item/agentMessage/replace`
 - `item/reasoning/delta`
@@ -278,6 +279,10 @@ stdout:
 Interactive clients may render the reasoning notifications. `wuu exec` receives
 them but deliberately omits their payloads from JSONL because providers do not
 reliably distinguish safe summaries from hidden chain-of-thought.
+
+`item/removed` retracts an attempt-scoped item previously announced with
+`item/started`. Clients must remove the matching `item_id` from the indicated
+turn; the item did not become a durable operation and has no completion status.
 
 ## Non-Interactive Client Requests
 

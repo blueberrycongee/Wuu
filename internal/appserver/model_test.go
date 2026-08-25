@@ -2,7 +2,7 @@ package appserver
 
 import (
 	"encoding/json"
-	"strings"
+	"errors"
 	"testing"
 	"time"
 
@@ -191,12 +191,17 @@ func TestThreadStatePreservesRichToolResultDetail(t *testing.T) {
 	}
 }
 
-func TestThreadStateSupersedesToolDraftOnInferenceReplay(t *testing.T) {
+func TestThreadStateDiscardsToolDraftsOnInferenceReplay(t *testing.T) {
 	now := time.Unix(0, 0).UTC()
 	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
 	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "inspect"}, now)
-	call := providers.ToolCall{ID: "call-1", Name: "read_file"}
-	th.applyStreamEventLocked("turn", providers.StreamEvent{Type: providers.EventToolUseStart, ToolCall: &call}, now)
+	calls := []providers.ToolCall{
+		{ID: "call-1", Name: "read_file"},
+		{ID: "call-2", Name: "grep"},
+	}
+	for i := range calls {
+		th.applyStreamEventLocked("turn", providers.StreamEvent{Type: providers.EventToolUseStart, ToolCall: &calls[i]}, now)
+	}
 	out := th.applyStreamEventLocked("turn", providers.StreamEvent{
 		Type: providers.EventLifecycle,
 		Lifecycle: &providers.StreamLifecycle{
@@ -205,15 +210,57 @@ func TestThreadStateSupersedesToolDraftOnInferenceReplay(t *testing.T) {
 	}, now.Add(time.Second))
 
 	turn := th.ensureTurnLocked("turn", now)
-	item := turn.Items[len(turn.Items)-1]
-	if item.Status != ThreadItemStatusFailed || !strings.Contains(item.Error, "Superseded") {
-		t.Fatalf("superseded tool draft = %+v", item)
+	if len(turn.Items) != 1 || turn.Items[0].Type != ThreadItemUserMessage {
+		t.Fatalf("discarded tool drafts remained in turn = %+v", turn.Items)
 	}
-	if len(out) != 1 || out[0].method != NotificationItemCompleted {
-		t.Fatalf("supersede notifications = %+v", out)
+	if len(out) != len(calls) {
+		t.Fatalf("discard notifications = %+v", out)
 	}
-	if _, exists := th.toolItems[call.ID]; exists {
-		t.Fatal("superseded provider call id remained registered")
+	for i, notification := range out {
+		if notification.method != NotificationItemRemoved {
+			t.Fatalf("discard notification %d = %+v", i, notification)
+		}
+		removed, ok := notification.params.(ItemRemovedNotification)
+		if !ok || removed.ItemID == "" {
+			t.Fatalf("discard notification params %d = %#v", i, notification.params)
+		}
+	}
+	for _, call := range calls {
+		if _, exists := th.toolItems[call.ID]; exists {
+			t.Fatalf("discarded provider call id %q remained registered", call.ID)
+		}
+	}
+
+	replacement := providers.ToolCall{ID: "call-3", Name: "read_file", Arguments: `{"path":"README.md"}`}
+	th.applyStreamEventLocked("turn", providers.StreamEvent{Type: providers.EventToolUseStart, ToolCall: &replacement}, now.Add(2*time.Second))
+	th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type: providers.EventToolUseEnd, ToolCall: &replacement, ToolResult: "done",
+	}, now.Add(3*time.Second))
+	turn = th.ensureTurnLocked("turn", now)
+	if len(turn.Items) != 2 || turn.Items[1].SourceID != replacement.ID || turn.Items[1].Status != ThreadItemStatusCompleted {
+		t.Fatalf("successful retry turn = %+v", turn.Items)
+	}
+}
+
+func TestThreadStateRetryTerminalFailureDoesNotRestoreDiscardedToolDraft(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "inspect"}, now)
+	call := providers.ToolCall{ID: "call-1", Name: "read_file"}
+	th.applyStreamEventLocked("turn", providers.StreamEvent{Type: providers.EventToolUseStart, ToolCall: &call}, now)
+	th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type: providers.EventLifecycle,
+		Lifecycle: &providers.StreamLifecycle{
+			Phase: providers.StreamPhaseReconnecting, ResetPartial: true,
+		},
+	}, now.Add(time.Second))
+
+	turn := th.finishTurnLocked("turn", TurnStatusFailed, errors.New("provider unavailable"), now.Add(2*time.Second), "", "", false)
+	if len(turn.Items) != 1 || turn.Items[0].Type != ThreadItemUserMessage {
+		t.Fatalf("terminal retry failure restored discarded tool draft = %+v", turn.Items)
+	}
+	if turn.Error == nil || turn.Error.Message != "provider unavailable" {
+		t.Fatalf("terminal provider failure missing from turn = %+v", turn)
 	}
 }
 

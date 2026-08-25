@@ -125,6 +125,22 @@ describe("turn and item ingestion", () => {
     expect(store.getSnapshot().threads[0].turns[0].items[0].text).toBe("新");
   });
 
+  it("removes a provisional item when its inference attempt is reset", () => {
+    const store = seeded();
+    store.applyNotification("item/started", {
+      thread_id: "t1",
+      turn_id: "turn-1",
+      item: { id: "tool-1", type: "tool_call", status: "in_progress" },
+    });
+    store.applyNotification("item/removed", {
+      thread_id: "t1",
+      turn_id: "turn-1",
+      item_id: "tool-1",
+    });
+
+    expect(store.getSnapshot().threads[0].turns[0].items).toEqual([]);
+  });
+
   it("flags unknown threads so the controller can refresh", () => {
     const store = new AppStore();
     const unknown: string[] = [];

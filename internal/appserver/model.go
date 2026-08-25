@@ -514,16 +514,24 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 		if ev.Lifecycle == nil || ev.Lifecycle.Phase != providers.StreamPhaseReconnecting || !ev.Lifecycle.ResetPartial {
 			return nil
 		}
+		removed := make(map[string]struct{})
 		for sourceID, itemID := range th.toolItems {
 			item, ok := th.itemLocked(turnID, itemID)
-			if !ok || item.Status != ThreadItemStatusInProgress {
+			if !ok {
+				delete(th.toolItems, sourceID)
 				continue
 			}
-			item.Status = ThreadItemStatusFailed
-			item.Error = "Superseded by a new inference attempt before execution"
-			th.upsertItemLocked(turnID, item, now)
+			if item.Status != ThreadItemStatusInProgress {
+				continue
+			}
 			delete(th.toolItems, sourceID)
-			out = append(out, itemCompleted(th.ID, turnID, item, now))
+			if _, seen := removed[item.ID]; seen {
+				continue
+			}
+			if th.removeItemLocked(turnID, item.ID, now) {
+				removed[item.ID] = struct{}{}
+				out = append(out, itemRemoved(th.ID, turnID, item.ID, now))
+			}
 		}
 	case providers.EventContentDelta:
 		if ev.Content == "" {
@@ -1021,6 +1029,20 @@ func (th *threadState) upsertItemLocked(turnID string, item ThreadItem, now time
 	th.UpdatedAt = now
 }
 
+func (th *threadState) removeItemLocked(turnID, itemID string, now time.Time) bool {
+	turn := th.ensureTurnLocked(turnID, now)
+	for i := range turn.Items {
+		if turn.Items[i].ID != itemID {
+			continue
+		}
+		turn.Items = append(turn.Items[:i], turn.Items[i+1:]...)
+		th.replaceTurnLocked(turn)
+		th.UpdatedAt = now
+		return true
+	}
+	return false
+}
+
 func (th *threadState) nextItemIDLocked(turnID string) string {
 	th.nextItemIndex++
 	return fmt.Sprintf("%s-item-%d", turnID, th.nextItemIndex)
@@ -1046,6 +1068,18 @@ func itemCompleted(threadID, turnID string, item ThreadItem, at time.Time) outbo
 			TurnID:        turnID,
 			Item:          item,
 			CompletedAtMS: at.UnixMilli(),
+		},
+	}
+}
+
+func itemRemoved(threadID, turnID, itemID string, at time.Time) outboundNotification {
+	return outboundNotification{
+		method: NotificationItemRemoved,
+		params: ItemRemovedNotification{
+			ThreadID:    threadID,
+			TurnID:      turnID,
+			ItemID:      itemID,
+			RemovedAtMS: at.UnixMilli(),
 		},
 	}
 }

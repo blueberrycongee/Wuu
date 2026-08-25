@@ -812,6 +812,21 @@ func TestRunJSONLEmitsWorkEventFamilies(t *testing.T) {
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			Item: appserver.ThreadItem{
+				ID:        "item-draft",
+				Type:      appserver.ThreadItemToolCall,
+				Name:      "read_file",
+				Arguments: `{"path":"partial`,
+			},
+		}),
+		notification(appserver.NotificationItemRemoved, appserver.ItemRemovedNotification{
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+			ItemID:   "item-draft",
+		}),
+		notification(appserver.NotificationItemStarted, appserver.ItemStartedNotification{
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+			Item: appserver.ThreadItem{
 				ID:        "item-bash",
 				Type:      appserver.ThreadItemToolCall,
 				Name:      "bash",
@@ -862,7 +877,7 @@ func TestRunJSONLEmitsWorkEventFamilies(t *testing.T) {
 	}
 	events := parseJSONLines(t, stdout.String())
 	types := eventTypes(events)
-	for _, want := range []string{"agent_message_delta", "tool_started", "tool_output_delta", "tool_completed", "command_started", "command_output_delta", "command_completed", "file_changed", "subagent_started", "subagent_completed"} {
+	for _, want := range []string{"agent_message_delta", "tool_started", "tool_removed", "tool_output_delta", "tool_completed", "command_started", "command_output_delta", "command_completed", "file_changed", "subagent_started", "subagent_completed"} {
 		if !containsString(types, want) {
 			t.Fatalf("missing %s in events %#v\n%s", want, types, stdout.String())
 		}

@@ -406,6 +406,40 @@ function threadWithUserTexts(texts: string[]): Thread {
 }
 
 describe("AppState protocol normalization", () => {
+  it("removes a provisional item when its inference attempt is reset", () => {
+    const thread = threadWithUserTexts(["inspect"]);
+    thread.turns[0].items.push({
+      id: "tool-1",
+      type: "tool_call",
+      status: "in_progress",
+      name: "read_file",
+    });
+    const key = streamTextKey("turn-1", "tool-1", "arguments");
+    streamTextStore.set(key, '{"path":"partial');
+    const state = {
+      ...initialState,
+      thread,
+      threads: [thread],
+    };
+    const event = {
+      kind: "notification" as const,
+      workdir: "/repo",
+      message: {
+        method: "item/removed",
+        params: {
+          thread_id: "thread-1",
+          turn_id: "turn-1",
+          item_id: "tool-1",
+        },
+      },
+    };
+
+    expect(handleStreamingNotification(event, state)).toBe("state");
+    expect(streamTextStore.has(key)).toBe(false);
+    const next = reduceServerEvent(state, event);
+    expect(next.thread?.turns[0].items.map((item) => item.id)).toEqual(["user-1"]);
+  });
+
   it("keeps rendering when an older core starts an empty turn with null items", () => {
     const thread = threadWithUserTexts(["continue"]);
     const next = reduceServerEvent(

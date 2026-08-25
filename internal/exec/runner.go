@@ -345,6 +345,12 @@ func handleNotification(opts Options, notification Notification, state *runState
 			return false, err
 		}
 		emitItemCompleted(opts, params, state)
+	case appserver.NotificationItemRemoved:
+		var params appserver.ItemRemovedNotification
+		if err := decodeNotification(notification, &params); err != nil {
+			return false, err
+		}
+		emitItemRemoved(opts, params, state)
 	case appserver.NotificationToolCallOutput:
 		var params appserver.ToolCallOutputNotification
 		if err := decodeNotification(notification, &params); err != nil {
@@ -561,6 +567,15 @@ func emitItemCompleted(opts Options, params appserver.ItemCompletedNotification,
 	}
 }
 
+func emitItemRemoved(opts Options, params appserver.ItemRemovedNotification, state *runState) {
+	item, isCommand := state.commandItem(params.ItemID)
+	emitJSON(opts, map[string]any{"type": "tool_removed", "thread_id": params.ThreadID, "turn_id": params.TurnID, "item_id": params.ItemID})
+	if isCommand {
+		emitJSON(opts, map[string]any{"type": "command_removed", "thread_id": params.ThreadID, "turn_id": params.TurnID, "item_id": params.ItemID, "name": item.Name})
+	}
+	state.forgetItem(params.ItemID)
+}
+
 func emitCommandOutputDelta(opts Options, params appserver.ToolCallOutputNotification, state *runState) {
 	item, ok := state.commandItem(params.ItemID)
 	if !ok {
@@ -651,6 +666,18 @@ func (s *runState) forgetCommandItem(itemID string) {
 		return
 	}
 	delete(s.commandItems, itemID)
+}
+
+func (s *runState) forgetItem(itemID string) {
+	if s == nil {
+		return
+	}
+	if s.commandItems != nil {
+		delete(s.commandItems, itemID)
+	}
+	if s.toolOutputs != nil {
+		delete(s.toolOutputs, itemID)
+	}
 }
 
 func (s *runState) appendToolOutput(itemID, delta string) {

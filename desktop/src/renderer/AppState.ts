@@ -401,6 +401,12 @@ function handleStreamingNotification(
       }
       syncStreamItem(params);
       return "state";
+    case "item/removed":
+      if (!notificationTargetsKnownThread(params, state)) {
+        return "skip";
+      }
+      clearRemovedItemStream(params);
+      return "state";
     default:
       return "state";
   }
@@ -537,6 +543,14 @@ function syncStreamItem(params: Record<string, unknown> | undefined): void {
     window.requestAnimationFrame(() =>
       streamTextStore.clearItem(turnID, item.id),
     );
+  }
+}
+
+function clearRemovedItemStream(params: Record<string, unknown> | undefined): void {
+  const turnID = params?.turn_id as string | undefined;
+  const itemID = params?.item_id as string | undefined;
+  if (turnID && itemID) {
+    streamTextStore.clearItem(turnID, itemID);
   }
 }
 
@@ -731,6 +745,17 @@ function reduceNotification(
         upsertTurnItem(thread, turnID, item),
       );
       return next;
+    }
+    case "item/removed": {
+      const turnID = params?.turn_id as string | undefined;
+      const itemID = params?.item_id as string | undefined;
+      const threadID = threadIDFromParams(params);
+      if (!turnID || !itemID) {
+        return state;
+      }
+      return updateThreadByID(state, threadID, (thread) =>
+        removeTurnItem(thread, turnID, itemID),
+      );
     }
     case "item/agentMessage/delta":
       return applyDelta(state, params, "text");
@@ -3013,6 +3038,15 @@ function upsertTurnItem(
     }
     return { ...turn, items: upsertTurnItemInOrder(turn, item) };
   });
+  return { ...thread, turns };
+}
+
+function removeTurnItem(thread: Thread, turnID: string, itemID: string): Thread {
+  const turns = thread.turns.map((turn) =>
+    turn.id === turnID
+      ? { ...turn, items: turn.items.filter((item) => item.id !== itemID) }
+      : turn,
+  );
   return { ...thread, turns };
 }
 

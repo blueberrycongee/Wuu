@@ -178,6 +178,7 @@ const (
 
 	NotificationItemStarted            = "item/started"
 	NotificationItemCompleted          = "item/completed"
+	NotificationItemRemoved            = "item/removed"
 	NotificationAgentMessageDelta      = "item/agentMessage/delta"
 	NotificationAgentMessageReplace    = "item/agentMessage/replace"
 	NotificationReasoningDelta         = "item/reasoning/delta"
@@ -2188,6 +2189,13 @@ type ItemCompletedNotification struct {
 	TurnID        string     `json:"turn_id"`
 	Item          ThreadItem `json:"item"`
 	CompletedAtMS int64      `json:"completed_at_ms"`
+}
+
+type ItemRemovedNotification struct {
+	ThreadID    string `json:"thread_id"`
+	TurnID      string `json:"turn_id"`
+	ItemID      string `json:"item_id"`
+	RemovedAtMS int64  `json:"removed_at_ms"`
 }
 
 type AgentMessageDeltaNotification struct {

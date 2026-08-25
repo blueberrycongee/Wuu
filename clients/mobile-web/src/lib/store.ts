@@ -252,6 +252,11 @@ export class AppStore {
         }
         return;
       }
+      case "item/removed": {
+        const itemId = p.item_id as string | undefined;
+        if (itemId) this.removeItem(p.thread_id as string, p.turn_id as string, itemId);
+        return;
+      }
       case "item/agentMessage/delta":
       case "item/reasoning/delta":
         this.patchItemText(p.thread_id as string, p.turn_id as string, p.item_id as string, (old) =>
@@ -339,6 +344,21 @@ export class AppStore {
       items.push(item);
     }
     turns[index] = { ...turn, items };
+    this.threads.set(threadId, { ...thread, turns });
+    this.bump();
+  }
+
+  private removeItem(threadId: string, turnId: string, itemId: string): void {
+    const thread = this.threads.get(threadId);
+    if (!thread) {
+      this.onUnknownThread?.(threadId);
+      return;
+    }
+    const turns = (thread.turns ?? []).map((turn) =>
+      turn.id === turnId
+        ? { ...turn, items: (turn.items ?? []).filter((item) => item.id !== itemId) }
+        : turn,
+    );
     this.threads.set(threadId, { ...thread, turns });
     this.bump();
   }
