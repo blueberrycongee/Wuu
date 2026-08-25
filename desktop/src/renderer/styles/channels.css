@@ -555,7 +555,7 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
-  padding: 12px var(--channel-horizontal-gutter)
+  padding: 28px max(30px, var(--channel-horizontal-gutter))
     calc(
       var(
           --channel-composer-height,
@@ -579,7 +579,9 @@
 }
 
 .channel-message-content {
-  width: fit-content;
+  /* `fit-content` can collapse this grid column to the narrowest intrinsic
+     token, causing long CJK/path-heavy messages to render one character wide. */
+  width: min(var(--conversation-message-max-width, 720px), 84%);
   max-width: min(var(--conversation-message-max-width, 720px), 84%);
   min-width: 0;
   display: flex;
@@ -588,6 +590,7 @@
 }
 
 .channel-message.own .channel-message-content {
+  width: min(var(--conversation-message-max-width, 720px), 72%);
   max-width: min(var(--conversation-message-max-width, 720px), 72%);
   align-items: flex-end;
 }
@@ -661,7 +664,7 @@
   width: fit-content;
   max-width: 100%;
   margin: 0;
-  border-radius: var(--radius-md);
+  border-radius: 18px;
   padding: 8px 12px;
   background: var(--ink-overlay-4);
   color: var(--text-primary);
@@ -669,6 +672,12 @@
   line-height: var(--conversation-reading-line-height, 1.5);
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.channel-message-bubble .rich-content,
+.channel-message-bubble .rich-content > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .channel-message-bubble .rich-content {
@@ -717,8 +726,18 @@
 }
 
 .channel-orchestration-message .channel-message-content {
-  width: min(var(--conversation-message-max-width, 720px), 92%);
-  max-width: 92%;
+  width: min(var(--conversation-message-max-width, 720px), 84%);
+  max-width: 84%;
+}
+
+.channel-orchestration-row {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+}
+
+.channel-orchestration-row .chat-bubble-group {
+  width: min(var(--conversation-message-max-width, 720px), 84%);
+  max-width: 84%;
 }
 
 .channel-orchestration-avatar {

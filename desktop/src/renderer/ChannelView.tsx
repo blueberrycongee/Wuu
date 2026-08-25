@@ -253,6 +253,15 @@ function buildChannelTimeline(messages: ChannelMessage[], roomAgentID?: string):
       && message.kind === "task"
       && message.author_type === "agent"
       && message.author_id === roomAgentID;
+    // A room agent is the room's routing/coordination layer, not a visible
+    // participant. Its public text would make the room look like another
+    // person in the conversation; task messages are rendered below as
+    // coordination activity instead.
+    const isRoomAgentText = Boolean(roomAgentID)
+      && message.author_type === "agent"
+      && message.author_id === roomAgentID
+      && message.kind !== "task";
+    if (isRoomAgentText) continue;
     if (isRoomAssignment) {
       const previous = timeline[timeline.length - 1];
       const previousTask = previous?.kind === "orchestration" ? previous.tasks[previous.tasks.length - 1] : undefined;
@@ -308,19 +317,14 @@ function ChannelOrchestrationCluster({
     : t("channels.coordinatingAgents", { count: ownerIDs.length });
 
   return (
-    <article className="channel-message channel-orchestration-message" data-complete={allDone || undefined}>
       <MessageBubbleRow
         outgoing={false}
-        avatar={(
-          <span className="channel-agent-avatar channel-orchestration-avatar" role="img" aria-label={room.name}>
-            <ChannelGroupAvatar room={room} agents={agents} />
-          </span>
-        )}
+        className={`channel-message channel-orchestration-message channel-orchestration-row${allDone ? " complete" : ""}`}
+        contentClassName="channel-message-content"
         meta={(
           <div className="channel-message-meta">
             <span className="channel-orchestration-meta">
-              <strong>{room.name}</strong>
-              <span className="channel-coordinator-badge">{t("channels.coordinator")}</span>
+              <strong>{t("channels.tasks")}</strong>
               <span className="channel-coordinator-state">{coordinationLabel}</span>
               <time dateTime={latestTask.created_at}>
                 {formatDate(latestTask.created_at, { hour: "2-digit", minute: "2-digit" })}
@@ -415,7 +419,6 @@ function ChannelOrchestrationCluster({
           </div>
         )}
       </MessageBubbleRow>
-    </article>
   );
 }
 
@@ -904,14 +907,16 @@ export function ChannelView({ initialized, section = "rooms", archivedRoomIDs = 
   );
   const repliesByThread = useMemo(() => {
     const replies = new Map<string, ChannelMessage[]>();
+    const roomAgentIDs = new Set(rooms.flatMap((room) => room.agent_id ? [room.agent_id] : []));
     for (const message of messages) {
       if (!message.thread_id || message.kind === "task") continue;
+      if (message.author_type === "agent" && roomAgentIDs.has(message.author_id)) continue;
       const current = replies.get(message.thread_id) ?? [];
       current.push(message);
       replies.set(message.thread_id, current);
     }
     return replies;
-  }, [messages]);
+  }, [messages, rooms]);
   const activeThreadRoot = activeThreadRootID ? messageByID.get(activeThreadRootID) : undefined;
   const activeThreadMessages = useMemo(
     () => activeThreadRootID ? (repliesByThread.get(activeThreadRootID) ?? []) : [],
