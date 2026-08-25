@@ -55,13 +55,9 @@ func (s *Server) namedAgentMCPURL(agentID string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("listen for named agent MCP: %w", err)
 		}
-		secretBytes := make([]byte, 32)
-		if _, err := rand.Read(secretBytes); err != nil {
-			_ = listener.Close()
-			return "", fmt.Errorf("create named agent MCP capability: %w", err)
-		}
-		s.namedAgentMCPSecret = hex.EncodeToString(secretBytes)
 		s.namedAgentMCPBaseURL = "http://" + listener.Addr().String()
+		s.namedAgentMCPTokenByAgent = make(map[string]string)
+		s.namedAgentMCPAgentByToken = make(map[string]string)
 		s.namedAgentMCPServer = &http.Server{
 			Handler:           http.HandlerFunc(s.handleNamedAgentMCP),
 			ReadHeaderTimeout: 5 * time.Second,
@@ -73,7 +69,17 @@ func (s *Server) namedAgentMCPURL(agentID string) (string, error) {
 			}
 		}()
 	}
-	return fmt.Sprintf("%s/%s/%s", s.namedAgentMCPBaseURL, s.namedAgentMCPSecret, agentID), nil
+	token := s.namedAgentMCPTokenByAgent[agentID]
+	if token == "" {
+		tokenBytes := make([]byte, 32)
+		if _, err := rand.Read(tokenBytes); err != nil {
+			return "", fmt.Errorf("create named agent MCP capability: %w", err)
+		}
+		token = hex.EncodeToString(tokenBytes)
+		s.namedAgentMCPTokenByAgent[agentID] = token
+		s.namedAgentMCPAgentByToken[token] = agentID
+	}
+	return fmt.Sprintf("%s/%s", s.namedAgentMCPBaseURL, token), nil
 }
 
 func (s *Server) closeNamedAgentMCP() {
@@ -84,7 +90,8 @@ func (s *Server) closeNamedAgentMCP() {
 	server := s.namedAgentMCPServer
 	s.namedAgentMCPServer = nil
 	s.namedAgentMCPBaseURL = ""
-	s.namedAgentMCPSecret = ""
+	s.namedAgentMCPTokenByAgent = nil
+	s.namedAgentMCPAgentByToken = nil
 	s.namedAgentMCPMu.Unlock()
 	if server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -99,14 +106,10 @@ func (s *Server) handleNamedAgentMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.namedAgentMCPMu.Lock()
-	prefix := "/" + s.namedAgentMCPSecret + "/"
+	token := strings.Trim(r.URL.Path, "/")
+	agentID := s.namedAgentMCPAgentByToken[token]
 	s.namedAgentMCPMu.Unlock()
-	if prefix == "//" || !strings.HasPrefix(r.URL.Path, prefix) {
-		http.NotFound(w, r)
-		return
-	}
-	agentID := strings.Trim(strings.TrimPrefix(r.URL.Path, prefix), "/")
-	if agentID == "" || strings.Contains(agentID, "/") {
+	if token == "" || strings.Contains(token, "/") || agentID == "" {
 		http.NotFound(w, r)
 		return
 	}

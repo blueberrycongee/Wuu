@@ -271,7 +271,8 @@ type Server struct {
 	namedAgentMCPMu            sync.Mutex
 	namedAgentMCPServer        *http.Server
 	namedAgentMCPBaseURL       string
-	namedAgentMCPSecret        string
+	namedAgentMCPTokenByAgent  map[string]string
+	namedAgentMCPAgentByToken  map[string]string
 	sideTurnMu                 sync.Mutex
 	sideTurns                  map[string]*sideThreadTurn
 }
