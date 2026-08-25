@@ -4,6 +4,7 @@ import type {
   EngineListResult,
   EngineUpdateParams,
 } from "../shared/protocol";
+import { clearDraftEngineMemory } from "./DraftEngineMemory";
 import { useI18n } from "./i18n";
 import { SelectMenu } from "./SelectMenu";
 
@@ -120,7 +121,13 @@ export function EngineSettingsSection(): JSX.Element {
                   dataTestid="settings-default-engine"
                   value={defaultEngine}
                   disabled={busy}
-                  onChange={(next) => void save({ default_engine: next })}
+                  onChange={(next) => {
+                    // The composer remembers the last agent picked there. An
+                    // explicit default change here is the newer decision, so
+                    // drop that memory instead of letting it mask the setting.
+                    clearDraftEngineMemory();
+                    void save({ default_engine: next });
+                  }}
                   options={selectableIds.map((id) => ({
                     value: id,
                     label: ENGINE_LABELS[id] ?? id,

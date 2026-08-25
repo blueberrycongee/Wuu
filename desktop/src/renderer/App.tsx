@@ -179,6 +179,10 @@ import type { InstructionFilesEntry } from "./InstructionFilesCard";
 import { DesignTokensPanel } from "./DesignTokensPanel";
 import { useAppDebugState } from "./AppDebugState";
 import {
+  resolveDraftEngineMemory,
+  writeDraftEngineMemory,
+} from "./DraftEngineMemory";
+import {
   hasReadyProvider,
   ProviderSetupDialog,
   PROVIDER_SETUP_DISMISSED_KEY,
@@ -1171,28 +1175,54 @@ export function App(): JSX.Element {
   // settings default". Unlike the fallback chain, an explicit "wuu" selection
   // is stored as-is so it overrides an external default engine. Engine
   // binding is a per-thread creation decision, so the draft resets whenever
-  // the active thread changes.
+  // the active thread changes, then re-seeds from the last composer pick so
+  // working in an external agent does not mean re-selecting it for every new
+  // session (see DraftEngineMemory).
   const [draftEngine, setDraftEngine] = useState<string>("");
   const [draftEngineRuntime, setDraftEngineRuntime] = useState<EngineRuntimeSelection>({
     model: "",
     effort: "",
   });
   const [draftPermissionMode, setDraftPermissionMode] = useState<PermissionMode | "">("");
+  const draftEngineSeed = useRef<{ threadID?: string; done: boolean }>({
+    threadID: activeThreadID,
+    done: false,
+  });
   useEffect(() => {
-    setDraftEngine("");
-    setDraftEngineRuntime({ model: "", effort: "" });
-    setDraftPermissionMode("");
-  }, [activeThreadID]);
+    if (draftEngineSeed.current.threadID !== activeThreadID) {
+      draftEngineSeed.current = { threadID: activeThreadID, done: false };
+      setDraftEngine("");
+      setDraftEngineRuntime({ model: "", effort: "" });
+      setDraftPermissionMode("");
+    }
+    // Only a brand-new conversation seeds from memory. An open thread is
+    // already bound to its engine, and a seeded draft would otherwise win the
+    // fallback chain for a thread that carries no explicit engine_id.
+    if (activeThreadID || draftEngineSeed.current.done) return;
+    // The inventory arrives asynchronously, so a remembered external engine
+    // can only be validated once it lands; until then the seed stays pending
+    // and retries. An explicit pick in the meantime wins and ends the retry.
+    const remembered = resolveDraftEngineMemory(engineInventory);
+    if (!remembered) {
+      draftEngineSeed.current.done = engineInventory !== undefined;
+      return;
+    }
+    draftEngineSeed.current.done = true;
+    setDraftEngine(remembered.engine);
+    setDraftEngineRuntime({ model: remembered.model, effort: remembered.effort });
+    setDraftPermissionMode(remembered.engine === "wuu" ? "" : "unconfined");
+  }, [activeThreadID, engineInventory]);
   const selectDraftEngine = useCallback((id: string) => {
+    const runtime = id === "wuu"
+      ? { model: "", effort: "" }
+      : defaultEngineRuntimeSelection(
+          engineInventory?.engines.find((engine) => engine.id === id),
+        );
+    draftEngineSeed.current.done = true;
     setDraftEngine(id);
     setDraftPermissionMode(id === "wuu" ? "" : "unconfined");
-    setDraftEngineRuntime(
-      id === "wuu"
-        ? { model: "", effort: "" }
-        : defaultEngineRuntimeSelection(
-            engineInventory?.engines.find((engine) => engine.id === id),
-          ),
-    );
+    setDraftEngineRuntime(runtime);
+    writeDraftEngineMemory({ engine: id, ...runtime });
   }, [engineInventory]);
   useEffect(() => {
     let current = true;
@@ -2798,12 +2828,24 @@ export function App(): JSX.Element {
         engineModel={effectiveEngineRuntime.model}
         engineEffort={effectiveEngineRuntime.effort}
         onSelectEngine={selectDraftEngine}
-        onSelectEngineModel={(model, effort) =>
-          setDraftEngineRuntime({ model, effort })
-        }
-        onSelectEngineEffort={(effort) =>
-          setDraftEngineRuntime((current) => ({ ...current, effort }))
-        }
+        onSelectEngineModel={(model, effort) => {
+          setDraftEngineRuntime({ model, effort });
+          // Only a new conversation writes the memory: for an existing thread
+          // the engine is already bound and the picker is locked.
+          if (!activeThread) {
+            writeDraftEngineMemory({ engine: effectiveEngine, model, effort });
+          }
+        }}
+        onSelectEngineEffort={(effort) => {
+          setDraftEngineRuntime((current) => ({ ...current, effort }));
+          if (!activeThread) {
+            writeDraftEngineMemory({
+              engine: effectiveEngine,
+              model: effectiveEngineRuntime.model,
+              effort,
+            });
+          }
+        }}
         gitStatus={state.gitStatus}
         projects={state.projects}
         activeContext={state.activeContext}
