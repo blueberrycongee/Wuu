@@ -885,35 +885,21 @@ func (r *StreamRunner) compactionNoteFork(retained *RetainedRequestContextState)
 		req.CacheHint = cacheHint
 		req.Operation = providers.EnsureInferenceOperation(req.Operation, providers.InferenceOperationCompaction, providers.InferenceProfileContinuationCritical)
 		ctx = providers.WithInferenceJournal(ctx, r.InferenceJournal)
-		resp, executed, err := providers.ExecuteChatAttempt(ctx, client, req, providers.InferenceOperationCompaction, providers.InferenceProfileContinuationCritical)
+		result, err := NewStreamStep(client).Execute(ctx, req)
 		if err != nil {
-			if executed.Execution != nil {
-				_ = executed.Execution.Complete(providers.InferenceOutcomeFailed, providers.NormalizeFailure(err))
-			}
-			return CompactionNoteForkResult{Usage: resp.Usage}, err
+			return CompactionNoteForkResult{Usage: result.Usage}, err
 		}
-		fail := func(err error) (CompactionNoteForkResult, error) {
-			if executed.Execution != nil {
-				_ = executed.Execution.Complete(providers.InferenceOutcomeFailed, providers.NormalizeFailure(err))
-			}
-			return CompactionNoteForkResult{Usage: resp.Usage}, err
+		if len(result.ToolCalls) != 0 {
+			return CompactionNoteForkResult{Usage: result.Usage}, errors.New("context note fork attempted to call a tool")
 		}
-		if len(resp.ToolCalls) != 0 {
-			return fail(errors.New("context note fork attempted to call a tool"))
+		if result.Truncated || result.FinishReason == providers.FinishReasonLength {
+			return CompactionNoteForkResult{Usage: result.Usage}, errors.New("context note fork output was truncated")
 		}
-		if resp.Truncated || resp.FinishReason == providers.FinishReasonLength {
-			return fail(errors.New("context note fork output was truncated"))
-		}
-		markdown := strings.TrimSpace(resp.Content)
+		markdown := strings.TrimSpace(result.Content)
 		if markdown == "" {
-			return fail(errors.New("context note fork returned empty Markdown"))
+			return CompactionNoteForkResult{Usage: result.Usage}, errors.New("context note fork returned empty Markdown")
 		}
-		if executed.Execution != nil {
-			if err := executed.Execution.Complete(providers.InferenceOutcomeSucceeded, providers.NormalizedFailure{}); err != nil {
-				return CompactionNoteForkResult{Usage: resp.Usage}, err
-			}
-		}
-		return CompactionNoteForkResult{Markdown: markdown, Usage: resp.Usage}, nil
+		return CompactionNoteForkResult{Markdown: markdown, Usage: result.Usage}, nil
 	}
 }
 

@@ -32,6 +32,46 @@ type mockStreamClient struct {
 	chatCallCount int
 }
 
+type streamOnlyNoteClient struct {
+	chatCalls   int
+	streamCalls int
+}
+
+func (c *streamOnlyNoteClient) Chat(context.Context, providers.ChatRequest) (providers.ChatResponse, error) {
+	c.chatCalls++
+	return providers.ChatResponse{}, errors.New("unary chat is unsupported")
+}
+
+func (c *streamOnlyNoteClient) StreamChat(_ context.Context, req providers.ChatRequest) (<-chan providers.StreamEvent, error) {
+	c.streamCalls++
+	if req.Attempt.Valid() {
+		req.Attempt.RecordSubmission(providers.InferenceSubmissionMeta{Provider: "test", Protocol: "mock", Transport: "memory", Mode: "stream"})
+	}
+	usage := &providers.TokenUsage{InputTokens: 12, OutputTokens: 4}
+	events := make(chan providers.StreamEvent, 2)
+	events <- providers.StreamEvent{Type: providers.EventContentDelta, Content: "# Context note\n\nContinue the task."}
+	events <- providers.StreamEvent{Type: providers.EventDone, Usage: usage, FinishReason: providers.FinishReasonStop}
+	close(events)
+	return events, nil
+}
+
+func TestCompactionNoteForkUsesStreamingProviderPath(t *testing.T) {
+	client := &streamOnlyNoteClient{}
+	runner := &StreamRunner{Client: client, ProviderName: "test", Model: "test-model"}
+	result, err := runner.compactionNoteFork(nil)(context.Background(), []providers.ChatMessage{{Role: "user", Content: "history"}}, CompactionNotePlan{
+		Prompt: "write the note", MaxBytes: 24_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.chatCalls != 0 || client.streamCalls != 1 {
+		t.Fatalf("provider calls: unary=%d stream=%d", client.chatCalls, client.streamCalls)
+	}
+	if !strings.Contains(result.Markdown, "Context note") || result.Usage == nil || result.Usage.OutputTokens != 4 {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 type streamCompactionProvider struct{ calls int }
 
 func (p *streamCompactionProvider) CompactionKey() string   { return "stream-test" }
