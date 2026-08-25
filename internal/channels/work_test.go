@@ -108,6 +108,16 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	if len(verified.Events) < 4 || verified.Events[len(verified.Events)-1].Kind != "verification" {
 		t.Fatalf("work event history = %#v", verified.Events)
 	}
+	if _, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDone}); err != nil {
+		t.Fatalf("complete verified task: %v", err)
+	}
+	diagnostics, err := service.GetWorkDiagnostics(ctx, room.ID)
+	if err != nil {
+		t.Fatalf("GetWorkDiagnostics() error = %v", err)
+	}
+	if diagnostics.WorkCount != 1 || diagnostics.CompletedCount != 1 || diagnostics.ProducerVerifierCompletedCount != 1 || diagnostics.VerifierRunCount != 1 || diagnostics.InputTokens != 100 || diagnostics.OutputTokens != 20 || diagnostics.ChecksRerun != 1 {
+		t.Fatalf("work diagnostics = %#v", diagnostics)
+	}
 }
 
 func TestGoalRevisionInvalidatesPendingDeliveriesAndRunningHandles(t *testing.T) {
