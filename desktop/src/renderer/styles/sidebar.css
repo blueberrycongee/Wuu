@@ -1886,18 +1886,15 @@
 .project-row .project-row-loading {
   grid-column: 3;
   justify-self: center;
-  width: 12px;
-  height: 12px;
+  width: var(--sidebar-session-spinner-size);
+  height: var(--sidebar-session-spinner-size);
   flex: 0 0 auto;
   /*
-   * Sidebar running-state spinner. Inverted to a "light notch on a dark
-   * ring" so the heavier mass anchors the rotation more clearly than the
-   * classic "dark wedge" form at small sidebar sizes. Dark uses 65% of
-   * `--sidebar-accent` — full accent is too heavy against the sidebar
-   * surface; 65% keeps the contrast against the 22% green-gray notch
-   * without going inky. Matches `.session-tab.running .session-tab-status`.
+   * Container and session running states share one size and stroke weight so
+   * peers in the sidebar do not imply different levels of activity.
    */
-  border: 2px solid color-mix(in srgb, var(--sidebar-accent) 65%, transparent);
+  border: var(--sidebar-session-spinner-border-width) solid
+    color-mix(in srgb, var(--sidebar-accent) 65%, transparent);
   border-top-color: var(--sidebar-project-loading-notch);
   border-radius: var(--radius-pill);
   animation: wuu-spin var(--session-loading-spin-duration) linear infinite;
@@ -2187,7 +2184,10 @@
 .thread-row::before {
   position: absolute;
   top: 50%;
-  right: var(--sidebar-row-pad-x);
+  right: calc(
+    var(--sidebar-row-pad-x) +
+      (var(--sidebar-row-action-size) - var(--sidebar-session-status-dot-size)) / 2
+  );
   z-index: 1;
   width: var(--sidebar-session-status-dot-size);
   height: var(--sidebar-session-status-dot-size);
@@ -2221,7 +2221,10 @@
 .thread-row-spinner {
   position: absolute;
   top: calc(50% - var(--sidebar-session-spinner-size) / 2);
-  right: var(--sidebar-row-pad-x);
+  right: calc(
+    var(--sidebar-row-pad-x) +
+      (var(--sidebar-row-action-size) - var(--sidebar-session-spinner-size)) / 2
+  );
   z-index: 1;
   width: var(--sidebar-session-spinner-size);
   height: var(--sidebar-session-spinner-size);

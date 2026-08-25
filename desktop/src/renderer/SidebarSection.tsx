@@ -251,7 +251,7 @@ export function SidebarSection({
               aria-hidden="true"
             />
           </span>
-          {loading || running ? (
+          {loading || (running && !expanded) ? (
             <span className="project-row-loading" aria-hidden="true" />
           ) : null}
           {unread && !loading && !running ? (
