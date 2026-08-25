@@ -146,6 +146,10 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 			continue
 		}
 		message.CreatedAt = fromMillis(createdAt)
+		if strings.TrimSpace(message.FromID) == "" {
+			// Host-generated internal envelopes have no hidden author identity.
+			message.FromType = ""
+		}
 		if err := json.Unmarshal([]byte(artifactRefsJSON), &message.ArtifactRefs); err != nil {
 			rows.Close()
 			return CheckResult{}, fmt.Errorf("decode collaboration artifacts: %w", err)

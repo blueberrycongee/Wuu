@@ -46,7 +46,7 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	if err != nil || len(check.Collaboration) != 1 || check.Collaboration[0].Kind != CollaborationAssignment || check.Collaboration[0].WorkID != task.ID {
 		t.Fatalf("assignment delivery = %#v, err = %v", check.Collaboration, err)
 	}
-	if check.Collaboration[0].FromID != "" || check.Collaboration[0].RecipientNamedAgentID != owner.Agent.ID {
+	if check.Collaboration[0].FromID != "" || check.Collaboration[0].FromType != "" || check.Collaboration[0].RecipientNamedAgentID != owner.Agent.ID {
 		t.Fatalf("assignment leaked hidden sender or lost recipient: %#v", check.Collaboration[0])
 	}
 	if _, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing}); err != nil {
