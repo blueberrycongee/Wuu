@@ -118,7 +118,7 @@
   /*
    * Reading rhythm: 1.75 keeps mixed CJK/Latin prose comfortable at
    * 14px (24.5px baseline pitch) now that answer prose is capped at
-   * the message max-width (720px, see .agent-block). Paragraph gap is
+   * the message max-width (800px, see .agent-block). Paragraph gap is
    * 24px against ~10.5px in-paragraph leading, keeping the block/line
    * contrast near 2.3x so paragraphs read as distinct blocks. Earlier
    * 14px was judged nearly identical to in-paragraph leading and long
