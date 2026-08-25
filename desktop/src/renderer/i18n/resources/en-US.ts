@@ -279,7 +279,7 @@ export const enUS = {
   "channels.assignmentStatus.doing": "In progress",
   "channels.assignmentStatus.checking": "Checking",
   "channels.assignmentStatus.revising": "Revising",
-  "channels.assignmentStatus.needs_human": "Needs input",
+  "channels.assignmentStatus.needsHuman": "Needs input",
   "channels.assignmentStatus.done": "Done",
   "channels.showAssignments": "Show assignments",
   "channels.hideAssignments": "Hide assignments",

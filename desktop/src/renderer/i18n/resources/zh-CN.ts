@@ -277,7 +277,7 @@ export const zhCN = {
   "channels.assignmentStatus.doing": "进行中",
   "channels.assignmentStatus.checking": "验收中",
   "channels.assignmentStatus.revising": "继续修改",
-  "channels.assignmentStatus.needs_human": "等待确认",
+  "channels.assignmentStatus.needsHuman": "等待确认",
   "channels.assignmentStatus.done": "已完成",
   "channels.showAssignments": "展开任务",
   "channels.hideAssignments": "收起任务",

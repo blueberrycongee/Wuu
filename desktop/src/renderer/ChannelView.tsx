@@ -287,6 +287,10 @@ export function assignmentState(state?: string): "open" | "doing" | "checking" |
   return "open";
 }
 
+function assignmentStatusKey(state: ReturnType<typeof assignmentState>): string {
+  return state === "needs_human" ? "needsHuman" : state;
+}
+
 function ChannelOrchestrationCluster({
   room,
   tasks,
@@ -398,7 +402,7 @@ function ChannelOrchestrationCluster({
                     </div>
                     <span className="channel-assignment-status" data-state={state}>
                       <i aria-hidden="true" />
-                      {t(`channels.assignmentStatus.${state}`)}
+                      {t(`channels.assignmentStatus.${assignmentStatusKey(state)}`)}
                     </span>
                     <button
                       className="channel-assignment-thread-button"
@@ -465,7 +469,7 @@ function ChannelMessageBubble({
               <strong>{message.task_title?.trim() || message.body.trim() || t("channels.newTask")}</strong>
               <span className="channel-assignment-status" data-state={assignmentState(message.task_state)}>
                 <i aria-hidden="true" />
-                {t(`channels.assignmentStatus.${assignmentState(message.task_state)}`)}
+                {t(`channels.assignmentStatus.${assignmentStatusKey(assignmentState(message.task_state))}`)}
               </span>
             </span>
           ) : null}
