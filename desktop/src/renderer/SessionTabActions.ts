@@ -54,7 +54,7 @@ export type SessionTabActionsDeps = {
   ) => SessionTab;
   selectThread: (threadID: string) => Promise<void>;
   beginViewSwitch: (kind: ViewSwitchKind, targetID: string) => number;
-  beginInstantThreadSwitch: () => number;
+  beginInstantThreadSwitch: (targetID?: string) => number;
   finishViewSwitch: (requestID: number) => boolean;
   cancelViewSwitch: () => void;
   loadRuntime?: typeof defaultLoadRuntime;
@@ -271,7 +271,7 @@ export function createSessionTabActions(
     const performanceThreadID = tab.threadID;
     beginSessionSwitch(performanceThreadID, "cross-runtime");
     const requestID = canSwitchInstantly
-      ? deps.beginInstantThreadSwitch()
+      ? deps.beginInstantThreadSwitch(tab.threadID)
       : deps.beginViewSwitch("thread", tab.threadID);
     if (canSwitchInstantly) {
       deps.restorePrimaryComposerDraft(targetDraft);

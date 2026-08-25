@@ -20,7 +20,7 @@ export type ViewSwitchStateController = {
     kind: PendingViewSwitchKind,
     targetID: string,
   ) => number;
-  beginInstantThreadSwitch: () => number;
+  beginInstantThreadSwitch: (targetID?: string) => number;
   finishViewSwitch: (requestID: number) => boolean;
   cancelViewSwitch: () => void;
   isCurrentViewSwitchRequest: (requestID: number) => boolean;
@@ -77,11 +77,15 @@ export function useViewSwitchState({
     [clearViewSwitchDelay, loadingDelayMs],
   );
 
-  const beginInstantThreadSwitch = useCallback((): number => {
+  const beginInstantThreadSwitch = useCallback((targetID = ""): number => {
     const requestID = viewSwitchRequestRef.current + 1;
     viewSwitchRequestRef.current = requestID;
     clearViewSwitchDelay();
-    setPendingViewSwitch(undefined);
+    // Cached thread switches may paint immediately, but cross-runtime switches
+    // still have to finish runtime selection and resume before a send is safe.
+    // Keep that request in the non-visible pending state so send handlers can
+    // reject the transition window without restoring the loading overlay.
+    setPendingViewSwitch({ kind: "thread", targetID, visible: false });
     return requestID;
   }, [clearViewSwitchDelay]);
 

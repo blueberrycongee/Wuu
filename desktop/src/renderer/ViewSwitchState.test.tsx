@@ -100,6 +100,29 @@ describe("useViewSwitchState", () => {
     expect(hook.get().pendingViewSwitch).toBeUndefined();
   });
 
+  it("keeps instant thread switches send-blocked without showing loading UI", async () => {
+    const hook = await renderViewSwitchState();
+
+    let requestID = 0;
+    act(() => {
+      requestID = hook.get().beginInstantThreadSwitch("thread-cached");
+    });
+
+    expect(hook.get().pendingViewSwitch).toEqual({
+      kind: "thread",
+      targetID: "thread-cached",
+      visible: false,
+    });
+    expect(hook.get().viewSwitchPending).toBe(true);
+    expect(hook.get().viewContextSwitchPending).toBe(false);
+    expect(hook.get().visiblePendingThreadID).toBeUndefined();
+
+    act(() => {
+      expect(hook.get().finishViewSwitch(requestID)).toBe(true);
+    });
+    expect(hook.get().pendingViewSwitch).toBeUndefined();
+  });
+
   it("cancel invalidates in-flight request IDs", async () => {
     const hook = await renderViewSwitchState();
 

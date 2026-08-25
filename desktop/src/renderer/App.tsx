@@ -1449,9 +1449,8 @@ export function App(): JSX.Element {
   // authoritative thread turns means a message that already went out can never
   // stay stuck as "排队中".
   useEffect(() => {
-    // Use the state snapshot that produced this render. appStateRef is synced
-    // by a later effect, so reading it here can observe the previous thread
-    // snapshot and permanently miss a materialized queued user_message.
+    // Use the state snapshot that produced this render so reconciliation stays
+    // tied to the thread that actually materialized the queued message.
     reconcilePendingComposerMessagesForState(state);
   }, [
     pendingComposerMessagesByThread,
@@ -1676,7 +1675,7 @@ export function App(): JSX.Element {
     return () => query.removeEventListener("change", update);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     appStateRef.current = state;
   }, [state]);
 
@@ -2799,6 +2798,7 @@ export function App(): JSX.Element {
         images={composerImages}
         queuedMessages={queuedMessages}
         guideMessages={guideMessages}
+        sendDisabled={viewSwitchPending}
         running={
           (!activeThreadReadOnly && activeThreadIsRunning) ||
           viewContextSwitchPending
