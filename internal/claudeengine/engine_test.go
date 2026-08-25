@@ -180,6 +180,41 @@ func TestTurnSubscriptionReconcilesStreamAndResult(t *testing.T) {
 	}
 }
 
+func TestTurnSubscriptionDeduplicatesPartialAssistantEchoWithSparseContentIndex(t *testing.T) {
+	var events []providers.StreamEvent
+	done := make(chan turnOutcome, 1)
+	sub := newTurnSubscription(func(event providers.StreamEvent) {
+		events = append(events, event)
+	}, done)
+
+	sub.handleLine(`{"type":"stream_event","event":{"type":"message_start"}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"text"}}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"abc"}}}`)
+	sub.handleLine(`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"def"}}}`)
+	// Partial assistant echoes contain only the completed block. Its local
+	// position is 0 even though the corresponding stream block has index 1.
+	sub.handleLine(`{"type":"assistant","message":{"content":[{"type":"text","text":"abcdef"}]}}`)
+	sub.handleLine(`{"type":"result","is_error":false,"result":"abcdef"}`)
+
+	out := <-done
+	if out.err != nil {
+		t.Fatalf("turn error: %v", out.err)
+	}
+	var streamed strings.Builder
+	for _, event := range events {
+		if event.Type == providers.EventContentDelta {
+			streamed.WriteString(event.Content)
+		}
+	}
+	if got := streamed.String(); got != "abcdef" {
+		t.Fatalf("streamed content = %q, want one copy of the assistant text", got)
+	}
+	if got := out.result.Result.Content; got != "abcdef" {
+		t.Fatalf("result content = %q, want abcdef", got)
+	}
+}
+
 func TestTurnSubscriptionIgnoresChildAgentContent(t *testing.T) {
 	done := make(chan turnOutcome, 1)
 	sub := newTurnSubscription(nil, done)

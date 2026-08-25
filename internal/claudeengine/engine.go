@@ -468,21 +468,38 @@ func (sub *turnSubscription) handleAssistant(envelope claudeLine) {
 	for index, block := range msg.Content {
 		switch block.Type {
 		case "text":
-			sub.reconcileText(index, block.Text)
+			sub.reconcileText(assistantStreamIndex(sub.streamText, index, block.Text), block.Text)
 		case "thinking":
-			sub.reconcileThinking(index, block.Thinking)
+			sub.reconcileThinking(assistantStreamIndex(sub.streamThinking, index, block.Thinking), block.Thinking)
 		case "tool_use":
 			sub.startTool(index, block)
 		}
 	}
 }
 
+// Partial assistant echoes can omit earlier content blocks, so their slice
+// position is not necessarily the original stream index. Match the echo back
+// to the streamed block by content before falling back to its local position.
+func assistantStreamIndex(streamed map[int]string, fallback int, full string) int {
+	bestIndex, bestLength := fallback, -1
+	for index, partial := range streamed {
+		if partial == "" || (!strings.HasPrefix(full, partial) && !strings.HasPrefix(partial, full)) {
+			continue
+		}
+		if len(partial) > bestLength {
+			bestIndex, bestLength = index, len(partial)
+		}
+	}
+	return bestIndex
+}
+
 func (sub *turnSubscription) reconcileText(index int, full string) {
 	if full == "" {
 		return
 	}
-	streamed := sub.streamText[index]
-	if streamed == "" {
+	streamed, seen := sub.streamText[index]
+	if !seen {
+		sub.streamText[index] = full
 		sub.text.WriteString(full)
 		sub.emit(providers.StreamEvent{Type: providers.EventContentDelta, Content: full})
 		return
@@ -490,6 +507,7 @@ func (sub *turnSubscription) reconcileText(index int, full string) {
 	if strings.HasPrefix(full, streamed) {
 		suffix := strings.TrimPrefix(full, streamed)
 		if suffix != "" {
+			sub.streamText[index] = full
 			sub.text.WriteString(suffix)
 			sub.emit(providers.StreamEvent{Type: providers.EventContentDelta, Content: suffix})
 		}
@@ -500,8 +518,9 @@ func (sub *turnSubscription) reconcileThinking(index int, full string) {
 	if full == "" {
 		return
 	}
-	streamed := sub.streamThinking[index]
-	if streamed == "" {
+	streamed, seen := sub.streamThinking[index]
+	if !seen {
+		sub.streamThinking[index] = full
 		sub.reasoning.WriteString(full)
 		sub.emit(providers.StreamEvent{Type: providers.EventThinkingDelta, Content: full})
 		return
@@ -509,6 +528,7 @@ func (sub *turnSubscription) reconcileThinking(index int, full string) {
 	if strings.HasPrefix(full, streamed) {
 		suffix := strings.TrimPrefix(full, streamed)
 		if suffix != "" {
+			sub.streamThinking[index] = full
 			sub.reasoning.WriteString(suffix)
 			sub.emit(providers.StreamEvent{Type: providers.EventThinkingDelta, Content: suffix})
 		}
