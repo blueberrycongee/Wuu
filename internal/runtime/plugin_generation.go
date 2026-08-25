@@ -58,6 +58,21 @@ func (s *Session) PreflightExtensions(cfg config.Config) (*PluginGeneration, err
 	return s.buildPluginGeneration(cfg, discoverPlugins(s.RootDir, s.WuuHome), nil, nil, startPluginClient)
 }
 
+// PluginGenerationNeedsRecovery reports a runtime process that reached active
+// state and subsequently failed. Startup failures are excluded so one broken
+// optional plugin does not force a rebuild before every turn.
+func (s *Session) PluginGenerationNeedsRecovery() bool {
+	if s == nil || s.PluginHost == nil {
+		return false
+	}
+	for _, status := range s.PluginHost.Statuses() {
+		if status.State == pluginhost.StateFailed && !status.StartedAt.IsZero() {
+			return true
+		}
+	}
+	return false
+}
+
 // PreflightExtensionPolicy builds a replacement from the current package set
 // without persisting the proposed grant/enable decisions.
 func (s *Session) PreflightExtensionPolicy(cfg config.Config) (*PluginGeneration, error) {

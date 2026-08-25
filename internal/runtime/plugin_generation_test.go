@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/config"
@@ -24,10 +25,14 @@ type generationClient struct {
 	capabilities []pluginhost.CapabilityDescriptor
 	invoke       func(pluginhost.CapabilityInvokeParams) (pluginhost.CapabilityInvokeResult, error)
 	invoked      int
+	status       *pluginhost.Status
 }
 
 func (c *generationClient) ID() string { return c.id }
 func (c *generationClient) Status() pluginhost.Status {
+	if c.status != nil {
+		return *c.status
+	}
 	return pluginhost.Status{ID: c.id, State: pluginhost.StateActive}
 }
 func (c *generationClient) Close(context.Context) error {
@@ -262,6 +267,27 @@ func TestSuccessfulCandidateSwapsThenClosesOldGeneration(t *testing.T) {
 	}
 	if session.StreamRunner.CompactionRegistry != candidate.compactions || !strings.Contains(session.StreamRunner.SystemPrompt, "candidate section") {
 		t.Fatal("candidate capability state was not installed atomically")
+	}
+}
+
+func TestPluginGenerationNeedsRecoveryOnlyAfterActiveRuntimeFails(t *testing.T) {
+	started := time.Now().UTC()
+	for _, test := range []struct {
+		name   string
+		status pluginhost.Status
+		want   bool
+	}{
+		{name: "active", status: pluginhost.Status{ID: "plugin", State: pluginhost.StateActive, StartedAt: started}},
+		{name: "startup failure", status: pluginhost.Status{ID: "plugin", State: pluginhost.StateFailed}},
+		{name: "runtime failure", status: pluginhost.Status{ID: "plugin", State: pluginhost.StateFailed, StartedAt: started}, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &generationClient{id: test.status.ID, status: &test.status}
+			session := &Session{PluginHost: pluginhost.New(client)}
+			if got := session.PluginGenerationNeedsRecovery(); got != test.want {
+				t.Fatalf("PluginGenerationNeedsRecovery() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 
