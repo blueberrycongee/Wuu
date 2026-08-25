@@ -2518,40 +2518,83 @@
 }
 
 .agent-avatar-accessory-picker > div {
-  max-height: 168px;
+  grid-template-columns: repeat(auto-fill, minmax(min(64px, 100%), 1fr));
+  gap: 10px;
+  max-height: 220px;
   overflow: auto;
-  padding: 2px;
+  padding: 6px;
 }
 
-.channel-avatar-picker > .agent-avatar-color-swatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+.agent-avatar-accessory-picker button {
+  overflow: visible;
+  padding: 8px;
 }
 
-.agent-avatar-color-swatches button {
-  --agent-avatar-swatch: hsl(var(--agent-avatar-hue) 68% 60%);
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+.agent-avatar-accessory-picker .agent-avatar-mark {
+  overflow: visible;
+  border-radius: 0;
+}
+
+.channel-avatar-picker > .agent-avatar-color-control {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agent-avatar-color-preview {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--paper);
   border-radius: 50%;
-  background: var(--agent-avatar-swatch);
+  background: hsl(var(--agent-avatar-hue) 68% 60%);
+  box-shadow: 0 0 0 1px var(--hairline-strong);
 }
 
-.agent-avatar-color-swatches button:hover {
-  --agent-avatar-swatch-hover: hsl(var(--agent-avatar-hue) 68% 54%);
-  background: var(--agent-avatar-swatch-hover);
-}
-
-.agent-avatar-color-swatches button.active {
-  border-color: var(--paper);
-  box-shadow: 0 0 0 2px var(--ink);
-}
-
-.agent-avatar-color-picker input[type="range"] {
-  --agent-avatar-accent: hsl(var(--agent-avatar-hue) 68% 54%);
+.agent-avatar-color-control input[type="range"] {
+  height: 28px;
   width: 100%;
-  accent-color: var(--agent-avatar-accent);
+  min-width: 0;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-avatar-color-control input[type="range"]::-webkit-slider-runnable-track {
+  height: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    hsl(0 68% 60%), hsl(60 68% 60%), hsl(120 68% 60%),
+    hsl(180 68% 60%), hsl(240 68% 60%), hsl(300 68% 60%), hsl(359 68% 60%));
+}
+
+.agent-avatar-color-control input[type="range"]::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: -6px;
+  appearance: none;
+  border: 3px solid var(--paper);
+  border-radius: 50%;
+  background: hsl(var(--agent-avatar-hue) 68% 54%);
+  box-shadow: 0 0 0 1px var(--ink-soft), 0 2px 5px var(--shadow-color-medium);
+}
+
+.agent-avatar-color-control input[type="range"]:focus-visible {
+  outline: none;
+}
+
+.agent-avatar-color-control input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 1px var(--paper), 0 0 0 3px var(--focus-ring);
+}
+
+.agent-avatar-color-control output {
+  color: var(--ink-tertiary);
+  font-size: var(--font-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* Effort chips: the option count and label length are runtime-dependent

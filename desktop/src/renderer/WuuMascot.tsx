@@ -275,6 +275,10 @@ export function WuuMascot({
   const hue = identityHue ?? providerMascotHue(effectiveProvider, runtime.providers);
   const colors = palette(hue);
   const selectedAccessory = accessory ?? modelMascotAccessory(effectiveModel);
+  const identityTraitsSignature = Object.entries(identityTraits)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}:${value}`)
+    .join("|");
   const [svg, setSVG] = useState<SVGSVGElement | null>(null);
   const [mascotLayers, setMascotLayers] = useState<{
     rear: SVGGElement;
@@ -305,10 +309,10 @@ export function WuuMascot({
       rear.remove();
       front.remove();
     };
-  // Blobatar replaces its inner SVG markup when an activity changes the
-  // expression or perspective. Rebuild our portal targets in that same layout
+  // Blobatar replaces its inner SVG markup when identity traits, expressions,
+  // or perspectives change. Rebuild our portal targets in that same layout
   // pass so accessories never remain mounted to the detached previous body.
-  }, [activity, svg]);
+  }, [activity, identityName, identityTraitsSignature, svg]);
 
   useEffect(() => {
     if (!svg || !followPointer) return;

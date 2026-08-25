@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react";
-import { AVATAR_HUES } from "./DefaultAvatar";
 import {
   AGENT_AVATAR_ACCESSORIES,
   AGENT_AVATAR_SHAPES,
@@ -90,31 +89,21 @@ export function AgentAvatarCreator({
 
       <fieldset className="channel-avatar-picker agent-avatar-color-picker">
         <legend>{t("channels.avatarColor")}</legend>
-        <div className="agent-avatar-color-swatches">
-          {AVATAR_HUES.map((hue) => {
-            const active = !avatarImage && config.hue === hue;
-            return (
-              <button
-                className={active ? "active" : ""}
-                type="button"
-                key={hue}
-                style={{ "--agent-avatar-hue": hue } as CSSProperties}
-                aria-label={t("channels.chooseAvatarColor", { hue })}
-                aria-pressed={active}
-                onClick={() => update({ hue })}
-              />
-            );
-          })}
-        </div>
-        <input
-          type="range"
-          min="0"
-          max="359"
-          value={config.hue}
-          aria-label={t("channels.avatarColor")}
+        <div
+          className="agent-avatar-color-control"
           style={{ "--agent-avatar-hue": config.hue } as CSSProperties}
-          onChange={(event) => update({ hue: Number(event.currentTarget.value) })}
-        />
+        >
+          <span className="agent-avatar-color-preview" aria-hidden="true" />
+          <input
+            type="range"
+            min="0"
+            max="359"
+            value={config.hue}
+            aria-label={t("channels.avatarColor")}
+            onChange={(event) => update({ hue: Number(event.currentTarget.value) })}
+          />
+          <output>{config.hue}°</output>
+        </div>
       </fieldset>
 
       <fieldset className="channel-avatar-picker agent-avatar-accessory-picker">
