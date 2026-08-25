@@ -216,6 +216,12 @@ func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
 	return nil
 }
 
+func (s *Server) threadRuntimePluginGenerationMatches(th *threadState) bool {
+	return s != nil && th != nil &&
+		th.runtimePluginEpoch == s.pluginGenerationEpoch.Load() &&
+		th.runtimePluginRevision == s.pluginRuntimeRevision.Load()
+}
+
 func (s *Server) ensureThreadRuntimeAfterAdmission(th *threadState) (*runtime.ThreadRuntime, error) {
 	threadRuntime, err := s.ensureThreadRuntime(th)
 	if err != nil || threadRuntime == nil {
@@ -855,7 +861,7 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	var detached detachedThreadRuntime
 	if existing != nil && !running {
 		selectionMismatch := !s.threadRuntimeMatchesSelectionLocked(th, existing)
-		pluginGenerationMismatch := th.runtimePluginEpoch != s.pluginGenerationEpoch.Load()
+		pluginGenerationMismatch := !s.threadRuntimePluginGenerationMatches(th)
 		if th.pendingRuntimeReset || selectionMismatch || pluginGenerationMismatch {
 			if !threadRuntimeHasOutstandingWork(th.ID, existing) {
 				detached = detachThreadRuntimeLocked(th)
@@ -976,6 +982,7 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 		th.execRuntime = threadRuntime
 		th.runtimeSubscription = sub
 		th.runtimePluginEpoch = s.pluginGenerationEpoch.Load()
+		th.runtimePluginRevision = s.pluginRuntimeRevision.Load()
 		th.mu.Unlock()
 		if threadRuntime.AgentControl != nil {
 			threadRuntime.AgentControl.StartWorkerTerminalRecovery()
@@ -1186,6 +1193,7 @@ func detachThreadRuntimeLocked(th *threadState) detachedThreadRuntime {
 	th.execRuntime = nil
 	th.runtimeSubscription = nil
 	th.runtimePluginEpoch = 0
+	th.runtimePluginRevision = 0
 	th.pendingRuntimeReset = false
 	return detached
 }

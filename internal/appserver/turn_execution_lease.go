@@ -52,13 +52,17 @@ func (s *Server) tryAcquireThreadExecutionLeaseLocked(th *threadState) (bool, er
 			return false, nil
 		}
 		s.pluginGenerationRefreshMu.Lock()
-		if epoch := lease.Epoch(); epoch != s.pluginGenerationEpoch.Load() || s.rt.PluginGenerationNeedsRecovery() {
+		needsRecovery := s.rt.PluginGenerationNeedsRecovery()
+		if epoch := lease.Epoch(); epoch != s.pluginGenerationEpoch.Load() || needsRecovery {
 			if err := s.refreshExtensions(s.currentExtensionConfig()); err != nil {
 				s.pluginGenerationRefreshMu.Unlock()
 				_ = lease.Release()
 				return false, fmt.Errorf("refresh plugin generation %d: %w", epoch, err)
 			}
 			s.pluginGenerationEpoch.Store(epoch)
+			if needsRecovery {
+				s.pluginRuntimeRevision.Add(1)
+			}
 		}
 		s.pluginGenerationRefreshMu.Unlock()
 		th.pluginExecutionLease = lease

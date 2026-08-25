@@ -102,6 +102,7 @@ type threadState struct {
 	pluginExecutionLease   *session.PluginGenerationLease
 	pluginLeaseReleaseLoop bool
 	runtimePluginEpoch     uint64
+	runtimePluginRevision  uint64
 	admissionReserved      bool
 	pendingSteers          []providers.ChatMessage
 	steerWake              chan struct{}
@@ -249,6 +250,7 @@ type Server struct {
 	closed                       atomic.Bool
 	pluginGenerationMutation     atomic.Bool
 	pluginGenerationEpoch        atomic.Uint64
+	pluginRuntimeRevision        atomic.Uint64
 	pluginGenerationRefreshMu    sync.Mutex
 	configRefreshMu              sync.Mutex
 	configFingerprint            string

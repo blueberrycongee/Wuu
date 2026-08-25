@@ -55,6 +55,20 @@ func (w errorWriter) Write([]byte) (int, error) {
 	return 0, w.err
 }
 
+func TestThreadRuntimeGenerationInvalidatedByRuntimeRecovery(t *testing.T) {
+	srv := &Server{}
+	srv.pluginGenerationEpoch.Store(7)
+	srv.pluginRuntimeRevision.Store(3)
+	th := &threadState{runtimePluginEpoch: 7, runtimePluginRevision: 3}
+	if !srv.threadRuntimePluginGenerationMatches(th) {
+		t.Fatal("fresh thread runtime did not match the active plugin generation")
+	}
+	srv.pluginRuntimeRevision.Add(1)
+	if srv.threadRuntimePluginGenerationMatches(th) {
+		t.Fatal("thread runtime retained a retired plugin generation after recovery")
+	}
+}
+
 func TestServerThreadExecutionLeaseReleasesBeforeTerminalNotification(t *testing.T) {
 	holderClient := &fakeClient{response: providers.ChatResponse{Content: "holder finished"}}
 	holderRuntime := newTestRuntime(t, holderClient)
