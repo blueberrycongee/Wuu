@@ -302,23 +302,20 @@ func (s *Session) ensureThread(ctx context.Context) error {
 	s.mu.Lock()
 	ref := s.ref
 	s.mu.Unlock()
+	sandbox, approval, _ := codexPermissionSettings(s.permissionMode)
+	config := s.threadConfig()
 	if ref != "" {
+		var resp ThreadResumeResponse
+		if err := s.client.Request(ctx, MethodThreadResume, ThreadResumeParams{
+			ThreadID: ref, Model: s.model, CWD: s.rootDir,
+			ApprovalPolicy: approval, Sandbox: sandbox, Config: config,
+			DeveloperInstructs: strings.TrimSpace(s.instructions),
+		}, &resp); err != nil {
+			return fmt.Errorf("codex thread/resume: %w", err)
+		}
 		return nil
 	}
 	var resp ThreadStartResponse
-	sandbox, approval, _ := codexPermissionSettings(s.permissionMode)
-	config := map[string]any{}
-	if len(s.mcpServers) > 0 {
-		servers := make(map[string]any, len(s.mcpServers))
-		for _, server := range s.mcpServers {
-			if strings.TrimSpace(server.Name) != "" && strings.TrimSpace(server.URL) != "" {
-				servers[server.Name] = map[string]any{"url": server.URL}
-			}
-		}
-		if len(servers) > 0 {
-			config["mcp_servers"] = servers
-		}
-	}
 	err := s.client.Request(ctx, MethodThreadStart, ThreadStartParams{
 		Model:              s.model,
 		CWD:                s.rootDir,
@@ -345,6 +342,22 @@ func (s *Session) ensureThread(ctx context.Context) error {
 	s.ref = ref
 	s.mu.Unlock()
 	return nil
+}
+
+func (s *Session) threadConfig() map[string]any {
+	config := map[string]any{}
+	if len(s.mcpServers) > 0 {
+		servers := make(map[string]any, len(s.mcpServers))
+		for _, server := range s.mcpServers {
+			if strings.TrimSpace(server.Name) != "" && strings.TrimSpace(server.URL) != "" {
+				servers[server.Name] = map[string]any{"url": server.URL}
+			}
+		}
+		if len(servers) > 0 {
+			config["mcp_servers"] = servers
+		}
+	}
+	return config
 }
 
 func (s *Session) startTurn(ctx context.Context, prompt string) (TurnStartResponse, error) {

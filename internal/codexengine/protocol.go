@@ -168,14 +168,16 @@ type ThreadInfo struct {
 
 // ThreadResumeParams reopens an existing codex thread by id.
 type ThreadResumeParams struct {
-	ThreadID       string         `json:"threadId"`
-	Model          string         `json:"model,omitempty"`
-	ModelProvider  string         `json:"modelProvider,omitempty"`
-	CWD            string         `json:"cwd,omitempty"`
-	ApprovalPolicy ApprovalPolicy `json:"approvalPolicy,omitempty"`
-	Sandbox        SandboxMode    `json:"sandbox,omitempty"`
-	Permissions    string         `json:"permissions,omitempty"`
-	ExcludeTurns   bool           `json:"excludeTurns,omitempty"`
+	ThreadID           string         `json:"threadId"`
+	Model              string         `json:"model,omitempty"`
+	ModelProvider      string         `json:"modelProvider,omitempty"`
+	CWD                string         `json:"cwd,omitempty"`
+	ApprovalPolicy     ApprovalPolicy `json:"approvalPolicy,omitempty"`
+	Sandbox            SandboxMode    `json:"sandbox,omitempty"`
+	Config             map[string]any `json:"config,omitempty"`
+	DeveloperInstructs string         `json:"developerInstructions,omitempty"`
+	Permissions        string         `json:"permissions,omitempty"`
+	ExcludeTurns       bool           `json:"excludeTurns,omitempty"`
 }
 
 // ThreadResumeResponse mirrors ThreadStartResponse.
