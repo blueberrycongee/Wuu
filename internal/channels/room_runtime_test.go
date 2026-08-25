@@ -87,3 +87,63 @@ func TestRuntimeTaskProjectionUsesVisibleOwnerAsAuthor(t *testing.T) {
 		t.Fatal("task projection exposed the room runtime as an author")
 	}
 }
+
+func TestOpenMigratesLegacyRoomAgentOutOfParticipantTables(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	service, err := Open(dir, nil)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	room, err := service.CreateRoom(ctx, CreateRoomParams{Kind: RoomChannel, Name: "Legacy", CreatedBy: "local-user"})
+	if err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+	runtime, err := service.GetRoomRuntime(ctx, room.RuntimeID)
+	if err != nil {
+		t.Fatalf("GetRoomRuntime() error = %v", err)
+	}
+	var tokenHashValue string
+	if err := service.db.QueryRowContext(ctx, `SELECT token_hash FROM room_runtimes WHERE id = ?`, runtime.ID).Scan(&tokenHashValue); err != nil {
+		t.Fatalf("read runtime token hash: %v", err)
+	}
+	if _, err := service.db.ExecContext(ctx, `DELETE FROM room_runtimes WHERE id = ?`, runtime.ID); err != nil {
+		t.Fatalf("remove separated runtime: %v", err)
+	}
+	if _, err := service.db.ExecContext(ctx, `
+		INSERT INTO named_agents(id, name, kind, room_id, memory_dir, avatar_key, avatar_image,
+			engine_override, token_hash, autostart, created_at)
+		VALUES (?, ?, 'room', ?, ?, '', '', 'wuu', ?, 1, ?)`, runtime.ID, room.Name,
+		room.ID, runtime.MemoryDir, tokenHashValue, toMillis(runtime.CreatedAt)); err != nil {
+		t.Fatalf("insert legacy room agent: %v", err)
+	}
+	if _, err := service.db.ExecContext(ctx, `INSERT INTO room_members(room_id, member_type, member_id, joined_at) VALUES (?, 'agent', ?, ?)`, room.ID, runtime.ID, toMillis(runtime.CreatedAt)); err != nil {
+		t.Fatalf("insert legacy runtime membership: %v", err)
+	}
+	if _, err := service.db.ExecContext(ctx, `INSERT INTO room_cursors(room_id, member_type, member_id, last_read_seq) VALUES (?, 'agent', ?, 0)`, room.ID, runtime.ID); err != nil {
+		t.Fatalf("insert legacy runtime cursor: %v", err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	service, err = Open(dir, nil)
+	if err != nil {
+		t.Fatalf("Open(migrated) error = %v", err)
+	}
+	defer service.Close()
+	migrated, err := service.GetRoomRuntime(ctx, runtime.ID)
+	if err != nil || migrated.RoomID != room.ID {
+		t.Fatalf("migrated runtime = %#v, err = %v", migrated, err)
+	}
+	for table, query := range map[string]string{
+		"named_agents": `SELECT COUNT(*) FROM named_agents WHERE id = ?`,
+		"room_members": `SELECT COUNT(*) FROM room_members WHERE member_id = ?`,
+		"room_cursors": `SELECT COUNT(*) FROM room_cursors WHERE member_id = ?`,
+	} {
+		var count int
+		if err := service.db.QueryRowContext(ctx, query, runtime.ID).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("legacy runtime remained in %s: count=%d err=%v", table, count, err)
+		}
+	}
+}
