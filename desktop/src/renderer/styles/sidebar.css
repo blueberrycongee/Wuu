@@ -1498,6 +1498,12 @@
     opacity var(--motion-fast) var(--ease-out);
 }
 
+/* A standalone pinned session is a peer of a pinned folder: its text starts
+ * on the folder glyph's left edge, not on the folder's child-session axis. */
+.pinned-sortable-thread .thread-row-main {
+  padding-left: calc((var(--sidebar-nav-icon-col) - var(--icon-size-lg)) / 2);
+}
+
 .pinned-sortable-thread .thread-row-main,
 .sidebar-functional-group[data-functional-group-id="pinned"] .sidebar-section-row.can-reorder {
   cursor: grab;
@@ -2170,35 +2176,37 @@
 }
 
 .thread-row {
-  grid-template-columns:
-    var(--sidebar-session-status-col)
-    minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .thread-row::before {
-  grid-column: 1;
-  justify-self: center;
+  position: absolute;
+  top: 50%;
+  right: var(--sidebar-row-pad-x);
+  z-index: 1;
   width: var(--sidebar-session-status-dot-size);
   height: var(--sidebar-session-status-dot-size);
   flex: 0 0 auto;
   border-radius: var(--radius-pill);
   background: var(--sidebar-session-status-bg);
   content: "";
-  transform: scale(var(--sidebar-session-status-scale));
+  pointer-events: none;
+  transform: translateY(-50%) scale(var(--sidebar-session-status-scale));
   transition:
     background-color var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
 }
 
 .thread-row:hover::before {
   background: var(--sidebar-session-status-bg);
-  transform: scale(var(--sidebar-session-status-scale));
+  transform: translateY(-50%) scale(var(--sidebar-session-status-scale));
 }
 
 .thread-row.active::before {
   background: var(--sidebar-session-status-bg);
-  transform: scale(var(--sidebar-session-status-scale));
+  transform: translateY(-50%) scale(var(--sidebar-session-status-scale));
 }
 
 .thread-row.running::before {
@@ -2206,8 +2214,10 @@
 }
 
 .thread-row-spinner {
-  grid-column: 1;
-  justify-self: center;
+  position: absolute;
+  top: calc(50% - var(--sidebar-session-spinner-size) / 2);
+  right: var(--sidebar-row-pad-x);
+  z-index: 1;
   width: var(--sidebar-session-spinner-size);
   height: var(--sidebar-session-spinner-size);
   flex: 0 0 auto;
@@ -2223,11 +2233,22 @@
   border-top-color: var(--sidebar-thread-spinner-notch);
   border-radius: var(--radius-pill);
   animation: wuu-spin var(--session-loading-spin-duration) linear infinite;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 
 .thread-row.has-unread::before {
   background: var(--sidebar-session-status-unread-bg);
-  transform: scale(var(--sidebar-session-status-unread-scale));
+  transform: translateY(-50%) scale(var(--sidebar-session-status-unread-scale));
+}
+
+/* Hover actions occupy the same right-edge status slot. Fade the passive
+ * indicator while those controls are present rather than letting them overlap. */
+.thread-row:hover::before,
+.thread-row:hover .thread-row-spinner,
+.thread-row:has(.thread-row-action:focus-visible)::before,
+.thread-row:has(.thread-row-action:focus-visible) .thread-row-spinner {
+  opacity: 0;
 }
 
 .thread-row.has-unread .thread-row-title {
@@ -2341,12 +2362,12 @@
 
 .thread-row.pending-switch::before {
   background: var(--sidebar-accent);
-  transform: scale(1);
+  transform: translateY(-50%) scale(1);
 }
 
 .thread-row-main {
   display: flex;
-  grid-column: 2;
+  grid-column: 1;
   min-width: 0;
   height: 100%;
   flex: 1;
@@ -2360,6 +2381,13 @@
    * line-height: 1 would re-clip descenders in the ellipsized title. */
   padding: 0;
   text-align: left;
+}
+
+/* Sessions inside a folder/workspace remain one level below their container.
+ * With status indicators no longer occupying a leading column, this explicit
+ * indent preserves the hierarchy instead of coupling depth to status layout. */
+.project-section .thread-list-collapse .thread-row-main {
+  padding-left: calc(var(--sidebar-nav-icon-col) + var(--sidebar-nav-column-gap));
 }
 
 .thread-row-main > .thread-row-title {
@@ -2385,6 +2413,14 @@
  *     to clear the action overlay). */
 .thread-row:has(.thread-row-fork-icon) .thread-row-main > .thread-row-title {
   padding-right: 24px;
+}
+
+.thread-row:is(.running, .has-unread) .thread-row-main > .thread-row-title {
+  padding-right: 18px;
+}
+
+.thread-row:is(.running, .has-unread):has(.thread-row-fork-icon) .thread-row-main > .thread-row-title {
+  padding-right: 42px;
 }
 
 .thread-row:hover .thread-row-main > .thread-row-title,
@@ -2457,6 +2493,12 @@
    * glyph over a different clickable box, which made forked rows feel badly
    * misaligned. */
   transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+/* Keep the persistent fork marker beside, rather than underneath, a right-edge
+ * running/unread indicator. */
+.thread-row:is(.running, .has-unread):has(.thread-row-fork-icon) .thread-row-fork-icon {
+  right: 24px;
 }
 
 .thread-row:hover .thread-row-fork-icon,
