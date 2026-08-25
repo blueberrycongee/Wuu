@@ -6,9 +6,12 @@ const (
 	MaxRoomMembers  = 32
 	MaxRoomAgents   = 6
 	MaxMessageRunes = 4000
-	DraftExpiry     = 24 * time.Hour
-	MinReminderDur  = time.Minute
-	ThreadStreakCap = 6
+	// Verification reports leave room for the host-owned decision and next-action
+	// wrapper while keeping the delivered internal message within MaxMessageRunes.
+	MaxVerificationReportRunes = 3200
+	DraftExpiry                = 24 * time.Hour
+	MinReminderDur             = time.Minute
+	ThreadStreakCap            = 6
 	// NamedAgentIDEnv marks subprocesses launched by a named-agent tool
 	// runtime. Human-only CLI entrypoints use it to avoid attributing an
 	// agent-authored channel message to the local user.
@@ -40,9 +43,12 @@ const (
 type TaskState string
 
 const (
-	TaskStateOpen  TaskState = "open"
-	TaskStateDoing TaskState = "doing"
-	TaskStateDone  TaskState = "done"
+	TaskStateOpen       TaskState = "open"
+	TaskStateDoing      TaskState = "doing"
+	TaskStateChecking   TaskState = "checking"
+	TaskStateRevising   TaskState = "revising"
+	TaskStateNeedsHuman TaskState = "needs_human"
+	TaskStateDone       TaskState = "done"
 )
 
 type InboxKind string
@@ -53,6 +59,22 @@ const (
 	InboxThreadUpdate InboxKind = "thread_update"
 	InboxTask         InboxKind = "task"
 	InboxReminder     InboxKind = "reminder"
+)
+
+type CollaborationKind string
+
+const (
+	CollaborationControl              CollaborationKind = "control"
+	CollaborationCandidateReady       CollaborationKind = "candidate_ready"
+	CollaborationVerificationFeedback CollaborationKind = "verification_feedback"
+)
+
+type VerificationDecision string
+
+const (
+	VerificationPass    VerificationDecision = "pass"
+	VerificationBlock   VerificationDecision = "block"
+	VerificationUnknown VerificationDecision = "unknown"
 )
 
 type ReminderState string
@@ -149,22 +171,25 @@ type UpdateRoomParams struct {
 }
 
 type Message struct {
-	ID         string         `json:"id"`
-	RoomID     string         `json:"room_id"`
-	Seq        int64          `json:"seq"`
-	ThreadID   string         `json:"thread_id,omitempty"`
-	AuthorType MemberType     `json:"author_type"`
-	AuthorID   string         `json:"author_id"`
-	Kind       MessageKind    `json:"kind"`
-	Body       string         `json:"body"`
-	Images     []MessageImage `json:"images,omitempty"`
-	Files      []MessageFile  `json:"files,omitempty"`
-	Mentions   []string       `json:"mentions"`
-	ReplyTo    string         `json:"reply_to,omitempty"`
-	TaskTitle  string         `json:"task_title,omitempty"`
-	TaskState  string         `json:"task_state,omitempty"`
-	TaskOwner  string         `json:"task_owner,omitempty"`
-	CreatedAt  time.Time      `json:"created_at"`
+	ID                       string         `json:"id"`
+	RoomID                   string         `json:"room_id"`
+	Seq                      int64          `json:"seq"`
+	ThreadID                 string         `json:"thread_id,omitempty"`
+	AuthorType               MemberType     `json:"author_type"`
+	AuthorID                 string         `json:"author_id"`
+	Kind                     MessageKind    `json:"kind"`
+	Body                     string         `json:"body"`
+	Images                   []MessageImage `json:"images,omitempty"`
+	Files                    []MessageFile  `json:"files,omitempty"`
+	Mentions                 []string       `json:"mentions"`
+	ReplyTo                  string         `json:"reply_to,omitempty"`
+	TaskTitle                string         `json:"task_title,omitempty"`
+	TaskState                string         `json:"task_state,omitempty"`
+	TaskOwner                string         `json:"task_owner,omitempty"`
+	TaskVerificationRequired bool           `json:"task_verification_required,omitempty"`
+	TaskGoalRevision         int            `json:"task_goal_revision,omitempty"`
+	TaskCandidateRevision    int            `json:"task_candidate_revision,omitempty"`
+	CreatedAt                time.Time      `json:"created_at"`
 }
 
 type MessageImage struct {
@@ -312,24 +337,57 @@ type CheckResult struct {
 }
 
 type CollaborationMessage struct {
-	ID              string     `json:"id"`
-	RoomID          string     `json:"room_id"`
-	FromType        MemberType `json:"from_type"`
-	FromID          string     `json:"from_id"`
-	ToAgentID       string     `json:"to_agent_id"`
-	Body            string     `json:"body"`
-	SourceMessageID string     `json:"source_message_id,omitempty"`
-	ReplyTo         string     `json:"reply_to,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID                string            `json:"id"`
+	RoomID            string            `json:"room_id"`
+	FromType          MemberType        `json:"from_type"`
+	FromID            string            `json:"from_id"`
+	ToAgentID         string            `json:"to_agent_id"`
+	Kind              CollaborationKind `json:"kind,omitempty"`
+	Body              string            `json:"body"`
+	SourceMessageID   string            `json:"source_message_id,omitempty"`
+	GoalRevision      int               `json:"goal_revision,omitempty"`
+	CandidateRevision int               `json:"candidate_revision,omitempty"`
+	ReplyTo           string            `json:"reply_to,omitempty"`
+	CreatedAt         time.Time         `json:"created_at"`
 }
 
 type CollaborationSendParams struct {
-	AgentID   string
-	Token     string
-	RoomID    string
-	ToAgentID string
-	Body      string
-	ReplyTo   string
+	AgentID         string
+	Token           string
+	RoomID          string
+	ToAgentID       string
+	Kind            CollaborationKind
+	Body            string
+	SourceMessageID string
+	ReplyTo         string
+}
+
+type TaskVerification struct {
+	TaskID            string               `json:"task_id"`
+	RoomID            string               `json:"room_id"`
+	OwnerID           string               `json:"owner_id"`
+	Decision          VerificationDecision `json:"decision"`
+	Report            string               `json:"report"`
+	Attempt           int                  `json:"attempt"`
+	GoalRevision      int                  `json:"goal_revision"`
+	CandidateRevision int                  `json:"candidate_revision"`
+	UpdatedAt         time.Time            `json:"updated_at"`
+}
+
+type TaskVerificationSubmitParams struct {
+	TaskID            string
+	RoomID            string
+	Decision          VerificationDecision
+	Report            string
+	GoalRevision      int
+	CandidateRevision int
+	AgentID           string
+	Token             string
+}
+
+type TaskVerificationSubmitResult struct {
+	Verification TaskVerification     `json:"verification"`
+	Delivery     CollaborationMessage `json:"delivery"`
 }
 
 type WakeState struct {
@@ -369,24 +427,26 @@ type Reminder struct {
 }
 
 type TaskCreateParams struct {
-	RoomID   string
-	ThreadID string
-	Title    string
-	Body     string
-	OwnerID  string
-	AgentID  string
-	Token    string
-	HumanID  string
+	RoomID               string
+	ThreadID             string
+	Title                string
+	Body                 string
+	OwnerID              string
+	VerificationRequired bool
+	AgentID              string
+	Token                string
+	HumanID              string
 }
 
 type TaskUpdateParams struct {
-	TaskID  string
-	RoomID  string
-	State   TaskState
-	OwnerID string
-	AgentID string
-	Token   string
-	HumanID string
+	TaskID         string
+	RoomID         string
+	State          TaskState
+	OwnerID        string
+	GoalCorrection string
+	AgentID        string
+	Token          string
+	HumanID        string
 }
 
 type TaskListParams struct {

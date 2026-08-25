@@ -16,6 +16,7 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	params.RoomID = strings.TrimSpace(params.RoomID)
 	params.ToAgentID = strings.TrimSpace(params.ToAgentID)
 	params.Body = strings.TrimSpace(params.Body)
+	params.SourceMessageID = strings.TrimSpace(params.SourceMessageID)
 	params.ReplyTo = strings.TrimSpace(params.ReplyTo)
 	if params.RoomID == "" || params.ToAgentID == "" || params.Body == "" {
 		return CollaborationMessage{}, errors.New("collaboration room, recipient, and body are required")
@@ -25,6 +26,12 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	}
 	if utf8.RuneCountInString(params.Body) > MaxMessageRunes {
 		return CollaborationMessage{}, fmt.Errorf("collaboration message exceeds %d characters", MaxMessageRunes)
+	}
+	if params.Kind == "" {
+		params.Kind = CollaborationControl
+	}
+	if params.Kind != CollaborationControl && params.Kind != CollaborationCandidateReady {
+		return CollaborationMessage{}, fmt.Errorf("invalid collaboration kind %q", params.Kind)
 	}
 
 	s.mu.Lock()
@@ -39,6 +46,29 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 			return CollaborationMessage{}, err
 		}
 	}
+	var goalRevision, candidateRevision int
+	if params.Kind == CollaborationCandidateReady {
+		if params.SourceMessageID == "" {
+			return CollaborationMessage{}, errors.New("candidate-ready delivery requires source task")
+		}
+		task, err := loadMessageTx(ctx, tx, params.SourceMessageID)
+		if err != nil {
+			return CollaborationMessage{}, err
+		}
+		if task.RoomID != params.RoomID || task.Kind != MessageTask || !task.TaskVerificationRequired ||
+			task.TaskOwner != params.AgentID || task.TaskState != string(TaskStateChecking) {
+			return CollaborationMessage{}, fmt.Errorf("%w: candidate-ready source must be the sender's checking task", ErrConflict)
+		}
+		var recipientKind, recipientRoomID string
+		if err := tx.QueryRowContext(ctx, `SELECT kind, COALESCE(room_id, '') FROM named_agents WHERE id = ?`, params.ToAgentID).Scan(&recipientKind, &recipientRoomID); err != nil {
+			return CollaborationMessage{}, fmt.Errorf("validate candidate-ready recipient: %w", err)
+		}
+		if recipientKind != "room" || recipientRoomID != params.RoomID {
+			return CollaborationMessage{}, fmt.Errorf("%w: candidate-ready recipient must be the hidden room runtime", ErrUnauthorized)
+		}
+		goalRevision = task.TaskGoalRevision
+		candidateRevision = task.TaskCandidateRevision
+	}
 	if params.ReplyTo != "" {
 		var exists int
 		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM collaboration_messages WHERE id = ? AND room_id = ?`, params.ReplyTo, params.RoomID).Scan(&exists); err != nil {
@@ -51,7 +81,9 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	now := fromMillis(toMillis(s.now()))
 	message, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
 		RoomID: params.RoomID, FromType: MemberAgent, FromID: params.AgentID,
-		ToAgentID: params.ToAgentID, Body: params.Body, ReplyTo: params.ReplyTo, CreatedAt: now,
+		ToAgentID: params.ToAgentID, Kind: params.Kind, Body: params.Body,
+		SourceMessageID: params.SourceMessageID, GoalRevision: goalRevision, CandidateRevision: candidateRevision,
+		ReplyTo: params.ReplyTo, CreatedAt: now,
 	})
 	if err != nil {
 		return CollaborationMessage{}, err
@@ -77,12 +109,17 @@ func enqueueCollaborationTx(ctx context.Context, tx *sql.Tx, message Collaborati
 		}
 		message.ID = id
 	}
+	if message.Kind == "" {
+		message.Kind = CollaborationControl
+	}
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO collaboration_messages (
-			id, room_id, from_type, from_id, to_agent_id, body, source_message_id, reply_to, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		message.ID, message.RoomID, message.FromType, message.FromID, message.ToAgentID, message.Body,
-		nullableString(message.SourceMessageID), nullableString(message.ReplyTo), toMillis(message.CreatedAt))
+			id, room_id, from_type, from_id, to_agent_id, kind, body, source_message_id,
+			goal_revision, candidate_revision, reply_to, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		message.ID, message.RoomID, message.FromType, message.FromID, message.ToAgentID, message.Kind, message.Body,
+		nullableString(message.SourceMessageID), message.GoalRevision, message.CandidateRevision,
+		nullableString(message.ReplyTo), toMillis(message.CreatedAt))
 	if err != nil {
 		return CollaborationMessage{}, fmt.Errorf("enqueue collaboration message: %w", err)
 	}

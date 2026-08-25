@@ -8,9 +8,10 @@ import (
 )
 
 type AgentClient struct {
-	service *Service
-	agentID string
-	token   string
+	service   *Service
+	agentID   string
+	agentKind string
+	token     string
 }
 
 func (s *Service) BindAgent(ctx context.Context, agentID string) (*AgentClient, error) {
@@ -22,7 +23,11 @@ func (s *Service) BindAgent(ctx context.Context, agentID string) (*AgentClient, 
 	if err != nil {
 		return nil, err
 	}
-	return &AgentClient{service: s, agentID: agentID, token: token}, nil
+	agent, err := s.GetNamedAgent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	return &AgentClient{service: s, agentID: agentID, agentKind: agent.Kind, token: token}, nil
 }
 
 func (c *AgentClient) AgentID() string {
@@ -30,6 +35,13 @@ func (c *AgentClient) AgentID() string {
 		return ""
 	}
 	return c.agentID
+}
+
+func (c *AgentClient) AgentKind() string {
+	if c == nil {
+		return ""
+	}
+	return c.agentKind
 }
 
 func (c *AgentClient) Check(ctx context.Context) (CheckResult, error) {
@@ -104,6 +116,15 @@ func (c *AgentClient) ListTasks(ctx context.Context, roomID string) ([]Message, 
 		return nil, errors.New("chat agent is not bound")
 	}
 	return c.service.ListTasks(ctx, TaskListParams{RoomID: roomID, AgentID: c.agentID, Token: c.token})
+}
+
+func (c *AgentClient) SubmitTaskVerification(ctx context.Context, params TaskVerificationSubmitParams) (TaskVerificationSubmitResult, error) {
+	if c == nil || c.service == nil {
+		return TaskVerificationSubmitResult{}, errors.New("chat agent is not bound")
+	}
+	params.AgentID = c.agentID
+	params.Token = c.token
+	return c.service.SubmitTaskVerification(ctx, params)
 }
 
 func (c *AgentClient) SetReminder(ctx context.Context, params ReminderSetParams) (Reminder, error) {

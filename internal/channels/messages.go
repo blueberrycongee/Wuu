@@ -201,12 +201,14 @@ func (s *Service) send(ctx context.Context, params sendParams) (SendResult, erro
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO room_messages (
 			id, room_id, seq, thread_id, author_type, author_id, kind, body,
-			images_json, files_json, mentions_json, reply_to, task_title, task_state, task_owner, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			images_json, files_json, mentions_json, reply_to, task_title, task_state, task_owner,
+			task_verification_required, task_goal_revision, task_candidate_revision, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		message.ID, message.RoomID, message.Seq, nullableString(message.ThreadID),
 		message.AuthorType, message.AuthorID, message.Kind, message.Body,
 		string(imagesJSON), string(filesJSON), mentionsJSON, nullableString(message.ReplyTo), nullableString(message.TaskTitle),
-		nullableString(message.TaskState), nullableString(message.TaskOwner), toMillis(message.CreatedAt),
+		nullableString(message.TaskState), nullableString(message.TaskOwner), boolInt(message.TaskVerificationRequired),
+		message.TaskGoalRevision, message.TaskCandidateRevision, toMillis(message.CreatedAt),
 	); err != nil {
 		return SendResult{}, fmt.Errorf("insert room message: %w", err)
 	}
@@ -255,7 +257,8 @@ func (s *Service) ListMessages(ctx context.Context, roomID string, afterSeq int6
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, room_id, seq, COALESCE(thread_id, ''), author_type, author_id,
 			kind, body, images_json, files_json, mentions_json, COALESCE(reply_to, ''),
-			COALESCE(task_title, ''), COALESCE(task_state, ''), COALESCE(task_owner, ''), created_at
+			COALESCE(task_title, ''), COALESCE(task_state, ''), COALESCE(task_owner, ''),
+			task_verification_required, task_goal_revision, task_candidate_revision, created_at
 		FROM room_messages WHERE room_id = ? AND seq > ? ORDER BY seq LIMIT ?`, roomID, afterSeq, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list room messages: %w", err)
@@ -364,7 +367,8 @@ func loadMessageTx(ctx context.Context, tx *sql.Tx, id string) (Message, error) 
 	message, err := scanMessage(tx.QueryRowContext(ctx, `
 		SELECT id, room_id, seq, COALESCE(thread_id, ''), author_type, author_id,
 			kind, body, images_json, files_json, mentions_json, COALESCE(reply_to, ''),
-			COALESCE(task_title, ''), COALESCE(task_state, ''), COALESCE(task_owner, ''), created_at
+			COALESCE(task_title, ''), COALESCE(task_state, ''), COALESCE(task_owner, ''),
+			task_verification_required, task_goal_revision, task_candidate_revision, created_at
 		FROM room_messages WHERE id = ?`, id))
 	if errors.Is(err, ErrNotFound) {
 		return Message{}, fmt.Errorf("%w: message %q", ErrNotFound, id)
@@ -377,11 +381,15 @@ func scanMessage(row scanner) (Message, error) {
 	var imagesJSON string
 	var filesJSON string
 	var mentionsJSON string
+	var taskVerificationRequired int
+	var taskGoalRevision int
+	var taskCandidateRevision int
 	var createdAt int64
 	if err := row.Scan(
 		&message.ID, &message.RoomID, &message.Seq, &message.ThreadID,
 		&message.AuthorType, &message.AuthorID, &message.Kind, &message.Body,
-		&imagesJSON, &filesJSON, &mentionsJSON, &message.ReplyTo, &message.TaskTitle, &message.TaskState, &message.TaskOwner, &createdAt,
+		&imagesJSON, &filesJSON, &mentionsJSON, &message.ReplyTo, &message.TaskTitle, &message.TaskState, &message.TaskOwner,
+		&taskVerificationRequired, &taskGoalRevision, &taskCandidateRevision, &createdAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Message{}, ErrNotFound
@@ -398,6 +406,9 @@ func scanMessage(row scanner) (Message, error) {
 		return Message{}, fmt.Errorf("decode room message files: %w", err)
 	}
 	message.CreatedAt = fromMillis(createdAt)
+	message.TaskVerificationRequired = taskVerificationRequired != 0
+	message.TaskGoalRevision = taskGoalRevision
+	message.TaskCandidateRevision = taskCandidateRevision
 	return message, nil
 }
 

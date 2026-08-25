@@ -113,8 +113,9 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 	collaboration := make([]CollaborationMessage, 0, checkLimit)
 	collaborationIDs := make([]string, 0, checkLimit)
 	rows, err = tx.QueryContext(ctx, `
-		SELECT id, room_id, from_type, from_id, to_agent_id, body,
-			COALESCE(source_message_id, ''), COALESCE(reply_to, ''), created_at
+		SELECT id, room_id, from_type, from_id, to_agent_id, kind, body,
+			COALESCE(source_message_id, ''), goal_revision, candidate_revision,
+			COALESCE(reply_to, ''), created_at
 		FROM collaboration_messages
 		WHERE to_agent_id = ? AND pulled_at IS NULL
 		ORDER BY created_at, rowid LIMIT ?`, agentID, checkLimit+1)
@@ -127,7 +128,8 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 		var createdAt int64
 		if err := rows.Scan(
 			&message.ID, &message.RoomID, &message.FromType, &message.FromID, &message.ToAgentID,
-			&message.Body, &message.SourceMessageID, &message.ReplyTo, &createdAt,
+			&message.Kind, &message.Body, &message.SourceMessageID, &message.GoalRevision,
+			&message.CandidateRevision, &message.ReplyTo, &createdAt,
 		); err != nil {
 			rows.Close()
 			return CheckResult{}, fmt.Errorf("scan collaboration inbox: %w", err)
@@ -199,7 +201,8 @@ func (s *Service) readInboxMessages(ctx context.Context, agentID string, itemIDs
 			SELECT message.id, message.room_id, message.seq, COALESCE(message.thread_id, ''),
 				message.author_type, message.author_id, message.kind, message.body, message.images_json, message.files_json, message.mentions_json,
 				COALESCE(message.reply_to, ''), COALESCE(message.task_title, ''), COALESCE(message.task_state, ''),
-				COALESCE(message.task_owner, ''), message.created_at
+				COALESCE(message.task_owner, ''), message.task_verification_required,
+				message.task_goal_revision, message.task_candidate_revision, message.created_at
 			FROM inbox_items inbox
 			JOIN room_messages message ON message.id = inbox.message_id
 			WHERE inbox.id = ? AND inbox.member_type = 'agent' AND inbox.member_id = ?`, itemID, strings.TrimSpace(agentID)))

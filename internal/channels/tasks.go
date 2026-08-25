@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 func (s *Service) CreateTask(ctx context.Context, params TaskCreateParams) (Message, error) {
@@ -102,11 +103,17 @@ func (s *Service) UpdateTaskHuman(ctx context.Context, params TaskUpdateParams) 
 func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Message, error) {
 	params.TaskID = strings.TrimSpace(params.TaskID)
 	params.OwnerID = strings.TrimSpace(params.OwnerID)
+	params.GoalCorrection = strings.TrimSpace(params.GoalCorrection)
 	if params.TaskID == "" {
 		return Message{}, errors.New("task id is required")
 	}
-	if params.State != "" && params.State != TaskStateOpen && params.State != TaskStateDoing && params.State != TaskStateDone {
+	if params.State != "" && params.State != TaskStateOpen && params.State != TaskStateDoing &&
+		params.State != TaskStateChecking && params.State != TaskStateRevising &&
+		params.State != TaskStateNeedsHuman && params.State != TaskStateDone {
 		return Message{}, fmt.Errorf("invalid task state %q", params.State)
+	}
+	if utf8.RuneCountInString(params.GoalCorrection) > MaxMessageRunes {
+		return Message{}, fmt.Errorf("task goal correction exceeds %d characters", MaxMessageRunes)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -125,16 +132,19 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if params.RoomID != "" && message.RoomID != params.RoomID {
 		return Message{}, errors.New("task does not belong to room")
 	}
-	callerOk := false
-	if params.AgentID != "" && message.TaskOwner == params.AgentID {
+	callerOk := params.AgentID != "" && message.TaskOwner == params.AgentID
+	correctionOk := params.GoalCorrection == ""
+	if params.GoalCorrection != "" && params.AgentID != "" && message.AuthorType == MemberAgent && message.AuthorID == params.AgentID {
 		callerOk = true
+		correctionOk = true
 	}
 	if params.HumanID != "" {
 		if err := requireMemberTx(ctx, tx, message.RoomID, MemberHuman, params.HumanID); err == nil {
 			callerOk = true
+			correctionOk = true
 		}
 	}
-	if !callerOk {
+	if !callerOk || !correctionOk {
 		return Message{}, ErrUnauthorized
 	}
 	oldOwner := message.TaskOwner
@@ -150,11 +160,46 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if params.State != "" {
 		setState = string(params.State)
 	}
+	if params.GoalCorrection != "" {
+		message.Body = params.GoalCorrection
+		message.TaskGoalRevision++
+		setState = string(TaskStateOpen)
+	}
+	if message.TaskVerificationRequired && params.State == TaskStateChecking && message.TaskState != string(TaskStateChecking) {
+		message.TaskCandidateRevision++
+	}
+	if newOwner != oldOwner {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM task_verifications WHERE task_id = ?`, message.ID); err != nil {
+			return Message{}, fmt.Errorf("invalidate reassigned task verification: %w", err)
+		}
+		setState = string(TaskStateOpen)
+	}
+	if message.TaskVerificationRequired && setState == string(TaskStateDone) {
+		if message.TaskState != string(TaskStateChecking) {
+			return Message{}, fmt.Errorf("%w: verified task completion must follow checking", ErrConflict)
+		}
+		var decision VerificationDecision
+		var goalRevision, candidateRevision int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT decision, goal_revision, candidate_revision
+			FROM task_verifications WHERE task_id = ?`, message.ID).Scan(&decision, &goalRevision, &candidateRevision); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Message{}, fmt.Errorf("%w: task requires passing verification before completion", ErrConflict)
+			}
+			return Message{}, fmt.Errorf("read task verification before completion: %w", err)
+		}
+		if decision != VerificationPass {
+			return Message{}, fmt.Errorf("%w: task verification is %s, not pass", ErrConflict, decision)
+		}
+		if goalRevision != message.TaskGoalRevision || candidateRevision != message.TaskCandidateRevision {
+			return Message{}, fmt.Errorf("%w: task verification is stale", ErrConflict)
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE room_messages
-		SET task_state = ?, task_owner = ?
+		SET body = ?, task_state = ?, task_owner = ?, task_goal_revision = ?, task_candidate_revision = ?
 		WHERE id = ?`,
-		setState, newOwner, message.ID); err != nil {
+		message.Body, setState, newOwner, message.TaskGoalRevision, message.TaskCandidateRevision, message.ID); err != nil {
 		return Message{}, fmt.Errorf("update task message: %w", err)
 	}
 	message.TaskState = setState
@@ -195,7 +240,8 @@ func (s *Service) ListTasks(ctx context.Context, params TaskListParams) ([]Messa
 	query := `
 		SELECT id, room_id, seq, COALESCE(thread_id, ''), author_type, author_id,
 			kind, body, images_json, files_json, mentions_json, COALESCE(reply_to, ''),
-			COALESCE(task_title, ''), COALESCE(task_state, ''), COALESCE(task_owner, ''), created_at
+			COALESCE(task_title, ''), COALESCE(task_state, ''), COALESCE(task_owner, ''),
+			task_verification_required, task_goal_revision, task_candidate_revision, created_at
 		FROM room_messages WHERE room_id = ? AND kind = 'task'`
 	args := []any{params.RoomID}
 	if params.OwnerID != "" {
@@ -235,18 +281,20 @@ func (s *Service) insertTaskMessageTx(ctx context.Context, tx *sql.Tx, params Ta
 	}
 	now := fromMillis(toMillis(s.now()))
 	message := Message{
-		ID:         id,
-		RoomID:     params.RoomID,
-		Seq:        seq,
-		ThreadID:   params.ThreadID,
-		AuthorType: MemberAgent,
-		AuthorID:   params.AgentID,
-		Kind:       MessageTask,
-		Body:       params.Body,
-		TaskTitle:  params.Title,
-		TaskState:  string(TaskStateOpen),
-		TaskOwner:  params.OwnerID,
-		CreatedAt:  now,
+		ID:                       id,
+		RoomID:                   params.RoomID,
+		Seq:                      seq,
+		ThreadID:                 params.ThreadID,
+		AuthorType:               MemberAgent,
+		AuthorID:                 params.AgentID,
+		Kind:                     MessageTask,
+		Body:                     params.Body,
+		TaskTitle:                params.Title,
+		TaskState:                string(TaskStateOpen),
+		TaskOwner:                params.OwnerID,
+		TaskVerificationRequired: params.VerificationRequired,
+		TaskGoalRevision:         1,
+		CreatedAt:                now,
 	}
 	if params.AgentID == "" && params.HumanID != "" {
 		message.AuthorType = MemberHuman
@@ -255,12 +303,14 @@ func (s *Service) insertTaskMessageTx(ctx context.Context, tx *sql.Tx, params Ta
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO room_messages (
 			id, room_id, seq, thread_id, author_type, author_id, kind, body,
-			mentions_json, reply_to, task_title, task_state, task_owner, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			mentions_json, reply_to, task_title, task_state, task_owner,
+			task_verification_required, task_goal_revision, task_candidate_revision, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		message.ID, message.RoomID, message.Seq, nullableString(message.ThreadID),
 		message.AuthorType, message.AuthorID, message.Kind, message.Body,
 		"[]", nullableString(message.ReplyTo), nullableString(message.TaskTitle),
-		nullableString(message.TaskState), nullableString(message.TaskOwner), toMillis(message.CreatedAt)); err != nil {
+		nullableString(message.TaskState), nullableString(message.TaskOwner), boolInt(message.TaskVerificationRequired),
+		message.TaskGoalRevision, message.TaskCandidateRevision, toMillis(message.CreatedAt)); err != nil {
 		return Message{}, fmt.Errorf("insert task message: %w", err)
 	}
 	return message, nil

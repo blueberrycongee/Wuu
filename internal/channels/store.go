@@ -230,6 +230,9 @@ func (s *Service) migrate() error {
 			task_title TEXT,
 			task_state TEXT,
 			task_owner TEXT,
+			task_verification_required INTEGER NOT NULL DEFAULT 0 CHECK (task_verification_required IN (0, 1)),
+			task_goal_revision INTEGER NOT NULL DEFAULT 0,
+			task_candidate_revision INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL,
 			UNIQUE (room_id, seq),
 			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
@@ -274,8 +277,11 @@ func (s *Service) migrate() error {
 			from_type TEXT NOT NULL CHECK (from_type IN ('human', 'agent')),
 			from_id TEXT NOT NULL,
 			to_agent_id TEXT NOT NULL,
+			kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'candidate_ready', 'verification_feedback')),
 			body TEXT NOT NULL,
 			source_message_id TEXT,
+			goal_revision INTEGER NOT NULL DEFAULT 0,
+			candidate_revision INTEGER NOT NULL DEFAULT 0,
 			reply_to TEXT,
 			created_at INTEGER NOT NULL,
 			pulled_at INTEGER,
@@ -285,6 +291,20 @@ func (s *Service) migrate() error {
 			FOREIGN KEY (reply_to) REFERENCES collaboration_messages(id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_collaboration_inbox ON collaboration_messages(to_agent_id, pulled_at, created_at)`,
+		`CREATE TABLE IF NOT EXISTS task_verifications (
+			task_id TEXT PRIMARY KEY,
+			room_id TEXT NOT NULL,
+			owner_id TEXT NOT NULL,
+			decision TEXT NOT NULL CHECK (decision IN ('pass', 'block', 'unknown')),
+			report TEXT NOT NULL,
+			attempt INTEGER NOT NULL DEFAULT 1,
+			goal_revision INTEGER NOT NULL DEFAULT 0,
+			candidate_revision INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (task_id) REFERENCES room_messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+			FOREIGN KEY (owner_id) REFERENCES named_agents(id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS drafts (
 			id TEXT PRIMARY KEY,
 			agent_id TEXT NOT NULL,
@@ -343,6 +363,9 @@ func (s *Service) migrate() error {
 	if err := s.migrateInboxItems(); err != nil {
 		return err
 	}
+	if err := s.recoverPendingVerificationDeliveries(); err != nil {
+		return err
+	}
 	for _, statement := range []string{
 		`CREATE INDEX IF NOT EXISTS idx_inbox_items_agent_pull ON inbox_items(member_type, member_id, pulled_at, created_at, id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_items_unique ON inbox_items(member_type, member_id, COALESCE(message_id,''), COALESCE(reminder_id,''), kind)`,
@@ -350,6 +373,69 @@ func (s *Service) migrate() error {
 		if _, err := s.db.Exec(statement); err != nil {
 			return fmt.Errorf("migrate channels inbox index: %w", err)
 		}
+	}
+	return nil
+}
+
+// recoverPendingVerificationDeliveries makes the verifier hand-off at-least-once
+// across app restarts. A pulled candidate report may have lost its verifier
+// child, and pulled feedback may have lost the owner turn that was meant to
+// consume it. Task and revision predicates keep obsolete deliveries retired.
+func (s *Service) recoverPendingVerificationDeliveries() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin verification delivery recovery: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`
+		UPDATE collaboration_messages AS delivery
+		SET pulled_at = NULL
+		WHERE delivery.pulled_at IS NOT NULL AND (
+			(delivery.kind = 'candidate_ready' AND EXISTS (
+				SELECT 1 FROM room_messages AS task
+				WHERE task.id = delivery.source_message_id
+					AND task.kind = 'task'
+					AND task.task_verification_required = 1
+					AND task.task_state = 'checking'
+					AND task.task_goal_revision = delivery.goal_revision
+					AND task.task_candidate_revision = delivery.candidate_revision
+					AND NOT EXISTS (
+						SELECT 1 FROM task_verifications AS verification
+						WHERE verification.task_id = task.id
+							AND verification.goal_revision = task.task_goal_revision
+							AND verification.candidate_revision = task.task_candidate_revision
+					)
+			)) OR
+			(delivery.kind = 'verification_feedback' AND EXISTS (
+				SELECT 1
+				FROM room_messages AS task
+				JOIN task_verifications AS verification ON verification.task_id = task.id
+				WHERE task.id = delivery.source_message_id
+					AND verification.goal_revision = delivery.goal_revision
+					AND verification.candidate_revision = delivery.candidate_revision
+					AND task.task_goal_revision = delivery.goal_revision
+					AND task.task_candidate_revision = delivery.candidate_revision
+					AND ((verification.decision = 'pass' AND task.task_state = 'checking')
+						OR (verification.decision = 'block' AND task.task_state = 'revising')
+						OR (verification.decision = 'unknown' AND task.task_state = 'needs_human'))
+			))
+		)`); err != nil {
+		return fmt.Errorf("recover verification deliveries: %w", err)
+	}
+	now := toMillis(s.now())
+	if _, err := tx.Exec(`
+		INSERT INTO agent_wake_state (agent_id, outstanding, pending, updated_at)
+		SELECT DISTINCT delivery.to_agent_id, 1, 0, ?
+		FROM collaboration_messages AS delivery
+		WHERE delivery.pulled_at IS NULL
+			AND delivery.kind IN ('candidate_ready', 'verification_feedback')
+		ON CONFLICT(agent_id) DO UPDATE SET
+			outstanding = 1,
+			updated_at = excluded.updated_at`, now); err != nil {
+		return fmt.Errorf("restore verification delivery wakes: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit verification delivery recovery: %w", err)
 	}
 	return nil
 }
@@ -414,6 +500,9 @@ func (s *Service) ensureLegacyColumns() error {
 		definition string
 	}{
 		{table: "room_messages", name: "task_title", definition: "TEXT"},
+		{table: "room_messages", name: "task_verification_required", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "room_messages", name: "task_goal_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "room_messages", name: "task_candidate_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "room_messages", name: "images_json", definition: "TEXT NOT NULL DEFAULT '[]'"},
 		{table: "room_messages", name: "files_json", definition: "TEXT NOT NULL DEFAULT '[]'"},
 		{table: "reminders", name: "created_at", definition: "INTEGER NOT NULL DEFAULT 0"},
@@ -422,6 +511,11 @@ func (s *Service) ensureLegacyColumns() error {
 		{table: "named_agents", name: "engine_override", definition: "TEXT"},
 		{table: "named_agents", name: "effort_override", definition: "TEXT"},
 		{table: "rooms", name: "avatar_image", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "collaboration_messages", name: "kind", definition: "TEXT NOT NULL DEFAULT 'control'"},
+		{table: "collaboration_messages", name: "goal_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "collaboration_messages", name: "candidate_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "task_verifications", name: "goal_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "task_verifications", name: "candidate_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 	}
 	for _, column := range columns {
 		exists, err := s.tableHasColumn(column.table, column.name)

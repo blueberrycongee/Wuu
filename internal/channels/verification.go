@@ -1,0 +1,170 @@
+package channels
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"unicode/utf8"
+)
+
+// SubmitTaskVerification records the one machine-readable verifier decision
+// and delivers the natural-language report back to the visible task owner.
+// The room runtime is deliberately the only caller allowed to submit: verifier
+// child sessions report to it through the normal Session completion path.
+func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerificationSubmitParams) (TaskVerificationSubmitResult, error) {
+	agent, err := s.AuthenticateAgent(ctx, params.AgentID, params.Token)
+	if err != nil {
+		return TaskVerificationSubmitResult{}, err
+	}
+	params.TaskID = strings.TrimSpace(params.TaskID)
+	params.RoomID = strings.TrimSpace(params.RoomID)
+	params.Report = strings.TrimSpace(params.Report)
+	if params.TaskID == "" || params.RoomID == "" || params.Report == "" {
+		return TaskVerificationSubmitResult{}, errors.New("verification task, room, and report are required")
+	}
+	if agent.Kind != "room" || agent.RoomID != params.RoomID {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("%w: only the room runtime may verify room tasks", ErrUnauthorized)
+	}
+	if !validVerificationDecision(params.Decision) {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("invalid verification decision %q", params.Decision)
+	}
+	if utf8.RuneCountInString(params.Report) > MaxVerificationReportRunes {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("verification report exceeds %d characters", MaxVerificationReportRunes)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("begin task verification: %w", err)
+	}
+	defer tx.Rollback()
+	task, err := loadMessageTx(ctx, tx, params.TaskID)
+	if err != nil {
+		return TaskVerificationSubmitResult{}, err
+	}
+	if task.RoomID != params.RoomID || task.Kind != MessageTask || strings.TrimSpace(task.TaskOwner) == "" {
+		return TaskVerificationSubmitResult{}, errors.New("verification target must be an owned task in the room")
+	}
+	if !task.TaskVerificationRequired {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("%w: task does not require verification", ErrConflict)
+	}
+	if task.TaskState != string(TaskStateChecking) {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("%w: task must be checking before verification", ErrConflict)
+	}
+	if params.GoalRevision != task.TaskGoalRevision || params.CandidateRevision != task.TaskCandidateRevision {
+		return TaskVerificationSubmitResult{}, fmt.Errorf(
+			"%w: verifier revisions goal=%d candidate=%d do not match current goal=%d candidate=%d",
+			ErrConflict, params.GoalRevision, params.CandidateRevision, task.TaskGoalRevision, task.TaskCandidateRevision,
+		)
+	}
+
+	attempt := 1
+	var previousAttempt int
+	err = tx.QueryRowContext(ctx, `SELECT attempt FROM task_verifications WHERE task_id = ?`, task.ID).Scan(&previousAttempt)
+	if err == nil {
+		attempt = previousAttempt + 1
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("read prior task verification: %w", err)
+	}
+	now := fromMillis(toMillis(s.now()))
+	verification := TaskVerification{
+		TaskID: task.ID, RoomID: task.RoomID, OwnerID: task.TaskOwner,
+		Decision: params.Decision, Report: params.Report, Attempt: attempt,
+		GoalRevision: task.TaskGoalRevision, CandidateRevision: task.TaskCandidateRevision, UpdatedAt: now,
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO task_verifications (
+			task_id, room_id, owner_id, decision, report, attempt, goal_revision, candidate_revision, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(task_id) DO UPDATE SET
+			room_id = excluded.room_id,
+			owner_id = excluded.owner_id,
+			decision = excluded.decision,
+			report = excluded.report,
+			attempt = excluded.attempt,
+			goal_revision = excluded.goal_revision,
+			candidate_revision = excluded.candidate_revision,
+			updated_at = excluded.updated_at`,
+		verification.TaskID, verification.RoomID, verification.OwnerID, verification.Decision,
+		verification.Report, verification.Attempt, verification.GoalRevision, verification.CandidateRevision,
+		toMillis(verification.UpdatedAt)); err != nil {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("persist task verification: %w", err)
+	}
+	taskState := TaskStateRevising
+	switch verification.Decision {
+	case VerificationPass:
+		taskState = TaskStateChecking
+	case VerificationUnknown:
+		taskState = TaskStateNeedsHuman
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE room_messages SET task_state = ? WHERE id = ?`, taskState, task.ID); err != nil {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("project task verification state: %w", err)
+	}
+	delivery, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
+		RoomID: task.RoomID, FromType: MemberAgent, FromID: agent.ID, ToAgentID: task.TaskOwner,
+		Kind: CollaborationVerificationFeedback, Body: verificationDeliveryBody(verification),
+		SourceMessageID: task.ID, GoalRevision: verification.GoalRevision,
+		CandidateRevision: verification.CandidateRevision, CreatedAt: now,
+	})
+	if err != nil {
+		return TaskVerificationSubmitResult{}, err
+	}
+	shouldDeliver, err := requestWakeTx(ctx, tx, task.TaskOwner, toMillis(now))
+	if err != nil {
+		return TaskVerificationSubmitResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("commit task verification: %w", err)
+	}
+	if shouldDeliver && s.wake != nil {
+		s.wake.Deliver(task.TaskOwner)
+	}
+	return TaskVerificationSubmitResult{Verification: verification, Delivery: delivery}, nil
+}
+
+func (s *Service) GetTaskVerification(ctx context.Context, taskID string) (TaskVerification, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return TaskVerification{}, errors.New("verification task id is required")
+	}
+	var result TaskVerification
+	var updatedAt int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT task_id, room_id, owner_id, decision, report, attempt, goal_revision, candidate_revision, updated_at
+		FROM task_verifications WHERE task_id = ?`, taskID).Scan(
+		&result.TaskID, &result.RoomID, &result.OwnerID, &result.Decision,
+		&result.Report, &result.Attempt, &result.GoalRevision, &result.CandidateRevision, &updatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return TaskVerification{}, fmt.Errorf("%w: task verification %q", ErrNotFound, taskID)
+		}
+		return TaskVerification{}, fmt.Errorf("get task verification: %w", err)
+	}
+	result.UpdatedAt = fromMillis(updatedAt)
+	return result, nil
+}
+
+func validVerificationDecision(decision VerificationDecision) bool {
+	switch decision {
+	case VerificationPass, VerificationBlock, VerificationUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+func verificationDeliveryBody(verification TaskVerification) string {
+	action := "The task is now revising. Start the repair, mark it doing, and submit it for verification again."
+	switch verification.Decision {
+	case VerificationPass:
+		action = "The candidate is verified. Publish the result in the task thread, then mark the task done."
+	case VerificationUnknown:
+		action = "The task now needs human input. Supply the missing evidence or ask the user for the decision that cannot be made safely."
+	}
+	return fmt.Sprintf("Verification %s for task %s goal %d candidate %d (attempt %d).\n\n%s\n\n%s",
+		verification.Decision, verification.TaskID, verification.GoalRevision, verification.CandidateRevision,
+		verification.Attempt, verification.Report, action)
+}
