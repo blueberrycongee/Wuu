@@ -957,7 +957,10 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 	serveCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	scanner := bufio.NewScanner(input)
-	scanner.Buffer(make([]byte, 64*1024), 4<<20)
+	// Capability requests may carry a complete long-session transcript. Keep a
+	// finite bound, but size it for the context windows Wuu supports rather than
+	// the much smaller control-plane messages used by most plugins.
+	scanner.Buffer(make([]byte, 64*1024), 32<<20)
 	client := newClient(output)
 	incomingRequests := make(chan queuedDispatch)
 	requests := make(chan queuedDispatch)

@@ -22,10 +22,9 @@ const (
 	ProtocolName    = "wuu-plugin-v1"
 	ProtocolVersion = 1
 
-	// maxResponseLineSize bounds the JSON-lines wire format so a single
-	// plugin response cannot grow unbounded in memory. The limit applies to
-	// one line including its trailing newline.
-	maxResponseLineSize = 4 << 20 // 4 MiB
+	// maxResponseLineSize must accommodate transcript-bearing compaction
+	// responses while still bounding scanner growth from a misbehaving plugin.
+	maxResponseLineSize = 32 << 20 // 32 MiB
 )
 
 type ProcessConfig struct {

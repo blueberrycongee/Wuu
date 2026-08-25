@@ -37,6 +37,37 @@ func TestServeNegotiatesAndInvokesCapability(t *testing.T) {
 	}
 }
 
+func TestServeAcceptsTranscriptBearingCapabilityRequestOverFourMiB(t *testing.T) {
+	largeValue := strings.Repeat("x", 5<<20)
+	input := strings.Join([]string{
+		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":2,"plugin_id":"test"}}`,
+		fmt.Sprintf(`{"id":"2","method":"capability.invoke","params":{"capability":"test.decision","input":{"transcript":%q}}}`, largeValue),
+		`{"id":"3","method":"shutdown"}`,
+	}, "\n") + "\n"
+	var output bytes.Buffer
+	err := ServeIO(context.Background(), strings.NewReader(input), &output, Handler{
+		Definition: Definition{Capabilities: []Capability{{ID: "test.decision", Kind: "decision", Version: 1}}},
+		InvokeCapability: func(_ context.Context, _ Host, call CapabilityCall) (json.RawMessage, error) {
+			var payload struct {
+				Transcript string `json:"transcript"`
+			}
+			if err := json.Unmarshal(call.Input, &payload); err != nil {
+				return nil, err
+			}
+			if len(payload.Transcript) != len(largeValue) {
+				t.Fatalf("transcript bytes = %d, want %d", len(payload.Transcript), len(largeValue))
+			}
+			return json.RawMessage(`{"accepted":true}`), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"accepted":true`) {
+		t.Fatal("response did not contain accepted result")
+	}
+}
+
 func TestServeNegotiatesAndInvokesService(t *testing.T) {
 	input := strings.Join([]string{
 		`{"id":"1","method":"initialize","params":{"protocol_version":1,"capability_protocol_version":3,"plugin_id":"search"}}`,
