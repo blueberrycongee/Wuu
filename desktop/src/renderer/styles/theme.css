@@ -391,7 +391,6 @@
   --activity-toggle-hover-svg-color: var(--gray-650);
   --activity-toggle-hover-color-alt: var(--wuu-color-text-muted, var(--gray-650));
   --activity-detail-color: var(--wuu-color-text-muted, #989ea3);
-  --activity-detail-error-border: #7a463f;
   --diff-insert-color: var(--wuu-color-success, #3fb970);
   --diff-delete-color: var(--wuu-color-danger, #ef6a5e);
   --rich-link-color: var(--wuu-color-link, #60a5fa);

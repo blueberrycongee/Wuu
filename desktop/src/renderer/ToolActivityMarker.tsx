@@ -10,7 +10,6 @@ import type { JSX } from "react";
  *   - running: a bright segment chases around the perimeter, like a cursor
  *     on a track, so the eye can find the still-active row among settled ones;
  *   - settled: a quiet hollow square, the row's resting state;
- *   - failed: a solid square in the danger color (inherited from the row).
  *
  * The chase is pure stroke-dash animation on a `pathLength`-normalized path,
  * so there is no rotation and no "spinner" reading at 12px. Under
@@ -18,12 +17,10 @@ import type { JSX } from "react";
  */
 export function ToolActivityMarker({
   running = false,
-  failed = false,
 }: {
   running?: boolean;
-  failed?: boolean;
 }): JSX.Element {
-  const stateClass = failed ? "is-failed" : running ? "is-running" : "is-settled";
+  const stateClass = running ? "is-running" : "is-settled";
   return (
     <svg
       className={`tool-activity-marker ${stateClass}`}

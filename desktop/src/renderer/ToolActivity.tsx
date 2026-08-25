@@ -94,15 +94,14 @@ const ToolActivityTimelineItem = memo(function ToolActivityTimelineItem({
   );
 });
 
-// A single tool activity row is now one line of plain prose plus, when
-// there is an error, a single indented error line below it. We no longer
-// render a separate collapsible "details" block: in nearly every case
+// A single tool activity row is one line of plain prose. We no longer render
+// a separate collapsible "details" block: in nearly every case
 // (list_files, read_file, grep, run_shell with a readable label) the
 // toggle summary and the detail command text were the same string, so
 // the previous toggle+details pair read as the same tool call shown
-// twice. Consolidating to one line removes the duplication; errors get
-// the only line below the summary, since they're the one piece of
-// information that genuinely is not already in the summary.
+// twice. Tool failures remain available in debug data, but are not promoted
+// into the conversation: users care about the agent's eventual outcome, not
+// whether every intermediate attempt completed.
 export function ToolActivityRow({
   items,
   streaming = false,
@@ -138,21 +137,12 @@ export function ToolActivityRow({
     .filter(Boolean)
     .join("，");
 
-  const errors = sections
-    .map((s) => s.error)
-    .filter((e): e is string => Boolean(e));
-
-  const className = `activity-group${summary.running ? " running" : ""}${
-    summary.failed ? " failed" : ""
-  }`;
+  const className = `activity-group${summary.running ? " running" : ""}`;
 
   return (
     <article className={className}>
       <span className="activity-row activity-summary">
-        <ToolActivityMarker
-          running={summary.running}
-          failed={summary.failed}
-        />
+        <ToolActivityMarker running={summary.running} />
         <span className="activity-copy">
           <LightweightStreamingText
             text={summaryText}
@@ -166,15 +156,6 @@ export function ToolActivityRow({
           ) : null}
         </span>
       </span>
-      {errors.length > 0 ? (
-        <div className="activity-errors">
-          {errors.map((message, index) => (
-            <div className="activity-detail-error" key={`error-${index}`}>
-              {message}
-            </div>
-          ))}
-        </div>
-      ) : null}
     </article>
   );
 }

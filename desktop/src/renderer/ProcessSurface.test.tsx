@@ -305,7 +305,7 @@ describe("ProcessSurface", () => {
     expect(label?.textContent).toBe("思考过程");
   });
 
-  it("keeps process summaries neutral when a tool fails", () => {
+  it("does not surface intermediate tool failures in the conversation", () => {
     const failedTool = {
       ...makeReadFile("tool-1", "a.ts", "failed"),
       error: "command failed",
@@ -335,9 +335,8 @@ describe("ProcessSurface", () => {
         .querySelector(".process-surface-row")
         ?.classList.contains("failed"),
     ).toBe(false);
-    expect(
-      container.querySelector(".activity-detail-error")?.textContent,
-    ).toContain("命令执行失败");
+    expect(container.querySelector(".activity-detail-error")).toBeNull();
+    expect(container.textContent).not.toContain("命令执行失败");
   });
 
   it("keeps the fold collapsed when streaming starts", () => {
@@ -496,7 +495,8 @@ describe("ProcessSurface", () => {
           id: "search-1",
           type: "tool_call",
           name: "grep",
-          status: "completed",
+          status: "failed",
+          error: "search failed",
           arguments: JSON.stringify({ pattern: "cache_read" }),
         },
         {
@@ -530,6 +530,7 @@ describe("ProcessSurface", () => {
     expect(summary?.textContent).toBe(
       "已完成 6 项操作，包括搜索、查看文件等",
     );
+    expect(summary?.textContent).not.toContain("未完成");
     expect(summary?.querySelectorAll(".process-surface-segment")).toHaveLength(0);
   });
 

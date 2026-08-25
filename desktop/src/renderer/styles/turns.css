@@ -25,7 +25,6 @@
   --activity-toggle-hover-svg-color: var(--gray-550);
   --activity-toggle-hover-color-alt: var(--wuu-color-text-muted, var(--gray-600));
   --activity-detail-color: var(--wuu-color-text-muted, var(--gray-550));
-  --activity-detail-error-border: #e89088;
   --diff-insert-color: var(--wuu-color-success, #12a150);
   --diff-delete-color: var(--wuu-color-danger, #cf2e2e);
   --rich-link-color: var(--wuu-color-link, #0969da);
@@ -2213,12 +2212,6 @@
   opacity: 0.55;
 }
 
-/* Failed: solid, in the danger color inherited from the row. */
-.tool-activity-marker.is-failed .tool-activity-marker-track {
-  fill: currentColor;
-  stroke: none;
-}
-
 @keyframes tool-activity-marker-chase {
   from {
     stroke-dashoffset: 0;
@@ -2238,13 +2231,6 @@
 
 .activity-toggle:hover svg {
   color: currentColor;
-}
-
-.activity-group.failed .activity-row,
-.activity-group.failed .activity-row svg,
-.activity-row.failed,
-.activity-row.failed svg {
-  color: var(--danger);
 }
 
 .activity-copy {
@@ -2286,14 +2272,6 @@
                                                                  
                                                    
   display: none;
-}
-
-.activity-errors {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 4px;
-  padding: 4px 0 0 10px;
 }
 
 .activity-detail {
@@ -2381,21 +2359,6 @@
 
 .activity-status.failed {
   color: var(--danger);
-}
-
-.activity-detail-error {
-                                                                    
-                                                              
-                                     
-  border-radius: 0;
-  background: transparent;
-  border-left: 2px solid var(--activity-detail-error-border);
-  color: var(--danger);
-  font-size: var(--font-ui);
-  line-height: 1.55;
-  margin: 4px 0 4px 0;
-  padding: 0 0 0 10px;
-  font-family: "SFMono-Regular", Consolas, monospace;
 }
 
 .activity-file {
@@ -2784,13 +2747,6 @@
 
 .process-surface-reasoning-item {
   min-width: 0;
-}
-
-.process-surface-errors {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px 0 0 10px;
 }
 
 .rich-content {

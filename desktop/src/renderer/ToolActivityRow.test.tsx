@@ -195,4 +195,26 @@ describe("ToolActivityRow", () => {
     mount({ items: [inFlight], streaming: true });
     expect(surfaceText()).toBe("查看");
   });
+
+  it("renders a failed tool as a settled activity without an error notice", () => {
+    mount({
+      items: [{
+        ...fakeReadFileTool(),
+        status: "failed",
+        error: "command failed",
+      }],
+      streaming: false,
+    });
+
+    expect(surfaceText()).toBe(SUMMARY_TEXT);
+    expect(
+      container?.querySelector(".activity-group")?.classList.contains("failed"),
+    ).toBe(false);
+    expect(
+      container
+        ?.querySelector(".tool-activity-marker")
+        ?.classList.contains("is-settled"),
+    ).toBe(true);
+    expect(container?.querySelector(".activity-detail-error")).toBeNull();
+  });
 });

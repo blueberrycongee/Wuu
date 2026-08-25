@@ -189,13 +189,9 @@ function condensedToolActivityText(
   toolCount: number,
   reasoningStreaming: boolean,
 ): string {
-  const failed = segments.some((segment) => segment.status === "failed");
   const running = segments.some((segment) => segment.status === "running");
-  if (reasoningStreaming && !failed && !running) {
+  if (reasoningStreaming && !running) {
     return translate("process.thinkingAfterOperations", { count: toolCount });
-  }
-  if (failed) {
-    return translate("process.failedOperations", { count: toolCount });
   }
 
   const labels = Array.from(
@@ -235,7 +231,6 @@ export function ProcessSurface({
   const hasReasoning = reasoningItems.length > 0;
   const hasMultipleTools = toolItems.length > 1;
   const hasDetails = hasReasoning || hasMultipleTools;
-  const hasErrors = toolSegments.some((segment) => Boolean(segment.error));
   const reasoningStreaming =
     streaming &&
     reasoningItems.some((item) => item.status === "in_progress");
@@ -376,28 +371,10 @@ export function ProcessSurface({
     </span>
   );
 
-  const errorBlock =
-    hasErrors && toolSegments.some((segment) => Boolean(segment.error)) ? (
-      <div className="process-surface-errors">
-        {toolSegments
-          .map((segment) => segment.error)
-          .filter((message): message is string => Boolean(message))
-          .map((message, index) => (
-            <div
-              className="activity-detail-error"
-              key={`error-${index}`}
-            >
-              {message}
-            </div>
-          ))}
-      </div>
-    ) : null;
-
   const nativeFallback = (
     <div className={className}>
       <ProcessSurfaceFold
         summary={summaryLine}
-        header={errorBlock}
         disabled={!hasDetails}
         open={expanded}
         onToggle={handleToggle}

@@ -102,10 +102,7 @@ export function activitySummaryText(
   if (fragments.length === 0) {
     return fallback.text;
   }
-  const summary = fragments.join(t("toolActivity.listSeparator"));
-  return fallback.failed
-    ? t("toolActivity.incompleteSummary", { summary })
-    : summary;
+  return fragments.join(t("toolActivity.listSeparator"));
 }
 
 function sectionSummaryText(section: ToolActivitySection): string {

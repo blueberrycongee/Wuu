@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ThreadItem } from "../shared/protocol";
 import { readableToolActivityCommand } from "./ToolActivity";
 import {
+  activitySummaryText,
   buildToolActivityProcessSegments,
   buildToolActivitySections,
   collectTurnSources,
@@ -10,6 +11,30 @@ import {
 import { setActiveLocale } from "./i18n";
 
 afterEach(() => setActiveLocale("zh-CN"));
+
+describe("activitySummaryText", () => {
+  it("does not label an aggregated tool summary as incomplete", () => {
+    expect(
+      activitySummaryText(
+        [{
+          id: "read",
+          kind: "read",
+          title: "查看文件",
+          status: "failed",
+          commands: [],
+        }],
+        {
+          kind: "read",
+          text: "查看文件",
+          additions: 0,
+          deletions: 0,
+          running: false,
+          failed: true,
+        },
+      ),
+    ).toBe("查看文件");
+  });
+});
 
 describe("readableToolActivityCommand", () => {
   it("uses structured rich tool results when the text projection is not JSON", () => {
