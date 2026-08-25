@@ -37,34 +37,40 @@ func TestNamedAgentOrientationExcludesProjectlessConversations(t *testing.T) {
 	}
 }
 
-func TestNamedAgentOrientationDefinesSingleOwnerClaimProtocol(t *testing.T) {
+func TestRoomAgentOrientationDefinesSingleEntrypointAndVisibleDelegation(t *testing.T) {
+	prompt := namedAgentOrientation(channels.NamedAgent{
+		Kind: "room", RoomID: "room-1", MemoryDir: "/agents/room-1/memory",
+	})
+	for _, want := range []string{
+		"You are the room's single collaboration entrypoint",
+		"Ordinary room messages and member reports wake you; they do not wake every member",
+		"calling chat_task create once per member at the room root",
+		"persisted task messages are the room's public assignment facts",
+		"Members publish meaningful progress, handoffs, questions, and results in each task's public thread",
+		"final synthesis",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("room orientation missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
+func TestNamedAgentOrientationRoutesSharedRoomWorkThroughRoomAgent(t *testing.T) {
 	prompt := namedAgentOrientation(channels.NamedAgent{
 		Name: "Andy", MemoryDir: "/agents/agent-1/memory",
 	})
 	for _, want := range []string{
-		"Treat the room as shared coordination state",
-		"keep your intent, ownership, meaningful progress, handoffs, and completion visible",
-		"Before taking work, look for overlapping activity",
-		"Work that should produce one shared result has one owner",
-		"other agents must not claim or execute that work",
-		"Read the latest relevant messages across the room",
-		"A room-stream request must be claimed in the room stream",
-		"Do not use reply_to to move the claim into a different scope",
-		"A committed chat message only declares intent",
-		"treat that as losing the claim race",
-		"resolve the draft silent",
-		"After the claim commits, call chat_check",
-		"lowest room-global message sequence wins",
-		"promptly publish meaningful changes in status",
-		"Before delivering or applying the final result",
-		"Do not claim on another agent's behalf",
-		"explicitly requests multiple independent answers",
+		"Ordinary shared-room messages, including @mentions, are routed first to the room agent and do not directly wake every member",
+		"Do not independently claim work from the shared transcript",
+		"Act on room tasks assigned to you",
+		"mark it doing when you start",
+		"post only meaningful progress, questions, handoffs, and the result in that task's public thread",
+		"Use the task message as thread_id and reply_to",
+		"A collaboration message is private control traffic",
+		"Direct messages remain private conversations with the human",
 	} {
 		if !strings.Contains(prompt, want) {
-			t.Fatalf("orientation missing claim rule %q:\n%s", want, prompt)
+			t.Fatalf("named-agent orientation missing room routing rule %q:\n%s", want, prompt)
 		}
-	}
-	if strings.Contains(prompt, "editing shared files, committing, pushing, deploying") {
-		t.Fatalf("orientation should define a general collaboration model instead of enumerating actions:\n%s", prompt)
 	}
 }

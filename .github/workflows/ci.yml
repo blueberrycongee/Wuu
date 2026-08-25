@@ -91,6 +91,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: |
+            desktop/package-lock.json
             clients/core/package-lock.json
             clients/mobile/package-lock.json
             clients/mobile-web/package-lock.json
@@ -101,6 +102,7 @@ jobs:
         run: |
           pids=()
           for workspace in \
+            desktop \
             clients/core \
             clients/mobile \
             clients/mobile-web \

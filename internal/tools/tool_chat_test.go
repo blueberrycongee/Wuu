@@ -24,15 +24,9 @@ func TestNamedAgentChatToolsAreIsolatedAndRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateNamedAgent() error = %v", err)
 	}
-	room, err := service.CreateRoom(ctx, channels.CreateRoomParams{
-		Name: "Review", Kind: channels.RoomChannel, CreatedBy: "human-1",
-		Members: []channels.RoomMember{
-			{MemberType: channels.MemberHuman, MemberID: "human-1"},
-			{MemberType: channels.MemberAgent, MemberID: credential.Agent.ID},
-		},
-	})
+	room, err := service.OpenDirectMessage(ctx, "human-1", credential.Agent.ID)
 	if err != nil {
-		t.Fatalf("CreateRoom() error = %v", err)
+		t.Fatalf("OpenDirectMessage() error = %v", err)
 	}
 	kit, err := New(t.TempDir())
 	if err != nil {
