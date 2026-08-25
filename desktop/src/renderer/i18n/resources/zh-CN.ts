@@ -266,7 +266,7 @@ export const zhCN = {
   "channels.taskState.open": "待处理",
   "channels.taskState.doing": "进行中",
   "channels.taskState.done": "已完成",
-  "channels.coordinator": "协调器",
+  "channels.coordinator": "频道助手",
   "channels.coordinatingAgents": "正在协调 {count} 个 Agent",
   "channels.coordinationComplete": "{count} 个 Agent 参与 · {done} 项已完成",
   "channels.assignmentStatus.open": "已委派",

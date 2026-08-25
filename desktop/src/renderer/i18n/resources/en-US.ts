@@ -268,7 +268,7 @@ export const enUS = {
   "channels.taskState.open": "Open",
   "channels.taskState.doing": "Doing",
   "channels.taskState.done": "Done",
-  "channels.coordinator": "Coordinator",
+  "channels.coordinator": "Channel assistant",
   "channels.coordinatingAgents": "Coordinating {count} Agents",
   "channels.coordinationComplete": "{count} Agents involved · {done} assignments completed",
   "channels.assignmentStatus.open": "Assigned",
