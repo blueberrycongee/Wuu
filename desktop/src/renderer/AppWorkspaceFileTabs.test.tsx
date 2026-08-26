@@ -286,12 +286,13 @@ describe("workspace file tabs", () => {
 
     expect(shell?.classList.contains("right-panel-animating")).toBe(true);
     expect(shell?.classList.contains("sidebar-drawer-open")).toBe(false);
+    expect(shell?.classList.contains("sidebar-collapsed")).toBe(false);
     expect(container.querySelector(".conversation-pane")?.hasAttribute("inert")).toBe(true);
-    expect(container.querySelector(".sidebar")?.hasAttribute("inert")).toBe(true);
+    expect(container.querySelector(".sidebar")?.hasAttribute("inert")).toBe(false);
     expect(container.querySelector(".workspace-right-panel")?.hasAttribute("inert")).toBe(false);
     expect(
       container.querySelector('.globalized-sidebar-toggle[aria-label="展开左侧栏"]'),
-    ).not.toBeNull();
+    ).toBeNull();
     expect(container.querySelector('[data-testid="workspace-document-composer"]')).not.toBeNull();
     expect(container.querySelectorAll("[data-main-conversation-composer]")).toHaveLength(1);
     expect(

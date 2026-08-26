@@ -518,10 +518,10 @@ export function App(): JSX.Element {
     });
     return () => cancelAnimationFrame(raf);
   }, [workspaceSheetPhase]);
-  // Focused workspace mode always parks the left rail as a drawer. Its
-  // visibility is transient and must not be inferred from the user's normal
-  // docked-sidebar preference.
-  const sidebarDrawerMode = compactNavigation || sidebarCollapsed || rightPanelGlobalized;
+  // A manually expanded workspace owns the main stage, not the navigation
+  // rail. Keep a docked sidebar docked; only an already-collapsed or compact
+  // sidebar remains a drawer while the workspace is expanded.
+  const sidebarDrawerMode = compactNavigation || sidebarCollapsed;
   const {
     sidebarDrawerPhase,
     sidebarHoverZoneRef,
@@ -1105,7 +1105,7 @@ export function App(): JSX.Element {
       ?.querySelector<HTMLElement>(".sidebar")
       ?.toggleAttribute(
         "inert",
-        fullPanel && !sidebarDrawerVisible,
+        fullPanel && sidebarDrawerMode && !sidebarDrawerVisible,
       );
 
     if (fullPanel && !previous.fullPanel) {
@@ -1128,7 +1128,7 @@ export function App(): JSX.Element {
         )
         ?.focus();
     }
-  }, [rightPanelGlobalized, rightPanelOpen, sidebarDrawerVisible]);
+  }, [rightPanelGlobalized, rightPanelOpen, sidebarDrawerMode, sidebarDrawerVisible]);
 
   // Workspace panel (file tree / file preview / terminal / review) root: follows the
   // active thread's own cwd when it differs from state.activeContext — the
@@ -2598,6 +2598,7 @@ export function App(): JSX.Element {
   const shellStyle = {
     "--sidebar-width": `${effectiveSidebarWidth}px`,
     "--sidebar-open-width": `${sidebarWidth}px`,
+    "--workspace-sheet-left": `${sidebarDrawerMode ? 0 : effectiveSidebarWidth}px`,
     "--workspace-right-panel-width": `${clampedWorkspaceRightPanelWidth}px`,
     "--side-thread-width": `${sideThread.width}px`,
     "--conversation-split-left": `${splitLeftPercent}%`,
@@ -4757,7 +4758,7 @@ export function App(): JSX.Element {
             onPointerEnter={scheduleSidebarDrawerOpen}
             onPointerLeave={cancelSidebarDrawerOpen}
           />
-          {rightPanelGlobalized ? (
+          {rightPanelGlobalized && sidebarDrawerMode ? (
             <div className="globalized-sidebar-toggle-region">
               <button
                 className="icon-button side-panel-toggle-button sidebar-toggle-button globalized-sidebar-toggle"
