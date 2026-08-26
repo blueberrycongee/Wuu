@@ -349,11 +349,13 @@ func (a AgentConfig) MaxParallelValue() int {
 // main model, so adding this shape is backwards-compatible with existing
 // configs.
 type ModelRolesConfig struct {
-	Review   ModelRoleConfig `json:"review,omitempty"`
-	Compact  ModelRoleConfig `json:"compact,omitempty"`
-	Title    ModelRoleConfig `json:"title,omitempty"`
-	Worker   ModelRoleConfig `json:"worker,omitempty"`
-	Fallback ModelRoleConfig `json:"fallback,omitempty"`
+	Review       ModelRoleConfig `json:"review,omitempty"`
+	Coordination ModelRoleConfig `json:"coordination,omitempty"`
+	Verification ModelRoleConfig `json:"verification,omitempty"`
+	Compact      ModelRoleConfig `json:"compact,omitempty"`
+	Title        ModelRoleConfig `json:"title,omitempty"`
+	Worker       ModelRoleConfig `json:"worker,omitempty"`
+	Fallback     ModelRoleConfig `json:"fallback,omitempty"`
 }
 
 // ModelRoleConfig pins a role to a provider/model/variant selection. Provider
@@ -378,7 +380,9 @@ type AdvancedRuntimeUpdate struct {
 	// ModelAliases replaces the entire agent.model_aliases map. A non-nil map
 	// clears any existing aliases and writes only the entries with non-nil
 	// values. Settings uses this to add, edit, and delete aliases in one call.
-	ModelAliases map[string]*ModelRoleConfig
+	ModelAliases      map[string]*ModelRoleConfig
+	CoordinationModel *ModelRoleConfig
+	VerificationModel *ModelRoleConfig
 }
 
 type GeneralSettingsUpdate struct {
@@ -793,11 +797,13 @@ func engineExplicitlyDisabled(engine *EngineBinaryConfig) bool {
 
 func validateModelRolesConfig(c Config) error {
 	roles := map[string]ModelRoleConfig{
-		"review":   c.Agent.ModelRoles.Review,
-		"compact":  c.Agent.ModelRoles.Compact,
-		"title":    c.Agent.ModelRoles.Title,
-		"worker":   c.Agent.ModelRoles.Worker,
-		"fallback": c.Agent.ModelRoles.Fallback,
+		"review":       c.Agent.ModelRoles.Review,
+		"coordination": c.Agent.ModelRoles.Coordination,
+		"verification": c.Agent.ModelRoles.Verification,
+		"compact":      c.Agent.ModelRoles.Compact,
+		"title":        c.Agent.ModelRoles.Title,
+		"worker":       c.Agent.ModelRoles.Worker,
+		"fallback":     c.Agent.ModelRoles.Fallback,
 	}
 	for role, cfg := range roles {
 		provider := strings.TrimSpace(cfg.Provider)
@@ -1266,6 +1272,46 @@ func UpdateAdvancedRuntime(configPath, providerName string, update AdvancedRunti
 			delete(agent, "model_aliases")
 		} else {
 			agent["model_aliases"] = aliases
+		}
+	}
+	if update.CoordinationModel != nil || update.VerificationModel != nil {
+		roles, _ := agent["model_roles"].(map[string]any)
+		if roles == nil {
+			roles = make(map[string]any)
+		}
+		setRole := func(name string, selection *ModelRoleConfig) {
+			if selection == nil {
+				return
+			}
+			provider := strings.TrimSpace(selection.Provider)
+			model := strings.TrimSpace(selection.Model)
+			effort := strings.TrimSpace(selection.Effort)
+			variant := strings.TrimSpace(selection.Variant)
+			if provider == "" && model == "" && effort == "" && variant == "" {
+				delete(roles, name)
+				return
+			}
+			entry := make(map[string]any)
+			if provider != "" {
+				entry["provider"] = provider
+			}
+			if model != "" {
+				entry["model"] = model
+			}
+			if effort != "" {
+				entry["effort"] = effort
+			}
+			if variant != "" {
+				entry["variant"] = variant
+			}
+			roles[name] = entry
+		}
+		setRole("coordination", update.CoordinationModel)
+		setRole("verification", update.VerificationModel)
+		if len(roles) == 0 {
+			delete(agent, "model_roles")
+		} else {
+			agent["model_roles"] = roles
 		}
 	}
 	if len(agent) == 0 {

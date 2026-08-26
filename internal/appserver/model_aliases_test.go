@@ -4,6 +4,9 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/modelroles"
 )
 
 func TestResolveSubagentModelAliasBuildsCompleteRuntime(t *testing.T) {
@@ -104,5 +107,42 @@ func TestResolveSubagentModelAliasUnknownFallsBackWithSortedNames(t *testing.T) 
 	}
 	if !reflect.DeepEqual(result.ValidAliases, []string{"cheap", "review"}) {
 		t.Fatalf("valid aliases = %#v", result.ValidAliases)
+	}
+}
+
+func TestResolveSubagentModelAliasUsesVerificationCapabilityRole(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	if err := os.WriteFile(rt.ConfigPath, []byte(`{
+  "default_provider": "fake-provider",
+  "providers": {
+    "fake-provider": {
+      "type": "openai-compatible",
+      "base_url": "https://example.test/v1",
+      "api_key": "test-key",
+      "model": "fake-model"
+    }
+  }
+}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg := config.Config{
+		DefaultProvider: "fake-provider",
+		Providers: map[string]config.ProviderConfig{
+			"fake-provider": {Type: "openai-compatible", BaseURL: "https://example.test/v1", APIKey: "test-key", Model: "fake-model"},
+		},
+	}
+	roles, err := modelroles.Resolve(cfg, modelroles.ResolveOptions{})
+	if err != nil {
+		t.Fatalf("resolve roles: %v", err)
+	}
+	rt.ModelRoles = roles
+	srv := New(rt, &lockedBuffer{})
+
+	result := srv.resolveSubagentModelAlias("@verification")
+	if result.Err != nil || !result.Found || result.Unknown {
+		t.Fatalf("unexpected verification resolution: %+v", result)
+	}
+	if result.Runtime.Provider != rt.ModelRoles.Verification.Provider || result.Runtime.Model != rt.ModelRoles.Verification.Model {
+		t.Fatalf("verification runtime = %+v, role = %+v", result.Runtime, rt.ModelRoles.Verification)
 	}
 }

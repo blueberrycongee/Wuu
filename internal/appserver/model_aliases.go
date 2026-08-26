@@ -27,15 +27,21 @@ func (s *Server) resolveSubagentModelAlias(alias string) agentcontrol.AliasResol
 		return agentcontrol.AliasResolutionResult{Err: fmt.Errorf("load effective config: %w", err)}
 	}
 	validAliases := normalizedModelAliasNames(cfg.Agent.ModelAliases)
-	if !configuredModelAliasExists(cfg.Agent.ModelAliases, alias) {
+	configuredAlias := configuredModelAliasExists(cfg.Agent.ModelAliases, alias)
+	if !configuredAlias && alias != "@verification" {
 		return agentcontrol.AliasResolutionResult{
 			Unknown:      true,
 			ValidAliases: validAliases,
 		}
 	}
-	selection, err := modelroles.ResolveAlias(cfg, alias)
-	if err != nil {
-		return agentcontrol.AliasResolutionResult{Err: err}
+	var selection modelroles.Selection
+	if configuredAlias {
+		selection, err = modelroles.ResolveAlias(cfg, alias)
+		if err != nil {
+			return agentcontrol.AliasResolutionResult{Err: err}
+		}
+	} else if alias == "@verification" {
+		selection = s.rt.ModelRoles.Verification
 	}
 	client, err := providerfactory.BuildStreamClient(selection.RuleProviderConfig, selection.Provider)
 	if err != nil {

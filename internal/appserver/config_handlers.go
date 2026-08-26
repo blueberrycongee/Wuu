@@ -963,16 +963,26 @@ func (s *Server) handleConfigAdvancedUpdate(req Request) error {
 		return s.writeResponse(req.ID, nil, errors.New("runtime is not initialized"))
 	}
 	modelAliases := modelAliasConfigUpdate(params.ModelAliases)
-	if modelAliases != nil {
+	coordinationModel := modelRoleConfigUpdate(params.CoordinationModel)
+	verificationModel := modelRoleConfigUpdate(params.VerificationModel)
+	if modelAliases != nil || coordinationModel != nil || verificationModel != nil {
 		candidate, _, err := s.rt.LoadEffectiveConfig()
 		if err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
-		candidate.Agent.ModelAliases = make(map[string]config.ModelRoleConfig, len(modelAliases))
-		for name, alias := range modelAliases {
-			if alias != nil {
-				candidate.Agent.ModelAliases[name] = *alias
+		if modelAliases != nil {
+			candidate.Agent.ModelAliases = make(map[string]config.ModelRoleConfig, len(modelAliases))
+			for name, alias := range modelAliases {
+				if alias != nil {
+					candidate.Agent.ModelAliases[name] = *alias
+				}
 			}
+		}
+		if coordinationModel != nil {
+			candidate.Agent.ModelRoles.Coordination = *coordinationModel
+		}
+		if verificationModel != nil {
+			candidate.Agent.ModelRoles.Verification = *verificationModel
 		}
 		if err := candidate.Validate(); err != nil {
 			return s.writeResponse(req.ID, nil, err)
@@ -987,6 +997,8 @@ func (s *Server) handleConfigAdvancedUpdate(req Request) error {
 		DisableAutoCompact:      params.DisableAutoCompact,
 		ProviderContextWindow:   params.ProviderContextWindow,
 		ModelAliases:            modelAliases,
+		CoordinationModel:       coordinationModel,
+		VerificationModel:       verificationModel,
 	}); err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
@@ -1036,6 +1048,7 @@ func (s *Server) handleConfigAdvancedUpdate(req Request) error {
 	return s.writeResponse(req.ID, ConfigAdvancedUpdateResult{
 		AdvancedSettings: s.currentAdvancedSettingsSummary(),
 		ModelAliases:     modelAliasSummaries(cfg.Agent.ModelAliases),
+		ModelRoles:       s.currentModelRoleSummaries(),
 		Providers:        s.providerSummaries(),
 	}, nil)
 }
@@ -1055,6 +1068,18 @@ func modelAliasConfigUpdate(input *map[string]ModelAliasSummary) map[string]*con
 		}
 	}
 	return out
+}
+
+func modelRoleConfigUpdate(input *ModelAliasSummary) *config.ModelRoleConfig {
+	if input == nil {
+		return nil
+	}
+	return &config.ModelRoleConfig{
+		Provider: strings.TrimSpace(input.Provider),
+		Model:    strings.TrimSpace(input.Model),
+		Effort:   strings.TrimSpace(input.Effort),
+		Variant:  strings.TrimSpace(input.Variant),
+	}
 }
 
 func modelAliasSummaries(input map[string]config.ModelRoleConfig) map[string]ModelAliasSummary {

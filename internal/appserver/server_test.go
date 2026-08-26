@@ -808,7 +808,7 @@ func TestServerInitializeExposesModelRoles(t *testing.T) {
 	}
 
 	result := remarshal[InitializeResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
-	if len(result.ModelRoles) != 6 {
+	if len(result.ModelRoles) != 8 {
 		t.Fatalf("expected all role summaries, got %+v", result.ModelRoles)
 	}
 	title := modelRoleByName(t, result.ModelRoles, "title")
@@ -821,6 +821,12 @@ func TestServerInitializeExposesModelRoles(t *testing.T) {
 	}
 	if !review.Capabilities.Tools || review.Capabilities.ProtocolFamily == "" {
 		t.Fatalf("review capabilities missing: %+v", review.Capabilities)
+	}
+	for _, roleName := range []string{"coordination", "verification"} {
+		role := modelRoleByName(t, result.ModelRoles, roleName)
+		if !role.Inherited || role.Model != "fake-model" {
+			t.Fatalf("%s should inherit main model: %+v", roleName, role)
+		}
 	}
 }
 
@@ -1998,7 +2004,7 @@ func TestServerConfigAdvancedUpdatePersistsAndRefreshesRuntime(t *testing.T) {
 	out := &lockedBuffer{}
 	srv := New(rt, out)
 
-	req := `{"id":"1","method":"config/advanced/update","params":{"max_steps":12,"max_context_tokens":256000,"temperature":0.4,"compact_threshold_pct":0.5,"compact_keep_recent_tokens":20000,"disable_auto_compact":true,"provider_context_window":512000,"model_aliases":{"cheap":{"provider":"fake-provider","model":"cheap-model:latest","effort":"low"}}}}`
+	req := `{"id":"1","method":"config/advanced/update","params":{"max_steps":12,"max_context_tokens":256000,"temperature":0.4,"compact_threshold_pct":0.5,"compact_keep_recent_tokens":20000,"disable_auto_compact":true,"provider_context_window":512000,"model_aliases":{"cheap":{"provider":"fake-provider","model":"cheap-model:latest","effort":"low"}},"coordination_model":{"provider":"fake-provider","model":"coordination-model"},"verification_model":{"provider":"fake-provider","model":"verification-model"}}}`
 	if err := srv.handleLine(context.Background(), []byte(req)); err != nil {
 		t.Fatalf("config/advanced/update: %v", err)
 	}
@@ -2016,6 +2022,12 @@ func TestServerConfigAdvancedUpdatePersistsAndRefreshesRuntime(t *testing.T) {
 	}
 	if alias, ok := result.ModelAliases["cheap"]; !ok || alias.Provider != "fake-provider" || alias.Model != "cheap-model:latest" || alias.Effort != "low" {
 		t.Fatalf("unexpected model aliases result: %+v", result.ModelAliases)
+	}
+	if role := modelRoleByName(t, result.ModelRoles, "coordination"); role.Inherited || role.Model != "coordination-model" {
+		t.Fatalf("unexpected coordination model: %+v", role)
+	}
+	if role := modelRoleByName(t, result.ModelRoles, "verification"); role.Inherited || role.Model != "verification-model" {
+		t.Fatalf("unexpected verification model: %+v", role)
 	}
 	if rt.StreamRunner.MaxSteps != 12 ||
 		rt.StreamRunner.Temperature != 0.4 ||
@@ -2038,6 +2050,10 @@ func TestServerConfigAdvancedUpdatePersistsAndRefreshesRuntime(t *testing.T) {
 		`"context_window": 512000`,
 		`"cheap"`,
 		`"model": "cheap-model:latest"`,
+		`"coordination"`,
+		`"model": "coordination-model"`,
+		`"verification"`,
+		`"model": "verification-model"`,
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("config missing %s: %s", want, data)

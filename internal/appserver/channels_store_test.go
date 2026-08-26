@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/blueberrycongee/wuu/internal/channels"
+	"github.com/blueberrycongee/wuu/internal/modelroles"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/statepath"
@@ -121,6 +122,24 @@ func TestNamedAgentRuntimeSelectionAppliesModelAndEffortOverrides(t *testing.T) 
 	provider, model, effort = namedAgentModelSelection("default-provider", "default-model", "medium", channels.NamedAgent{})
 	if provider != "default-provider" || model != "default-model" || effort != "medium" {
 		t.Fatalf("inherited runtime selection = (%q, %q, %q)", provider, model, effort)
+	}
+}
+
+func TestRoomRuntimeUsesCoordinationModel(t *testing.T) {
+	server := &Server{rt: &runtime.Session{ModelRoles: modelroles.Set{
+		Coordination: modelroles.Selection{
+			Provider: "coord-provider", Model: "coord-model", Variant: "fast", LegacyEffort: "low",
+		},
+	}}}
+	selection := server.collaborationRuntimeSelection(session.RuntimeSelection{
+		Provider: "default-provider", Model: "default-model", Effort: "medium",
+	}, channels.AgentRuntime{Kind: channels.PrincipalRoomRuntime})
+	if selection.Provider != "coord-provider" || selection.Model != "coord-model" || selection.Variant != "fast" || selection.Effort != "low" {
+		t.Fatalf("room runtime selection = %+v", selection)
+	}
+	visible := server.collaborationRuntimeSelection(selection, channels.AgentRuntime{Kind: channels.PrincipalNamedAgent})
+	if visible != selection {
+		t.Fatalf("visible named agent selection changed: %+v", visible)
 	}
 }
 

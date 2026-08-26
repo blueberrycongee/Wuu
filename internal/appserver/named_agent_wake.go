@@ -11,9 +11,11 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/channels"
+	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
+	"github.com/blueberrycongee/wuu/internal/subagent"
 )
 
 const (
@@ -117,7 +119,7 @@ func (s *Server) ensureAgentRuntimeThreadLocked(agent channels.AgentRuntime) (*t
 		th.CWD = filepath.Dir(agent.MemoryDir)
 		th.EngineID = string(agentengine.NormalizeEngineID(agent.EngineOverride))
 		if needsNamedAgentRuntime {
-			selection := s.currentSessionRuntimeSelection()
+			selection := s.collaborationRuntimeSelection(s.currentSessionRuntimeSelection(), agent)
 			selection.Provider, selection.Model, selection.Effort = agentRuntimeModelSelection(
 				selection.Provider, selection.Model, selection.Effort, agent,
 			)
@@ -145,7 +147,7 @@ func (s *Server) ensureAgentRuntimeThreadLocked(agent channels.AgentRuntime) (*t
 		return th, nil
 	}
 	agentHome := filepath.Dir(agent.MemoryDir)
-	selection := s.currentSessionRuntimeSelection()
+	selection := s.collaborationRuntimeSelection(s.currentSessionRuntimeSelection(), agent)
 	selection.Provider, selection.Model, selection.Effort = agentRuntimeModelSelection(
 		selection.Provider, selection.Model, selection.Effort, agent,
 	)
@@ -244,6 +246,18 @@ func agentRuntimeModelSelection(provider, model, effort string, agent channels.A
 	return provider, model, effort
 }
 
+func (s *Server) collaborationRuntimeSelection(selection session.RuntimeSelection, agent channels.AgentRuntime) session.RuntimeSelection {
+	if s == nil || s.rt == nil || !agent.IsRoomRuntime() {
+		return selection
+	}
+	role := s.rt.ModelRoles.Coordination
+	selection.Provider = role.Provider
+	selection.Model = role.Model
+	selection.Variant = role.Variant
+	selection.Effort = role.LegacyEffort
+	return selection
+}
+
 func (s *Server) newNamedAgentRuntime(threadID string, agent channels.NamedAgent, selection runtime.ThreadModelSelection) (*runtime.ThreadRuntime, error) {
 	return s.newAgentExecutionRuntime(threadID, agentRuntimeFromNamed(agent), selection)
 }
@@ -277,6 +291,25 @@ func (s *Server) newAgentExecutionRuntime(threadID string, agent channels.AgentR
 	); err != nil {
 		releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 		return nil, err
+	}
+	if agent.IsRoomRuntime() && threadRuntime.AgentControl != nil {
+		role := s.rt.ModelRoles.Verification
+		client, buildErr := providerfactory.BuildStreamClient(role.RuleProviderConfig, role.Provider)
+		if buildErr != nil {
+			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
+			return nil, fmt.Errorf("build collaboration verification model: %w", buildErr)
+		}
+		budget := runtime.ResolveModelBudget(role.Model, role.RuleProviderConfig, 0)
+		threadRuntime.AgentControl.UpdateWorkerDefaults(client, role.APIModel, subagent.ManagerOptions{
+			DefaultProviderName:    role.Provider,
+			DefaultEffort:          role.LegacyEffort,
+			DefaultProviderOptions: role.ProviderOptions,
+			ContextWindowOverride:  budget.ContextWindowTokens,
+			MaxInputTokens:         budget.InputLimitTokens,
+			OutputReserveTokens:    budget.OutputReserveTokens,
+			CompactThresholdTokens: budget.CompactThresholdTokens,
+		})
+		threadRuntime.WorkerModelBudget = budget
 	}
 	s.attachNamedAgentRoomContext(threadRuntime, agent.ID)
 	return threadRuntime, nil
@@ -510,7 +543,7 @@ For a real task, choose one visible owner for a tightly coupled goal, or split g
 
 An incoming room delivery with work_id belongs to that existing Work. Route a correction back to the same owner with chat_task revise, use chat_work cancel for an explicit cancellation, and forward a needs-human answer to the same owner rather than creating another Work. Cancellation prevents new runs and integration but does not claim that already-applied side effects were rolled back.
 
-When the owner moves a deliverable task to checking and sends candidate_ready, do not publish it. First read the complete Work and the current source message so the verification input comes from room facts rather than the owner's selection. Recovery may redeliver candidate_ready, so reuse a matching active verifier run instead of starting a second one. By default use the Subagent plugin's spawn_agent tool to start exactly one fresh-context verifier, then start a chat_work verifier run with profile independent, the child session id, and the candidate workspace revision. Give the child the user's current goal, task brief, both revisions, the complete machine-listed artifacts and checks, relevant workspace paths, and the candidate itself. Label the owner's summary as an unverified claim. Do not pass the producer's private conversation or any other candidate's opinion. Ask the child to independently inspect the result, rerun focused checks, seek counterexamples, and return a first-line PASS, BLOCK, or UNKNOWN followed by concise natural-language evidence. Do not require JSON or a criterion table. The child may inspect but must not repair or publish the candidate.
+When the owner moves a deliverable task to checking and sends candidate_ready, do not publish it. First read the complete Work and the current source message so the verification input comes from room facts rather than the owner's selection. Recovery may redeliver candidate_ready, so reuse a matching active verifier run instead of starting a second one. By default use the Subagent plugin's spawn_agent tool with model @verification to start exactly one fresh-context verifier, then start a chat_work verifier run with profile independent, the child session id, and the candidate workspace revision. Give the child the user's current goal, task brief, both revisions, the complete machine-listed artifacts and checks, relevant workspace paths, and the candidate itself. Label the owner's summary as an unverified claim. Do not pass the producer's private conversation or any other candidate's opinion. Ask the child to independently inspect the result, rerun focused checks, seek counterexamples, and return a first-line PASS, BLOCK, or UNKNOWN followed by concise natural-language evidence. Do not require JSON or a criterion table. The child may inspect but must not repair or publish the candidate.
 
 Only when the user explicitly asks a particular Named Agent to check the result should verification use that member instead of the fresh hidden run. Start the verifier run with that member's id, send the private request, and accept its peer_result. Do not add a persistent room member merely to perform default verification.
 

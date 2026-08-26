@@ -995,11 +995,14 @@ type ConfigAdvancedUpdateParams struct {
 	DisableAutoCompact      *bool                         `json:"disable_auto_compact,omitempty"`
 	ProviderContextWindow   *int                          `json:"provider_context_window,omitempty"`
 	ModelAliases            *map[string]ModelAliasSummary `json:"model_aliases,omitempty"`
+	CoordinationModel       *ModelAliasSummary            `json:"coordination_model,omitempty"`
+	VerificationModel       *ModelAliasSummary            `json:"verification_model,omitempty"`
 }
 
 type ConfigAdvancedUpdateResult struct {
 	AdvancedSettings AdvancedSettingsSummary      `json:"advanced_settings"`
 	ModelAliases     map[string]ModelAliasSummary `json:"model_aliases,omitempty"`
+	ModelRoles       []ModelRoleSummary           `json:"model_roles,omitempty"`
 	Providers        []ProviderSummary            `json:"providers,omitempty"`
 }
 
