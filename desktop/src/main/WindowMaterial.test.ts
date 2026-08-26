@@ -13,10 +13,13 @@ const themeCSS = readFileSync(
 );
 
 describe("macOS sidebar material", () => {
-  it("uses the under-window material to preserve wallpaper tint without a white veil", () => {
+  it("frosts the under-window material into a bright rail with a dark hairline edge", () => {
     expect(mainSource).toContain('vibrancy: "under-window"');
     expect(sidebarCSS).toMatch(
-      /--sidebar-material-fill:\s*rgba\(255, 255, 255, 0\.025\);/,
+      /--sidebar-material-fill:\s*rgba\(255, 255, 255, 0\.62\);/,
+    );
+    expect(sidebarCSS).toMatch(
+      /--sidebar-material-edge:\s*rgba\(17, 19, 21, 0\.07\);/,
     );
     expect(sidebarCSS).toMatch(
       /\.sidebar,\s*\n\.settings-sidebar\s*\{[\s\S]*?background:\s*var\(--sidebar-material-fill\);/,
