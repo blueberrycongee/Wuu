@@ -380,6 +380,10 @@ func TestResolveAPIKey_AuthStoreFallback(t *testing.T) {
 }
 
 func TestResolveAPIKey_MiniMaxMigratesStoredAuthTokenFallback(t *testing.T) {
+	// The env var outranks the auth store; clear it so a key in the
+	// developer's shell cannot satisfy (or leak into) this test.
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
 	home := t.TempDir()
 	store, err := authstorage.ForHome(home)
 	if err != nil {

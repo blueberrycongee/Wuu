@@ -93,6 +93,10 @@ func TestStopMigratesLegacyStartTimeRecord(t *testing.T) {
 	if _, err := exec.LookPath("ps"); err != nil {
 		t.Skipf("ps unavailable: %v", err)
 	}
+	// Legacy records store verbatim `ps -o lstart=` output, which is
+	// locale-dependent; pin the C locale so the fixture matches on any host.
+	t.Setenv("LC_ALL", "C")
+	t.Setenv("LANG", "C")
 	root := t.TempDir()
 	m, err := NewManager(root, filepath.Join(root, "state", "runtime"))
 	if err != nil {
