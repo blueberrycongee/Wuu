@@ -352,6 +352,56 @@ func TestEngineInterruptIsSilentAndNextTurnCanResume(t *testing.T) {
 	}
 }
 
+func TestEnginePersistsSessionIDBeforeTurnCompletes(t *testing.T) {
+	binary := buildFakeClaude(t)
+	engine := NewEngine(binary, t.TempDir())
+	persisted := make(chan string, 1)
+	sess, err := engine.SessionForThread(context.Background(), agentengine.ThreadBinding{
+		ThreadID: "t",
+		RootDir:  t.TempDir(),
+		PersistRef: func(ref string) error {
+			select {
+			case persisted <- ref:
+			default:
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("SessionForThread: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, runErr := sess.RunTurn(ctx, agentengine.TurnInput{
+			History: []providers.ChatMessage{{Role: "user", Content: "wait_forever"}},
+		}, nil)
+		done <- runErr
+	}()
+
+	select {
+	case ref := <-persisted:
+		if ref != "fake-session-1" {
+			t.Fatalf("persisted ref = %q, want fake-session-1", ref)
+		}
+	case err := <-done:
+		t.Fatalf("turn ended before session id was persisted: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("session id was not persisted while turn remained active")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("interrupted RunTurn error = %v, want context.Canceled", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("interrupted turn did not stop")
+	}
+}
+
 func TestTransportCloseStillReapsProcessAfterStdoutCloses(t *testing.T) {
 	binary := buildFakeClaude(t)
 	transport, err := NewTransport(TransportOptions{

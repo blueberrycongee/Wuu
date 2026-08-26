@@ -124,6 +124,7 @@ func (e *Engine) newSession(ctx context.Context, opts sessionOptions) (agentengi
 		instructions:   opts.instructions,
 		mcpServers:     append([]agentengine.MCPServer(nil), opts.mcpServers...),
 		ref:            opts.externalRef,
+		persistedRef:   opts.externalRef,
 		persist:        opts.persistRef,
 	}, nil
 }
@@ -140,9 +141,10 @@ type Session struct {
 	instructions   string
 	mcpServers     []agentengine.MCPServer
 
-	mu      sync.Mutex
-	ref     string
-	persist func(string) error
+	mu           sync.Mutex
+	ref          string
+	persistedRef string
+	persist      func(string) error
 
 	// writeMu serializes all stdin writes (user turns, tool results).
 	writeMu sync.Mutex
@@ -164,6 +166,7 @@ func (s *Session) RunTurn(ctx context.Context, input agentengine.TurnInput, sink
 
 	done := make(chan turnOutcome, 1)
 	sub := newTurnSubscriptionForContext(ctx, sink, done)
+	sub.onSessionID = s.persistSessionIDValue
 	transport, err := s.spawn(ctx, sub)
 	if err != nil {
 		sub.close()
@@ -210,20 +213,28 @@ func (s *Session) persistSessionID(sub *turnSubscription) {
 	sub.mu.Lock()
 	sid := sub.sessionID
 	sub.mu.Unlock()
+	s.persistSessionIDValue(sid)
+}
+
+func (s *Session) persistSessionIDValue(sid string) {
+	sid = strings.TrimSpace(sid)
 	if sid == "" {
 		return
 	}
 	s.mu.Lock()
-	if s.ref == sid {
+	s.ref = sid
+	if s.persistedRef == sid {
 		s.mu.Unlock()
 		return
 	}
-	s.ref = sid
 	persist := s.persist
 	s.mu.Unlock()
-	if persist != nil {
-		_ = persist(sid)
+	if persist == nil || persist(sid) != nil {
+		return
 	}
+	s.mu.Lock()
+	s.persistedRef = sid
+	s.mu.Unlock()
 }
 
 // Interrupt cancels the in-flight turn. The child is closed; the next turn
@@ -344,10 +355,11 @@ type turnSubscription struct {
 	sink agentengine.EventSink
 	done chan turnOutcome
 
-	mu        sync.Mutex
-	transport *Transport
-	sessionID string
-	closed    bool
+	mu          sync.Mutex
+	transport   *Transport
+	sessionID   string
+	onSessionID func(string)
+	closed      bool
 
 	text           strings.Builder
 	reasoning      strings.Builder
@@ -471,18 +483,16 @@ func (sub *turnSubscription) handleLine(line string) {
 	switch envelope.Type {
 	case "system":
 		// Real CLI 2.1.x emits the session id on the first system message
-		// (init or hook_started), whichever arrives first. Track either.
+		// (init or hook_started), whichever arrives first. Persist it immediately:
+		// waiting for the turn result loses the resume reference if the app exits
+		// while Claude is still working.
 		if envelope.SessionID != "" {
-			sub.mu.Lock()
-			sub.sessionID = envelope.SessionID
-			sub.mu.Unlock()
+			sub.observeSessionID(envelope.SessionID)
 		}
 		if envelope.Subtype == "init" {
 			var init initMessage
 			if err := json.Unmarshal(envelope.Message, &init); err == nil && init.SessionID != "" {
-				sub.mu.Lock()
-				sub.sessionID = init.SessionID
-				sub.mu.Unlock()
+				sub.observeSessionID(init.SessionID)
 			}
 		}
 		sub.handleTaskEvent(envelope)
@@ -496,6 +506,21 @@ func (sub *turnSubscription) handleLine(line string) {
 		sub.handleResult(envelope)
 	default:
 		// Unknown type: keep going, the result line still terminates.
+	}
+}
+
+func (sub *turnSubscription) observeSessionID(sessionID string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	sub.mu.Lock()
+	changed := sub.sessionID != sessionID
+	sub.sessionID = sessionID
+	onSessionID := sub.onSessionID
+	sub.mu.Unlock()
+	if changed && onSessionID != nil {
+		onSessionID(sessionID)
 	}
 }
 
