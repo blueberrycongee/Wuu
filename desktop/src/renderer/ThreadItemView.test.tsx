@@ -444,17 +444,26 @@ describe("ThreadItemView", () => {
     expect(secondToggle?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("offers copy while streaming and adds fork after the durable answer completes", () => {
+  it("waits for the final item before offering copy, then adds fork when the turn completes", () => {
     render({
       item: makeFinalAnswer("in_progress"),
       turnStatus: "in_progress",
       streaming: true,
     });
 
-    const streamingActions = actionBar();
-    expect(streamingActions.dataset.wuuPlacement).toBe("persistent");
-    expect(streamingActions.querySelectorAll("button")).toHaveLength(1);
-    expect(streamingActions.querySelector("button")?.getAttribute("aria-label")).toBe("复制消息");
+    expect(container?.querySelector(".agent-message-actions")).toBeNull();
+
+    render({
+      item: makeFinalAnswer("completed"),
+      turnStatus: "in_progress",
+      latestAgentMessageID: "final-1",
+      streaming: false,
+    });
+
+    const finalizingActions = actionBar();
+    expect(finalizingActions.dataset.wuuPlacement).toBe("persistent");
+    expect(finalizingActions.querySelectorAll("button")).toHaveLength(1);
+    expect(finalizingActions.querySelector("button")?.getAttribute("aria-label")).toBe("复制消息");
 
     render({
       item: makeFinalAnswer("completed"),
@@ -472,6 +481,7 @@ describe("ThreadItemView", () => {
     const block = container?.querySelector(".agent-block");
     expect(block?.classList.contains("agent-actions-persistent")).toBe(true);
     expect(block?.classList.contains("agent-actions-overlay")).toBe(false);
+    expect(block?.classList.contains("agent-actions-enter")).toBe(false);
   });
 
   it("offers a stable user-message fork checkpoint while the turn is running", () => {

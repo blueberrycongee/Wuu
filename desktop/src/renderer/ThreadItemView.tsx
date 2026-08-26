@@ -204,20 +204,6 @@ function BuiltInThreadItemView({
   editSummaryCard,
 }: ThreadItemViewProps): JSX.Element | null {
   const { t } = useI18n();
-  // The persistent actions bar mounts in the same commit that settles a live
-  // turn. Mark that one handoff with `agent-actions-enter` so the CSS reveal
-  // animation plays exactly once (see turns.css). Historical turns mount with
-  // `turnStatus` already "completed", so they never carry the class and never
-  // replay the animation when content-visibility renders them on scroll.
-  const [settleEntered, setSettleEntered] = useState(false);
-  const previousTurnStatusRef = useRef(turnStatus);
-  useEffect(() => {
-    const previous = previousTurnStatusRef.current;
-    previousTurnStatusRef.current = turnStatus;
-    if (previous === "in_progress" && turnStatus === "completed") {
-      setSettleEntered(true);
-    }
-  }, [turnStatus]);
   switch (item.type) {
     case "user_message": {
       const text = item.text ?? "";
@@ -338,22 +324,25 @@ function BuiltInThreadItemView({
       const agentText = streamTextStore.has(streamKeyValue)
         ? streamTextStore.get(streamKeyValue)
         : (item.text ?? "");
-      const copyable = streaming || agentText.trim() !== "";
+      const copyable = agentText.trim() !== "";
       const isProcessText = !item.terminal;
       const forkVisible =
         turnStatus === "completed" &&
         item.id === actionableAgentMessageID &&
         copyable &&
         !isProcessText;
-      // Copy snapshots text already on screen, so it remains useful while the
-      // provider is still streaming or publishing the turn's terminal event.
-      // Fork still waits for the durable answer boundary.
-      const streamingCopyVisible =
-        turnStatus === "in_progress" && streaming && copyable && !isProcessText;
-      const actionsVisible = forkVisible || streamingCopyVisible;
+      // A partial stream is not a useful copy boundary. Expose copy only once
+      // the final message item itself is complete; fork still waits for the
+      // enclosing turn to reach its durable completed boundary.
+      const finalizingCopyVisible =
+        turnStatus === "in_progress" &&
+        item.status === "completed" &&
+        copyable &&
+        !isProcessText;
+      const actionsVisible = forkVisible || finalizingCopyVisible;
       const actionsPersistent =
         actionsVisible &&
-        (item.id === latestAgentMessageID || streamingCopyVisible);
+        (item.id === latestAgentMessageID || finalizingCopyVisible);
       // Only the persistent bar (latest answer, always visible) takes
       // in-flow space; historical answers get a hover overlay so no
       // invisible slot pads the turn boundary. A live final answer uses the
@@ -364,7 +353,7 @@ function BuiltInThreadItemView({
           data-wuu-variant="agent"
           className={`agent-block${
             actionsVisible
-              ? ` agent-block-with-action-slot agent-actions-available${settleEntered ? " agent-actions-enter" : ""}${actionsPersistent ? " agent-actions-persistent" : " agent-actions-overlay"}`
+              ? ` agent-block-with-action-slot agent-actions-available${actionsPersistent ? " agent-actions-persistent" : " agent-actions-overlay"}`
               : ""
           }`}
         >

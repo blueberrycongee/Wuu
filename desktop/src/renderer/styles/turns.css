@@ -1510,31 +1510,6 @@
   padding-top: var(--conversation-answer-hover-action-gap);
 }
 
-/*
- * The latest answer's persistent actions bar mounts in the same commit
- * that settles the live text. Reveal it with a short rise + fade so the
- * settle instant reads as one deliberate handoff instead of a pop into
- * the turn boundary band. Paint-only (opacity + transform): the row still
- * takes its flow space on the settle frame, but it is invisible while the
- * fade runs, so the 36px slot reads as growth instead of a hard cut.
- *
- * Scoped to the `agent-actions-enter` class (ThreadItemView adds it only
- * when a live turn completes): historical answers mount with the
- * persistent classes already present and must not replay the animation
- * when content-visibility renders them on scroll. Duration is token-driven,
- * so the reduced-motion token collapse also flattens this to instant.
- */
-.agent-actions-enter .agent-message-actions {
-  animation: agent-actions-reveal var(--motion-base) var(--ease-out) both;
-}
-
-@keyframes agent-actions-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-}
-
 .message-actions {
   display: flex;
   min-height: var(--conversation-message-action-size);
