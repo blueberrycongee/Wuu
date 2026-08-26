@@ -62,6 +62,19 @@ func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerific
 			ErrConflict, params.GoalRevision, params.CandidateRevision, task.TaskGoalRevision, task.TaskCandidateRevision,
 		)
 	}
+	if params.RunRef == "" {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("%w: verification requires an independent run", ErrConflict)
+	}
+	verifierRun, err := scanWorkRun(tx.QueryRowContext(ctx, workRunSelect+`
+		WHERE run.id = ? AND run.work_id = ?`, params.RunRef, task.ID))
+	if err != nil {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("load verification run: %w", err)
+	}
+	if verifierRun.Kind != WorkRunVerifier || verifierRun.State != WorkRunCompleted ||
+		verifierRun.GoalRevision != task.TaskGoalRevision || verifierRun.CandidateRevision != task.TaskCandidateRevision ||
+		strings.TrimSpace(verifierRun.SessionRef) == "" || verifierRun.Profile == task.TaskOwner {
+		return TaskVerificationSubmitResult{}, fmt.Errorf("%w: verification run is not an independent completed check of the current candidate", ErrConflict)
+	}
 
 	attempt := 1
 	var previousAttempt int

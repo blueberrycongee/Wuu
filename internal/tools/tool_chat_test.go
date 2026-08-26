@@ -255,9 +255,20 @@ func TestChatVerifyIsAvailableOnlyToHiddenRoomRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mark task checking: %v", err)
 	}
+	verifierRun, err := client.StartWorkRun(ctx, channels.WorkRunStartParams{
+		WorkID: taskResult.Task.ID, Kind: channels.WorkRunVerifier, SessionRef: "independent-verifier",
+	})
+	if err != nil {
+		t.Fatalf("start verifier run: %v", err)
+	}
+	if _, err := client.FinishWorkRun(ctx, channels.WorkRunFinishParams{
+		WorkID: taskResult.Task.ID, RunID: verifierRun.ID, State: channels.WorkRunCompleted, Outcome: "block",
+	}); err != nil {
+		t.Fatalf("finish verifier run: %v", err)
+	}
 	verifyArgs := fmt.Sprintf(
-		`{"room_id":%q,"task_id":%q,"goal_revision":%d,"candidate_revision":%d,"decision":"block","report":"Replay still succeeds."}`,
-		room.ID, taskResult.Task.ID, checking.TaskGoalRevision, checking.TaskCandidateRevision,
+		`{"room_id":%q,"task_id":%q,"goal_revision":%d,"candidate_revision":%d,"decision":"block","report":"Replay still succeeds.","run_ref":%q}`,
+		room.ID, taskResult.Task.ID, checking.TaskGoalRevision, checking.TaskCandidateRevision, verifierRun.ID,
 	)
 	verifiedJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_verify", Arguments: verifyArgs})
 	if err != nil || !strings.Contains(verifiedJSON, `"decision":"block"`) || !strings.Contains(verifiedJSON, `"kind":"verification_feedback"`) {

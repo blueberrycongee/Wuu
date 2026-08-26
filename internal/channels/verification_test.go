@@ -7,6 +7,22 @@ import (
 	"testing"
 )
 
+func completeIndependentVerifierRun(t *testing.T, ctx context.Context, runtime *AgentClient, taskID, sessionRef string) string {
+	t.Helper()
+	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{
+		WorkID: taskID, Kind: WorkRunVerifier, SessionRef: sessionRef,
+	})
+	if err != nil {
+		t.Fatalf("StartWorkRun(independent verifier) error = %v", err)
+	}
+	if _, err := runtime.FinishWorkRun(ctx, WorkRunFinishParams{
+		WorkID: taskID, RunID: run.ID, State: WorkRunCompleted, Outcome: "completed independent check",
+	}); err != nil {
+		t.Fatalf("FinishWorkRun(independent verifier) error = %v", err)
+	}
+	return run.ID
+}
+
 func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 	ctx := context.Background()
 	sink := &recordingWakeSink{}
@@ -49,9 +65,10 @@ func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 		t.Fatalf("initial checking task = %#v, err = %v", checking, err)
 	}
 
+	blockRunRef := completeIndependentVerifierRun(t, ctx, roomRuntime, task.ID, "block-check")
 	blocked, err := roomRuntime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
 		RoomID: room.ID, TaskID: task.ID, Decision: VerificationBlock,
-		Report: "The replay test still creates a second session.", GoalRevision: 1, CandidateRevision: 1,
+		Report: "The replay test still creates a second session.", GoalRevision: 1, CandidateRevision: 1, RunRef: blockRunRef,
 	})
 	if err != nil {
 		t.Fatalf("SubmitTaskVerification(block) error = %v", err)
@@ -98,9 +115,10 @@ func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 		t.Fatalf("repair checking task = %#v, err = %v", checking, err)
 	}
 
+	passRunRef := completeIndependentVerifierRun(t, ctx, roomRuntime, task.ID, "pass-check")
 	passed, err := roomRuntime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
 		RoomID: room.ID, TaskID: task.ID, Decision: VerificationPass,
-		Report: "Replay is rejected and focused tests pass.", GoalRevision: 1, CandidateRevision: 2,
+		Report: "Replay is rejected and focused tests pass.", GoalRevision: 1, CandidateRevision: 2, RunRef: passRunRef,
 	})
 	if err != nil {
 		t.Fatalf("SubmitTaskVerification(pass) error = %v", err)
@@ -168,6 +186,7 @@ func TestNamedVerifierReturnsAuditableResultToRoomRuntime(t *testing.T) {
 	_, _ = roomRuntime.Check(ctx)
 	run, err := roomRuntime.StartWorkRun(ctx, WorkRunStartParams{
 		WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID,
+		SessionRef: "named-verifier-session",
 	})
 	if err != nil {
 		t.Fatalf("StartWorkRun(verifier) error = %v", err)
@@ -333,9 +352,10 @@ func TestTaskVerificationRejectsStaleGoalAndCandidateRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateTask(revised checking) error = %v", err)
 	}
+	newGoalRunRef := completeIndependentVerifierRun(t, ctx, roomRuntime, task.ID, "new-goal-check")
 	if _, err := roomRuntime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
 		RoomID: room.ID, TaskID: task.ID, Decision: VerificationPass, Report: "new goal passed",
-		GoalRevision: checking.TaskGoalRevision, CandidateRevision: checking.TaskCandidateRevision,
+		GoalRevision: checking.TaskGoalRevision, CandidateRevision: checking.TaskCandidateRevision, RunRef: newGoalRunRef,
 	}); err != nil {
 		t.Fatalf("SubmitTaskVerification(new goal) error = %v", err)
 	}
@@ -406,9 +426,10 @@ func TestCandidateAndFeedbackDeliveriesRecoverAfterRestart(t *testing.T) {
 	if err != nil || len(recovered.Collaboration) != 1 || recovered.Collaboration[0].ID != delivery.ID {
 		t.Fatalf("recovered candidate = %#v, err = %v", recovered.Collaboration, err)
 	}
+	recoveredRunRef := completeIndependentVerifierRun(t, ctx, roomRuntime, task.ID, "recovered-candidate-check")
 	blocked, err := roomRuntime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
 		RoomID: room.ID, TaskID: task.ID, Decision: VerificationBlock, Report: "Replay still succeeds.",
-		GoalRevision: checking.TaskGoalRevision, CandidateRevision: checking.TaskCandidateRevision,
+		GoalRevision: checking.TaskGoalRevision, CandidateRevision: checking.TaskCandidateRevision, RunRef: recoveredRunRef,
 	})
 	if err != nil {
 		t.Fatalf("SubmitTaskVerification(block) error = %v", err)
