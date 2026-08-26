@@ -264,6 +264,20 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 		if goalRevision != message.TaskGoalRevision || candidateRevision != message.TaskCandidateRevision {
 			return Message{}, fmt.Errorf("%w: task verification is stale", ErrConflict)
 		}
+		var ownerDeliveries int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM room_messages delivery
+			JOIN task_verifications verification ON verification.task_id = ?
+			WHERE delivery.room_id = ? AND delivery.thread_id = ?
+				AND delivery.author_type = 'agent' AND delivery.author_id = ?
+				AND delivery.kind = 'text' AND delivery.created_at >= verification.updated_at`,
+			message.ID, message.RoomID, message.ID, message.TaskOwner).Scan(&ownerDeliveries); err != nil {
+			return Message{}, fmt.Errorf("check verified task delivery: %w", err)
+		}
+		if ownerDeliveries == 0 {
+			return Message{}, fmt.Errorf("%w: verified task completion requires the owner to deliver the result", ErrConflict)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE room_messages

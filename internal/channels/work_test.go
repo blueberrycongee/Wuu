@@ -109,6 +109,12 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	if len(verified.Events) < 4 || verified.Events[len(verified.Events)-1].Kind != "verification" {
 		t.Fatalf("work event history = %#v", verified.Events)
 	}
+	delivery, err := ownerClient.Send(ctx, AgentSendParams{
+		RoomID: room.ID, ThreadID: task.ID, ReplyTo: task.ID, Body: "Focused replay check passed.", BasisSeq: task.Seq,
+	})
+	if err != nil || delivery.Status != SendCommitted {
+		t.Fatalf("Send(owner delivery) = %#v, err = %v", delivery, err)
+	}
 	if _, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDone}); err != nil {
 		t.Fatalf("complete verified task: %v", err)
 	}

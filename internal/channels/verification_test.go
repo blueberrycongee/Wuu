@@ -138,6 +138,18 @@ func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 		persisted.CandidateRevision != 2 || persisted.Report != "Replay is rejected and focused tests pass." {
 		t.Fatalf("persisted verification = %#v", persisted)
 	}
+	if _, err := service.UpdateTask(ctx, TaskUpdateParams{
+		TaskID: task.ID, State: TaskStateDone, AgentID: owner.Agent.ID, Token: owner.Token,
+	}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("completion before owner delivery error = %v, want conflict", err)
+	}
+	delivery, err := service.SendAgent(ctx, AgentSendParams{
+		AgentID: owner.Agent.ID, Token: owner.Token, RoomID: room.ID, ThreadID: task.ID, ReplyTo: task.ID,
+		Body: "Replay is rejected and the focused tests pass.", BasisSeq: task.Seq,
+	})
+	if err != nil || delivery.Status != SendCommitted {
+		t.Fatalf("Send(owner delivery) = %#v, err = %v", delivery, err)
+	}
 	completed, err := service.UpdateTask(ctx, TaskUpdateParams{
 		TaskID: task.ID, State: TaskStateDone, AgentID: owner.Agent.ID, Token: owner.Token,
 	})
