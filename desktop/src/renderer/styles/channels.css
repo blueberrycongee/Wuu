@@ -2678,6 +2678,15 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+  /* Hue-driven fills live in token declarations so the color literals stay
+   * at declaration sites (styleAudit): the swatch/thumb sample the picked
+   * hue, and the track paints the full wheel at the same S/L so what the
+   * user drags over is what the swatch will show. */
+  --agent-avatar-hue-fill: hsl(var(--agent-avatar-hue) 68% 60%);
+  --agent-avatar-hue-fill-strong: hsl(var(--agent-avatar-hue) 68% 54%);
+  --agent-avatar-hue-track: linear-gradient(90deg,
+    hsl(0 68% 60%), hsl(60 68% 60%), hsl(120 68% 60%),
+    hsl(180 68% 60%), hsl(240 68% 60%), hsl(300 68% 60%), hsl(359 68% 60%));
 }
 
 .agent-avatar-color-preview {
@@ -2685,7 +2694,7 @@
   height: 32px;
   border: 3px solid var(--paper);
   border-radius: 50%;
-  background: hsl(var(--agent-avatar-hue) 68% 60%);
+  background: var(--agent-avatar-hue-fill);
   box-shadow: 0 0 0 1px var(--hairline-strong);
 }
 
@@ -2703,9 +2712,7 @@
   height: 10px;
   border: 1px solid var(--hairline);
   border-radius: 999px;
-  background: linear-gradient(90deg,
-    hsl(0 68% 60%), hsl(60 68% 60%), hsl(120 68% 60%),
-    hsl(180 68% 60%), hsl(240 68% 60%), hsl(300 68% 60%), hsl(359 68% 60%));
+  background: var(--agent-avatar-hue-track);
 }
 
 .agent-avatar-color-control input[type="range"]::-webkit-slider-thumb {
@@ -2715,7 +2722,7 @@
   appearance: none;
   border: 3px solid var(--paper);
   border-radius: 50%;
-  background: hsl(var(--agent-avatar-hue) 68% 54%);
+  background: var(--agent-avatar-hue-fill-strong);
   box-shadow: 0 0 0 1px var(--ink-soft), 0 2px 5px var(--shadow-color-medium);
 }
 
