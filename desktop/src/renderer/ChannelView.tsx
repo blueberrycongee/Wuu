@@ -157,6 +157,23 @@ function assignmentStatusKey(state: ReturnType<typeof assignmentState>): "open" 
   return state === "needs_human" ? "needsHuman" : state;
 }
 
+// Work records use a wider state vocabulary than the lightweight chat-task
+// states (working/completed/integrating plus terminal failure states). Collapse
+// them into one user-facing set so a card never shows raw "open → working"
+// style transitions, and terminal states stay visually distinct.
+function workDisplayState(state?: string): "open" | "doing" | "checking" | "revising" | "needs_human" | "done" | "integrating" | "failed" | "cancelled" | "interrupted" {
+  if (state === "working" || state === "doing") return "doing";
+  if (state === "checking") return "checking";
+  if (state === "revising") return "revising";
+  if (state === "needs_human") return "needs_human";
+  if (state === "integrating") return "integrating";
+  if (state === "done" || state === "completed") return "done";
+  if (state === "failed") return "failed";
+  if (state === "cancelled") return "cancelled";
+  if (state === "interrupted") return "interrupted";
+  return "open";
+}
+
 function ChannelOrchestrationCluster({
   room,
   tasks,
@@ -236,8 +253,7 @@ function ChannelOrchestrationCluster({
               const owner = agentByID.get(task.task_owner ?? "");
               const ownerName = owner?.name ?? task.task_owner ?? t("channels.taskOwnerLabel");
               const work = task.work;
-              const state = assignmentState(task.task_state);
-              const workState = work?.state ?? state;
+              const workState = workDisplayState(work?.state ?? task.task_state);
               const statusLabel = workState === "cancelled"
                 ? t("channels.workStatus.cancelled")
                 : workState === "failed"
@@ -246,11 +262,7 @@ function ChannelOrchestrationCluster({
                     ? t("channels.workStatus.interrupted")
                     : workState === "integrating"
                       ? t("channels.workStatus.integrating")
-                      : t(`channels.assignmentStatus.${assignmentStatusKey(state)}`);
-              const activity = (work?.events ?? [])
-                .filter((event) => event.kind === "state" && event.state)
-                .map((event) => event.state)
-                .filter((eventState, eventIndex, values) => eventIndex === 0 || eventState !== values[eventIndex - 1]);
+                      : t(`channels.assignmentStatus.${assignmentStatusKey(workState)}`);
               const elapsedMilliseconds = work
                 ? Math.max(0, Date.parse(work.updated_at) - Date.parse(work.created_at))
                 : 0;
@@ -258,9 +270,8 @@ function ChannelOrchestrationCluster({
               const elapsed = elapsedMinutes >= 60
                 ? `${Math.floor(elapsedMinutes / 60)}h ${elapsedMinutes % 60}m`
                 : `${elapsedMinutes}m`;
-              const hasEvidence = Boolean(
+              const hasInternalDetails = Boolean(
                 work?.checks_summary
-                || work?.changed_files_count
                 || work?.verification?.report
                 || work?.artifacts?.length
                 || work?.runs?.length
@@ -299,20 +310,15 @@ function ChannelOrchestrationCluster({
                   </MessageBubble>
                   {work ? (
                     <div className="channel-work-card-details">
-                      {activity.length > 0 ? (
-                        <div className="channel-work-activity" aria-label={activity.join(" → ")}>
-                          {activity.join(" → ")}
-                        </div>
-                      ) : null}
                       <div className="channel-work-summary-line">
-                        {work.checks_summary ? <span>{t("channels.workChecks", { summary: work.checks_summary })}</span> : null}
                         {work.changed_files_count ? <span>{t("channels.workFilesChanged", { count: work.changed_files_count })}</span> : null}
                         <span>{t("channels.workElapsed", { duration: elapsed })}</span>
                       </div>
-                      {hasEvidence ? (
+                      {hasInternalDetails ? (
                         <details className="channel-work-evidence">
-                          <summary>{t("channels.workEvidence")}</summary>
+                          <summary>{t("channels.workDetails")}</summary>
                           <div className="channel-work-evidence-body">
+                            {work.checks_summary ? <p>{t("channels.workChecks", { summary: work.checks_summary })}</p> : null}
                             {work.verification?.report ? (
                               <section>
                                 <strong>{t("channels.workVerifierReport")}</strong>

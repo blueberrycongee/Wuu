@@ -331,7 +331,8 @@ describe("ChannelView", () => {
     act(() => root?.render(<ChannelView selectedRoomID="room-1" onOpenSession={onOpenSession} />));
     await settle();
 
-    expect(container.querySelector(".channel-work-activity")?.textContent).toBe("working → checking → revising → checking");
+    expect(container.querySelector(".channel-work-activity")).toBeNull();
+    expect(container.querySelector(".channel-assignment-status")?.textContent).toBe("验收中");
     expect(container.querySelector(".channel-work-summary-line")?.textContent).toContain("3");
     const evidence = container.querySelector<HTMLDetailsElement>(".channel-work-evidence");
     expect(evidence).not.toBeNull();

@@ -1062,13 +1062,6 @@
   font-size: 11px;
 }
 
-.channel-work-activity {
-  overflow: hidden;
-  font-family: var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .channel-work-summary-line {
   display: flex;
   flex-wrap: wrap;
@@ -1082,9 +1075,17 @@
 
 .channel-work-evidence summary {
   width: max-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   cursor: pointer;
   color: var(--text-secondary);
   font-weight: 620;
+}
+
+.channel-work-evidence summary:hover,
+.channel-work-evidence summary:focus-visible {
+  color: var(--text-primary);
 }
 
 .channel-work-evidence-body {
@@ -1095,6 +1096,10 @@
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   background: var(--ink-overlay-4);
+}
+
+.channel-work-evidence-body > p {
+  margin: 0;
 }
 
 .channel-work-evidence-body section {

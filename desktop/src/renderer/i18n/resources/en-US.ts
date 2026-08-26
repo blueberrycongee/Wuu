@@ -301,6 +301,7 @@ export const enUS = {
   "channels.workStatus.interrupted": "Interrupted",
   "channels.workStatus.integrating": "Integrating",
   "channels.workEvidence": "Evidence and internal checks",
+  "channels.workDetails": "Details",
   "channels.workChecks": "Checks: {{summary}}",
   "channels.workFilesChanged": "{{count}} files changed",
   "channels.workElapsed": "Elapsed {{duration}}",

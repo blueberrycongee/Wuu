@@ -299,6 +299,7 @@ export const zhCN = {
   "channels.workStatus.interrupted": "已中断",
   "channels.workStatus.integrating": "正在整合",
   "channels.workEvidence": "证据与内部检查",
+  "channels.workDetails": "详情",
   "channels.workChecks": "检查：{{summary}}",
   "channels.workFilesChanged": "变更 {{count}} 个文件",
   "channels.workElapsed": "用时 {{duration}}",
