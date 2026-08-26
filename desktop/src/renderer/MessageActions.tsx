@@ -46,10 +46,12 @@ export function AgentMessageActions({
   getText,
   onFork,
   placement,
+  showFork = true,
 }: {
   getText: () => string;
   onFork?: () => void;
   placement: "overlay" | "persistent";
+  showFork?: boolean;
 }): JSX.Element {
   const { t } = useI18n();
 
@@ -61,17 +63,24 @@ export function AgentMessageActions({
       aria-label={t("message.assistantActions")}
     >
       <MessageCopyButton getText={getText} className="message-action-button" iconSize={15} />
-      <button
-        className="message-action-button"
-        type="button"
-        aria-label={t("message.fork")}
-        title={t("message.fork")}
-        disabled={!onFork}
-        onClick={onFork}
-      >
-        <GitFork className="icon" />
-      </button>
+      {showFork ? <MessageForkButton onFork={onFork} /> : null}
     </div>
+  );
+}
+
+export function MessageForkButton({ onFork }: { onFork?: () => void }): JSX.Element {
+  const { t } = useI18n();
+  return (
+    <button
+      className="message-action-button"
+      type="button"
+      aria-label={t("message.fork")}
+      title={t("message.fork")}
+      disabled={!onFork}
+      onClick={onFork}
+    >
+      <GitFork className="icon" />
+    </button>
   );
 }
 

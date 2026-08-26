@@ -414,7 +414,7 @@ export function turnProgressContent(
       label: messageFlowStatusLabel({
         done: false,
         failed: false,
-        hasFinalText,
+        hasFinalText: false,
         locale,
       }),
     };
@@ -442,6 +442,10 @@ export function turnProgressContent(
         done: false,
         failed: false,
         hasFinalText: hasText,
+        finalizing:
+          hasText &&
+          latestItem.terminal === true &&
+          latestItem.status === "completed",
         locale,
       }),
       detail: hasText ? undefined : waitingDetail(elapsedMs, t("turn.organizingAnswer")),
@@ -452,7 +456,7 @@ export function turnProgressContent(
       label: messageFlowStatusLabel({
         done: false,
         failed: false,
-        hasFinalText,
+        hasFinalText: false,
         locale,
       }),
       detail: waitingDetail(elapsedMs, t("turn.organizingAnswer")),
@@ -463,7 +467,7 @@ export function turnProgressContent(
       label: messageFlowStatusLabel({
         done: false,
         failed: false,
-        hasFinalText,
+        hasFinalText: false,
         locale,
       }),
     };

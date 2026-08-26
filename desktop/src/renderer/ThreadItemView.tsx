@@ -32,6 +32,7 @@ import {
   MessageCopyButton,
   MessageEditButton,
   MessageFileList,
+  MessageForkButton,
   MessageImageGrid,
 } from "./MessageActions";
 import { StreamingMarkdown } from "./StreamingMarkdown";
@@ -234,6 +235,7 @@ function BuiltInThreadItemView({
           (copyable || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0),
       );
       const editActionVisible = editable;
+      const forkable = Boolean(!item.read_only && onForkMessage);
       // Plugin wake messages can hide the real delivered prompt behind a
       // generic query bubble. A durable related session opens in the
       // conversation split; other deliveries use the delivery inspector.
@@ -264,7 +266,7 @@ function BuiltInThreadItemView({
       };
       return (
         <div
-          className={`user-message-block${copyable || editActionVisible ? " user-message-block-with-actions" : ""}`}
+          className={`user-message-block${copyable || editActionVisible || forkable ? " user-message-block-with-actions" : ""}`}
           data-wuu-component="message"
           data-wuu-variant="user"
           id={userMessageAnchorID(turnID, item.id)}
@@ -291,7 +293,7 @@ function BuiltInThreadItemView({
               onOpenFile={onOpenFile}
             />
           )}
-          {!editing && (copyable || editActionVisible || deliveryViewAvailable) ? (
+          {!editing && (copyable || editActionVisible || forkable || deliveryViewAvailable) ? (
             <div
               className="message-actions user-message-actions"
               data-wuu-component="message-actions"
@@ -316,6 +318,9 @@ function BuiltInThreadItemView({
                   <Info size={15} />
                 </button>
               ) : null}
+              {forkable ? (
+                <MessageForkButton onFork={() => onForkMessage?.(turnID, item.id)} />
+              ) : null}
               {editActionVisible && onEditMessage ? (
                 <MessageEditButton
                   onEdit={() => onEditMessage(turnID, item)}
@@ -335,18 +340,24 @@ function BuiltInThreadItemView({
         : (item.text ?? "");
       const copyable = streaming || agentText.trim() !== "";
       const isProcessText = !item.terminal;
-      const actionsVisible =
+      const forkVisible =
         turnStatus === "completed" &&
         item.id === actionableAgentMessageID &&
         copyable &&
         !isProcessText;
+      // Copy snapshots text already on screen, so it remains useful while the
+      // provider is still streaming or publishing the turn's terminal event.
+      // Fork still waits for the durable answer boundary.
+      const streamingCopyVisible =
+        turnStatus === "in_progress" && streaming && copyable && !isProcessText;
+      const actionsVisible = forkVisible || streamingCopyVisible;
       const actionsPersistent =
-        actionsVisible && item.id === latestAgentMessageID;
+        actionsVisible &&
+        (item.id === latestAgentMessageID || streamingCopyVisible);
       // Only the persistent bar (latest answer, always visible) takes
       // in-flow space; historical answers get a hover overlay so no
-      // invisible slot pads the turn boundary. Streaming answers render
-      // no bar at all — the old streaming placeholder reserved 32px of
-      // dead space under text that had nothing to offer yet.
+      // invisible slot pads the turn boundary. A live final answer uses the
+      // persistent slot as soon as it can offer a useful copy action.
       return (
         <article
           data-wuu-component="message"
@@ -372,8 +383,9 @@ function BuiltInThreadItemView({
             <AgentMessageActions
               getText={() => streamFieldValue(turnID, item, "text")}
               placement={actionsPersistent ? "persistent" : "overlay"}
+              showFork={forkVisible}
               onFork={
-                onForkMessage ? () => onForkMessage(turnID, item.id) : undefined
+                forkVisible && onForkMessage ? () => onForkMessage(turnID, item.id) : undefined
               }
             />
           ) : null}

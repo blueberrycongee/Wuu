@@ -4,6 +4,7 @@ export type MessageFlowStatusInput = {
   done: boolean
   failed: boolean
   hasFinalText: boolean
+  finalizing?: boolean
   stalled?: boolean
   locale?: MessageFlowLocale
 }
@@ -42,6 +43,7 @@ export function messageFlowStatusLabel({
   done,
   failed,
   hasFinalText,
+  finalizing = false,
   stalled = false,
   locale = 'en',
 }: MessageFlowStatusInput): string {
@@ -51,6 +53,9 @@ export function messageFlowStatusLabel({
   }
   if (stalled) {
     return translate(appLocale, 'messageFlow.stillGenerating')
+  }
+  if (finalizing) {
+    return translate(appLocale, 'messageFlow.finalizing')
   }
   return translate(appLocale, hasFinalText ? 'messageFlow.replying' : 'messageFlow.working')
 }

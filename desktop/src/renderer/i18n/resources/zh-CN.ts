@@ -1931,6 +1931,7 @@ export const zhCN = {
   "messageFlow.activityFailed": "过程失败",
   "messageFlow.activityLog": "过程记录",
   "messageFlow.stillGenerating": "仍在生成",
+  "messageFlow.finalizing": "正在收尾",
   "messageFlow.replying": "正在回复",
   "messageFlow.working": "正在处理",
   "fixture.rich.patchSummary": "约束阅读宽度",

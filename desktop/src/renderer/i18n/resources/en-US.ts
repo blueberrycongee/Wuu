@@ -1933,6 +1933,7 @@ export const enUS = {
   "messageFlow.activityFailed": "Activity failed",
   "messageFlow.activityLog": "Activity log",
   "messageFlow.stillGenerating": "Still generating",
+  "messageFlow.finalizing": "Finalizing",
   "messageFlow.replying": "Replying",
   "messageFlow.working": "Working",
   "fixture.rich.patchSummary": "constrain readable width",

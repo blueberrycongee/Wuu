@@ -38,6 +38,7 @@ function render({
   latestAgentMessageID,
   streaming,
   onEditMessage,
+  onForkMessage,
 }: {
   item: ThreadItem;
   turnStatus: Turn["status"];
@@ -45,6 +46,7 @@ function render({
   latestAgentMessageID?: string;
   streaming: boolean;
   onEditMessage?: (turnID: string, item: ThreadItem) => void;
+  onForkMessage?: (turnID: string, itemID: string) => void;
 }): void {
   if (!container) {
     container = document.createElement("div");
@@ -63,6 +65,7 @@ function render({
           latestAgentMessageID={latestAgentMessageID}
           onStreamFrame={() => {}}
           onEditMessage={onEditMessage}
+          onForkMessage={onForkMessage}
         />
         <ToastViewport />
       </WuuUIRoot>,
@@ -441,16 +444,17 @@ describe("ThreadItemView", () => {
     expect(secondToggle?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("reserves no action bar while streaming and mounts the persistent bar on completion", () => {
+  it("offers copy while streaming and adds fork after the durable answer completes", () => {
     render({
       item: makeFinalAnswer("in_progress"),
       turnStatus: "in_progress",
       streaming: true,
     });
 
-    // Streaming answers render no bar at all — the old invisible
-    // placeholder reserved 32px of dead space under live text.
-    expect(container?.querySelector(".agent-message-actions")).toBeNull();
+    const streamingActions = actionBar();
+    expect(streamingActions.dataset.wuuPlacement).toBe("persistent");
+    expect(streamingActions.querySelectorAll("button")).toHaveLength(1);
+    expect(streamingActions.querySelector("button")?.getAttribute("aria-label")).toBe("复制消息");
 
     render({
       item: makeFinalAnswer("completed"),
@@ -468,6 +472,21 @@ describe("ThreadItemView", () => {
     const block = container?.querySelector(".agent-block");
     expect(block?.classList.contains("agent-actions-persistent")).toBe(true);
     expect(block?.classList.contains("agent-actions-overlay")).toBe(false);
+  });
+
+  it("offers a stable user-message fork checkpoint while the turn is running", () => {
+    const onForkMessage = vi.fn();
+    render({
+      item: makeUserMessage("Fork from this prompt"),
+      turnStatus: "in_progress",
+      streaming: false,
+      onForkMessage,
+    });
+
+    const fork = container?.querySelector<HTMLButtonElement>('button[aria-label="分叉"]');
+    expect(fork).not.toBeNull();
+    act(() => fork?.click());
+    expect(onForkMessage).toHaveBeenCalledWith("turn-1", "user-1");
   });
 
   it("renders historical answers with a hover overlay bar instead of an in-flow slot", () => {
