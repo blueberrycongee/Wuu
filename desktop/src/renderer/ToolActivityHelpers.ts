@@ -166,10 +166,11 @@ function readableToolActivityCommandInner(
   // paths and only render once args (or result) is parseable.
   const args = parseJSONRecord(item.arguments);
   const result = richToolResultRecord(item) ?? parseJSONRecord(item.result);
-  const name = (item.name ?? "").trim();
+  const rawName = (item.name ?? "").trim();
+  const name = canonicalToolName(rawName);
 
-  if (isMCPToolName(name)) {
-    return rawToolCommand(name, item.arguments);
+  if (isMCPToolName(rawName)) {
+    return rawToolCommand(rawName, item.arguments);
   }
 
   // No parseable args and no result yet — the tool call just started.
@@ -180,7 +181,9 @@ function readableToolActivityCommandInner(
   const path =
     stringValue(result, "path") ??
     stringValue(args, "path") ??
-    stringValue(args, "file");
+    stringValue(args, "file") ??
+    stringValue(args, "file_path") ??
+    stringValue(args, "notebook_path");
   const command =
     stringValue(result, "command") ?? stringValue(args, "command") ?? "";
   const action = stringValue(result, "action") ?? stringValue(args, "action") ?? "";
@@ -334,7 +337,7 @@ function toolActivitySectionKey(item: ThreadItem): string {
   if (displayKey) {
     return displayKey;
   }
-  const name = (item.name ?? "").trim();
+  const name = canonicalToolName((item.name ?? "").trim());
   switch (name) {
     case "read_file":
     case "list_files":
@@ -760,7 +763,9 @@ function compactToolTargets(items: ThreadItem[]): string[] {
         const path =
           stringValue(result, "path") ??
           stringValue(args, "path") ??
-          stringValue(args, "file");
+          stringValue(args, "file") ??
+          stringValue(args, "file_path") ??
+          stringValue(args, "notebook_path");
         const patchPaths = patchChangedFiles(result);
         if (patchPaths.length > 0) {
           return patchPaths.map(fileBaseName);
@@ -1026,7 +1031,7 @@ function readableBrowserLabel(args: JsonRecord | undefined): string {
 }
 
 export function readableToolName(name: string | undefined): string {
-  switch ((name ?? "").trim()) {
+  switch (canonicalToolName((name ?? "").trim())) {
     case "read_file":
       return t("toolActivity.viewFile");
     case "list_files":
@@ -1065,6 +1070,25 @@ export function readableToolActivityName(
   return item.display?.label?.trim() || readableToolName(item.name);
 }
 
+/**
+ * Claude Code uses PascalCase names for tools whose Wuu equivalents use
+ * snake_case. Normalize only this known built-in surface so extension and MCP
+ * tool identities remain untouched.
+ */
+function canonicalToolName(name: string): string {
+  switch (name.toLowerCase()) {
+    case "bash": return "bash";
+    case "read": return "read_file";
+    case "glob": return "glob";
+    case "grep": return "grep";
+    case "edit": return "edit_file";
+    case "write": return "write_file";
+    case "websearch": return "web_search";
+    case "webfetch": return "web_fetch";
+    default: return name;
+  }
+}
+
 function uniqueStrings(values: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -1095,14 +1119,16 @@ export function summarizeToolActivity(items: ThreadItem[]): ToolActivitySummary 
   let primaryKind: ToolActivityKind = "unknown";
 
   for (const item of items) {
-    const name = (item.name ?? "tool").trim() || "tool";
+    const name = canonicalToolName((item.name ?? "tool").trim() || "tool");
     const args = parseJSONRecord(item.arguments);
     const result = parseJSONRecord(item.result);
     const capability = item.display?.capability?.trim();
     const path =
       stringValue(result, "path") ??
       stringValue(args, "path") ??
-      stringValue(args, "file");
+      stringValue(args, "file") ??
+      stringValue(args, "file_path") ??
+      stringValue(args, "notebook_path");
 
     running = running || (item.status ?? "in_progress") === "in_progress";
     failed = failed || item.status === "failed" || Boolean(item.error);
@@ -1249,7 +1275,7 @@ export function collectTurnSources(items: ThreadItem[]): TurnSource[] {
     if (item.type !== "tool_call") {
       continue;
     }
-    const name = (item.name ?? "").trim();
+    const name = canonicalToolName((item.name ?? "").trim());
     if (name === "web_search") {
       const result = parseJSONRecord(item.result);
       for (const hit of arrayValue(result, "results")) {

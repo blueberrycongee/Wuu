@@ -37,6 +37,21 @@ describe("activitySummaryText", () => {
 });
 
 describe("readableToolActivityCommand", () => {
+  it("shows Claude Code tool targets instead of generic PascalCase names", () => {
+    expect(
+      readableToolActivityCommand({
+        name: "Bash",
+        arguments: JSON.stringify({ command: "rg tool_call desktop/src" }),
+      }),
+    ).toBe("运行 rg tool_call desktop/src");
+    expect(
+      readableToolActivityCommand({
+        name: "Read",
+        arguments: JSON.stringify({ file_path: "/repo/desktop/src/App.tsx" }),
+      }),
+    ).toBe("读取 App.tsx");
+  });
+
   it("uses structured rich tool results when the text projection is not JSON", () => {
     expect(
       readableToolActivityCommand({
@@ -250,6 +265,34 @@ describe("readableToolActivityCommand", () => {
 });
 
 describe("buildToolActivityProcessSegments", () => {
+  it("groups Claude Code Bash and Read calls by their actual activity", () => {
+    const items = [
+      {
+        id: "tool-1",
+        type: "tool_call",
+        name: "Bash",
+        status: "completed",
+        arguments: JSON.stringify({ command: "npm test" }),
+      },
+      {
+        id: "tool-2",
+        type: "tool_call",
+        name: "Read",
+        status: "completed",
+        arguments: JSON.stringify({ file_path: "/repo/package.json" }),
+      },
+    ] satisfies ThreadItem[];
+
+    expect(buildToolActivitySections(items)).toMatchObject([
+      { kind: "command", detail: "运行测试" },
+      { kind: "read", detail: "package.json" },
+    ]);
+    expect(buildToolActivityProcessSegments(items).map((segment) => segment.kind)).toEqual([
+      "command",
+      "read",
+    ]);
+  });
+
   it("turns multiple file reads into a count segment", () => {
     const segments = buildToolActivityProcessSegments([
       {
