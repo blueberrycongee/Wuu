@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   EngineInfo,
@@ -66,10 +67,14 @@ export function EngineSettingsSection(): JSX.Element {
     [engines],
   );
 
-  // One-line state shown under each auto-detected agent.
+  // One-line state shown under each auto-detected agent. The enabled/ready
+  // state itself lives in the trailing flag, so this line only carries the
+  // detail: the resolved binary path, or why detection failed.
   const statusLine = (engine: EngineInfo | undefined): string => {
-    if (!engine || !engine.enabled) return t("settings.engineDisabled");
-    if (!engine.binary_ok) return engine.error || t("settings.engineNotInstalled");
+    if (!engine) return "";
+    if (!engine.binary_ok) {
+      return engine.error || t("settings.engineNotInstalledHint");
+    }
     return engine.binary_path || t("settings.engineAutoBinary");
   };
 
@@ -104,7 +109,7 @@ export function EngineSettingsSection(): JSX.Element {
           </div>
         ) : (
           <>
-            <div className="settings-row settings-row-block">
+            <div className="settings-row">
               <div className="settings-row-label">
                 <span className="settings-row-label-title">
                   {t("settings.defaultEngine")}
@@ -113,9 +118,8 @@ export function EngineSettingsSection(): JSX.Element {
                   {t("settings.defaultEngineDescription")}
                 </span>
               </div>
-              <div className="settings-row-control-block">
+              <div className="settings-row-control">
                 <SelectMenu
-                  className="settings-select"
                   triggerClassName="settings-select-trigger"
                   ariaLabel={t("settings.defaultEngine")}
                   dataTestid="settings-default-engine"
@@ -138,21 +142,19 @@ export function EngineSettingsSection(): JSX.Element {
             {EXTERNAL_ENGINES.map((id) => {
               const engine = engineById(id);
               const flag = statusFlag(engine);
-              const notInstalled = engine?.enabled && !engine?.binary_ok;
               return (
                 <div
                   key={id}
-                  className="settings-row settings-row-block"
+                  className="settings-row"
                   data-testid={`settings-engine-${id}-status`}
                 >
                   <div className="settings-row-label">
                     <span className="settings-row-label-title">{ENGINE_LABELS[id]}</span>
-                    <span className="settings-row-label-description">
+                    <span className="settings-row-label-description settings-engine-path">
                       {statusLine(engine)}
-                      {notInstalled ? ` · ${t("settings.engineNotInstalledHint")}` : ""}
                     </span>
                   </div>
-                  <div className="settings-row-control-block">
+                  <div className="settings-row-control">
                     <span className={flag.className}>{flag.text}</span>
                   </div>
                 </div>
@@ -162,13 +164,17 @@ export function EngineSettingsSection(): JSX.Element {
         )}
       </div>
       <button
-        className="settings-button settings-engine-advanced-toggle"
+        className="settings-button settings-button-ghost settings-engine-advanced-toggle"
         type="button"
         aria-expanded={advancedOpen}
         data-testid="settings-engine-advanced-toggle"
         onClick={() => setAdvancedOpen((open) => !open)}
       >
-        {advancedOpen ? t("settings.engineAdvancedHide") : t("settings.engineAdvanced")}
+        <ChevronRight
+          className={`icon settings-engine-advanced-chevron${advancedOpen ? " open" : ""}`}
+          aria-hidden="true"
+        />
+        <span>{t("settings.engineAdvanced")}</span>
       </button>
       {advancedOpen ? (
         <div className="settings-group" data-wuu-component="settings-group">

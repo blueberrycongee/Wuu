@@ -776,6 +776,35 @@
   line-height: 1.5;
 }
 
+/* --- Agent engines section --------------------------------------------------
+ * Auto-detected agent rows follow the standard two-column row grid: name and
+ * resolved binary path on the left, a status flag pinned right. The advanced
+ * disclosure is a quiet inline toggle, not a full-width button.
+ * ----------------------------------------------------------------------------- */
+
+/* Resolved binary paths are long and uninteresting; keep them to one line. */
+.settings-engine-path {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.settings-engine-advanced-toggle {
+  align-self: flex-start;
+  gap: 4px;
+  padding: 0 8px 0 4px;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+}
+
+.settings-engine-advanced-chevron {
+  transition: transform var(--motion-fast) var(--menu-enter-easing);
+}
+
+.settings-engine-advanced-chevron.open {
+  transform: rotate(90deg);
+}
+
 /* --- Provider overview tiles ---------------------------------------------------
  * Selectable grid — the one place where selection needs an enclosure.
  * Tiles keep a resting hairline border on the paper canvas; the active

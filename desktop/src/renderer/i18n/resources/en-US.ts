@@ -14,7 +14,6 @@ export const enUS = {
   "settings.engineNotInstalledHint": "Appears here automatically once the CLI is installed",
   "settings.engineDetecting": "Detecting installed agents…",
   "settings.engineAdvanced": "Advanced",
-  "settings.engineAdvancedHide": "Hide advanced",
   "settings.engineBinaryPath": "Binary path",
   "settings.engineBinaryPathPlaceholder": "Leave empty to look up on PATH",
   "settings.engineAutoBinary": "Auto-detected",
