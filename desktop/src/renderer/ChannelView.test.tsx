@@ -1364,13 +1364,15 @@ describe("ChannelView", () => {
     expect(nameInput).not.toBeNull();
     act(() => setInputValue(nameInput!, "Beta"));
     const avatar = document.querySelector<HTMLButtonElement>('button[aria-label="云朵"]');
-    const color = document.querySelector<HTMLButtonElement>('button[aria-label="选择色相 202"]');
+    const hueSlider = document.querySelector<HTMLInputElement>(
+      '.agent-avatar-color-control input[type="range"]',
+    );
     expect(avatar).not.toBeNull();
-    expect(color).not.toBeNull();
+    expect(hueSlider).not.toBeNull();
     expect(document.querySelector('button[aria-label="选择自定义头像图片"]')).not.toBeNull();
     expect(document.querySelector<HTMLInputElement>('.channel-avatar-file-input')?.accept).toBe("image/png,image/jpeg,image/webp");
     act(() => avatar?.click());
-    act(() => color?.click());
+    act(() => setInputValue(hueSlider!, "202"));
     const form = document.querySelector<HTMLFormElement>(".sidebar-name-dialog");
     await act(async () => form?.requestSubmit());
 
