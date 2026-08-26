@@ -2,11 +2,22 @@
    Light-theme values; the dark theme overrides these in base.css theme blocks. */
 :root {
   /* The native macOS vibrancy view supplies the material and wallpaper tint.
-   * Keep the web layer nearly clear so it does not turn that material white. */
-  --sidebar-material-fill: rgba(255, 255, 255, 0.025);
-  --sidebar-material-edge: rgba(255, 255, 255, 0.34);
-  --sidebar-material-inner-edge: rgba(255, 255, 255, 0.12);
-  --sidebar-material-highlight: rgba(255, 255, 255, 0.16);
+   * The web layer lays a bright frost over it: enough white that the rail
+   * reads as a light material against the pure-white content column (raw
+   * under-window vibrancy skews gray there), while still letting a hint of
+   * wallpaper color and under-window motion through. */
+  --sidebar-material-fill: rgba(255, 255, 255, 0.62);
+  /* Rail/content boundary: a crisp dark hairline instead of the old white
+   * edge + white inset pair, which were invisible against the white content
+   * column and left the boundary to be read from the gray brightness step.
+   * The dark theme keeps its own light-on-dark edge overrides in theme.css. */
+  --sidebar-material-edge: rgba(17, 19, 21, 0.07);
+  --sidebar-material-inner-edge: transparent;
+  /* Light theme keeps the frost perfectly uniform: the ::before highlight
+   * gradient is zeroed out here (it only brightened the top-left corner,
+   * making the rest of the rail look dingy by contrast). The dark theme
+   * re-enables it via its own token overrides in theme.css. */
+  --sidebar-material-highlight: transparent;
   /* Sidebar shadows + structural overlays: pin to the same neutral hue as the
    * ink overlays in base.css so the vignette, drawer backdrop, and resizer
    * all read as one material instead of three slightly-different greys. */
@@ -51,11 +62,13 @@
   --sidebar-thread-child-agent-cancelled-status: #94745f;
   --sidebar-settings-button-hover-ring: rgba(255, 255, 255, 0.42);
   /* Collapsed-drawer chrome and the vibrancy veils. */
-  --sidebar-drawer-edge: rgba(255, 255, 255, 0.42);
-  --sidebar-drawer-inner-edge: rgba(255, 255, 255, 0.24);
-  --sidebar-edge-shadow: 1px 0 16px rgba(20, 24, 28, 0.025);
-  --sidebar-material-veil-1: rgba(255, 255, 255, 0.018);
-  --sidebar-material-veil-2: rgba(255, 255, 255, 0.07);
+  --sidebar-drawer-edge: rgba(17, 19, 21, 0.09);
+  --sidebar-drawer-inner-edge: transparent;
+  /* Must stay a valid <shadow> (not `none`): it is one item in a comma-
+   * separated box-shadow list. */
+  --sidebar-edge-shadow: 0 0 0 0 transparent;
+  --sidebar-material-veil-1: transparent;
+  --sidebar-material-veil-2: transparent;
 }
 
 /* Windows has no vibrancy view — the themed window fill is all that sits

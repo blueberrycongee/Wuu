@@ -336,6 +336,15 @@
   --sidebar-material-edge: rgba(255, 255, 255, 0.16);
   --sidebar-material-inner-edge: rgba(255, 255, 255, 0.055);
   --sidebar-material-highlight: rgba(255, 255, 255, 0.075);
+  /* The light theme zeroed its frost gradient / white edge chrome (the rail
+   * is now a uniform bright frost with a dark hairline). Dark still wants the
+   * subtle top-left sheen and light-on-dark edges, so the values that used to
+   * be inherited from sidebar.css are pinned here. */
+  --sidebar-material-veil-1: rgba(255, 255, 255, 0.018);
+  --sidebar-material-veil-2: rgba(255, 255, 255, 0.07);
+  --sidebar-drawer-edge: rgba(255, 255, 255, 0.42);
+  --sidebar-drawer-inner-edge: rgba(255, 255, 255, 0.24);
+  --sidebar-edge-shadow: 1px 0 16px rgba(20, 24, 28, 0.025);
   --sidebar-glass-shadow-ambient: rgba(0, 0, 0, 0.3);
   --sidebar-glass-shadow-elevated: rgba(0, 0, 0, 0.5);
   --sidebar-glass-overlay-bright: rgba(255, 255, 255, 0.06);
