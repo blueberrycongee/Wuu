@@ -11,11 +11,9 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agentengine"
 	"github.com/blueberrycongee/wuu/internal/channels"
-	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
-	"github.com/blueberrycongee/wuu/internal/subagent"
 )
 
 const (
@@ -291,25 +289,6 @@ func (s *Server) newAgentExecutionRuntime(threadID string, agent channels.AgentR
 	); err != nil {
 		releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
 		return nil, err
-	}
-	if agent.IsRoomRuntime() && threadRuntime.AgentControl != nil {
-		role := s.rt.ModelRoles.Verification
-		client, buildErr := providerfactory.BuildStreamClient(role.RuleProviderConfig, role.Provider)
-		if buildErr != nil {
-			releaseDetachedThreadRuntime(detachedThreadRuntime{runtime: threadRuntime})
-			return nil, fmt.Errorf("build collaboration verification model: %w", buildErr)
-		}
-		budget := runtime.ResolveModelBudget(role.Model, role.RuleProviderConfig, 0)
-		threadRuntime.AgentControl.UpdateWorkerDefaults(client, role.APIModel, subagent.ManagerOptions{
-			DefaultProviderName:    role.Provider,
-			DefaultEffort:          role.LegacyEffort,
-			DefaultProviderOptions: role.ProviderOptions,
-			ContextWindowOverride:  budget.ContextWindowTokens,
-			MaxInputTokens:         budget.InputLimitTokens,
-			OutputReserveTokens:    budget.OutputReserveTokens,
-			CompactThresholdTokens: budget.CompactThresholdTokens,
-		})
-		threadRuntime.WorkerModelBudget = budget
 	}
 	s.attachNamedAgentRoomContext(threadRuntime, agent.ID)
 	return threadRuntime, nil

@@ -736,6 +736,45 @@ func TestNamedAgentSequentialWakesPersistDistinctUserTurns(t *testing.T) {
 	}
 }
 
+func TestRoomRuntimeWakeSurvivesTurnRuntimeRebuild(t *testing.T) {
+	client := newBlockingStreamClient("done")
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.StreamRunner.Client = client
+	rt.WuuHome = filepath.Join(t.TempDir(), ".wuu")
+	rt.ModelRoles.Coordination = modelroles.Selection{Provider: rt.ProviderName, Model: rt.Model}
+	attachNamedAgentTestToolkit(t, rt)
+	server := NewWithCredentialStore(rt, &lockedBuffer{}, nil, nil)
+	t.Cleanup(server.Close)
+	credential, err := server.channelService.CreateNamedAgent(context.Background(), channels.CreateNamedAgentParams{
+		Name: "Andy", Autostart: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateNamedAgent() error = %v", err)
+	}
+	room, err := server.channelService.CreateRoom(context.Background(), channels.CreateRoomParams{
+		Kind: channels.RoomChannel, Name: "General", CreatedBy: "human-1",
+		Members: []channels.RoomMember{{MemberType: channels.MemberAgent, MemberID: credential.Agent.ID}},
+	})
+	if err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+	server.channelService.SetWakeSink(nil)
+	if _, err := server.channelService.SendHuman(context.Background(), channels.HumanSendParams{
+		RoomID: room.ID, HumanID: "human-1", Body: "hello room",
+	}); err != nil {
+		t.Fatalf("SendHuman() error = %v", err)
+	}
+	if err := server.deliverNamedAgentWake(context.Background(), room.RuntimeID); err != nil {
+		t.Fatalf("deliverNamedAgentWake(room runtime) error = %v", err)
+	}
+	select {
+	case <-client.started:
+		close(client.release)
+	case <-time.After(5 * time.Second):
+		t.Fatal("room runtime turn did not start")
+	}
+}
+
 func TestChannelRoomUpdateAndDeleteRPCs(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.WuuHome = filepath.Join(t.TempDir(), ".wuu")

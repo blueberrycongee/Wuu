@@ -908,11 +908,11 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	var threadRuntime *runtime.ThreadRuntime
 	var err error
 	if namedAgentID != "" {
-		namedAgent, agentErr := s.channelService.GetNamedAgent(context.Background(), namedAgentID)
+		principal, agentErr := s.channelService.GetAgentRuntime(context.Background(), namedAgentID)
 		if agentErr != nil {
 			return nil, agentErr
 		}
-		threadRuntime, err = s.newNamedAgentRuntime(th.ID, namedAgent, selection)
+		threadRuntime, err = s.newAgentExecutionRuntime(th.ID, principal, selection)
 	} else {
 		threadRuntime, err = s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, selection)
 	}
@@ -930,11 +930,11 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 			PermissionMode: healed.PermissionMode,
 		}
 		if namedAgentID != "" {
-			namedAgent, agentErr := s.channelService.GetNamedAgent(context.Background(), namedAgentID)
+			principal, agentErr := s.channelService.GetAgentRuntime(context.Background(), namedAgentID)
 			if agentErr != nil {
 				return nil, agentErr
 			}
-			threadRuntime, err = s.newNamedAgentRuntime(th.ID, namedAgent, healedSelection)
+			threadRuntime, err = s.newAgentExecutionRuntime(th.ID, principal, healedSelection)
 		} else {
 			threadRuntime, err = s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, healedSelection)
 		}
