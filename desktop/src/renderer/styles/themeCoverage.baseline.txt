@@ -5,16 +5,16 @@
 archive-tip.css .archive-tip-action:hover background --ink-overlay-8
 archive-tip.css .archive-tip-dismiss:hover background --ink-overlay-8
 base.css ::selection background --selection-bg
-channels.css .agent-avatar-color-picker input[type="range"] accent-color --agent-avatar-accent
-channels.css .agent-avatar-color-swatches button background --agent-avatar-swatch
-channels.css .agent-avatar-color-swatches button:hover background --agent-avatar-swatch-hover
+channels.css .agent-avatar-color-control input[type="range"]::-webkit-slider-runnable-track background --agent-avatar-hue-track
+channels.css .agent-avatar-color-control input[type="range"]::-webkit-slider-thumb background --agent-avatar-hue-fill-strong
+channels.css .agent-avatar-color-preview background --agent-avatar-hue-fill
 channels.css .channel-agent-graph-controls button:hover background --ink-overlay-4
 channels.css .channel-agent-graph-node.room circle fill --ink-overlay-18
 channels.css .channel-agent-preview-loading i background --ink-overlay-6
 channels.css .channel-agent-reset-status background --success-soft
 channels.css .channel-assignment-bubble background --ink-overlay-4
-channels.css .channel-assignment-item[data-state="done"] .channel-assignment-bubble background --ink-overlay-4
-channels.css .channel-assignment-item[data-state="done"] .channel-assignment-bubble background --success-soft
+channels.css .channel-assignment-item[data-state="done"] .channel-assignment-bubble, .channel-assignment-item[data-state="completed"] .channel-assignment-bubble background --ink-overlay-4
+channels.css .channel-assignment-item[data-state="done"] .channel-assignment-bubble, .channel-assignment-item[data-state="completed"] .channel-assignment-bubble background --success-soft
 channels.css .channel-avatar-picker button:hover background --ink-overlay-4
 channels.css .channel-form-danger-row button.danger:hover:not(:disabled), .channel-form-danger-row button.danger:focus-visible:not(:disabled) background --danger-soft
 channels.css .channel-management-primary:hover:not(:disabled) background --ink-overlay-4
@@ -35,6 +35,7 @@ channels.css .channel-thread-resizer:hover::before, .channel-thread-resizer:focu
 channels.css .channel-thread-resizer:hover::before, .channel-thread-resizer:focus-visible::before, .resizing-thread-split .channel-thread-resizer::before box-shadow --ink-overlay-8
 channels.css .channel-thread-resizer:hover::before, .channel-thread-resizer:focus-visible::before, .resizing-thread-split .channel-thread-resizer::before background --sidebar-resizer-hover-bg
 channels.css .channel-thread-resizer:hover::before, .channel-thread-resizer:focus-visible::before, .resizing-thread-split .channel-thread-resizer::before box-shadow --sidebar-resizer-hover-ring
+channels.css .channel-work-evidence-body background --ink-overlay-4
 chat.css .chat-bubble background --ink-overlay-4
 composer-context-meter.css .composer-context-meter-track stroke --context-meter-track
 composer-token-gauge.css .composer-token-gauge-track stroke --token-gauge-track
@@ -249,7 +250,6 @@ sidebar.css .workspace-right-panel-resizer:hover::before, .workspace-right-panel
 sidebar.css .workspace-right-panel-resizer:hover::before, .workspace-right-panel-resizer:focus-visible::before, .resizing-right-panel .workspace-right-panel-resizer::before box-shadow --sidebar-resizer-hover-ring
 task-board.css .task-board-row-state background --ink-overlay-4
 task-board.css .task-board-row:hover background --ink-overlay-4
-turns.css .activity-detail-error border-left --activity-detail-error-border
 turns.css .artifact-preview-frame, .artifact-preview-body > .workspace-file-pdf-preview background --artifact-preview-frame-bg
 turns.css .artifact-preview-overlay background --artifact-preview-overlay-bg
 turns.css .artifact-preview-shell border --artifact-preview-shell-border
@@ -312,16 +312,9 @@ turns.css .turn-source-overflow-list border --turn-sources-pill-border-fallback
 turns.css .turn-sources-pill background --turn-sources-pill-bg-fallback
 turns.css .turn-sources-pill border --turn-sources-pill-border-fallback
 turns.css .turn-sources-pill color --turn-sources-pill-color-fallback
-turns.css .user-message-block.user-message-jump-flash > .user-message, .user-message-block.user-message-jump-flash > .user-message-edit background --user-message-jump-flash-bg
-turns.css .user-message-block.user-message-jump-flash > .user-message, .user-message-block.user-message-jump-flash > .user-message-edit box-shadow --user-message-jump-shadow-18
 turns.css .user-message-edit.user-message-edit-drop-active box-shadow --ink-overlay-18
 turns.css .user-message-pasted-text border --ink-overlay-12
 turns.css .user-message-pasted-text-content border-top --ink-overlay-12
-turns.css 0% box-shadow --user-message-jump-shadow-0
-turns.css 100% box-shadow --user-message-jump-shadow-0
-turns.css 12% background --user-message-jump-flash-bg
-turns.css 12% box-shadow --user-message-jump-shadow-08
-turns.css 12% box-shadow --user-message-jump-shadow-18
 turns.css button.turn-sources-pill:hover, button.turn-sources-pill:focus-visible background --turn-sources-pill-bg-fallback
 turns.css button.turn-sources-pill:hover, button.turn-sources-pill:focus-visible border-color --turn-sources-pill-border-fallback
 turns.css button.turn-sources-pill:hover, button.turn-sources-pill:focus-visible color --turn-sources-pill-color-fallback
