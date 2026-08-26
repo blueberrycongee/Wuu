@@ -38,7 +38,9 @@
   --sidebar-dev-fixture-button-color: var(--ink-tertiary);
   --sidebar-nav-item-hover-ring: var(--wuu-nav-item-hover-ring, rgba(255, 255, 255, 0.42));
   --sidebar-nav-item-focus-shadow: var(--focus-ring);
-  --sidebar-row-selected-bg: var(--ink-overlay-6);
+  /* One step deeper than the old overlay-6: the brighter frost fill washed
+   * the 6% selection out. */
+  --sidebar-row-selected-bg: var(--ink-overlay-8);
   --sidebar-project-row-pending-bg: rgba(255, 255, 255, 0.24);
   --sidebar-project-loading-notch: rgba(95, 126, 104, 0.22);
   --sidebar-row-icon-hover-bg-default: var(--ink-overlay-6);
