@@ -114,13 +114,16 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 	collaboration := make([]CollaborationMessage, 0, checkLimit)
 	collaborationIDs := make([]string, 0, checkLimit)
 	rows, err = tx.QueryContext(ctx, `
-		SELECT delivery.id, delivery.room_id, delivery.from_type, delivery.from_id, delivery.to_agent_id,
+		SELECT delivery.id, delivery.room_id, delivery.from_type,
+			CASE WHEN sender.kind = 'named_agent' THEN delivery.from_id ELSE '' END,
+			delivery.to_agent_id,
 			CASE WHEN principal.kind = 'named_agent' THEN delivery.to_agent_id ELSE '' END,
 			delivery.kind, delivery.body, COALESCE(delivery.work_id, ''),
 			COALESCE(delivery.source_message_id, ''), delivery.goal_revision, delivery.candidate_revision,
 			delivery.artifact_refs_json, COALESCE(delivery.reply_to, ''), delivery.created_at
 		FROM collaboration_messages delivery
 		JOIN collaboration_principals principal ON principal.id = delivery.to_agent_id
+		LEFT JOIN collaboration_principals sender ON sender.id = delivery.from_id
 		WHERE delivery.to_agent_id = ? AND delivery.pulled_at IS NULL AND delivery.invalidated_at IS NULL
 		ORDER BY delivery.created_at, delivery.rowid LIMIT ?`, agentID, checkLimit+1)
 	if err != nil {
@@ -146,6 +149,9 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 			continue
 		}
 		message.CreatedAt = fromMillis(createdAt)
+		if message.RecipientNamedAgentID == "" {
+			message.ToAgentID = ""
+		}
 		if strings.TrimSpace(message.FromID) == "" {
 			// Host-generated internal envelopes have no hidden author identity.
 			message.FromType = ""

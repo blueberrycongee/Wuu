@@ -890,6 +890,23 @@ export type ChannelTaskVerification = {
   updated_at: string;
 };
 
+export type ChannelCollaborationMessage = {
+  id: string;
+  room_id: string;
+  from_id?: string;
+  to_agent_id?: string;
+  kind?: "control" | "assignment" | "peer_result" | "candidate_ready" | "verification_feedback" | "completion";
+  body: string;
+  work_id?: string;
+  source_message_id?: string;
+  goal_revision?: number;
+  candidate_revision?: number;
+  artifact_refs?: string[];
+  created_at: string;
+  consumed_at?: string;
+  invalidated_at?: string;
+};
+
 export type ChannelWork = {
   id: string;
   room_id: string;
@@ -907,6 +924,7 @@ export type ChannelWork = {
   verification_state: ChannelWorkVerificationState;
   verification_required: boolean;
   pending_delivery_refs?: string[];
+  deliveries?: ChannelCollaborationMessage[];
   max_verifier_attempts: number;
   max_candidates: number;
   verifier_attempts_used: number;

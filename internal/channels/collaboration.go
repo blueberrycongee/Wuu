@@ -31,7 +31,7 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	if params.Kind == "" {
 		params.Kind = CollaborationControl
 	}
-	if params.Kind != CollaborationControl && params.Kind != CollaborationCandidateReady {
+	if params.Kind != CollaborationControl && params.Kind != CollaborationCandidateReady && params.Kind != CollaborationPeerResult {
 		return CollaborationMessage{}, fmt.Errorf("invalid collaboration kind %q", params.Kind)
 	}
 	if params.Kind == CollaborationControl && params.ToAgentID == "" {
@@ -45,10 +45,12 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 		return CollaborationMessage{}, fmt.Errorf("begin collaboration send: %w", err)
 	}
 	defer tx.Rollback()
-	if params.Kind == CollaborationCandidateReady && params.ToAgentID == "" {
+	implicitRoomRecipient := false
+	if (params.Kind == CollaborationCandidateReady || params.Kind == CollaborationPeerResult) && params.ToAgentID == "" {
 		if err := tx.QueryRowContext(ctx, `SELECT id FROM room_runtimes WHERE room_id = ?`, params.RoomID).Scan(&params.ToAgentID); err != nil {
-			return CollaborationMessage{}, fmt.Errorf("resolve candidate-ready room runtime: %w", err)
+			return CollaborationMessage{}, fmt.Errorf("resolve room runtime recipient: %w", err)
 		}
+		implicitRoomRecipient = true
 	}
 	if params.ToAgentID == params.AgentID {
 		return CollaborationMessage{}, errors.New("collaboration recipient must be another principal")
@@ -59,24 +61,44 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 		}
 	}
 	var goalRevision, candidateRevision int
-	if params.Kind == CollaborationCandidateReady {
+	if params.Kind == CollaborationCandidateReady || params.Kind == CollaborationPeerResult {
 		if params.SourceMessageID == "" {
-			return CollaborationMessage{}, errors.New("candidate-ready delivery requires source task")
+			return CollaborationMessage{}, errors.New("candidate and verification deliveries require a source task")
 		}
 		task, err := loadMessageTx(ctx, tx, params.SourceMessageID)
 		if err != nil {
 			return CollaborationMessage{}, err
 		}
-		if task.RoomID != params.RoomID || task.Kind != MessageTask || !task.TaskVerificationRequired ||
-			task.TaskOwner != params.AgentID || task.TaskState != string(TaskStateChecking) {
-			return CollaborationMessage{}, fmt.Errorf("%w: candidate-ready source must be the sender's checking task", ErrConflict)
+		if task.RoomID != params.RoomID || task.Kind != MessageTask || !task.TaskVerificationRequired || task.TaskState != string(TaskStateChecking) {
+			return CollaborationMessage{}, fmt.Errorf("%w: source must be a checking task that requires verification", ErrConflict)
+		}
+		if params.Kind == CollaborationCandidateReady && task.TaskOwner != params.AgentID {
+			return CollaborationMessage{}, fmt.Errorf("%w: candidate-ready source must be the sender's task", ErrConflict)
+		}
+		if params.Kind == CollaborationPeerResult {
+			if task.TaskOwner == params.AgentID {
+				return CollaborationMessage{}, fmt.Errorf("%w: task owner cannot verify its own candidate", ErrConflict)
+			}
+			var verifierID string
+			if err := tx.QueryRowContext(ctx, `
+				SELECT run.profile
+				FROM works work JOIN work_runs run ON run.id = work.current_run_ref
+				WHERE work.id = ? AND run.kind = 'verifier' AND run.state = 'running'`, task.ID).Scan(&verifierID); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return CollaborationMessage{}, fmt.Errorf("%w: no active named verifier run", ErrConflict)
+				}
+				return CollaborationMessage{}, fmt.Errorf("read active named verifier: %w", err)
+			}
+			if verifierID != params.AgentID {
+				return CollaborationMessage{}, fmt.Errorf("%w: verification result came from an unassigned agent", ErrUnauthorized)
+			}
 		}
 		var recipientRoomID string
 		if err := tx.QueryRowContext(ctx, `SELECT room_id FROM room_runtimes WHERE id = ?`, params.ToAgentID).Scan(&recipientRoomID); err != nil {
 			return CollaborationMessage{}, fmt.Errorf("validate candidate-ready recipient: %w", err)
 		}
 		if recipientRoomID != params.RoomID {
-			return CollaborationMessage{}, fmt.Errorf("%w: candidate-ready recipient must be the hidden room runtime", ErrUnauthorized)
+			return CollaborationMessage{}, fmt.Errorf("%w: recipient must be the hidden room runtime", ErrUnauthorized)
 		}
 		goalRevision = task.TaskGoalRevision
 		candidateRevision = task.TaskCandidateRevision
@@ -134,6 +156,9 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	}
 	if shouldDeliver && s.wake != nil {
 		s.wake.Deliver(params.ToAgentID)
+	}
+	if implicitRoomRecipient {
+		message.ToAgentID = ""
 	}
 	return message, nil
 }

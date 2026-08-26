@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -224,6 +225,10 @@ func (s *Service) loadWorkDetails(ctx context.Context, work *Work) error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
+	work.Deliveries, err = s.listWorkDeliveries(ctx, work.ID)
+	if err != nil {
+		return err
+	}
 	work.Runs, err = s.listWorkRuns(ctx, work.ID)
 	if err != nil {
 		return err
@@ -242,6 +247,59 @@ func (s *Service) loadWorkDetails(ctx context.Context, work *Work) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Service) listWorkDeliveries(ctx context.Context, workID string) ([]CollaborationMessage, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT delivery.id, delivery.room_id, delivery.from_type,
+			CASE WHEN sender.kind = 'named_agent' THEN delivery.from_id ELSE '' END,
+			delivery.to_agent_id,
+			CASE WHEN principal.kind = 'named_agent' THEN delivery.to_agent_id ELSE '' END,
+			delivery.kind, delivery.body, COALESCE(delivery.work_id, ''),
+			COALESCE(delivery.source_message_id, ''), delivery.goal_revision, delivery.candidate_revision,
+			delivery.artifact_refs_json, COALESCE(delivery.reply_to, ''), delivery.created_at,
+			COALESCE(delivery.consumed_at, 0), COALESCE(delivery.invalidated_at, 0)
+		FROM collaboration_messages delivery
+		JOIN collaboration_principals principal ON principal.id = delivery.to_agent_id
+		LEFT JOIN collaboration_principals sender ON sender.id = delivery.from_id
+		WHERE delivery.work_id = ?
+		ORDER BY delivery.created_at, delivery.rowid`, workID)
+	if err != nil {
+		return nil, fmt.Errorf("list work collaboration messages: %w", err)
+	}
+	defer rows.Close()
+	var messages []CollaborationMessage
+	for rows.Next() {
+		var message CollaborationMessage
+		var artifactRefsJSON string
+		var createdAt, consumedAt, invalidatedAt int64
+		if err := rows.Scan(
+			&message.ID, &message.RoomID, &message.FromType, &message.FromID, &message.ToAgentID,
+			&message.RecipientNamedAgentID, &message.Kind, &message.Body, &message.WorkID,
+			&message.SourceMessageID, &message.GoalRevision, &message.CandidateRevision,
+			&artifactRefsJSON, &message.ReplyTo, &createdAt, &consumedAt, &invalidatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan work collaboration message: %w", err)
+		}
+		message.CreatedAt = fromMillis(createdAt)
+		if message.RecipientNamedAgentID == "" {
+			message.ToAgentID = ""
+		}
+		if consumedAt != 0 {
+			message.ConsumedAt = fromMillis(consumedAt)
+		}
+		if invalidatedAt != 0 {
+			message.InvalidatedAt = fromMillis(invalidatedAt)
+		}
+		if err := json.Unmarshal([]byte(artifactRefsJSON), &message.ArtifactRefs); err != nil {
+			return nil, fmt.Errorf("decode work collaboration artifacts: %w", err)
+		}
+		messages = append(messages, message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate work collaboration messages: %w", err)
+	}
+	return messages, nil
 }
 
 func (s *Service) StartWorkRun(ctx context.Context, params WorkRunStartParams) (WorkRun, error) {
@@ -276,6 +334,27 @@ func (s *Service) StartWorkRun(ctx context.Context, params WorkRunStartParams) (
 		}
 		if work.State != WorkChecking || work.CandidateRevision == 0 {
 			return WorkRun{}, fmt.Errorf("%w: verifier run requires a checking candidate", ErrConflict)
+		}
+		verifierID := strings.TrimSpace(params.Profile)
+		if verifierID == "" || verifierID == work.OwnerNamedAgentID {
+			return WorkRun{}, fmt.Errorf("%w: verifier run requires a different named agent", ErrConflict)
+		}
+		var verifierMember int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM room_members member
+			JOIN named_agents agent ON agent.id = member.member_id AND agent.kind = 'named'
+			WHERE member.room_id = ? AND member.member_type = 'agent' AND member.member_id = ?`,
+			work.RoomID, verifierID).Scan(&verifierMember); err != nil {
+			return WorkRun{}, fmt.Errorf("validate named verifier: %w", err)
+		}
+		if verifierMember == 0 {
+			return WorkRun{}, fmt.Errorf("%w: verifier must be a current named room member", ErrUnauthorized)
+		}
+		if work.CurrentRunRef != "" {
+			var state WorkRunState
+			if err := tx.QueryRowContext(ctx, `SELECT state FROM work_runs WHERE id = ?`, work.CurrentRunRef).Scan(&state); err == nil && state == WorkRunRunning {
+				return WorkRun{}, fmt.Errorf("%w: verifier run %q is already active", ErrConflict, work.CurrentRunRef)
+			}
 		}
 	}
 	if params.Kind == WorkRunSelector && (work.MaxCandidates < 2 || work.CandidatesUsed < 2 || strings.TrimSpace(work.FanoutReason) == "") {

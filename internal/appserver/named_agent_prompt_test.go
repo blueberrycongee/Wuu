@@ -37,7 +37,7 @@ func TestNamedAgentOrientationExcludesProjectlessConversations(t *testing.T) {
 	}
 }
 
-func TestRoomAgentOrientationDefinesHiddenVerifierLoop(t *testing.T) {
+func TestRoomAgentOrientationDefinesNamedVerifierAndConversationRouting(t *testing.T) {
 	prompt := agentRuntimeOrientation(channels.AgentRuntime{
 		Kind: channels.PrincipalRoomRuntime, RoomID: "room-1", MemoryDir: "/runtimes/room-1/memory",
 	})
@@ -50,10 +50,15 @@ func TestRoomAgentOrientationDefinesHiddenVerifierLoop(t *testing.T) {
 		"Set verification_required=true for every substantive coding task",
 		"call chat_task revise",
 		"work_id, goal_revision, candidate_revision, and artifact_refs identify the exact candidate",
-		"use the Subagent plugin's spawn_agent tool to start exactly one fresh-context verifier",
-		"return a first-line PASS, BLOCK, or UNKNOWN",
+		"give every current visible member a real opportunity",
+		"Use parallel private control messages",
+		"Use serial invitations",
+		"Select exactly one current Named Agent other than the owner as verifier",
+		"profile set to that verifier's member_id",
+		"kind=peer_result",
+		"first-line PASS, BLOCK, or UNKNOWN",
 		"call chat_verify exactly once",
-		"create one final task owned by a visible lead",
+		"Do not create hidden workers or unnamed selectors",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("room orientation missing %q:\n%s", want, prompt)
@@ -78,6 +83,8 @@ func TestNamedAgentOrientationRoutesSharedRoomWorkThroughRoomAgent(t *testing.T)
 		"On PASS",
 		"Use the task message as thread_id and reply_to",
 		"Direct messages remain private conversations with the human",
+		"control message asks for a public conversational contribution",
+		"kind=peer_result",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("named-agent orientation missing room routing rule %q:\n%s", want, prompt)

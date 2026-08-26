@@ -14,9 +14,10 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	owner, _ := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Owner"})
+	verifier, _ := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Verifier"})
 	room, _ := service.CreateRoom(ctx, CreateRoomParams{
 		Kind: RoomChannel, Name: "Work", CreatedBy: "local-user",
-		Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}},
+		Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}, {MemberType: MemberAgent, MemberID: verifier.Agent.ID}},
 	})
 	source, err := service.SendHuman(ctx, HumanSendParams{RoomID: room.ID, HumanID: "local-user", Body: "Fix the callback"})
 	if err != nil {
@@ -64,7 +65,7 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 		t.Fatalf("AddWorkArtifact() error = %v", err)
 	}
 	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{
-		WorkID: task.ID, Kind: WorkRunVerifier, Profile: "coding",
+		WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID,
 		SessionRef: "session-verifier-1", WorkspaceRevision: "git:abc",
 	})
 	if err != nil {
@@ -128,14 +129,15 @@ func TestGoalRevisionInvalidatesPendingDeliveriesAndRunningHandles(t *testing.T)
 	}
 	defer service.Close()
 	owner, _ := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Owner"})
-	room, _ := service.CreateRoom(ctx, CreateRoomParams{Kind: RoomChannel, Name: "Work", CreatedBy: "local-user", Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}}})
+	verifier, _ := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Verifier"})
+	room, _ := service.CreateRoom(ctx, CreateRoomParams{Kind: RoomChannel, Name: "Work", CreatedBy: "local-user", Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}, {MemberType: MemberAgent, MemberID: verifier.Agent.ID}}})
 	runtime, _ := service.BindRuntime(ctx, room.RuntimeID)
 	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
 	task, _ := runtime.CreateTask(ctx, TaskCreateParams{RoomID: room.ID, Title: "Fix", OwnerID: owner.Agent.ID, VerificationRequired: true})
 	_, _ = ownerClient.Check(ctx)
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing})
 	checking, _ := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
-	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, SessionRef: "session-stale"})
+	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID, SessionRef: "session-stale"})
 	if err != nil {
 		t.Fatalf("StartWorkRun() error = %v", err)
 	}
@@ -166,14 +168,15 @@ func TestWorkRunRecoverySettlesMissingVerifierAsUnknown(t *testing.T) {
 	}
 	defer service.Close()
 	owner, _ := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Owner"})
-	room, _ := service.CreateRoom(ctx, CreateRoomParams{Kind: RoomChannel, Name: "Work", CreatedBy: "local-user", Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}}})
+	verifier, _ := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Verifier"})
+	room, _ := service.CreateRoom(ctx, CreateRoomParams{Kind: RoomChannel, Name: "Work", CreatedBy: "local-user", Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}, {MemberType: MemberAgent, MemberID: verifier.Agent.ID}}})
 	runtime, _ := service.BindRuntime(ctx, room.RuntimeID)
 	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
 	task, _ := runtime.CreateTask(ctx, TaskCreateParams{RoomID: room.ID, Title: "Fix", OwnerID: owner.Agent.ID, VerificationRequired: true})
 	_, _ = ownerClient.Check(ctx)
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing})
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
-	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, SessionRef: "lost-session"})
+	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID, SessionRef: "lost-session"})
 	if err != nil {
 		t.Fatalf("StartWorkRun() error = %v", err)
 	}
@@ -198,7 +201,8 @@ func TestMultiCandidateSelectorAndDomainVerifierAreOptIn(t *testing.T) {
 	}
 	defer service.Close()
 	owner, _ := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Owner"})
-	room, _ := service.CreateRoom(ctx, CreateRoomParams{Kind: RoomChannel, Name: "Work", CreatedBy: "local-user", Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}}})
+	verifierAgent, _ := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Migration verifier"})
+	room, _ := service.CreateRoom(ctx, CreateRoomParams{Kind: RoomChannel, Name: "Work", CreatedBy: "local-user", Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}, {MemberType: MemberAgent, MemberID: verifierAgent.Agent.ID}}})
 	runtime, _ := service.BindRuntime(ctx, room.RuntimeID)
 	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
 	task, _ := runtime.CreateTask(ctx, TaskCreateParams{RoomID: room.ID, Title: "Compare", OwnerID: owner.Agent.ID, VerificationRequired: true})
@@ -223,8 +227,8 @@ func TestMultiCandidateSelectorAndDomainVerifierAreOptIn(t *testing.T) {
 	}
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing})
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
-	verifier, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, Profile: "migration", SessionRef: "migration-verifier"})
-	if err != nil || verifier.Profile != "migration" {
+	verifier, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifierAgent.Agent.ID, SessionRef: "migration-verifier"})
+	if err != nil || verifier.Profile != verifierAgent.Agent.ID {
 		t.Fatalf("domain verifier = %#v, %v", verifier, err)
 	}
 }

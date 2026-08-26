@@ -294,6 +294,8 @@ export const enUS = {
   "channels.workVerifierReport": "Independent check",
   "channels.workArtifacts": "Artifacts",
   "channels.workRuns": "Background runs",
+  "channels.workPrivateMessages": "Private collaboration messages",
+  "channels.workMessageInvalidated": "Invalidated",
   "channels.workUnresolved": "Unresolved: {{items}}",
   "channels.showAssignments": "Show assignments",
   "channels.hideAssignments": "Hide assignments",

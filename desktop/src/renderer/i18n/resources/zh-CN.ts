@@ -292,6 +292,8 @@ export const zhCN = {
   "channels.workVerifierReport": "独立检查",
   "channels.workArtifacts": "产物",
   "channels.workRuns": "后台运行",
+  "channels.workPrivateMessages": "私下协作消息",
+  "channels.workMessageInvalidated": "已失效",
   "channels.workUnresolved": "未决事项：{{items}}",
   "channels.showAssignments": "展开任务",
   "channels.hideAssignments": "收起任务",

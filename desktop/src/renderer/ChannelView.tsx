@@ -394,6 +394,7 @@ function ChannelOrchestrationCluster({
                 || work?.verification?.report
                 || work?.artifacts?.length
                 || work?.runs?.length
+                || work?.deliveries?.length
                 || work?.unresolved_items,
               );
               const title = task.task_title?.trim() || task.body.trim() || t("channels.newTask");
@@ -476,6 +477,17 @@ function ChannelOrchestrationCluster({
                                         <code>{run.session_ref}</code>
                                       </button>
                                     ) : null}
+                                  </li>
+                                ))}</ul>
+                              </section>
+                            ) : null}
+                            {work.deliveries?.length ? (
+                              <section>
+                                <strong>{t("channels.workPrivateMessages")}</strong>
+                                <ul>{work.deliveries.map((delivery) => (
+                                  <li key={delivery.id}>
+                                    <span>{delivery.kind || "control"}{delivery.invalidated_at ? ` · ${t("channels.workMessageInvalidated")}` : ""}</span>
+                                    <RichContent text={delivery.body} />
                                   </li>
                                 ))}</ul>
                               </section>

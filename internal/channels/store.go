@@ -526,6 +526,25 @@ func (s *Service) recoverPendingVerificationDeliveries() error {
 							AND verification.candidate_revision = task.task_candidate_revision
 					)
 			)) OR
+			(delivery.kind = 'peer_result' AND EXISTS (
+				SELECT 1
+				FROM room_messages AS task
+				JOIN works AS work ON work.id = task.id
+				JOIN work_runs AS run ON run.id = work.current_run_ref
+				WHERE task.id = delivery.source_message_id
+					AND task.task_state = 'checking'
+					AND task.task_goal_revision = delivery.goal_revision
+					AND task.task_candidate_revision = delivery.candidate_revision
+					AND run.kind = 'verifier'
+					AND run.state = 'running'
+					AND run.profile = delivery.from_id
+					AND NOT EXISTS (
+						SELECT 1 FROM task_verifications AS verification
+						WHERE verification.task_id = task.id
+							AND verification.goal_revision = task.task_goal_revision
+							AND verification.candidate_revision = task.task_candidate_revision
+					)
+			)) OR
 			(delivery.kind = 'verification_feedback' AND EXISTS (
 				SELECT 1
 				FROM room_messages AS task
@@ -548,7 +567,7 @@ func (s *Service) recoverPendingVerificationDeliveries() error {
 		SELECT DISTINCT delivery.to_agent_id, 1, 0, ?
 		FROM collaboration_messages AS delivery
 		WHERE delivery.pulled_at IS NULL
-			AND delivery.kind IN ('candidate_ready', 'verification_feedback')
+				AND delivery.kind IN ('candidate_ready', 'peer_result', 'verification_feedback')
 		ON CONFLICT(agent_id) DO UPDATE SET
 			outstanding = 1,
 			updated_at = excluded.updated_at`, now); err != nil {
@@ -1609,7 +1628,7 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 			if _, err := tx.ExecContext(ctx, `UPDATE drafts SET state = 'dropped', updated_at = ? WHERE room_id = ? AND agent_id = ? AND state = 'held'`, toMillis(s.now()), id, agentID); err != nil {
 				return Room{}, fmt.Errorf("drop removed room agent drafts: %w", err)
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE collaboration_messages SET invalidated_at = ? WHERE room_id = ? AND to_agent_id = ? AND consumed_at IS NULL AND invalidated_at IS NULL`, toMillis(s.now()), id, agentID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE collaboration_messages SET invalidated_at = ? WHERE room_id = ? AND (to_agent_id = ? OR from_id = ?) AND consumed_at IS NULL AND invalidated_at IS NULL`, toMillis(s.now()), id, agentID, agentID); err != nil {
 				return Room{}, fmt.Errorf("invalidate removed room agent deliveries: %w", err)
 			}
 		}

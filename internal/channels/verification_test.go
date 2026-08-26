@@ -128,6 +128,124 @@ func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 	}
 }
 
+func TestNamedVerifierReturnsAuditableResultToRoomRuntime(t *testing.T) {
+	ctx := context.Background()
+	service := openTestService(t, nil)
+	owner := createTestAgent(t, service, "Owner")
+	verifier := createTestAgent(t, service, "Verifier")
+	room, err := service.CreateRoom(ctx, CreateRoomParams{
+		Kind: RoomChannel, Name: "Build", CreatedBy: "local-user",
+		Members: []RoomMember{
+			{MemberType: MemberAgent, MemberID: owner.Agent.ID},
+			{MemberType: MemberAgent, MemberID: verifier.Agent.ID},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+	roomRuntime, _ := service.BindRuntime(ctx, room.RuntimeID)
+	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
+	verifierClient, _ := service.BindAgent(ctx, verifier.Agent.ID)
+	task, err := roomRuntime.CreateTask(ctx, TaskCreateParams{
+		RoomID: room.ID, Title: "Fix callback", Body: "Reject replayed state",
+		OwnerID: owner.Agent.ID, VerificationRequired: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	_, _ = ownerClient.Check(ctx)
+	_, _ = verifierClient.Check(ctx)
+	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
+	if err != nil {
+		t.Fatalf("UpdateTask(checking) error = %v", err)
+	}
+	if _, err := ownerClient.SendCollaboration(ctx, CollaborationSendParams{
+		RoomID: room.ID, Kind: CollaborationCandidateReady, SourceMessageID: task.ID,
+		Body: "Candidate ready; focused tests pass.",
+	}); err != nil {
+		t.Fatalf("SendCollaboration(candidate_ready) error = %v", err)
+	}
+	_, _ = roomRuntime.Check(ctx)
+	run, err := roomRuntime.StartWorkRun(ctx, WorkRunStartParams{
+		WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID,
+	})
+	if err != nil {
+		t.Fatalf("StartWorkRun(verifier) error = %v", err)
+	}
+	control, err := roomRuntime.SendCollaboration(ctx, CollaborationSendParams{
+		RoomID: room.ID, ToAgentID: verifier.Agent.ID, Kind: CollaborationControl,
+		SourceMessageID: task.ID, Body: "Independently verify the current candidate.",
+	})
+	if err != nil {
+		t.Fatalf("SendCollaboration(verification control) error = %v", err)
+	}
+	_, _ = verifierClient.Check(ctx)
+	result, err := verifierClient.SendCollaboration(ctx, CollaborationSendParams{
+		RoomID: room.ID, Kind: CollaborationPeerResult, SourceMessageID: task.ID,
+		ReplyTo: control.ID, Body: "PASS\nReplay is rejected and the focused checks pass.",
+	})
+	if err != nil {
+		t.Fatalf("SendCollaboration(peer_result) error = %v", err)
+	}
+	if result.ToAgentID != "" || result.GoalRevision != checking.TaskGoalRevision || result.CandidateRevision != checking.TaskCandidateRevision {
+		t.Fatalf("peer result = %#v", result)
+	}
+	if _, err := ownerClient.SendCollaboration(ctx, CollaborationSendParams{
+		RoomID: room.ID, Kind: CollaborationPeerResult, SourceMessageID: task.ID, Body: "PASS\nSelf approved.",
+	}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("owner peer_result error = %v, want conflict", err)
+	}
+	checked, err := roomRuntime.Check(ctx)
+	if err != nil || len(checked.Collaboration) != 1 || checked.Collaboration[0].ID != result.ID {
+		t.Fatalf("room peer result = %#v, err = %v", checked.Collaboration, err)
+	}
+	dir := service.Dir()
+	if err := service.Close(); err != nil {
+		t.Fatalf("Close(before peer result recovery) error = %v", err)
+	}
+	service, err = Open(dir, nil)
+	if err != nil {
+		t.Fatalf("Open(peer result recovery) error = %v", err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	roomRuntime, _ = service.BindRuntime(ctx, room.RuntimeID)
+	recovered, err := roomRuntime.Check(ctx)
+	recoveredPeer := false
+	for _, delivery := range recovered.Collaboration {
+		recoveredPeer = recoveredPeer || delivery.ID == result.ID
+	}
+	if err != nil || !recoveredPeer {
+		t.Fatalf("recovered peer result = %#v, err = %v", recovered.Collaboration, err)
+	}
+	if _, err := roomRuntime.FinishWorkRun(ctx, WorkRunFinishParams{
+		WorkID: task.ID, RunID: run.ID, State: WorkRunCompleted,
+		Outcome: "PASS", ChecksRerun: 1,
+	}); err != nil {
+		t.Fatalf("FinishWorkRun(verifier) error = %v", err)
+	}
+	if _, err := roomRuntime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
+		RoomID: room.ID, TaskID: task.ID, GoalRevision: checking.TaskGoalRevision,
+		CandidateRevision: checking.TaskCandidateRevision, Decision: VerificationPass,
+		Report: "Replay is rejected and the focused checks pass.", RunRef: run.ID,
+	}); err != nil {
+		t.Fatalf("SubmitTaskVerification() error = %v", err)
+	}
+	work, err := roomRuntime.GetWork(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetWork() error = %v", err)
+	}
+	if len(work.Deliveries) < 4 {
+		t.Fatalf("auditable deliveries = %#v", work.Deliveries)
+	}
+	foundResult := false
+	for _, delivery := range work.Deliveries {
+		foundResult = foundResult || delivery.ID == result.ID
+	}
+	if !foundResult {
+		t.Fatalf("work deliveries omitted peer result: %#v", work.Deliveries)
+	}
+}
+
 func TestTaskVerificationRejectsVisibleAgentAndInvalidDecision(t *testing.T) {
 	ctx := context.Background()
 	service := openTestService(t, nil)
