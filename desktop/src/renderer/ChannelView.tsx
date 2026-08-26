@@ -637,10 +637,30 @@ function initialThreadPanelWidth(): number {
     : THREAD_PANEL_DEFAULT_WIDTH;
 }
 
-function taskStateKey(state?: string): "channels.taskState.open" | "channels.taskState.doing" | "channels.taskState.done" {
-  if (state === "doing") return "channels.taskState.doing";
-  if (state === "done") return "channels.taskState.done";
-  return "channels.taskState.open";
+type TaskBoardColumn = "todo" | "in_progress" | "review" | "needs_input" | "done";
+
+const taskBoardColumns: TaskBoardColumn[] = ["todo", "in_progress", "review", "needs_input", "done"];
+
+function taskBoardColumn(task: ChannelMessage): TaskBoardColumn {
+  const state = task.work?.state ?? task.task_state ?? "open";
+  if (state === "checking") return "review";
+  if (state === "needs_human" || state === "failed" || state === "interrupted") return "needs_input";
+  if (state === "done" || state === "completed" || state === "cancelled") return "done";
+  if (state === "doing" || state === "working" || state === "revising" || state === "integrating") return "in_progress";
+  return "todo";
+}
+
+function taskBoardColumnKey(column: TaskBoardColumn):
+  | "channels.taskBoard.todo"
+  | "channels.taskBoard.inProgress"
+  | "channels.taskBoard.review"
+  | "channels.taskBoard.needsInput"
+  | "channels.taskBoard.done" {
+  if (column === "in_progress") return "channels.taskBoard.inProgress";
+  if (column === "review") return "channels.taskBoard.review";
+  if (column === "needs_input") return "channels.taskBoard.needsInput";
+  if (column === "done") return "channels.taskBoard.done";
+  return "channels.taskBoard.todo";
 }
 
 export function ChannelView({ initialized, engines = [], section = "rooms", archivedRoomIDs = [], onSectionChange, selectedRoomID: controlledRoomID, onSelectRoom, onRoomRead, onOpenMemoryDirectory, onOpenSession, composerDraft, onComposerDraftChange, newRoomRequest, onNewRoomRequestHandled, newAgentRequest, onNewAgentRequestHandled, editAgentRequestID, onEditAgentRequestHandled }: {
@@ -2322,13 +2342,13 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
             </button>
           </div>
           {loadError ? <div className="channel-error" role="alert">{loadError}</div> : null}
-          <div className="channel-task-board channel-task-table">
-            {(["open", "doing", "done"] as const).map((state) => {
-              const tasks = trackedTasks.filter((task) => (task.task_state ?? "open") === state);
+          <div className="channel-task-board" aria-label={t("channels.taskBoard.label")}>
+            {taskBoardColumns.map((column) => {
+              const tasks = trackedTasks.filter((task) => taskBoardColumn(task) === column);
               return (
-                <section className={`channel-task-column channel-task-column-${state}`} key={state}>
+                <section className={`channel-task-column channel-task-column-${column}`} key={column} data-column={column}>
                   <header className="channel-task-column-heading">
-                    <strong>{t(taskStateKey(state))}</strong>
+                    <strong>{t(taskBoardColumnKey(column))}</strong>
                     <span>{tasks.length}</span>
                   </header>
                   <div className="channel-task-column-items">
@@ -2337,7 +2357,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                       const owner = agentNames.get(task.task_owner ?? "") ?? task.task_owner ?? "";
                       return (
                         <button
-                          className={`channel-task-card${state === "done" ? " done" : ""}`}
+                          className={`channel-task-card${column === "done" ? " done" : ""}`}
                           type="button"
                           key={task.id}
                           data-tooltip={`${room ? `# ${room.name}` : task.room_id} · ${owner}`}
@@ -2346,7 +2366,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                             onSectionChange?.("rooms");
                           }}
                         >
-                          <strong>{task.body}</strong>
+                          <strong>{task.task_title?.trim() || task.body}</strong>
                           <span className="channel-task-card-meta">{room ? `# ${room.name}` : task.room_id} · {owner}</span>
                         </button>
                       );

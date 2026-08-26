@@ -1,8 +1,9 @@
 .channel-task-board {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(210px, 1fr));
   gap: 16px;
   min-width: 0;
+  overflow-x: auto;
   padding-top: 20px;
 }
 
@@ -11,8 +12,10 @@
   border-top: 2px solid var(--border-default);
 }
 
-.channel-task-column-open { border-top-color: var(--wuu-accent); }
-.channel-task-column-doing { border-top-color: var(--warning); }
+.channel-task-column-todo { border-top-color: var(--wuu-accent); }
+.channel-task-column-in_progress { border-top-color: var(--warning); }
+.channel-task-column-review { border-top-color: var(--info); }
+.channel-task-column-needs_input { border-top-color: var(--danger); }
 .channel-task-column-done { border-top-color: var(--success); }
 
 .channel-task-column-heading {

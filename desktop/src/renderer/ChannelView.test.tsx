@@ -1329,8 +1329,11 @@ describe("ChannelView", () => {
     act(() => root?.render(<ChannelView section="tasks" />));
     await settle();
 
-    expect(container.querySelector(".channel-task-table")?.textContent).toContain("Investigate flaky build");
-    expect(container.querySelector(".channel-task-table")?.textContent).toContain("# general");
+    const board = container.querySelector(".channel-task-board");
+    expect(board?.textContent).toContain("Investigate flaky build");
+    expect(board?.textContent).toContain("# general");
+    expect(board?.querySelectorAll(".channel-task-column")).toHaveLength(5);
+    expect(board?.querySelector('[data-column="in_progress"]')?.textContent).toContain("Investigate flaky build");
     expect(container.querySelector(".channel-conversation")).toBeNull();
     expect(container.querySelector(".channel-list-pane")).toBeNull();
     expect(api.listChannelMessages).toHaveBeenCalledWith({ room_id: "room-2", limit: 500 });
