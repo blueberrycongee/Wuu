@@ -11,8 +11,12 @@ import (
 )
 
 func (s *Service) CreateTask(ctx context.Context, params TaskCreateParams) (Message, error) {
-	if _, err := s.AuthenticatePrincipal(ctx, params.AgentID, params.Token); err != nil {
+	actor, err := s.AuthenticatePrincipal(ctx, params.AgentID, params.Token)
+	if err != nil {
 		return Message{}, err
+	}
+	if actor.IsRoomRuntime() {
+		params.VerificationRequired = true
 	}
 	return s.createTask(ctx, params)
 }

@@ -432,3 +432,29 @@ func TestCandidateAndFeedbackDeliveriesRecoverAfterRestart(t *testing.T) {
 		t.Fatalf("recovered feedback = %#v, err = %v", recovered.Collaboration, err)
 	}
 }
+
+func TestRoomRuntimeTasksRequireVerificationByDefault(t *testing.T) {
+	ctx := context.Background()
+	service := openTestService(t, nil)
+	owner := createTestAgent(t, service, "Andy")
+	room, err := service.CreateRoom(ctx, CreateRoomParams{
+		Kind: RoomChannel, Name: "Build", CreatedBy: "local-user",
+		Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}},
+	})
+	if err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+	runtime, err := service.BindRuntime(ctx, room.RuntimeID)
+	if err != nil {
+		t.Fatalf("BindRuntime() error = %v", err)
+	}
+	task, err := runtime.CreateTask(ctx, TaskCreateParams{
+		RoomID: room.ID, Title: "Produce report", OwnerID: owner.Agent.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if !task.TaskVerificationRequired || task.Work == nil || !task.Work.VerificationRequired {
+		t.Fatalf("room task did not require verification: %#v", task)
+	}
+}
