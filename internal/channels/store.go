@@ -462,10 +462,10 @@ func (s *Service) migrate() error {
 	if err := s.ensureNamedAgentKindColumns(); err != nil {
 		return err
 	}
-	if err := s.migrateCollaborationPrincipals(); err != nil {
+	if err := s.ensureLegacyColumns(); err != nil {
 		return err
 	}
-	if err := s.ensureLegacyColumns(); err != nil {
+	if err := s.migrateCollaborationPrincipals(); err != nil {
 		return err
 	}
 	if err := s.migrateInternalDeliveries(); err != nil {
