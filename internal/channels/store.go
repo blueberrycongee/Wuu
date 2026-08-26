@@ -498,9 +498,9 @@ func (s *Service) migrate() error {
 }
 
 // recoverPendingVerificationDeliveries makes the verifier hand-off at-least-once
-// across app restarts. A pulled candidate report may have lost its verifier
-// child, and pulled feedback may have lost the owner turn that was meant to
-// consume it. Task and revision predicates keep obsolete deliveries retired.
+// across app restarts. A pulled candidate or named-verifier report may have
+// lost the room turn that was meant to consume it, and pulled feedback may have
+// lost the owner turn. Task and revision predicates keep obsolete deliveries retired.
 func (s *Service) recoverPendingVerificationDeliveries() error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -1116,6 +1116,41 @@ func (s *Service) deleteAgent(ctx context.Context, agent NamedAgent) error {
 		return fmt.Errorf("begin named agent delete: %w", err)
 	}
 	defer tx.Rollback()
+	var taskCount int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_messages WHERE task_owner = ?`, id).Scan(&taskCount); err != nil {
+		return fmt.Errorf("count named agent task history: %w", err)
+	}
+	if taskCount > 0 {
+		return fmt.Errorf("%w: named agent %q has task history and cannot be deleted", ErrConflict, id)
+	}
+	type roomRemoval struct {
+		roomID, createdBy, runtimeID string
+	}
+	rows, err := tx.QueryContext(ctx, `
+		SELECT room.id, room.created_by, COALESCE(runtime.id, '')
+		FROM room_members member
+		JOIN rooms room ON room.id = member.room_id AND room.kind = 'channel'
+		LEFT JOIN room_runtimes runtime ON runtime.room_id = room.id
+		WHERE member.member_type = 'agent' AND member.member_id = ?
+		ORDER BY room.id`, id)
+	if err != nil {
+		return fmt.Errorf("list named agent room removals: %w", err)
+	}
+	var removals []roomRemoval
+	for rows.Next() {
+		var removal roomRemoval
+		if err := rows.Scan(&removal.roomID, &removal.createdBy, &removal.runtimeID); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan named agent room removal: %w", err)
+		}
+		removals = append(removals, removal)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close named agent room removals: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate named agent room removals: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM rooms
 		WHERE kind = 'dm' AND id IN (
@@ -1123,11 +1158,30 @@ func (s *Service) deleteAgent(ctx context.Context, agent NamedAgent) error {
 		)`, id); err != nil {
 		return fmt.Errorf("delete named agent direct messages: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE room_messages SET task_owner = NULL WHERE task_owner = ?`, id); err != nil {
-		return fmt.Errorf("clear named agent task ownership: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM room_members WHERE member_type = 'agent' AND member_id = ?`, id); err != nil {
-		return fmt.Errorf("remove named agent memberships: %w", err)
+	wakeIDs := make([]string, 0, len(removals))
+	now := toMillis(s.now())
+	for _, removal := range removals {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM room_members WHERE room_id = ? AND member_type = 'agent' AND member_id = ?`, removal.roomID, id); err != nil {
+			return fmt.Errorf("remove named agent membership: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE drafts SET state = 'dropped', updated_at = ? WHERE room_id = ? AND agent_id = ? AND state = 'held'`, now, removal.roomID, id); err != nil {
+			return fmt.Errorf("drop deleted named agent drafts: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE collaboration_messages SET invalidated_at = ? WHERE room_id = ? AND (to_agent_id = ? OR from_id = ?) AND consumed_at IS NULL AND invalidated_at IS NULL`, now, removal.roomID, id, id); err != nil {
+			return fmt.Errorf("invalidate deleted named agent deliveries: %w", err)
+		}
+		if err := recordMembershipChangeTx(ctx, tx, removal.roomID, removal.createdBy, nil, []string{agent.Name}, now); err != nil {
+			return err
+		}
+		if removal.runtimeID != "" {
+			shouldWake, err := requestWakeTx(ctx, tx, removal.runtimeID, now)
+			if err != nil {
+				return err
+			}
+			if shouldWake {
+				wakeIDs = append(wakeIDs, removal.runtimeID)
+			}
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM named_agents WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("delete named agent: %w", err)
@@ -1137,6 +1191,11 @@ func (s *Service) deleteAgent(ctx context.Context, agent NamedAgent) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit named agent delete: %w", err)
+	}
+	for _, runtimeID := range wakeIDs {
+		if s.wake != nil {
+			s.wake.Deliver(runtimeID)
+		}
 	}
 	return os.RemoveAll(filepath.Dir(agent.MemoryDir))
 }
@@ -1612,7 +1671,7 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 				continue
 			}
 			var ownedTasks int
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_messages WHERE room_id = ? AND task_owner = ? AND task_state IN ('open', 'doing')`, id, agentID).Scan(&ownedTasks); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM room_messages WHERE room_id = ? AND task_owner = ? AND task_state != 'done'`, id, agentID).Scan(&ownedTasks); err != nil {
 				return Room{}, fmt.Errorf("count removed room agent task ownership: %w", err)
 			}
 			if ownedTasks > 0 {

@@ -12,8 +12,8 @@ import (
 
 // SubmitTaskVerification records the one machine-readable verifier decision
 // and delivers the natural-language report back to the visible task owner.
-// The room runtime is deliberately the only caller allowed to submit: verifier
-// child sessions report to it through the normal Session completion path.
+// The room runtime is deliberately the only caller allowed to submit: the
+// assigned named verifier reports to it through private collaboration traffic.
 func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerificationSubmitParams) (TaskVerificationSubmitResult, error) {
 	runtime, err := s.AuthenticatePrincipal(ctx, params.AgentID, params.Token)
 	if err != nil {

@@ -581,6 +581,41 @@ func TestBootstrapCreatesDeletableAndyAndGeneralOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestDeleteNamedAgentPreservesTaskHistoryAndUpdatesRoomMembership(t *testing.T) {
+	ctx := context.Background()
+	service := openTestService(t, nil)
+	alpha := createTestAgent(t, service, "Alpha")
+	room := createTestRoom(t, service, alpha)
+	if err := service.DeleteNamedAgent(ctx, alpha.Agent.ID); err != nil {
+		t.Fatalf("DeleteNamedAgent() error = %v", err)
+	}
+	updated, err := service.GetRoom(ctx, room.ID)
+	if err != nil {
+		t.Fatalf("GetRoom() error = %v", err)
+	}
+	if updated.MembershipRevision != room.MembershipRevision+1 || len(updated.Members) != 1 {
+		t.Fatalf("room after named agent delete = %#v", updated)
+	}
+	messages, err := service.ListMessages(ctx, room.ID, 0, 10)
+	if err != nil || len(messages) != 1 || messages[0].Kind != MessageSystem || !strings.Contains(messages[0].Body, "Alpha") {
+		t.Fatalf("delete membership event = %#v, err = %v", messages, err)
+	}
+
+	beta := createTestAgent(t, service, "Beta")
+	members := []RoomMember{{MemberType: MemberAgent, MemberID: beta.Agent.ID}}
+	if _, err := service.UpdateRoom(ctx, UpdateRoomParams{RoomID: room.ID, Members: &members}); err != nil {
+		t.Fatalf("add Beta: %v", err)
+	}
+	if _, err := service.CreateTaskHuman(ctx, TaskCreateParams{
+		RoomID: room.ID, Title: "Keep audit", OwnerID: beta.Agent.ID, HumanID: "human-1",
+	}); err != nil {
+		t.Fatalf("CreateTaskHuman() error = %v", err)
+	}
+	if err := service.DeleteNamedAgent(ctx, beta.Agent.ID); !errors.Is(err, ErrConflict) {
+		t.Fatalf("DeleteNamedAgent(with task history) error = %v, want ErrConflict", err)
+	}
+}
+
 func TestBootstrapRecoversAndyCreatedBeforeGeneral(t *testing.T) {
 	ctx := context.Background()
 	service := openTestService(t, nil)
