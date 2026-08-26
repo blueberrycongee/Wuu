@@ -108,6 +108,23 @@ func TestNamedAgentSurfaceAddsChatToolsToCompleteMainSurface(t *testing.T) {
 	}
 }
 
+func TestRoomAgentSurfaceOnlyExposesCoordinationTools(t *testing.T) {
+	want := []string{"chat_check", "chat_read", "chat_remind", "chat_task", "chat_verify", "chat_work", "collaboration_send"}
+	for _, profile := range []Profile{
+		Resolve("openai", "gpt-5-codex"),
+		Resolve("anthropic", "claude-sonnet-4-5"),
+		Resolve("ollama", "llama-coder"),
+	} {
+		surface := DefaultCompiler{}.Compile(profile, SurfaceRoomAgent)
+		if got := sortedKeys(surface.Tools); !slices.Equal(got, want) {
+			t.Errorf("%s room tools = %v, want %v", profile.Model, got, want)
+		}
+		if len(surface.DeferredTools) != 0 || len(surface.HiddenTools) != 0 || len(surface.DeferredCapabilities) != 0 {
+			t.Errorf("%s room surface exposes deferred or hidden tools: %+v", profile.Model, surface)
+		}
+	}
+}
+
 func TestOpenAICodexSurface(t *testing.T) {
 	s := DefaultCompiler{}.Compile(Resolve("openai", "gpt-5-codex"), SurfaceMain)
 

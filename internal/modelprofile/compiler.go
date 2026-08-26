@@ -55,6 +55,10 @@ const (
 	// SurfaceNamedAgent is a persistent group-chat agent. It keeps the complete
 	// main-agent surface and adds the group-chat tools.
 	SurfaceNamedAgent
+	// SurfaceRoomAgent is the hidden room coordinator. It can inspect and
+	// coordinate collaboration state, but it cannot execute project work or
+	// publish user-facing messages itself.
+	SurfaceRoomAgent
 )
 
 func (k SurfaceKind) includesSessionWorkspace() bool {
@@ -80,6 +84,12 @@ type DefaultCompiler struct{}
 func (DefaultCompiler) Compile(p Profile, kind SurfaceKind) capability.Surface {
 	key := ResolveProfileKey(p)
 	b := newBuilder(p, key)
+	if kind == SurfaceRoomAgent {
+		addRoomChatTools(b)
+		b.surface.SystemFragment = "[Tool surface: room coordinator]"
+		b.sortCaps()
+		return b.surface
+	}
 	switch key {
 	case ProfileOpenAICodex:
 		compileOpenAICodex(b, p)
@@ -293,6 +303,16 @@ func addChatTools(b *surfaceBuilder) {
 	b.addVisible("chat_send", capability.CapabilityChat)
 	b.addVisible("collaboration_send", capability.CapabilityChat)
 	b.addVisible("chat_draft", capability.CapabilityChat)
+	b.addVisible("chat_task", capability.CapabilityChat)
+	b.addVisible("chat_work", capability.CapabilityChat)
+	b.addVisible("chat_verify", capability.CapabilityChat)
+	b.addVisible("chat_remind", capability.CapabilityChat)
+}
+
+func addRoomChatTools(b *surfaceBuilder) {
+	b.addVisible("chat_check", capability.CapabilityChat)
+	b.addVisible("chat_read", capability.CapabilityChat)
+	b.addVisible("collaboration_send", capability.CapabilityChat)
 	b.addVisible("chat_task", capability.CapabilityChat)
 	b.addVisible("chat_work", capability.CapabilityChat)
 	b.addVisible("chat_verify", capability.CapabilityChat)

@@ -1139,7 +1139,13 @@ func (s *Session) ConfigureNamedAgentThreadRuntime(threadRuntime *ThreadRuntime,
 		providers.DebugLogf("read named agent memory index: %v", err)
 	}
 	toolkit := threadRuntime.Toolkit
+	identitySkills := collaborationSkills(s.Skills)
 	if toolkit != nil {
+		if toolkit.IsRoomAgent() {
+			identitySkills = nil
+		}
+		toolkit.SetMCPManager(nil)
+		toolkit.SetSkills(identitySkills)
 		toolkit.SetFileScopeRoots(workspaces.BoundaryRoots(rootDir, s.WuuHome, memoryDir))
 	}
 	catalog := ""
@@ -1151,6 +1157,11 @@ func (s *Session) ConfigureNamedAgentThreadRuntime(threadRuntime *ThreadRuntime,
 		}
 	}
 	runner := threadRuntime.StreamRunner
+	// Collaboration identities are a product boundary of their own. Ordinary
+	// plugin tools and request hooks must not silently change their behavior.
+	runner.Tools = toolkit
+	runner.BeforeModelStep = nil
+	runner.BeforeRequest = nil
 	runner.BeforeRequestContext = RuntimeContextInjector(
 		threadRuntime.AgentControl,
 		rootDir,
@@ -1161,10 +1172,21 @@ func (s *Session) ConfigureNamedAgentThreadRuntime(threadRuntime *ThreadRuntime,
 	promptResult := buildBaseSystemPromptResult(
 		rootDir, s.SessionDate, config.DefaultSystemPrompt(), userPrompt,
 		runner.ProviderName, runner.APIModel, activeSurfaceWithDeferredToolCatalog(toolkit, catalog),
-		nil, teaching, index, s.Skills,
+		nil, teaching, index, identitySkills,
 	)
 	runner.UpdateSystemPromptWithSections(promptResult.Content, agentPromptSections(promptResult.Sections))
 	return nil
+}
+
+func collaborationSkills(all []skills.Skill) []skills.Skill {
+	filtered := make([]skills.Skill, 0, len(all))
+	for _, skill := range all {
+		if strings.HasPrefix(strings.TrimSpace(skill.Source), "plugin:") {
+			continue
+		}
+		filtered = append(filtered, skill)
+	}
+	return filtered
 }
 
 func (s *Session) NewNamedAgentThreadRuntime(sessionID, rootDir, memoryDir, orientation string, selected ThreadModelSelection) (*ThreadRuntime, error) {

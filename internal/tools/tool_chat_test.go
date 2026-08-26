@@ -225,6 +225,9 @@ func TestChatVerifyIsAvailableOnlyToHiddenRoomRuntime(t *testing.T) {
 	kit.SetChatAgent(client)
 	assertDefinitionPresent(t, kit.Definitions(), "chat_verify")
 	assertDefinitionMissing(t, kit.Definitions(), "chat_send")
+	for _, forbidden := range []string{"read_file", "apply_patch", "bash", "web_search", "load_skill", "tool_search", "set_session_workspace"} {
+		assertDefinitionMissing(t, kit.Definitions(), forbidden)
+	}
 
 	taskJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_task", Arguments: `{"action":"create","room_id":"` + room.ID + `","title":"Fix callback","owner_id":"` + owner.Agent.ID + `","verification_required":true}`})
 	if err != nil {
