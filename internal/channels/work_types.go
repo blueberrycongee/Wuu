@@ -83,6 +83,8 @@ const (
 	WorkRunIntegration WorkRunKind = "integration"
 )
 
+const WorkVerifierProfileIndependent = "independent"
+
 type WorkRunState string
 
 const (

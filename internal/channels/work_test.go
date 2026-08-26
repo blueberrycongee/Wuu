@@ -232,3 +232,42 @@ func TestMultiCandidateSelectorAndDomainVerifierAreOptIn(t *testing.T) {
 		t.Fatalf("domain verifier = %#v, %v", verifier, err)
 	}
 }
+
+func TestIndependentVerifierDoesNotRequireAnotherRoomMember(t *testing.T) {
+	ctx := context.Background()
+	service, err := Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer service.Close()
+	owner, _ := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Owner"})
+	room, _ := service.CreateRoom(ctx, CreateRoomParams{
+		Kind: RoomChannel, Name: "Work", CreatedBy: "local-user",
+		Members: []RoomMember{{MemberType: MemberAgent, MemberID: owner.Agent.ID}},
+	})
+	runtime, _ := service.BindRuntime(ctx, room.RuntimeID)
+	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
+	task, _ := runtime.CreateTask(ctx, TaskCreateParams{
+		RoomID: room.ID, Title: "Deliver result", OwnerID: owner.Agent.ID, VerificationRequired: true,
+	})
+	if _, err := ownerClient.Check(ctx); err != nil {
+		t.Fatalf("Check(owner assignment) error = %v", err)
+	}
+	if _, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking}); err != nil {
+		t.Fatalf("UpdateTask(checking) error = %v", err)
+	}
+	if _, err := ownerClient.StartWorkRun(ctx, WorkRunStartParams{
+		WorkID: task.ID, Kind: WorkRunVerifier, SessionRef: "owner-verifier",
+	}); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("owner verifier error = %v, want unauthorized", err)
+	}
+	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{
+		WorkID: task.ID, Kind: WorkRunVerifier, SessionRef: "fresh-verifier",
+	})
+	if err != nil {
+		t.Fatalf("StartWorkRun(independent verifier) error = %v", err)
+	}
+	if run.Profile != WorkVerifierProfileIndependent || run.SessionRef != "fresh-verifier" {
+		t.Fatalf("independent verifier run = %#v", run)
+	}
+}

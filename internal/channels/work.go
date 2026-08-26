@@ -335,20 +335,29 @@ func (s *Service) StartWorkRun(ctx context.Context, params WorkRunStartParams) (
 		if work.State != WorkChecking || work.CandidateRevision == 0 {
 			return WorkRun{}, fmt.Errorf("%w: verifier run requires a checking candidate", ErrConflict)
 		}
+		if !actor.IsRoomRuntime() || actor.RoomID != work.RoomID {
+			return WorkRun{}, fmt.Errorf("%w: only the room runtime may start verification", ErrUnauthorized)
+		}
 		verifierID := strings.TrimSpace(params.Profile)
-		if verifierID == "" || verifierID == work.OwnerNamedAgentID {
+		if verifierID == "" {
+			verifierID = WorkVerifierProfileIndependent
+			params.Profile = verifierID
+		}
+		if verifierID == work.OwnerNamedAgentID {
 			return WorkRun{}, fmt.Errorf("%w: verifier run requires a different named agent", ErrConflict)
 		}
-		var verifierMember int
-		if err := tx.QueryRowContext(ctx, `
+		if verifierID != WorkVerifierProfileIndependent {
+			var verifierMember int
+			if err := tx.QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM room_members member
 			JOIN named_agents agent ON agent.id = member.member_id AND agent.kind = 'named'
 			WHERE member.room_id = ? AND member.member_type = 'agent' AND member.member_id = ?`,
-			work.RoomID, verifierID).Scan(&verifierMember); err != nil {
-			return WorkRun{}, fmt.Errorf("validate named verifier: %w", err)
-		}
-		if verifierMember == 0 {
-			return WorkRun{}, fmt.Errorf("%w: verifier must be a current named room member", ErrUnauthorized)
+				work.RoomID, verifierID).Scan(&verifierMember); err != nil {
+				return WorkRun{}, fmt.Errorf("validate named verifier: %w", err)
+			}
+			if verifierMember == 0 {
+				return WorkRun{}, fmt.Errorf("%w: named verifier must be a current room member", ErrUnauthorized)
+			}
 		}
 		if work.CurrentRunRef != "" {
 			var state WorkRunState
