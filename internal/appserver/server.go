@@ -616,28 +616,33 @@ func (s *Server) startChannelMaintenance() {
 	s.channelMaintenanceDone = make(chan struct{})
 	go func() {
 		defer close(s.channelMaintenanceDone)
-		if err := s.channelService.ExpireDrafts(context.Background()); err != nil {
-			log.Printf("wuu: channels maintenance: %v", err)
-		}
-		if _, err := s.channelService.FireDueReminders(context.Background()); err != nil {
-			log.Printf("wuu: channel reminders: %v", err)
-		}
+		s.runChannelMaintenance(context.Background())
 		ticker := time.NewTicker(channelMaintenanceInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				if err := s.channelService.ExpireDrafts(context.Background()); err != nil {
-					log.Printf("wuu: channels maintenance: %v", err)
-				}
-				if _, err := s.channelService.FireDueReminders(context.Background()); err != nil {
-					log.Printf("wuu: channel reminders: %v", err)
-				}
+				s.runChannelMaintenance(context.Background())
 			case <-s.channelMaintenanceStop:
 				return
 			}
 		}
 	}()
+}
+
+func (s *Server) runChannelMaintenance(ctx context.Context) {
+	if s == nil || s.channelService == nil {
+		return
+	}
+	if err := s.channelService.ExpireDrafts(ctx); err != nil {
+		log.Printf("wuu: channels maintenance: %v", err)
+	}
+	if _, err := s.channelService.FireDueReminders(ctx); err != nil {
+		log.Printf("wuu: channel reminders: %v", err)
+	}
+	if err := s.reconcileChannelWorkRuns(ctx); err != nil {
+		log.Printf("wuu: channel work recovery: %v", err)
+	}
 }
 
 func (s *Server) stopChannelMaintenance() {
