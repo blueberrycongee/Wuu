@@ -1040,8 +1040,6 @@ export type ChannelMessageListParams = {
 export type ChannelMessageListResult = { messages: ChannelMessage[] };
 export type ChannelMessageSendParams = {
   room_id: string;
-  thread_id?: string;
-  reply_to?: string;
   body: string;
   images?: InputImage[];
   files?: InputFile[];

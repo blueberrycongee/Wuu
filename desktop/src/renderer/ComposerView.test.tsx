@@ -2436,9 +2436,6 @@ describe("Composer expand button", () => {
       /\.workspace-document-composer\s+\.dock-composer-wrap\s+\.composer-stack\s*\{[^}]*width:\s*100%/,
     );
     expect(composerCSS).toMatch(
-      /\.channel-thread-footer\s+\.dock-composer-wrap\s+\.composer-stack\s*\{[^}]*width:\s*100%/,
-    );
-    expect(composerCSS).toMatch(
       /\.document-composer-wrap\s+\.composer-accessory-drawer:hover,[^{]*\.document-composer-wrap\s+\.composer-accessory-drawer:focus-within\s*\{[^}]*translate:\s*0 -2px[^}]*border-color:[^}]*box-shadow:/,
     );
     expect(composerCSS).toMatch(

@@ -428,7 +428,7 @@ func (s *Server) handleChannelMessageSend(ctx context.Context, req Request) erro
 		})
 	}
 	result, err := s.channelService.SendHuman(ctx, channels.HumanSendParams{
-		RoomID: params.RoomID, HumanID: localChannelHumanID, ThreadID: params.ThreadID, ReplyTo: params.ReplyTo, Body: params.Body,
+		RoomID: params.RoomID, HumanID: localChannelHumanID, Body: params.Body,
 		Images: messageImages, Files: messageFiles,
 	})
 	return s.writeResponse(req.ID, ChannelMessageSendResult{Message: result.Message}, err)

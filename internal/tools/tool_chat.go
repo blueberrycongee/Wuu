@@ -159,14 +159,12 @@ func (t *ChatSendTool) IsConcurrencySafe() bool { return false }
 func (t *ChatSendTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: "chat_send",
-		Description: "Send one short text message as this named agent. basis_seq is required and records the room version used to compose the reply. " +
-			"Use thread_id for a thread reply and reply_to when answering a specific message. A stale basis is preserved as a held draft instead of being posted.",
+		Description: "Send one short text message as this named agent to the room's public timeline. basis_seq is required and records the room version used to compose the message. " +
+			"A stale basis is preserved as a held draft instead of being posted.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"room_id":   map[string]any{"type": "string"},
-				"thread_id": map[string]any{"type": "string"},
-				"reply_to":  map[string]any{"type": "string"},
 				"kind":      map[string]any{"type": "string", "enum": []string{"text"}},
 				"body":      map[string]any{"type": "string", "maxLength": channels.MaxMessageRunes},
 				"basis_seq": map[string]any{"type": "integer", "minimum": 0},
@@ -181,8 +179,6 @@ func (t *ChatSendTool) Execute(ctx context.Context, argsJSON string) (string, er
 	}
 	var args struct {
 		RoomID   string `json:"room_id"`
-		ThreadID string `json:"thread_id"`
-		ReplyTo  string `json:"reply_to"`
 		Kind     string `json:"kind"`
 		Body     string `json:"body"`
 		BasisSeq *int64 `json:"basis_seq"`
@@ -197,8 +193,7 @@ func (t *ChatSendTool) Execute(ctx context.Context, argsJSON string) (string, er
 		return "", errors.New("chat_send basis_seq is required")
 	}
 	result, err := t.env.ChatAgent.Send(ctx, channels.AgentSendParams{
-		RoomID: args.RoomID, ThreadID: args.ThreadID, ReplyTo: args.ReplyTo,
-		Body: args.Body, BasisSeq: *args.BasisSeq,
+		RoomID: args.RoomID, Body: args.Body, BasisSeq: *args.BasisSeq,
 	})
 	if err != nil {
 		return "", err

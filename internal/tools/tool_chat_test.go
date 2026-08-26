@@ -53,6 +53,18 @@ func TestNamedAgentChatToolsAreIsolatedAndRoundTrip(t *testing.T) {
 		assertDefinitionPresent(t, kit.Definitions(), name)
 	}
 	assertDefinitionMissing(t, kit.Definitions(), "chat_verify")
+	for _, definition := range kit.Definitions() {
+		if definition.Name != "chat_send" {
+			continue
+		}
+		properties, _ := definition.InputSchema["properties"].(map[string]any)
+		if _, ok := properties["thread_id"]; ok {
+			t.Fatal("chat_send unexpectedly exposes thread_id")
+		}
+		if _, ok := properties["reply_to"]; ok {
+			t.Fatal("chat_send unexpectedly exposes reply_to")
+		}
+	}
 
 	sentJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_send", Arguments: `{"room_id":"` + room.ID + `","kind":"text","body":"reviewed","basis_seq":0}`})
 	if err != nil {
