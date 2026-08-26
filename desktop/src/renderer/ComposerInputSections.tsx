@@ -116,6 +116,7 @@ export function SplitPaneComposer({
   images,
   running,
   readOnly,
+  sendDisabled = false,
   status,
   statusLiveProgress,
   queryHistorySessionID,
@@ -132,6 +133,9 @@ export function SplitPaneComposer({
   images: ComposerImage[];
   running: boolean;
   readOnly: boolean;
+  /** Instant view switches keep `running` on for the spinner but must not
+   * allow a send/stop against the previous pane's thread. */
+  sendDisabled?: boolean;
   status: string;
   statusLiveProgress?: boolean;
   queryHistorySessionID?: string;
@@ -151,7 +155,7 @@ export function SplitPaneComposer({
   // Match the dock composer: the button is a stop control only while running
   // with an empty input. Once there is a draft, it flips to send (queuing
   // mid-turn) so a typed follow-up is never blocked by the stop state.
-  const showStop = running && !viewSwitchPending && !hasDraft;
+  const showStop = running && !sendDisabled && !hasDraft;
   const sendLabel = running ? t("composer.queueSend") : t("composer.send");
   const statusText = composerStatusText(status);
   const statusIsLiveProgress = composerStatusIsLiveProgress(statusLiveProgress);
@@ -377,7 +381,7 @@ export function SplitPaneComposer({
                         onClick={submitComposer}
                         aria-label={sendLabel}
                         title={sendLabel}
-                        disabled={readOnly || viewSwitchPending || !hasDraft}
+                        disabled={readOnly || sendDisabled || !hasDraft}
                       >
                         <Send aria-hidden="true" />
                       </button>

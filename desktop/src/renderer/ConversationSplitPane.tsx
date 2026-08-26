@@ -219,6 +219,7 @@ export function ConversationSplitPane({
           files={draft.files}
           images={draft.images}
           running={paneRunning || viewSwitchPending}
+          sendDisabled={viewSwitchPending}
           readOnly={false}
           status={paneStatus}
           statusLiveProgress={paneRunning ? streamStatus?.liveProgress : false}
