@@ -7,7 +7,6 @@ import {
   ListTodo,
   Paperclip,
   PencilLine,
-  Plus,
   Send,
   Square,
   X
@@ -652,57 +651,5 @@ function ComposerQueueItem({
         </button>
       </div>
     </li>
-  );
-}
-
-/**
- * Composer chip that makes the automatically-attached workspace "active file"
- * visible and controllable. The active file tab is silently shared with the
- * core as the active document on every send; without this chip users can
- * forget a document is open and be surprised when replies are steered by it.
- * The ✕ excludes the file from the next message; the same chip stays visible
- * in a suppressed state so the attachment can be restored without switching
- * tabs.
- */
-export function ActiveFileComposerChip({
-  filePath,
-  suppressed = false,
-  onExclude,
-  onInclude,
-}: {
-  filePath: string;
-  suppressed?: boolean;
-  onExclude: () => void;
-  onInclude: () => void;
-}): JSX.Element {
-  const { t } = useI18n();
-  const fileName = filePath.split(/[\\/]/).filter(Boolean).pop() ?? filePath;
-  const label = t("composer.activeFileChip", { file: fileName });
-  const hint = suppressed
-    ? t("composer.activeFileChipHintSuppressed")
-    : t("composer.activeFileChipHint", { file: fileName });
-  const buttonLabel = suppressed
-    ? t("composer.activeFileInclude", { file: fileName })
-    : t("composer.activeFileExclude", { file: fileName });
-  return (
-    <Tooltip content={hint}>
-      <span
-        className={`composer-active-file-chip${suppressed ? " is-suppressed" : ""}`}
-      >
-        <FileText className="icon-sm" aria-hidden="true" />
-        <span className="composer-active-file-chip-text">{label}</span>
-        <button
-          type="button"
-          aria-label={buttonLabel}
-          onClick={suppressed ? onInclude : onExclude}
-        >
-          {suppressed ? (
-            <Plus className="icon-xs" />
-          ) : (
-            <X className="icon-xs" />
-          )}
-        </button>
-      </span>
-    </Tooltip>
   );
 }
