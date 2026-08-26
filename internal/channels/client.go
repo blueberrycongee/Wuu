@@ -74,11 +74,11 @@ func (c *AgentClient) InviteRoomAgent(ctx context.Context, roomID, agentID strin
 	return c.service.InviteRoomAgent(ctx, c.agentID, c.token, roomID, agentID)
 }
 
-func (c *AgentClient) CreateAndInviteRoomAgent(ctx context.Context, roomID, name, role string) (RoomAgentCreateResult, error) {
+func (c *AgentClient) ProposeRoomAgent(ctx context.Context, roomID, name, role string) (AgentCreationProposal, error) {
 	if c == nil || c.service == nil || !c.IsRoomRuntime() {
-		return RoomAgentCreateResult{}, ErrUnauthorized
+		return AgentCreationProposal{}, ErrUnauthorized
 	}
-	return c.service.CreateAndInviteRoomAgent(ctx, c.agentID, c.token, roomID, name, role)
+	return c.service.ProposeRoomAgent(ctx, c.agentID, c.token, roomID, name, role)
 }
 
 func (c *AgentClient) Check(ctx context.Context) (CheckResult, error) {

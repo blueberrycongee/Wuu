@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestRoomRuntimeCanInviteAndCreatePersistentNamedAgents(t *testing.T) {
+func TestRoomRuntimeCanInviteAndProposePersistentNamedAgents(t *testing.T) {
 	ctx := context.Background()
 	wake := &recordingWakeSink{}
 	service := openTestService(t, wake)
@@ -33,16 +33,49 @@ func TestRoomRuntimeCanInviteAndCreatePersistentNamedAgents(t *testing.T) {
 		t.Fatalf("invited room = %#v", invited)
 	}
 
-	created, err := client.CreateAndInviteRoomAgent(ctx, room.ID, "Designer", "界面设计与交互评审")
+	proposal, err := client.ProposeRoomAgent(ctx, room.ID, "Designer", "界面设计与交互评审")
 	if err != nil {
-		t.Fatalf("CreateAndInviteRoomAgent() error = %v", err)
+		t.Fatalf("ProposeRoomAgent() error = %v", err)
 	}
-	if created.Agent.Name != "Designer" || created.Agent.Role != "界面设计与交互评审" || created.Room.MembershipRevision != 3 || len(created.Room.Members) != 4 {
-		t.Fatalf("created room agent = %#v", created)
+	if proposal.Name != "Designer" || proposal.Role != "界面设计与交互评审" || proposal.State != AgentCreationPending {
+		t.Fatalf("proposal = %#v", proposal)
 	}
-	persisted, err := service.GetNamedAgent(ctx, created.Agent.ID)
-	if err != nil || !persisted.Autostart {
-		t.Fatalf("created named agent was not persisted: %v", err)
+	unchanged, err := service.GetRoom(ctx, room.ID)
+	if err != nil || unchanged.MembershipRevision != 2 || len(unchanged.Members) != 3 {
+		t.Fatalf("proposal changed membership: room = %#v, err = %v", unchanged, err)
+	}
+	messages, err := service.ListMessages(ctx, room.ID, 0, 100)
+	if err != nil || len(messages) != 2 || messages[1].AgentCreationProposal == nil {
+		t.Fatalf("proposal message = %#v, err = %v", messages, err)
+	}
+
+	approved, err := service.ResolveAgentCreationProposal(ctx, ResolveAgentCreationProposalParams{
+		ProposalID: proposal.ID, HumanID: "human-1", Approve: true, Provider: "openai", Model: "gpt-5",
+	})
+	if err != nil {
+		t.Fatalf("ResolveAgentCreationProposal() error = %v", err)
+	}
+	if approved.State != AgentCreationApproved || approved.CreatedAgentID == "" || approved.Provider != "openai" || approved.Model != "gpt-5" {
+		t.Fatalf("approved proposal = %#v", approved)
+	}
+	persisted, err := service.GetNamedAgent(ctx, approved.CreatedAgentID)
+	if err != nil || !persisted.Autostart || persisted.ProviderOverride != "openai" || persisted.ModelOverride != "gpt-5" {
+		t.Fatalf("approved named agent = %#v, err = %v", persisted, err)
+	}
+
+	cancelProposal, err := client.ProposeRoomAgent(ctx, room.ID, "Writer", "Documentation")
+	if err != nil {
+		t.Fatalf("ProposeRoomAgent(cancel) error = %v", err)
+	}
+	cancelled, err := service.ResolveAgentCreationProposal(ctx, ResolveAgentCreationProposalParams{
+		ProposalID: cancelProposal.ID, HumanID: "human-1", Approve: false,
+	})
+	if err != nil || cancelled.State != AgentCreationCancelled {
+		t.Fatalf("cancelled proposal = %#v, err = %v", cancelled, err)
+	}
+	messages, err = service.ListMessages(ctx, room.ID, 0, 100)
+	if err != nil || messages[len(messages)-1].Body != "用户取消了创建新角色：Writer" {
+		t.Fatalf("cancel notification = %#v, err = %v", messages, err)
 	}
 }
 

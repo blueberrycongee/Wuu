@@ -218,6 +218,24 @@ func (s *Server) handleChannelAgentReset(ctx context.Context, req Request) error
 	}, nil)
 }
 
+func (s *Server) handleChannelAgentCreationResolve(ctx context.Context, req Request) error {
+	if s == nil || s.channelService == nil {
+		return s.writeResponse(req.ID, nil, errors.New("channels service is unavailable"))
+	}
+	var params ChannelAgentCreationResolveParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	proposal, err := s.channelService.ResolveAgentCreationProposal(ctx, channels.ResolveAgentCreationProposalParams{
+		ProposalID: params.ProposalID,
+		HumanID:    localChannelHumanID,
+		Approve:    params.Approve,
+		Provider:   params.Provider,
+		Model:      params.Model,
+	})
+	return s.writeResponse(req.ID, ChannelAgentCreationResolveResult{Proposal: proposal}, err)
+}
+
 func (s *Server) handleChannelRoomList(ctx context.Context, req Request) error {
 	if s == nil || s.channelService == nil {
 		return s.writeResponse(req.ID, nil, errors.New("channels service is unavailable"))

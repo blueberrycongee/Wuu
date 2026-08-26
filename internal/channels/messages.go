@@ -281,6 +281,9 @@ func (s *Service) ListMessages(ctx context.Context, roomID string, afterSeq int6
 	if err := s.attachWorkDetails(ctx, messages); err != nil {
 		return nil, err
 	}
+	if err := s.attachAgentCreationProposals(ctx, messages); err != nil {
+		return nil, err
+	}
 	return messages, nil
 }
 

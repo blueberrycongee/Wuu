@@ -42,6 +42,10 @@ func (s *Service) InviteRoomAgent(ctx context.Context, runtimeID, token, roomID,
 	if _, err := s.requireRoomRuntime(ctx, runtimeID, token, roomID); err != nil {
 		return Room{}, err
 	}
+	return s.inviteRoomAgent(ctx, runtimeID, roomID, agentID)
+}
+
+func (s *Service) inviteRoomAgent(ctx context.Context, runtimeID, roomID, agentID string) (Room, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
 		return Room{}, errors.New("named agent id is required")
@@ -106,24 +110,6 @@ func (s *Service) InviteRoomAgent(ctx context.Context, runtimeID, token, roomID,
 		s.wake.Deliver(runtimeID)
 	}
 	return s.GetRoom(ctx, roomID)
-}
-
-func (s *Service) CreateAndInviteRoomAgent(ctx context.Context, runtimeID, token, roomID, name, role string) (RoomAgentCreateResult, error) {
-	if _, err := s.requireRoomRuntime(ctx, runtimeID, token, roomID); err != nil {
-		return RoomAgentCreateResult{}, err
-	}
-	credential, err := s.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: name, Role: role, Autostart: true})
-	if err != nil {
-		return RoomAgentCreateResult{}, err
-	}
-	room, err := s.InviteRoomAgent(ctx, runtimeID, token, roomID, credential.Agent.ID)
-	if err != nil {
-		if cleanupErr := s.DeleteNamedAgent(ctx, credential.Agent.ID); cleanupErr != nil {
-			return RoomAgentCreateResult{}, fmt.Errorf("invite created named agent: %v; cleanup: %w", err, cleanupErr)
-		}
-		return RoomAgentCreateResult{}, err
-	}
-	return RoomAgentCreateResult{Agent: agentCapabilitySummary(credential.Agent), Room: room}, nil
 }
 
 func agentCapabilitySummary(agent NamedAgent) AgentCapabilitySummary {

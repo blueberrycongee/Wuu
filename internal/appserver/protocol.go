@@ -61,6 +61,7 @@ const (
 	MethodChannelAgentDelete              = "channel/agent/delete"
 	MethodChannelAgentStart               = "channel/agent/start"
 	MethodChannelAgentReset               = "channel/agent/reset"
+	MethodChannelAgentCreationResolve     = "channel/agent-creation/resolve"
 	MethodChannelRoomList                 = "channel/room/list"
 	MethodChannelRoomCreate               = "channel/room/create"
 	MethodChannelDirectMessageOpen        = "channel/direct-message/open"
@@ -2447,6 +2448,17 @@ type ChannelAgentResetResult struct {
 	WakeState channels.WakeState  `json:"wake_state"`
 	Requested bool                `json:"requested"`
 	ThreadID  string              `json:"thread_id"`
+}
+
+type ChannelAgentCreationResolveParams struct {
+	ProposalID string `json:"proposal_id"`
+	Approve    bool   `json:"approve"`
+	Provider   string `json:"provider,omitempty"`
+	Model      string `json:"model,omitempty"`
+}
+
+type ChannelAgentCreationResolveResult struct {
+	Proposal channels.AgentCreationProposal `json:"proposal"`
 }
 
 type ChannelRoomListResult struct {

@@ -1085,6 +1085,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleChannelAgentStart(ctx, req)
 	case MethodChannelAgentReset:
 		return s.handleChannelAgentReset(ctx, req)
+	case MethodChannelAgentCreationResolve:
+		return s.handleChannelAgentCreationResolve(ctx, req)
 	case MethodChannelRoomList:
 		return s.handleChannelRoomList(ctx, req)
 	case MethodChannelRoomCreate:

@@ -259,6 +259,22 @@ func (s *Service) migrate() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_room_messages_room_seq ON room_messages(room_id, seq)`,
 		`CREATE INDEX IF NOT EXISTS idx_room_messages_thread_seq ON room_messages(room_id, thread_id, seq)`,
+		`CREATE TABLE IF NOT EXISTS agent_creation_proposals (
+			id TEXT PRIMARY KEY,
+			message_id TEXT NOT NULL UNIQUE,
+			room_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT '',
+			state TEXT NOT NULL CHECK (state IN ('pending', 'processing', 'approved', 'cancelled')),
+			provider TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL DEFAULT '',
+			created_agent_id TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL,
+			resolved_at INTEGER,
+			FOREIGN KEY (message_id) REFERENCES room_messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_creation_proposals_room ON agent_creation_proposals(room_id, created_at)`,
 		`CREATE TABLE IF NOT EXISTS room_cursors (
 			room_id TEXT NOT NULL,
 			member_type TEXT NOT NULL DEFAULT 'agent' CHECK (member_type IN ('human', 'agent')),
@@ -455,6 +471,11 @@ func (s *Service) migrate() error {
 		if _, err := s.db.Exec(statement); err != nil {
 			return fmt.Errorf("migrate channels database: %w", err)
 		}
+	}
+	// A process can exit after claiming a proposal but before creating the
+	// Agent. Return such cards to an actionable state on the next startup.
+	if _, err := s.db.Exec(`UPDATE agent_creation_proposals SET state = 'pending', provider = '', model = '' WHERE state = 'processing'`); err != nil {
+		return fmt.Errorf("recover agent creation proposals: %w", err)
 	}
 	if err := s.ensureNamedAgentProviderColumn(); err != nil {
 		return err

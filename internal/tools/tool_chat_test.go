@@ -230,7 +230,7 @@ func TestChatVerifyIsAvailableOnlyToHiddenRoomRuntime(t *testing.T) {
 		assertDefinitionMissing(t, kit.Definitions(), forbidden)
 	}
 	rosterJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_roster", Arguments: `{"action":"create","room_id":"` + room.ID + `","name":"Reviewer"}`})
-	if err != nil || !strings.Contains(rosterJSON, `"name":"Reviewer"`) || !strings.Contains(rosterJSON, `"membership_revision":2`) {
+	if err != nil || !strings.Contains(rosterJSON, `"name":"Reviewer"`) || !strings.Contains(rosterJSON, `"state":"pending"`) {
 		t.Fatalf("chat_roster create = %s, err = %v", rosterJSON, err)
 	}
 

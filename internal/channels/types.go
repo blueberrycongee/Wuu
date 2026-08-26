@@ -223,32 +223,59 @@ type AgentCapabilitySummary struct {
 	EffortOverride   string `json:"effort_override,omitempty"`
 }
 
-type RoomAgentCreateResult struct {
-	Agent AgentCapabilitySummary `json:"agent"`
-	Room  Room                   `json:"room"`
+type AgentCreationProposalState string
+
+const (
+	AgentCreationPending    AgentCreationProposalState = "pending"
+	AgentCreationProcessing AgentCreationProposalState = "processing"
+	AgentCreationApproved   AgentCreationProposalState = "approved"
+	AgentCreationCancelled  AgentCreationProposalState = "cancelled"
+)
+
+type AgentCreationProposal struct {
+	ID             string                     `json:"id"`
+	MessageID      string                     `json:"message_id"`
+	RoomID         string                     `json:"room_id"`
+	Name           string                     `json:"name"`
+	Role           string                     `json:"role"`
+	State          AgentCreationProposalState `json:"state"`
+	Provider       string                     `json:"provider,omitempty"`
+	Model          string                     `json:"model,omitempty"`
+	CreatedAgentID string                     `json:"created_agent_id,omitempty"`
+	CreatedAt      time.Time                  `json:"created_at"`
+	ResolvedAt     *time.Time                 `json:"resolved_at,omitempty"`
+}
+
+type ResolveAgentCreationProposalParams struct {
+	ProposalID string
+	HumanID    string
+	Approve    bool
+	Provider   string
+	Model      string
 }
 
 type Message struct {
-	ID                       string         `json:"id"`
-	RoomID                   string         `json:"room_id"`
-	Seq                      int64          `json:"seq"`
-	ThreadID                 string         `json:"thread_id,omitempty"`
-	AuthorType               MemberType     `json:"author_type"`
-	AuthorID                 string         `json:"author_id"`
-	Kind                     MessageKind    `json:"kind"`
-	Body                     string         `json:"body"`
-	Images                   []MessageImage `json:"images,omitempty"`
-	Files                    []MessageFile  `json:"files,omitempty"`
-	Mentions                 []string       `json:"mentions"`
-	ReplyTo                  string         `json:"reply_to,omitempty"`
-	TaskTitle                string         `json:"task_title,omitempty"`
-	TaskState                string         `json:"task_state,omitempty"`
-	TaskOwner                string         `json:"task_owner,omitempty"`
-	TaskVerificationRequired bool           `json:"task_verification_required,omitempty"`
-	TaskGoalRevision         int            `json:"task_goal_revision,omitempty"`
-	TaskCandidateRevision    int            `json:"task_candidate_revision,omitempty"`
-	Work                     *Work          `json:"work,omitempty"`
-	CreatedAt                time.Time      `json:"created_at"`
+	ID                       string                 `json:"id"`
+	RoomID                   string                 `json:"room_id"`
+	Seq                      int64                  `json:"seq"`
+	ThreadID                 string                 `json:"thread_id,omitempty"`
+	AuthorType               MemberType             `json:"author_type"`
+	AuthorID                 string                 `json:"author_id"`
+	Kind                     MessageKind            `json:"kind"`
+	Body                     string                 `json:"body"`
+	Images                   []MessageImage         `json:"images,omitempty"`
+	Files                    []MessageFile          `json:"files,omitempty"`
+	Mentions                 []string               `json:"mentions"`
+	ReplyTo                  string                 `json:"reply_to,omitempty"`
+	TaskTitle                string                 `json:"task_title,omitempty"`
+	TaskState                string                 `json:"task_state,omitempty"`
+	TaskOwner                string                 `json:"task_owner,omitempty"`
+	TaskVerificationRequired bool                   `json:"task_verification_required,omitempty"`
+	TaskGoalRevision         int                    `json:"task_goal_revision,omitempty"`
+	TaskCandidateRevision    int                    `json:"task_candidate_revision,omitempty"`
+	AgentCreationProposal    *AgentCreationProposal `json:"agent_creation_proposal,omitempty"`
+	Work                     *Work                  `json:"work,omitempty"`
+	CreatedAt                time.Time              `json:"created_at"`
 }
 
 type MessageImage struct {
