@@ -79,6 +79,17 @@ function createApi(): Partial<WuuDesktopApi> {
       requested: true,
       thread_id: "channel-agent-agent-1",
     })),
+    resolveChannelAgentCreation: vi.fn(async (params) => ({ proposal: {
+      id: params.proposal_id,
+      message_id: "proposal-message",
+      room_id: "room-1",
+      name: "Designer",
+      role: "Design delivery",
+      state: params.approve ? "approved" as const : "cancelled" as const,
+      provider: params.provider,
+      model: params.model,
+      created_at: "2026-07-23T00:03:00Z",
+    } })),
     listChannelRooms: vi.fn(async () => ({ rooms })),
     markChannelRoomRead: vi.fn(async () => ({ read: true })),
     createChannelRoom: vi.fn(async (params) => ({ room: { ...rooms[1], name: params.name } })),
@@ -220,6 +231,41 @@ describe("ChannelView", () => {
     expect(assignmentState("checking")).toBe("checking");
     expect(assignmentState("revising")).toBe("revising");
     expect(assignmentState("needs_human")).toBe("needs_human");
+  });
+
+  it("keeps Room-created roles pending until the user chooses a configured model", async () => {
+    const api = createApi();
+    api.listChannelMessages = vi.fn(async ({ room_id }) => ({ messages: room_id === "room-1" ? [{
+      id: "proposal-message", room_id, seq: 1, author_type: "human" as const, author_id: "human",
+      kind: "system" as const, body: "建议创建新角色：Designer", created_at: "2026-07-23T00:03:00Z",
+      agent_creation_proposal: {
+        id: "proposal-1", message_id: "proposal-message", room_id, name: "Designer", role: "Design delivery",
+        state: "pending" as const, created_at: "2026-07-23T00:03:00Z",
+      },
+    }] : [] }));
+    Object.defineProperty(window, "wuu", { configurable: true, value: api });
+    const initialized = {
+      protocol_version: "1", provider: "openai", model: "gpt-default", workspace_root: "/workspace",
+      providers: [
+        { name: "openai", type: "openai", model: "gpt-default", models: [{ id: "gpt-default", display_name: "GPT Default" }, { id: "gpt-design", display_name: "GPT Design" }] },
+        { name: "anthropic", type: "anthropic", model: "claude-sonnet", models: [{ id: "claude-sonnet", display_name: "Claude Sonnet" }] },
+      ],
+    } as InitializeResult;
+    root = createRoot(container);
+    act(() => root?.render(<ChannelView selectedRoomID="room-1" initialized={initialized} />));
+    await settle();
+
+    const card = container.querySelector(".channel-agent-proposal");
+    expect(card?.textContent).toContain("Designer");
+    const select = card?.querySelector<HTMLSelectElement>("select");
+    expect(Array.from(select?.options ?? []).map((option) => option.textContent)).toEqual(expect.arrayContaining(["openai · GPT Default", "openai · GPT Design", "anthropic · Claude Sonnet"]));
+    act(() => setSelectValue(select!, "anthropic\u0000claude-sonnet"));
+    act(() => card?.querySelector<HTMLButtonElement>(".channel-agent-proposal-actions button")?.click());
+    await settle();
+
+    expect(api.resolveChannelAgentCreation).toHaveBeenCalledWith({
+      proposal_id: "proposal-1", approve: true, provider: "anthropic", model: "claude-sonnet",
+    });
   });
 
   it("renders durable Work evidence under the visible owner without hidden personas", async () => {

@@ -576,6 +576,74 @@
   text-align: center;
 }
 
+.channel-agent-proposal {
+  align-self: center;
+  width: min(100%, 560px);
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  box-shadow: 0 3px 12px var(--shadow-color-subtle);
+}
+
+.channel-agent-proposal-kicker {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.channel-agent-proposal p {
+  margin: -4px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.channel-agent-proposal label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.channel-agent-proposal select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.channel-agent-proposal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.channel-agent-proposal-actions button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--paper);
+  background: var(--accent-strong);
+}
+
+.channel-agent-proposal-actions button.secondary {
+  color: var(--text-secondary);
+  background: var(--surface-2);
+}
+
+.channel-agent-proposal-status {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .channel-message {
   width: min(100%, var(--channel-content-max-width));
   display: grid;

@@ -775,6 +775,8 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
   const [agentResetStatus, setAgentResetStatus] = useState("");
   const [roomName, setRoomName] = useState("");
   const [roomAgentIDs, setRoomAgentIDs] = useState<string[]>([]);
+  const [proposalModels, setProposalModels] = useState<Record<string, string>>({});
+  const [resolvingProposalID, setResolvingProposalID] = useState("");
   const [roomAvatarImage, setRoomAvatarImage] = useState("");
   const [editingRoomID, setEditingRoomID] = useState("");
   const [roomMemberMode, setRoomMemberMode] = useState<RoomMemberMode>(null);
@@ -1543,6 +1545,26 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     }
   }
 
+  async function resolveAgentCreation(proposalID: string, approve: boolean): Promise<void> {
+    if (!window.wuu || !selectedRoomID) return;
+    const selection = proposalModels[proposalID] ?? "";
+    const [provider = "", model = ""] = selection.split("\u0000");
+    setResolvingProposalID(proposalID);
+    try {
+      await window.wuu.resolveChannelAgentCreation({
+        proposal_id: proposalID,
+        approve,
+        provider: approve ? provider : undefined,
+        model: approve ? model : undefined,
+      });
+      await Promise.all([refreshMessages(selectedRoomID), refreshRoomsAndAgents()]);
+    } catch (reason) {
+      showErrorToast(reason);
+    } finally {
+      setResolvingProposalID("");
+    }
+  }
+
   async function deleteAgent(agentID: string): Promise<void> {
     if (!window.wuu) return;
     if (!window.confirm(t("channels.deleteAgentConfirm", { name: agentName.trim() }))) return;
@@ -1911,6 +1933,54 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
             }
             if (item.kind !== "message") return null;
             const message = item.message;
+            const proposal = message.agent_creation_proposal;
+            if (proposal) {
+              const pending = proposal.state === "pending";
+              const resolving = resolvingProposalID === proposal.id || proposal.state === "processing";
+              const selectedModel = proposalModels[proposal.id] ?? "";
+              return (
+                <section className="channel-agent-proposal" key={message.id} aria-label={t("channels.agentProposalTitle")}>
+                  <div className="channel-agent-proposal-kicker">{t("channels.agentProposalTitle")}</div>
+                  <strong>{proposal.name}</strong>
+                  {proposal.role ? <p>{proposal.role}</p> : null}
+                  {pending || resolving ? (
+                    <>
+                      <label>
+                        <span>{t("channels.model")}</span>
+                        <select
+                          value={selectedModel}
+                          disabled={resolving}
+                          onChange={(event) => setProposalModels((current) => ({ ...current, [proposal.id]: event.target.value }))}
+                        >
+                          <option value="">{t("channels.inheritModel")}{initialized ? ` · ${initialized.provider} / ${initialized.model}` : ""}</option>
+                          {(initialized?.providers ?? []).map((provider) => (
+                            <optgroup label={provider.name} key={provider.name}>
+                              {(provider.models?.length ? provider.models : [{ id: provider.model, display_name: provider.model }])
+                                .filter((model) => model.id)
+                                .map((model) => <option value={`${provider.name}\u0000${model.id}`} key={`${provider.name}-${model.id}`}>{provider.name} · {model.display_name || model.id}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="channel-agent-proposal-actions">
+                        <button type="button" disabled={resolving} onClick={() => void resolveAgentCreation(proposal.id, true)}>
+                          {resolving ? t("channels.agentProposalCreating") : t("channels.agentProposalApprove")}
+                        </button>
+                        <button type="button" className="secondary" disabled={resolving} onClick={() => void resolveAgentCreation(proposal.id, false)}>
+                          {t("common.cancel")}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className={`channel-agent-proposal-status ${proposal.state}`}>
+                      {t(proposal.state === "approved" ? "channels.agentProposalApproved" : "channels.agentProposalCancelled", {
+                        model: proposal.model ? `${proposal.provider} · ${proposal.model}` : t("channels.inheritModel"),
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            }
             if (message.kind === "system") {
               return <div className="channel-system-message" key={message.id}>{message.body}</div>;
             }

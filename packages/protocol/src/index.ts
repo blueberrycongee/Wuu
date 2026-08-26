@@ -803,6 +803,20 @@ export type ChannelRoom = {
   activity_status?: "idle" | "thinking";
 };
 
+export type ChannelAgentCreationProposal = {
+  id: string;
+  message_id: string;
+  room_id: string;
+  name: string;
+  role: string;
+  state: "pending" | "processing" | "approved" | "cancelled";
+  provider?: string;
+  model?: string;
+  created_agent_id?: string;
+  created_at: string;
+  resolved_at?: string;
+};
+
 export type ChannelMessage = {
   id: string;
   room_id: string;
@@ -822,6 +836,7 @@ export type ChannelMessage = {
   task_verification_required?: boolean;
   task_goal_revision?: number;
   task_candidate_revision?: number;
+  agent_creation_proposal?: ChannelAgentCreationProposal;
   work?: ChannelWork;
   created_at: string;
 };
@@ -990,6 +1005,13 @@ export type ChannelAgentResetResult = {
   requested: boolean;
   thread_id: string;
 };
+export type ChannelAgentCreationResolveParams = {
+  proposal_id: string;
+  approve: boolean;
+  provider?: string;
+  model?: string;
+};
+export type ChannelAgentCreationResolveResult = { proposal: ChannelAgentCreationProposal };
 export type ChannelRoomListResult = { rooms: ChannelRoom[] };
 export type ChannelRoomCreateParams = {
   name: string;
@@ -2693,6 +2715,7 @@ export type WuuDesktopApi = {
   deleteNamedAgent: (params: ChannelAgentDeleteParams) => Promise<ChannelAgentDeleteResult>;
   startNamedAgent: (params: ChannelAgentStartParams) => Promise<ChannelAgentStartResult>;
   resetNamedAgent: (params: ChannelAgentResetParams) => Promise<ChannelAgentResetResult>;
+  resolveChannelAgentCreation: (params: ChannelAgentCreationResolveParams) => Promise<ChannelAgentCreationResolveResult>;
   listChannelRooms: () => Promise<ChannelRoomListResult>;
   createChannelRoom: (params: ChannelRoomCreateParams) => Promise<ChannelRoomCreateResult>;
   openChannelDirectMessage: (params: ChannelDirectMessageOpenParams) => Promise<ChannelDirectMessageOpenResult>;
