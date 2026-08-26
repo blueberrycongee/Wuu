@@ -226,6 +226,14 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 		}); err != nil {
 			return Message{}, err
 		}
+		if _, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
+			RoomID: message.RoomID, ToAgentID: newOwner, WorkID: message.ID, Kind: CollaborationControl,
+			Body:            "The user changed this task's goal. Output for the previous goal was not applied or delivered. Stop the old approach, read the complete current task, and continue on this same task.",
+			SourceMessageID: message.ID, GoalRevision: message.TaskGoalRevision,
+			CandidateRevision: message.TaskCandidateRevision, CreatedAt: updatedAt,
+		}); err != nil {
+			return Message{}, fmt.Errorf("enqueue goal revision notice: %w", err)
+		}
 	}
 	if message.TaskVerificationRequired && params.State == TaskStateChecking && message.TaskState != string(TaskStateChecking) {
 		message.TaskCandidateRevision++
@@ -281,6 +289,11 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	}
 	if requested && s.wake != nil {
 		s.wake.Deliver(newOwner)
+	}
+	if params.GoalCorrection != "" {
+		if interrupt, ok := s.wake.(WakeInterruptSink); ok {
+			interrupt.Interrupt(newOwner)
+		}
 	}
 	if work, err := s.GetWork(ctx, message.ID); err == nil {
 		message.Work = &work

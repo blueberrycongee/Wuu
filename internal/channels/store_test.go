@@ -18,8 +18,9 @@ import (
 )
 
 type recordingWakeSink struct {
-	mu        sync.Mutex
-	delivered []string
+	mu         sync.Mutex
+	delivered  []string
+	interrupts []string
 }
 
 func (s *recordingWakeSink) Deliver(agentID string) {
@@ -28,11 +29,25 @@ func (s *recordingWakeSink) Deliver(agentID string) {
 	s.delivered = append(s.delivered, agentID)
 }
 
+func (s *recordingWakeSink) Interrupt(agentID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.interrupts = append(s.interrupts, agentID)
+}
+
 func (s *recordingWakeSink) take() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := append([]string(nil), s.delivered...)
 	s.delivered = nil
+	return result
+}
+
+func (s *recordingWakeSink) takeInterrupts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := append([]string(nil), s.interrupts...)
+	s.interrupts = nil
 	return result
 }
 

@@ -470,6 +470,11 @@ type WakeSink interface {
 	Deliver(agentID string)
 }
 
+type WakeInterruptSink interface {
+	WakeSink
+	Interrupt(agentID string)
+}
+
 type TelemetryEvent struct {
 	Name       string     `json:"name"`
 	MemberType MemberType `json:"member_type,omitempty"`

@@ -303,7 +303,8 @@ func TestTaskVerificationRejectsVisibleAgentAndInvalidDecision(t *testing.T) {
 
 func TestTaskVerificationRejectsStaleGoalAndCandidateRevisions(t *testing.T) {
 	ctx := context.Background()
-	service := openTestService(t, nil)
+	sink := &recordingWakeSink{}
+	service := openTestService(t, sink)
 	owner := createTestAgent(t, service, "Andy")
 	room, err := service.CreateRoom(ctx, CreateRoomParams{
 		Kind: RoomChannel, Name: "Build", CreatedBy: "local-user",
@@ -324,6 +325,10 @@ func TestTaskVerificationRejectsStaleGoalAndCandidateRevisions(t *testing.T) {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
+	if _, err := ownerClient.Check(ctx); err != nil {
+		t.Fatalf("Check(owner assignment) error = %v", err)
+	}
+	sink.take()
 	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
 	if err != nil {
 		t.Fatalf("UpdateTask(checking) error = %v", err)
@@ -339,6 +344,20 @@ func TestTaskVerificationRejectsStaleGoalAndCandidateRevisions(t *testing.T) {
 	}
 	if revised.TaskGoalRevision != 2 || revised.TaskState != string(TaskStateOpen) {
 		t.Fatalf("revised task = %#v", revised)
+	}
+	if interrupted := sink.takeInterrupts(); len(interrupted) != 1 || interrupted[0] != owner.Agent.ID {
+		t.Fatalf("goal revision interruptions = %v, want owner", interrupted)
+	}
+	ownerInbox, err := ownerClient.Check(ctx)
+	if err != nil {
+		t.Fatalf("Check(owner goal revision) error = %v", err)
+	}
+	foundRevisionNotice := false
+	for _, delivery := range ownerInbox.Collaboration {
+		foundRevisionNotice = foundRevisionNotice || delivery.WorkID == task.ID && strings.Contains(delivery.Body, "previous goal was not applied")
+	}
+	if !foundRevisionNotice {
+		t.Fatalf("owner did not receive explicit goal revision notice: %#v", ownerInbox.Collaboration)
 	}
 	_, err = roomRuntime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
 		RoomID: room.ID, TaskID: task.ID, Decision: VerificationPass, Report: "old goal passed",

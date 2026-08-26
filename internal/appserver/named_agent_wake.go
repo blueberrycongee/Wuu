@@ -32,6 +32,25 @@ func (s *Server) Deliver(agentID string) {
 	})
 }
 
+func (s *Server) Interrupt(agentID string) {
+	if s == nil || s.closed.Load() || strings.TrimSpace(agentID) == "" {
+		return
+	}
+	s.startBackground(func() {
+		if s.channelService == nil {
+			return
+		}
+		agent, err := s.channelService.GetAgentRuntime(context.Background(), agentID)
+		if err != nil {
+			providers.DebugLogf("interrupt agent runtime %q: %v", agentID, err)
+			return
+		}
+		if _, err := s.interruptThreadExecution(agentRuntimeSessionID(agent), "", ""); err != nil {
+			providers.DebugLogf("interrupt agent runtime thread %q: %v", agentID, err)
+		}
+	})
+}
+
 func (s *Server) deliverNamedAgentWake(ctx context.Context, agentID string) error {
 	s.namedAgentMu.Lock()
 	defer s.namedAgentMu.Unlock()
