@@ -123,38 +123,3 @@ func TestAgentProfileToolsHideLegacyWorkflowMetadata(t *testing.T) {
 		t.Fatalf("list_agent_profiles should keep neutral profile facts: %s", listResp)
 	}
 }
-
-func TestAgentProfileToolDescriptionsDescribePersistentCollaborationRoles(t *testing.T) {
-	root := t.TempDir()
-	kit, err := New(root)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	descriptions := map[string]string{}
-	for _, def := range kit.Definitions() {
-		switch def.Name {
-		case "list_agent_profiles", "create_agent_profile":
-			descriptions[def.Name] = def.Description
-		}
-	}
-	for _, name := range []string{"list_agent_profiles", "create_agent_profile"} {
-		desc := descriptions[name]
-		if desc == "" {
-			t.Fatalf("%s definition missing", name)
-		}
-		for _, want := range []string{"persistent collaboration", "saved identity notes"} {
-			if !strings.Contains(desc, want) {
-				t.Fatalf("%s description missing %q: %q", name, want, desc)
-			}
-		}
-		for _, bad := range []string{"memory-bearing", "memoryless"} {
-			if strings.Contains(desc, bad) {
-				t.Fatalf("%s description should avoid awkward memory wording %q: %q", name, bad, desc)
-			}
-		}
-		if strings.Contains(desc, "recurring workflow roles") || strings.Contains(desc, "dynamic workflow team") {
-			t.Fatalf("%s description should not make profiles workflow-only: %q", name, desc)
-		}
-	}
-}

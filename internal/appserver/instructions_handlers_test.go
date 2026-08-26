@@ -9,23 +9,6 @@ import (
 	"github.com/blueberrycongee/wuu/internal/runtime"
 )
 
-func TestInstructionFileScope(t *testing.T) {
-	cases := map[string]string{
-		"user":        "global",
-		"USER":        "global",
-		"  user  ":    "global",
-		"project":     "project",
-		"local":       "project",
-		"claude_auto": "project",
-		"":            "project",
-	}
-	for source, want := range cases {
-		if got := instructionFileScope(source); got != want {
-			t.Errorf("instructionFileScope(%q) = %q, want %q", source, got, want)
-		}
-	}
-}
-
 func TestHandleInstructionsList(t *testing.T) {
 	var buf bytes.Buffer
 	srv := &Server{

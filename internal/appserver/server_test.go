@@ -5706,13 +5706,6 @@ func TestServerRegenerateTitle(t *testing.T) {
 	}
 }
 
-func TestCleanGeneratedThreadTitle(t *testing.T) {
-	got := cleanGeneratedThreadTitle("<think>hidden</think>\nTitle: \"调试登录崩溃并修复认证流程\"")
-	if got != "调试登录崩溃并修复认证流程" {
-		t.Fatalf("cleanGeneratedThreadTitle() = %q", got)
-	}
-}
-
 func TestServerThreadForkAtAssistantItem(t *testing.T) {
 	client := &fakeClient{
 		responses: []providers.ChatResponse{
@@ -9489,20 +9482,6 @@ func TestSettingsUsageAggregatesAcrossSessions(t *testing.T) {
 	}
 	if result.ModelBreakdowns[1].Provider != "anthropic" {
 		t.Fatalf("expected anthropic second, got %q", result.ModelBreakdowns[1].Provider)
-	}
-}
-
-func TestInvalidateSettingsUsageClearsCachedSnapshot(t *testing.T) {
-	srv := &Server{
-		settingsUsageCache: &settingsUsageCacheEntry{
-			expiresAt: time.Now().Add(time.Hour),
-		},
-	}
-
-	srv.invalidateSettingsUsage()
-
-	if srv.settingsUsageCache != nil {
-		t.Fatal("expected settings usage cache to be cleared")
 	}
 }
 

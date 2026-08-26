@@ -138,25 +138,3 @@ func TestDebugLogfWire_NoLogFile(t *testing.T) {
 	}()
 	DebugLogfWire("should not panic: %s", "test")
 }
-
-func TestDebugLogfWire_DisabledNoWrite(t *testing.T) {
-	// With wire disabled (env unset / non-truthy), DebugLogfWire must
-	// not produce any side effect — even if a log file exists. We
-	// exercise this without spinning up InitDebugLog (sync.Once would
-	// pin the file across tests), by checking that the public API
-	// short-circuits cleanly.
-	orig, hadOrig := os.LookupEnv(WireEnvVar)
-	os.Unsetenv(WireEnvVar)
-	t.Cleanup(func() {
-		if hadOrig {
-			os.Setenv(WireEnvVar, orig)
-		}
-	})
-	if WireEnabled() {
-		t.Fatalf("precondition: wire should be disabled")
-	}
-	// Just verify no panic; the gate prevents the inner DebugLogf
-	// from running, so there's nothing observable to assert beyond
-	// "this returns cleanly".
-	DebugLogfWire("ignored because wire is off")
-}

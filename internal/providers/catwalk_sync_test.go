@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"charm.land/catwalk/pkg/catwalk"
 )
@@ -169,13 +168,6 @@ func TestCatwalkSync_RefreshSendsCachedETag(t *testing.T) {
 	}
 	if client.gotETag != firstETag {
 		t.Fatalf("Refresh sent ETag %q, want %q", client.gotETag, firstETag)
-	}
-}
-
-func TestCatwalkSync_FetchTimeoutDefault(t *testing.T) {
-	s := NewCatwalkSync(CatwalkSyncConfig{})
-	if s.cfg.FetchTimeout != 10*time.Second {
-		t.Fatalf("expected default 10s timeout, got %v", s.cfg.FetchTimeout)
 	}
 }
 

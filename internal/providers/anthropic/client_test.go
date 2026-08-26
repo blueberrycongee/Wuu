@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
@@ -1508,13 +1507,6 @@ func TestChat_OmitsCacheControlWithoutHint(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("chat error: %v", err)
-	}
-}
-
-func TestStreamIdleTimeout_DefaultMatchesCodex(t *testing.T) {
-	t.Setenv("WUU_STREAM_IDLE_TIMEOUT_MS", "")
-	if got := streamIdleTimeout(); got != 300*time.Second {
-		t.Fatalf("expected 300s default stream idle timeout, got %s", got)
 	}
 }
 

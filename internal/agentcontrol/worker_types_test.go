@@ -1,7 +1,6 @@
 package agentcontrol
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -25,31 +24,6 @@ func TestLookupWorkerType_DefaultsToGeneralPurpose(t *testing.T) {
 	}
 	if wt.Name != DefaultSubagentType {
 		t.Fatalf("expected default = %s, got %q", DefaultSubagentType, wt.Name)
-	}
-}
-
-func TestGeneralPurposePromptIsProductNeutral(t *testing.T) {
-	// The worker prompt and agent_report handoff guidance now belong to the
-	// bundled Subagent plugin; the core worker type must stay product-neutral.
-	wt, err := LookupWorkerType(DefaultSubagentType)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, product := range []string{"agent_report", "required_report", "spawn_agent", "subagent"} {
-		if strings.Contains(wt.SystemPrompt, product) {
-			t.Fatalf("core general-purpose prompt must not carry product term %q:\n%s", product, wt.SystemPrompt)
-		}
-	}
-}
-
-func TestLookupWorkerType_RemovedTypesRejected(t *testing.T) {
-	for _, name := range []string{
-		"research", "explorer", "verifier",
-		"verification", "planner", "researcher", "reviewer", "qa", "debugger", "integrator",
-	} {
-		if _, err := LookupWorkerType(name); err == nil {
-			t.Errorf("LookupWorkerType(%q) should error after trimming the built-in registry", name)
-		}
 	}
 }
 

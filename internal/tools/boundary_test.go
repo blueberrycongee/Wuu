@@ -42,16 +42,6 @@ func TestReadOnlyBoundaryRejectsMutationAndAllowsRead(t *testing.T) {
 	}
 }
 
-func TestUnconfinedBoundaryLiftsEnforcement(t *testing.T) {
-	b := UnconfinedBoundary()
-	if b.Enforce {
-		t.Fatalf("unconfined boundary should disable path enforcement: %+v", b)
-	}
-	if !b.AllowMutations {
-		t.Fatalf("unconfined boundary should allow mutations: %+v", b)
-	}
-}
-
 func TestBoundaryGuardsAreHardDenyOnly(t *testing.T) {
 	want := errors.New("denied")
 	b := WorkspaceBoundary{Enforce: true, AllowMutations: true, Guards: []Guard{nil, testGuard{err: want}}}

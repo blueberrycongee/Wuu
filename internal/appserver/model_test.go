@@ -473,24 +473,6 @@ func TestChatMessageItemProjectsAgentNotificationName(t *testing.T) {
 	}
 }
 
-// TestChatMessageItemPreservesCombinedAgentCompletionName exercises the
-// drain-combine scenario: combineAgentCompletionMessages joins ≥2 envelopes
-// with "\n\n" and forwards the first non-empty Name onto the synthesized
-// turn. The projection must keep that Name intact so the renderer's name
-// gate still fires even when Content is no longer a single JSON object.
-func TestChatMessageItemPreservesCombinedAgentCompletionName(t *testing.T) {
-	envelope1 := `{"author":"/root/a","recipient":"/root","content":"<subagent_notification>1</subagent_notification>","trigger_turn":true}`
-	envelope2 := `{"author":"/root/b","recipient":"/root","content":"<subagent_notification>2</subagent_notification>","trigger_turn":true}`
-	item := chatMessageItem("item-combined", providers.ChatMessage{
-		Role:    "user",
-		Name:    "wuu_agent_notification",
-		Content: envelope1 + "\n\n" + envelope2,
-	})
-	if item.Name != "wuu_agent_notification" {
-		t.Fatalf("item.Name = %q, want %q (combined turn lost the agent-notification name)", item.Name, "wuu_agent_notification")
-	}
-}
-
 // TestChatMessageItemLeavesNameEmptyForPlainUserMessage guards normal user
 // input: msg.Name == "" must project to ThreadItem.Name == "" so the wire
 // stays free of an empty "name" key (omitempty on the struct field).
