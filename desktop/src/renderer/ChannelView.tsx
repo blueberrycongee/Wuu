@@ -1597,12 +1597,20 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
               const resolving = resolvingProposalID === proposal.id || proposal.state === "processing";
               const selectedModel = proposalModels[proposal.id] ?? "";
               return (
-                <section className="channel-agent-proposal" key={message.id} aria-label={t("channels.agentProposalTitle")}>
-                  <div className="channel-agent-proposal-kicker">{t("channels.agentProposalTitle")}</div>
-                  <strong>{proposal.name}</strong>
-                  {proposal.role ? <p>{proposal.role}</p> : null}
+                <section className="channel-agent-proposal" data-state={proposal.state} key={message.id} aria-label={t("channels.agentProposalTitle")}>
+                  <header className="channel-agent-proposal-header">
+                    <div className="channel-agent-proposal-kicker">{t("channels.agentProposalTitle")}</div>
+                    <span className="channel-agent-proposal-state" data-state={proposal.state}>
+                      <i aria-hidden="true" />
+                      {t(`channels.agentProposalState.${proposal.state}`)}
+                    </span>
+                  </header>
+                  <div className="channel-agent-proposal-identity">
+                    <strong>{proposal.name}</strong>
+                    {proposal.role ? <p>{proposal.role}</p> : null}
+                  </div>
                   {pending || resolving ? (
-                    <>
+                    <div className="channel-agent-proposal-controls">
                       <label>
                         <span>{t("channels.model")}</span>
                         <select
@@ -1628,9 +1636,9 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                           {t("common.cancel")}
                         </button>
                       </div>
-                    </>
+                    </div>
                   ) : (
-                    <div className={`channel-agent-proposal-status ${proposal.state}`}>
+                    <div className="channel-agent-proposal-status" data-state={proposal.state}>
                       {t(proposal.state === "approved" ? "channels.agentProposalApproved" : "channels.agentProposalCancelled", {
                         model: proposal.model ? `${proposal.provider} · ${proposal.model}` : t("channels.inheritModel"),
                       })}

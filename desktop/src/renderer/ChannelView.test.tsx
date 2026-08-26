@@ -268,6 +268,31 @@ describe("ChannelView", () => {
     });
   });
 
+  it("renders resolved role proposals with the same card structure and a clear state", async () => {
+    const api = createApi();
+    api.listChannelMessages = vi.fn(async ({ room_id }) => ({ messages: room_id === "room-1" ? [{
+      id: "proposal-message", room_id, seq: 1, author_type: "human" as const, author_id: "human",
+      kind: "system" as const, body: "建议创建新角色：Designer", created_at: "2026-07-23T00:03:00Z",
+      agent_creation_proposal: {
+        id: "proposal-1", message_id: "proposal-message", room_id, name: "Designer", role: "Design delivery",
+        state: "approved" as const, provider: "anthropic", model: "claude-sonnet", created_agent_id: "agent-1",
+        created_at: "2026-07-23T00:03:00Z", resolved_at: "2026-07-23T00:04:00Z",
+      },
+    }] : [] }));
+    Object.defineProperty(window, "wuu", { configurable: true, value: api });
+    root = createRoot(container);
+    act(() => root?.render(<ChannelView selectedRoomID="room-1" />));
+    await settle();
+
+    const card = container.querySelector(".channel-agent-proposal");
+    expect(card?.getAttribute("data-state")).toBe("approved");
+    expect(card?.querySelector(".channel-agent-proposal-state")?.textContent).toBe("已创建");
+    expect(card?.querySelector(".channel-agent-proposal-identity strong")?.textContent).toBe("Designer");
+    expect(card?.querySelector(".channel-agent-proposal-status")?.textContent).toContain("已创建并加入群聊");
+    expect(card?.querySelector("select")).toBeNull();
+    expect(card?.querySelector(".channel-agent-proposal-actions")).toBeNull();
+  });
+
   it("renders durable Work evidence under the visible owner without hidden personas", async () => {
     const api = createApi();
     api.listChannelMessages = vi.fn(async ({ room_id }) => ({ messages: room_id === "room-1" ? [{

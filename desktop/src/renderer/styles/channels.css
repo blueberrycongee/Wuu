@@ -576,12 +576,20 @@
   align-self: center;
   width: min(100%, 560px);
   display: grid;
-  gap: 12px;
+  gap: 14px;
   padding: 18px;
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   background: var(--surface-raised);
   box-shadow: 0 3px 12px var(--shadow-color-subtle);
+}
+
+.channel-agent-proposal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .channel-agent-proposal-kicker {
@@ -592,10 +600,77 @@
   text-transform: uppercase;
 }
 
-.channel-agent-proposal p {
-  margin: -4px 0 0;
+.channel-agent-proposal-state {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
   color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.channel-agent-proposal-state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wuu-accent);
+}
+
+.channel-agent-proposal-state[data-state="pending"] i,
+.channel-agent-proposal-state[data-state="processing"] i {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 14%, transparent);
+}
+
+.channel-agent-proposal-state[data-state="approved"] {
+  border-color: color-mix(in srgb, var(--success) 25%, var(--border-subtle));
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.channel-agent-proposal-state[data-state="approved"] i {
+  background: var(--success);
+}
+
+.channel-agent-proposal-state[data-state="cancelled"] {
+  color: var(--text-tertiary);
+}
+
+.channel-agent-proposal-state[data-state="cancelled"] i {
+  background: var(--text-tertiary);
+}
+
+.channel-agent-proposal-identity {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.channel-agent-proposal-identity strong {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.channel-agent-proposal-identity p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
   line-height: 1.5;
+}
+
+.channel-agent-proposal-controls {
+  display: grid;
+  gap: 14px;
+  padding-top: 2px;
 }
 
 .channel-agent-proposal label {
@@ -617,6 +692,7 @@
 
 .channel-agent-proposal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
@@ -636,8 +712,12 @@
 }
 
 .channel-agent-proposal-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text-muted);
   font-size: 13px;
+  line-height: 1.5;
 }
 
 .channel-message {
