@@ -27,10 +27,12 @@ const maxLineBytes = 32 * 1024 * 1024
 type Transport struct {
 	cmd *exec.Cmd
 
-	mu       sync.Mutex
-	stdin    io.WriteCloser
-	closed   bool
-	closeErr error
+	mu           sync.Mutex
+	stdin        io.WriteCloser
+	closed       bool
+	closeErr     error
+	closeOnce    sync.Once
+	terminateErr error
 
 	gracePeriod time.Duration
 
@@ -258,16 +260,14 @@ func (t *Transport) fireClose(reason string) {
 // a grace period, then SIGTERM, then SIGKILL. The whole process group is
 // targeted so tool subprocesses do not survive.
 func (t *Transport) Close() error {
-	return t.closeWithGrace()
+	t.closeOnce.Do(func() {
+		t.terminateErr = t.closeWithGrace()
+	})
+	return t.terminateErr
 }
 
 func (t *Transport) closeWithGrace() error {
 	t.mu.Lock()
-	if t.closed {
-		err := t.closeErr
-		t.mu.Unlock()
-		return err
-	}
 	t.closed = true
 	stdin := t.stdin
 	grace := t.gracePeriod

@@ -2,6 +2,7 @@ package claudeengine
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -308,6 +309,68 @@ func TestTurnSubscriptionTransportClosePreservesPartialOutput(t *testing.T) {
 	}
 	if got := visible.String(); got != "partial" {
 		t.Fatalf("visible content after close = %q, want partial", got)
+	}
+}
+
+func TestEngineInterruptIsSilentAndNextTurnCanResume(t *testing.T) {
+	binary := buildFakeClaude(t)
+	engine := NewEngine(binary, t.TempDir())
+	sess, err := engine.Open(context.Background(), agentengine.OpenRequest{ThreadID: "t", RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var sawError bool
+	_, err = sess.RunTurn(ctx, agentengine.TurnInput{
+		History: []providers.ChatMessage{{Role: "user", Content: "wait_forever"}},
+	}, func(event providers.StreamEvent) {
+		if event.Type == providers.EventError {
+			sawError = true
+		}
+		if event.Type == providers.EventContentDelta {
+			cancel()
+		}
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("interrupted RunTurn error = %v, want context.Canceled", err)
+	}
+	if sawError {
+		t.Fatal("interrupted RunTurn emitted a visible error event")
+	}
+
+	resumeCtx, resumeCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer resumeCancel()
+	result, err := sess.RunTurn(resumeCtx, agentengine.TurnInput{
+		History: []providers.ChatMessage{{Role: "user", Content: "hi"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("RunTurn after interruption: %v", err)
+	}
+	if result.Result.Content != "Hello from claude." {
+		t.Fatalf("resumed content = %q", result.Result.Content)
+	}
+}
+
+func TestTransportCloseStillReapsProcessAfterStdoutCloses(t *testing.T) {
+	binary := buildFakeClaude(t)
+	transport, err := NewTransport(TransportOptions{
+		BinaryPath:  binary,
+		Args:        []string{"--close-stdout-and-hang"},
+		GracePeriod: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewTransport: %v", err)
+	}
+	closed := make(chan struct{})
+	transport.OnClose(func(string) { close(closed) })
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("stdout close was not observed")
+	}
+	if err := transport.Close(); err != nil {
+		t.Fatalf("Close after stdout EOF: %v", err)
 	}
 }
 

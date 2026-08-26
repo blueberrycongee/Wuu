@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 func send(v any) {
@@ -19,6 +20,12 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println("2.1.226 (fake)")
 		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--close-stdout-and-hang" {
+		_ = os.Stdout.Close()
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 	// Resume mode: emit init with the requested session id.
 	resumeID := ""
@@ -56,6 +63,19 @@ func main() {
 		}
 		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
 			continue
+		}
+		if strings.Contains(line, "wait_forever") {
+			send(map[string]any{
+				"type": "stream_event",
+				"event": map[string]any{
+					"type":  "content_block_delta",
+					"index": 0,
+					"delta": map[string]any{"type": "text_delta", "text": "partial"},
+				},
+			})
+			for {
+				time.Sleep(time.Hour)
+			}
 		}
 		// Detect tool_result content and answer with the tool outcome.
 		if blocks, ok := envelope.Message.Content.([]any); ok {

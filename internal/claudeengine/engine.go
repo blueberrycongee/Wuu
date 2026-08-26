@@ -163,7 +163,7 @@ func (s *Session) RunTurn(ctx context.Context, input agentengine.TurnInput, sink
 	}
 
 	done := make(chan turnOutcome, 1)
-	sub := newTurnSubscription(sink, done)
+	sub := newTurnSubscriptionForContext(ctx, sink, done)
 	transport, err := s.spawn(ctx, sub)
 	if err != nil {
 		sub.close()
@@ -184,13 +184,20 @@ func (s *Session) RunTurn(ctx context.Context, input agentengine.TurnInput, sink
 	select {
 	case out := <-done:
 		s.persistSessionID(sub)
+		if err := ctx.Err(); err != nil {
+			return out.result, err
+		}
 		return out.result, out.err
 	case <-ctx.Done():
+		// Stop accepting Claude's shutdown result before closing stdin. Claude
+		// may report SIGINT/EOF as an error result; that is part of a requested
+		// interruption, not a provider or Wuu failure.
+		sub.close()
 		_ = transport.Close()
+		s.persistSessionID(sub)
 		select {
 		case out := <-done:
-			s.persistSessionID(sub)
-			return out.result, out.err
+			return out.result, ctx.Err()
 		default:
 			return agentengine.TurnResult{}, ctx.Err()
 		}
@@ -333,6 +340,7 @@ type turnOutcome struct {
 
 // turnSubscription translates claude stdout lines into Wuu stream events.
 type turnSubscription struct {
+	ctx  context.Context
 	sink agentengine.EventSink
 	done chan turnOutcome
 
@@ -366,7 +374,15 @@ type observedAgentTask struct {
 }
 
 func newTurnSubscription(sink agentengine.EventSink, done chan turnOutcome) *turnSubscription {
+	return newTurnSubscriptionForContext(context.Background(), sink, done)
+}
+
+func newTurnSubscriptionForContext(ctx context.Context, sink agentengine.EventSink, done chan turnOutcome) *turnSubscription {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return &turnSubscription{
+		ctx:            ctx,
 		sink:           sink,
 		done:           done,
 		tools:          make(map[string]*pendingTool),
@@ -390,6 +406,10 @@ func (sub *turnSubscription) close() {
 }
 
 func (sub *turnSubscription) handleTransportClose(reason string) {
+	if err := sub.ctx.Err(); err != nil {
+		sub.finish(sub.loopResult(sub.text.String(), ""), err)
+		return
+	}
 	err := errors.New(firstNonEmpty(strings.TrimSpace(reason), "claude exited before completing the turn"))
 	sub.emit(providers.StreamEvent{Type: providers.EventError, Error: err})
 	sub.finish(sub.loopResult(sub.text.String(), ""), err)
@@ -418,6 +438,9 @@ type claudeLine struct {
 // handleLine dispatches one stdout line. Unknown top-level types are
 // ignored (the raw JSON stays in diagnostics via stderr handlers).
 func (sub *turnSubscription) handleLine(line string) {
+	if sub.ctx.Err() != nil {
+		return
+	}
 	sub.mu.Lock()
 	closed := sub.closed
 	sub.mu.Unlock()
