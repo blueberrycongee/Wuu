@@ -145,7 +145,7 @@ func (s *Service) SubmitTaskVerification(ctx context.Context, params TaskVerific
 	}
 	delivery, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
 		RoomID: task.RoomID, FromType: MemberAgent, FromID: "", ToAgentID: task.TaskOwner,
-		Kind: CollaborationVerificationFeedback, Body: verificationDeliveryBody(verification), WorkID: task.ID,
+		Kind: CollaborationVerificationFeedback, Body: verificationDeliveryBody(verification, taskState), WorkID: task.ID,
 		RecipientNamedAgentID: task.TaskOwner, ArtifactRefs: verification.EvidenceRefs,
 		SourceMessageID: task.ID, GoalRevision: verification.GoalRevision,
 		CandidateRevision: verification.CandidateRevision, CreatedAt: now,
@@ -201,13 +201,16 @@ func validVerificationDecision(decision VerificationDecision) bool {
 	}
 }
 
-func verificationDeliveryBody(verification TaskVerification) string {
+func verificationDeliveryBody(verification TaskVerification, taskState TaskState) string {
 	action := "The task is now revising. Start the repair, mark it doing, and submit it for verification again."
 	switch verification.Decision {
 	case VerificationPass:
 		action = "The candidate is verified. Publish the result in the task thread, then mark the task done."
 	case VerificationUnknown:
 		action = "The task now needs human input. Supply the missing evidence or ask the user for the decision that cannot be made safely."
+	}
+	if taskState == TaskStateNeedsHuman {
+		action = "The task now needs human input. Do not retry or lower the standard; ask the user to clarify or decide."
 	}
 	return fmt.Sprintf("Verification %s for task %s goal %d candidate %d (attempt %d).\n\n%s\n\n%s",
 		verification.Decision, verification.TaskID, verification.GoalRevision, verification.CandidateRevision,

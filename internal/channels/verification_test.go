@@ -479,3 +479,47 @@ func TestRoomRuntimeTasksRequireVerificationByDefault(t *testing.T) {
 		t.Fatalf("room task did not require verification: %#v", task)
 	}
 }
+
+func TestVerifierAttemptExhaustionReturnsTheSameTaskToTheUser(t *testing.T) {
+	ctx := context.Background()
+	service := openTestService(t, nil)
+	owner := createTestAgent(t, service, "Andy")
+	room, err := service.CreateRoom(ctx, CreateRoomParams{
+		Kind: RoomChannel, Name: "Build", CreatedBy: "local-user",
+		Members: []RoomMember{{MemberType: MemberHuman, MemberID: "local-user"}, {MemberType: MemberAgent, MemberID: owner.Agent.ID}},
+	})
+	if err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+	runtime, _ := service.BindRuntime(ctx, room.RuntimeID)
+	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
+	task, err := runtime.CreateTask(ctx, TaskCreateParams{RoomID: room.ID, Title: "Deliver", OwnerID: owner.Agent.ID})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if _, err := runtime.UpdateWorkPolicy(ctx, WorkPolicyUpdateParams{
+		WorkID: task.ID, MaxVerifierAttempts: 1, MaxCandidates: 1,
+	}); err != nil {
+		t.Fatalf("UpdateWorkPolicy() error = %v", err)
+	}
+	_, _ = ownerClient.Check(ctx)
+	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
+	if err != nil {
+		t.Fatalf("UpdateTask(checking) error = %v", err)
+	}
+	runRef := completeIndependentVerifierRun(t, ctx, runtime, task.ID, "last-check")
+	blocked, err := runtime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
+		RoomID: room.ID, TaskID: task.ID, Decision: VerificationBlock, Report: "The result still misses the requested output.",
+		GoalRevision: checking.TaskGoalRevision, CandidateRevision: checking.TaskCandidateRevision, RunRef: runRef,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTaskVerification() error = %v", err)
+	}
+	updated, err := runtime.GetWork(ctx, task.ID)
+	if err != nil || updated.State != WorkNeedsHuman || updated.ID != task.ID {
+		t.Fatalf("exhausted work = %#v, err = %v", updated, err)
+	}
+	if !strings.Contains(blocked.Delivery.Body, "needs human input") || strings.Contains(blocked.Delivery.Body, "Start the repair") {
+		t.Fatalf("exhausted feedback = %q", blocked.Delivery.Body)
+	}
+}
