@@ -876,18 +876,21 @@
 }
 
 .channel-orchestration-message .channel-message-content {
-  width: min(var(--conversation-message-max-width, 720px), 84%);
-  max-width: 84%;
+  width: 100%;
+  max-width: 100%;
 }
 
 .channel-orchestration-row {
+  width: min(100%, var(--channel-content-max-width));
+  margin: 0 auto;
   grid-template-columns: minmax(0, 1fr);
   justify-items: start;
 }
 
 .channel-orchestration-row .chat-bubble-group {
-  width: min(var(--conversation-message-max-width, 720px), 84%);
-  max-width: 84%;
+  width: 100%;
+  max-width: 100%;
+  padding-left: calc(var(--channel-avatar-size) + var(--channel-message-column-gap));
 }
 
 .channel-orchestration-avatar {
@@ -1266,6 +1269,10 @@
   .channel-orchestration-message .channel-message-content {
     width: 100%;
     max-width: 100%;
+  }
+
+  .channel-orchestration-row .chat-bubble-group {
+    padding-left: 0;
   }
 
   .channel-coordinator-state {
