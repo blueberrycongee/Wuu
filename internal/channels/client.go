@@ -60,6 +60,27 @@ func (c *AgentClient) IsRoomRuntime() bool {
 	return c.principalKind == PrincipalRoomRuntime
 }
 
+func (c *AgentClient) RoomRoster(ctx context.Context, roomID string) (RoomRoster, error) {
+	if c == nil || c.service == nil || !c.IsRoomRuntime() {
+		return RoomRoster{}, ErrUnauthorized
+	}
+	return c.service.RoomRoster(ctx, c.agentID, c.token, roomID)
+}
+
+func (c *AgentClient) InviteRoomAgent(ctx context.Context, roomID, agentID string) (Room, error) {
+	if c == nil || c.service == nil || !c.IsRoomRuntime() {
+		return Room{}, ErrUnauthorized
+	}
+	return c.service.InviteRoomAgent(ctx, c.agentID, c.token, roomID, agentID)
+}
+
+func (c *AgentClient) CreateAndInviteRoomAgent(ctx context.Context, roomID, name, role string) (RoomAgentCreateResult, error) {
+	if c == nil || c.service == nil || !c.IsRoomRuntime() {
+		return RoomAgentCreateResult{}, ErrUnauthorized
+	}
+	return c.service.CreateAndInviteRoomAgent(ctx, c.agentID, c.token, roomID, name, role)
+}
+
 func (c *AgentClient) Check(ctx context.Context) (CheckResult, error) {
 	if c == nil || c.service == nil {
 		return CheckResult{}, errors.New("chat agent is not bound")

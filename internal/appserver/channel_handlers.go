@@ -65,7 +65,7 @@ func (s *Server) handleChannelAgentCreate(ctx context.Context, req Request) erro
 		return s.writeResponse(req.ID, nil, agentengine.ErrUnknownEngine)
 	}
 	credential, err := s.channelService.CreateNamedAgent(ctx, channels.CreateNamedAgentParams{
-		Name: params.Name, AvatarKey: params.AvatarKey, AvatarImage: params.AvatarImage, EngineOverride: string(engineID), ProviderOverride: params.ProviderOverride, ModelOverride: params.ModelOverride, EffortOverride: params.EffortOverride, Autostart: true,
+		Name: params.Name, Role: params.Role, AvatarKey: params.AvatarKey, AvatarImage: params.AvatarImage, EngineOverride: string(engineID), ProviderOverride: params.ProviderOverride, ModelOverride: params.ModelOverride, EffortOverride: params.EffortOverride, Autostart: true,
 	})
 	if err == nil {
 		s.invalidateChannelAgentInsights()
@@ -91,7 +91,7 @@ func (s *Server) handleChannelAgentUpdate(ctx context.Context, req Request) erro
 	}
 	thread := s.thread(namedAgentSessionID(current))
 	agent, err := s.channelService.UpdateNamedAgent(ctx, channels.UpdateNamedAgentParams{
-		ID: params.AgentID, Name: params.Name, AvatarKey: params.AvatarKey, AvatarImage: params.AvatarImage, EngineOverride: string(engineID), ProviderOverride: params.ProviderOverride, ModelOverride: params.ModelOverride, EffortOverride: params.EffortOverride,
+		ID: params.AgentID, Name: params.Name, Role: params.Role, AvatarKey: params.AvatarKey, AvatarImage: params.AvatarImage, EngineOverride: string(engineID), ProviderOverride: params.ProviderOverride, ModelOverride: params.ModelOverride, EffortOverride: params.EffortOverride,
 	})
 	if err == nil && thread != nil {
 		selection := s.currentSessionRuntimeSelection()
@@ -104,7 +104,7 @@ func (s *Server) handleChannelAgentUpdate(ctx context.Context, req Request) erro
 		}
 		var detached detachedThreadRuntime
 		thread.mu.Lock()
-		runtimeConfigChanged := current.Name != agent.Name || current.EngineOverride != agent.EngineOverride ||
+		runtimeConfigChanged := current.Name != agent.Name || current.Role != agent.Role || current.EngineOverride != agent.EngineOverride ||
 			thread.ModelProvider != strings.TrimSpace(selection.Provider) ||
 			thread.Model != strings.TrimSpace(selection.Model) ||
 			thread.ModelVariant != strings.TrimSpace(selection.Variant) ||

@@ -217,6 +217,8 @@ export const enUS = {
   "channels.chooseRoom": "Choose a channel",
   "channels.send": "Send",
   "channels.name": "Name",
+  "channels.agentRole": "Capabilities and role",
+  "channels.agentRolePlaceholder": "For example: UI design, interaction review, and visual verification",
   "channels.avatar": "Avatar",
   "channels.customAvatar": "Choose custom avatar image",
   "channels.invalidAvatarImage": "Choose a PNG, JPEG, or WebP image up to 10 MB.",

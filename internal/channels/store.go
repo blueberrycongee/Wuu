@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -180,6 +181,7 @@ func (s *Service) migrate() error {
 		`CREATE TABLE IF NOT EXISTS named_agents (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL COLLATE NOCASE,
+			role TEXT NOT NULL DEFAULT '',
 			kind TEXT NOT NULL DEFAULT 'named' CHECK (kind IN ('named', 'room')),
 			room_id TEXT,
 			memory_dir TEXT NOT NULL,
@@ -199,6 +201,7 @@ func (s *Service) migrate() error {
 			name TEXT NOT NULL,
 			avatar_image TEXT NOT NULL DEFAULT '',
 			created_by TEXT NOT NULL,
+			membership_revision INTEGER NOT NULL DEFAULT 1,
 			created_at INTEGER NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS room_runtimes (
@@ -624,10 +627,12 @@ func (s *Service) ensureLegacyColumns() error {
 		{table: "room_messages", name: "files_json", definition: "TEXT NOT NULL DEFAULT '[]'"},
 		{table: "reminders", name: "created_at", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "named_agents", name: "avatar_key", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "named_agents", name: "role", definition: "TEXT NOT NULL DEFAULT ''"},
 		{table: "named_agents", name: "avatar_image", definition: "TEXT NOT NULL DEFAULT ''"},
 		{table: "named_agents", name: "engine_override", definition: "TEXT"},
 		{table: "named_agents", name: "effort_override", definition: "TEXT"},
 		{table: "rooms", name: "avatar_image", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "rooms", name: "membership_revision", definition: "INTEGER NOT NULL DEFAULT 1"},
 		{table: "collaboration_messages", name: "kind", definition: "TEXT NOT NULL DEFAULT 'control'"},
 		{table: "collaboration_messages", name: "goal_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "collaboration_messages", name: "candidate_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
@@ -876,6 +881,10 @@ func (s *Service) createAgent(ctx context.Context, params CreateNamedAgentParams
 	if len([]rune(name)) > 64 {
 		return AgentCredential{}, errors.New("named agent name exceeds 64 characters")
 	}
+	role := strings.TrimSpace(params.Role)
+	if len([]rune(role)) > 280 {
+		return AgentCredential{}, errors.New("named agent role exceeds 280 characters")
+	}
 	avatarKey, err := normalizeNamedAgentAvatarKey(params.AvatarKey)
 	if err != nil {
 		return AgentCredential{}, err
@@ -918,6 +927,7 @@ func (s *Service) createAgent(ctx context.Context, params CreateNamedAgentParams
 	agent := NamedAgent{
 		ID:               id,
 		Name:             name,
+		Role:             role,
 		MemoryDir:        filepath.Join(s.dir, "agents", id, "memory"),
 		AvatarKey:        avatarKey,
 		AvatarImage:      avatarImage,
@@ -950,9 +960,9 @@ func (s *Service) createAgent(ctx context.Context, params CreateNamedAgentParams
 		return AgentCredential{}, fmt.Errorf("insert named agent principal: %w", err)
 	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO named_agents (id, name, kind, room_id, memory_dir, avatar_key, avatar_image, engine_override, provider_override, model_override, effort_override, token_hash, autostart, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		agent.ID, agent.Name, "named", nil, agent.MemoryDir, agent.AvatarKey, agent.AvatarImage, nullableString(agent.EngineOverride), nullableString(agent.ProviderOverride), nullableString(agent.ModelOverride), nullableString(agent.EffortOverride), tokenHash(token), boolInt(agent.Autostart), toMillis(now),
+			INSERT INTO named_agents (id, name, role, kind, room_id, memory_dir, avatar_key, avatar_image, engine_override, provider_override, model_override, effort_override, token_hash, autostart, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		agent.ID, agent.Name, agent.Role, "named", nil, agent.MemoryDir, agent.AvatarKey, agent.AvatarImage, nullableString(agent.EngineOverride), nullableString(agent.ProviderOverride), nullableString(agent.ModelOverride), nullableString(agent.EffortOverride), tokenHash(token), boolInt(agent.Autostart), toMillis(now),
 	)
 	if err != nil {
 		if isUniqueConstraint(err) {
@@ -977,7 +987,7 @@ func (s *Service) GetNamedAgent(ctx context.Context, id string) (NamedAgent, err
 		return NamedAgent{}, errors.New("named agent id is required")
 	}
 	return scanNamedAgent(s.db.QueryRowContext(ctx, `
-		SELECT id, name, memory_dir, avatar_key, avatar_image, COALESCE(engine_override, ''), COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at
+		SELECT id, name, role, memory_dir, avatar_key, avatar_image, COALESCE(engine_override, ''), COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at
 		FROM named_agents WHERE id = ? AND kind = 'named'`, id))
 }
 
@@ -987,7 +997,7 @@ func (s *Service) ListNamedAgents(ctx context.Context) ([]NamedAgent, error) {
 
 func (s *Service) listNamedAgents(ctx context.Context) ([]NamedAgent, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, memory_dir, avatar_key, avatar_image, COALESCE(engine_override, ''), COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at
+		SELECT id, name, role, memory_dir, avatar_key, avatar_image, COALESCE(engine_override, ''), COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at
 		FROM named_agents WHERE kind = 'named' ORDER BY created_at, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list named agents: %w", err)
@@ -1010,12 +1020,16 @@ func (s *Service) listNamedAgents(ctx context.Context) ([]NamedAgent, error) {
 func (s *Service) UpdateNamedAgent(ctx context.Context, params UpdateNamedAgentParams) (NamedAgent, error) {
 	id := strings.TrimSpace(params.ID)
 	name := strings.TrimSpace(params.Name)
+	role := strings.TrimSpace(params.Role)
 	engine := strings.TrimSpace(params.EngineOverride)
 	provider := strings.TrimSpace(params.ProviderOverride)
 	model := strings.TrimSpace(params.ModelOverride)
 	effort := strings.TrimSpace(params.EffortOverride)
 	if id == "" || name == "" {
 		return NamedAgent{}, errors.New("named agent id and name are required")
+	}
+	if len([]rune(role)) > 280 {
+		return NamedAgent{}, errors.New("named agent role exceeds 280 characters")
 	}
 	if engine == "" {
 		engine = "wuu"
@@ -1048,8 +1062,8 @@ func (s *Service) UpdateNamedAgent(ctx context.Context, params UpdateNamedAgentP
 		}
 	}
 	result, err := s.db.ExecContext(ctx, `
-		UPDATE named_agents SET name = ?, avatar_key = ?, avatar_image = ?, engine_override = ?, provider_override = ?, model_override = ?, effort_override = ? WHERE id = ?`,
-		name, avatarKey, avatarImage, nullableString(engine), nullableString(provider), nullableString(model), nullableString(effort), id)
+		UPDATE named_agents SET name = ?, role = ?, avatar_key = ?, avatar_image = ?, engine_override = ?, provider_override = ?, model_override = ?, effort_override = ? WHERE id = ?`,
+		name, role, avatarKey, avatarImage, nullableString(engine), nullableString(provider), nullableString(model), nullableString(effort), id)
 	if err != nil {
 		if isUniqueConstraint(err) {
 			return NamedAgent{}, fmt.Errorf("%w: named agent %q already exists", ErrConflict, name)
@@ -1119,9 +1133,9 @@ func (s *Service) AuthenticateAgent(ctx context.Context, agentID, token string) 
 	var autostart int
 	var createdAt int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, memory_dir, avatar_key, avatar_image, COALESCE(engine_override, ''), COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at, token_hash
+		SELECT id, name, role, memory_dir, avatar_key, avatar_image, COALESCE(engine_override, ''), COALESCE(provider_override, ''), COALESCE(model_override, ''), COALESCE(effort_override, ''), autostart, created_at, token_hash
 		FROM named_agents WHERE id = ? AND kind = 'named'`, agentID,
-	).Scan(&agent.ID, &agent.Name, &agent.MemoryDir, &agent.AvatarKey, &agent.AvatarImage, &agent.EngineOverride, &agent.ProviderOverride, &agent.ModelOverride, &agent.EffortOverride, &autostart, &createdAt, &storedHash)
+	).Scan(&agent.ID, &agent.Name, &agent.Role, &agent.MemoryDir, &agent.AvatarKey, &agent.AvatarImage, &agent.EngineOverride, &agent.ProviderOverride, &agent.ModelOverride, &agent.EffortOverride, &autostart, &createdAt, &storedHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return NamedAgent{}, ErrUnauthorized
 	}
@@ -1184,7 +1198,7 @@ func (s *Service) CreateRoom(ctx context.Context, params CreateRoomParams) (Room
 		return Room{}, err
 	}
 	now := fromMillis(toMillis(s.now()))
-	room := Room{ID: id, Kind: params.Kind, Name: name, AvatarImage: avatarImage, CreatedBy: createdBy, CreatedAt: now}
+	room := Room{ID: id, Kind: params.Kind, Name: name, AvatarImage: avatarImage, CreatedBy: createdBy, CreatedAt: now, MembershipRevision: 1}
 	for index := range members {
 		members[index].RoomID = id
 		members[index].JoinedAt = now
@@ -1332,7 +1346,7 @@ func (s *Service) OpenDirectMessage(ctx context.Context, humanID, agentID string
 	}
 	now := fromMillis(toMillis(s.now()))
 	room := Room{
-		ID: id, Kind: RoomDM, Name: agentName, CreatedBy: humanID, CreatedAt: now,
+		ID: id, Kind: RoomDM, Name: agentName, CreatedBy: humanID, CreatedAt: now, MembershipRevision: 1,
 		Members: []RoomMember{
 			{RoomID: id, MemberType: MemberHuman, MemberID: humanID, JoinedAt: now},
 			{RoomID: id, MemberType: MemberAgent, MemberID: agentID, JoinedAt: now},
@@ -1389,12 +1403,12 @@ func (s *Service) GetRoom(ctx context.Context, id string) (Room, error) {
 	var room Room
 	var createdAt int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT room.id, room.kind, room.name, room.avatar_image, room.created_by, room.created_at,
+		SELECT room.id, room.kind, room.name, room.avatar_image, room.created_by, room.membership_revision, room.created_at,
 			COALESCE(runtime.id, '')
 		FROM rooms room
 		LEFT JOIN room_runtimes runtime ON runtime.room_id = room.id
 		WHERE room.id = ?`, id,
-	).Scan(&room.ID, &room.Kind, &room.Name, &room.AvatarImage, &room.CreatedBy, &createdAt, &room.RuntimeID)
+	).Scan(&room.ID, &room.Kind, &room.Name, &room.AvatarImage, &room.CreatedBy, &room.MembershipRevision, &createdAt, &room.RuntimeID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Room{}, fmt.Errorf("%w: room %q", ErrNotFound, id)
 	}
@@ -1505,6 +1519,7 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 
 	var kind RoomKind
 	var createdBy string
+	membershipChanged := false
 	if err := tx.QueryRowContext(ctx, `SELECT kind, created_by FROM rooms WHERE id = ?`, id).Scan(&kind, &createdBy); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Room{}, fmt.Errorf("%w: room %q", ErrNotFound, id)
@@ -1528,6 +1543,7 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 			return Room{}, errors.New("dm rooms require exactly two members")
 		}
 		desiredAgents := make(map[string]struct{}, len(members))
+		var addedNames, removedNames []string
 		for _, member := range members {
 			if member.MemberType != MemberAgent {
 				continue
@@ -1586,6 +1602,16 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 			if _, err := tx.ExecContext(ctx, `DELETE FROM room_members WHERE room_id = ? AND member_type = 'agent' AND member_id = ?`, id, agentID); err != nil {
 				return Room{}, fmt.Errorf("remove room agent member: %w", err)
 			}
+			membershipChanged = true
+			if name, err := namedAgentNameTx(ctx, tx, agentID); err == nil {
+				removedNames = append(removedNames, name)
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE drafts SET state = 'dropped', updated_at = ? WHERE room_id = ? AND agent_id = ? AND state = 'held'`, toMillis(s.now()), id, agentID); err != nil {
+				return Room{}, fmt.Errorf("drop removed room agent drafts: %w", err)
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE collaboration_messages SET invalidated_at = ? WHERE room_id = ? AND to_agent_id = ? AND consumed_at IS NULL AND invalidated_at IS NULL`, toMillis(s.now()), id, agentID); err != nil {
+				return Room{}, fmt.Errorf("invalidate removed room agent deliveries: %w", err)
+			}
 		}
 		joinedAt := toMillis(s.now())
 		for agentID := range desiredAgents {
@@ -1598,12 +1624,76 @@ func (s *Service) UpdateRoom(ctx context.Context, params UpdateRoomParams) (Room
 			if _, err := tx.ExecContext(ctx, `INSERT INTO room_cursors (room_id, member_type, member_id, last_read_seq) VALUES (?, 'agent', ?, 0)`, id, agentID); err != nil {
 				return Room{}, fmt.Errorf("initialize room agent cursor: %w", err)
 			}
+			membershipChanged = true
+			if name, err := namedAgentNameTx(ctx, tx, agentID); err == nil {
+				addedNames = append(addedNames, name)
+			}
+		}
+		if membershipChanged {
+			if err := recordMembershipChangeTx(ctx, tx, id, createdBy, addedNames, removedNames, toMillis(s.now())); err != nil {
+				return Room{}, err
+			}
+		}
+	}
+	var wakeRuntimeID string
+	var shouldWake bool
+	if membershipChanged {
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM room_runtimes WHERE room_id = ?`, id).Scan(&wakeRuntimeID); err == nil {
+			shouldWake, err = requestWakeTx(ctx, tx, wakeRuntimeID, toMillis(s.now()))
+			if err != nil {
+				return Room{}, err
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return Room{}, fmt.Errorf("resolve changed room runtime: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return Room{}, fmt.Errorf("commit room update: %w", err)
 	}
+	if shouldWake && s.wake != nil {
+		s.wake.Deliver(wakeRuntimeID)
+	}
 	return s.GetRoom(ctx, id)
+}
+
+func namedAgentNameTx(ctx context.Context, tx *sql.Tx, agentID string) (string, error) {
+	var name string
+	if err := tx.QueryRowContext(ctx, `SELECT name FROM named_agents WHERE id = ? AND kind = 'named'`, agentID).Scan(&name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+func recordMembershipChangeTx(ctx context.Context, tx *sql.Tx, roomID, authorID string, addedNames, removedNames []string, now int64) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE rooms SET membership_revision = membership_revision + 1 WHERE id = ?`, roomID); err != nil {
+		return fmt.Errorf("advance room membership revision: %w", err)
+	}
+	sort.Strings(addedNames)
+	sort.Strings(removedNames)
+	parts := make([]string, 0, 2)
+	if len(addedNames) > 0 {
+		parts = append(parts, strings.Join(addedNames, "、")+" 加入了群聊")
+	}
+	if len(removedNames) > 0 {
+		parts = append(parts, strings.Join(removedNames, "、")+" 离开了群聊")
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	var seq int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) + 1 FROM room_messages WHERE room_id = ?`, roomID).Scan(&seq); err != nil {
+		return fmt.Errorf("allocate membership event sequence: %w", err)
+	}
+	messageID, err := randomID("msg", 12)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO room_messages (id, room_id, seq, author_type, author_id, kind, body, mentions_json, created_at)
+		VALUES (?, ?, ?, 'human', ?, 'system', ?, '[]', ?)`, messageID, roomID, seq, authorID, strings.Join(parts, "；"), now); err != nil {
+		return fmt.Errorf("insert room membership event: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) EnsureBootstrap(ctx context.Context, humanID string) (BootstrapResult, error) {
@@ -1731,7 +1821,7 @@ func scanNamedAgent(row scanner) (NamedAgent, error) {
 	var agent NamedAgent
 	var autostart int
 	var createdAt int64
-	if err := row.Scan(&agent.ID, &agent.Name, &agent.MemoryDir, &agent.AvatarKey, &agent.AvatarImage, &agent.EngineOverride, &agent.ProviderOverride, &agent.ModelOverride, &agent.EffortOverride, &autostart, &createdAt); err != nil {
+	if err := row.Scan(&agent.ID, &agent.Name, &agent.Role, &agent.MemoryDir, &agent.AvatarKey, &agent.AvatarImage, &agent.EngineOverride, &agent.ProviderOverride, &agent.ModelOverride, &agent.EffortOverride, &autostart, &createdAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return NamedAgent{}, ErrNotFound
 		}

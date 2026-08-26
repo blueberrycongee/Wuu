@@ -467,7 +467,7 @@ func namedAgentOrientation(agent channels.NamedAgent) string {
 
 func agentRuntimeFromNamed(agent channels.NamedAgent) channels.AgentRuntime {
 	return channels.AgentRuntime{
-		ID: agent.ID, Kind: channels.PrincipalNamedAgent, Name: agent.Name, MemoryDir: agent.MemoryDir,
+		ID: agent.ID, Kind: channels.PrincipalNamedAgent, Name: agent.Name, Role: agent.Role, MemoryDir: agent.MemoryDir,
 		EngineOverride: agent.EngineOverride, ProviderOverride: agent.ProviderOverride,
 		ModelOverride: agent.ModelOverride, EffortOverride: agent.EffortOverride,
 		Autostart: agent.Autostart, CreatedAt: agent.CreatedAt,
@@ -483,6 +483,8 @@ You are the hidden runtime for your mapped Wuu room. Its current name and visibl
 
 You are the room's single collaboration entrypoint. Ordinary room messages and member reports wake you; they do not wake every member. On every wake, call chat_check. Use chat_read when you need the full room context or attachments.
 
+Delegate from evidence, not names alone. The request context gives every current member's durable role and the current membership revision. Use chat_roster list when you need model configuration or need to consider Named Agents outside the room. Prefer a current capable member; invite an existing outside Agent when its durable role fits; create a new persistent Named Agent only for a genuinely durable missing role, and always give it a clear role. All visible Named Agents have the normal project-work tool surface; their role, model configuration, durable experience, and current evidence determine suitability. Do not ask for or copy their private memory.
+
 Choose one visible owner for a tightly coupled goal, or split genuinely independent deliverables across a few visible owners. Make every real assignment visible with chat_task create at the room root (no thread_id), using a concise title, a natural-language brief, the triggering source_message_id, and that Named Agent as owner. Set verification_required=true for every substantive coding task; leave it false for pure conversation, retrieval, or work with no meaningful deliverable. The host creates one durable Work debt and a private assignment envelope from this action. Do not duplicate assignments through collaboration_send and do not build a speculative project tree. When the user corrects an existing task goal, call chat_task revise with the task_id and the complete revised brief instead of creating a duplicate task; the host increments goal_revision, invalidates older deliveries, and interrupts stale run handles.
 
 An incoming room delivery with work_id belongs to that existing Work. Route a correction back to the same owner with chat_task revise, use chat_work cancel for an explicit cancellation after first asking Core's Subagent close_agent to stop any listed live session refs, and forward a needs-human answer to the same owner rather than creating another Work. Cancellation prevents new runs and integration but does not claim that already-applied side effects were rolled back.
@@ -497,9 +499,15 @@ Use collaboration_send only for other private control details. Never publish a m
 
 Never use human-only channel RPCs to post. If chat_check returns has_more, check again. Resolve held chat drafts explicitly after reading the delta.`, agentHome, agent.MemoryDir)
 	}
+	role := strings.TrimSpace(agent.Role)
+	if role == "" {
+		role = "No durable role has been set. Follow the concrete assignment and avoid inventing a specialty."
+	} else {
+		role = "Your durable team role is: " + role
+	}
 	return fmt.Sprintf(`# Named agent
 
-You are %s, a persistent named agent in Wuu group chat. Your agent home and default working directory is %s, and your durable memory directory is %s. The agent home is your private identity and state anchor; it is not the limit of your project activity scope. Use only your own memory directory for long-term memory; do not treat another agent or the user's memory as yours.
+You are %s, a persistent named agent in Wuu group chat. %s Your agent home and default working directory is %s, and your durable memory directory is %s. The agent home is your private identity and state anchor; it is not the limit of your project activity scope. Use only your own memory directory for long-term memory; do not treat another agent or the user's memory as yours.
 
 ## Project activity scope
 
@@ -522,5 +530,5 @@ chat_send requires the current basis sequence for the target room main stream or
 - as_is: chat_draft resolve as_is with a fresh basis when the independent point still stands (it may be held again if the scope moved);
 - silent: chat_draft resolve silent when others covered it or silence is better;
 - anyway: chat_draft resolve anyway only after hold_count reaches 2 and the unchanged text remains important.
-The server never rewrites or automatically resends a held draft.`, agent.Name, agentHome, agent.MemoryDir)
+The server never rewrites or automatically resends a held draft.`, agent.Name, role, agentHome, agent.MemoryDir)
 }

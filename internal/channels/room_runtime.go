@@ -162,7 +162,7 @@ func (s *Service) GetAgentRuntime(ctx context.Context, id string) (AgentRuntime,
 
 func runtimeFromNamedAgent(agent NamedAgent) AgentRuntime {
 	return AgentRuntime{
-		ID: agent.ID, Kind: PrincipalNamedAgent, Name: agent.Name, MemoryDir: agent.MemoryDir,
+		ID: agent.ID, Kind: PrincipalNamedAgent, Name: agent.Name, Role: agent.Role, MemoryDir: agent.MemoryDir,
 		EngineOverride: agent.EngineOverride, ProviderOverride: agent.ProviderOverride,
 		ModelOverride: agent.ModelOverride, EffortOverride: agent.EffortOverride,
 		Autostart: agent.Autostart, CreatedAt: agent.CreatedAt,

@@ -98,6 +98,7 @@ const (
 type NamedAgent struct {
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
+	Role             string    `json:"role,omitempty"`
 	MemoryDir        string    `json:"memory_dir"`
 	AvatarKey        string    `json:"avatar_key"`
 	AvatarImage      string    `json:"avatar_image,omitempty"`
@@ -118,6 +119,7 @@ type AgentRuntime struct {
 	Kind             PrincipalKind
 	RoomID           string
 	Name             string
+	Role             string
 	MemoryDir        string
 	EngineOverride   string
 	ProviderOverride string
@@ -136,6 +138,7 @@ type AgentCredential struct {
 
 type CreateNamedAgentParams struct {
 	Name             string
+	Role             string
 	AvatarKey        string
 	AvatarImage      string
 	EngineOverride   string
@@ -148,6 +151,7 @@ type CreateNamedAgentParams struct {
 type UpdateNamedAgentParams struct {
 	ID               string
 	Name             string
+	Role             string
 	AvatarKey        string
 	AvatarImage      *string
 	EngineOverride   string
@@ -176,14 +180,15 @@ type Room struct {
 	RuntimeID string `json:"-"`
 	// AgentID is a source-compatible internal alias for migrations and tests.
 	// It is never serialized and is not a Named Agent identity.
-	AgentID        string       `json:"-"`
-	AvatarKey      string       `json:"avatar_key,omitempty"`
-	AvatarImage    string       `json:"avatar_image,omitempty"`
-	CreatedBy      string       `json:"created_by"`
-	CreatedAt      time.Time    `json:"created_at"`
-	Members        []RoomMember `json:"members"`
-	UnreadCount    int          `json:"unread_count"`
-	ActivityStatus string       `json:"activity_status,omitempty"`
+	AgentID            string       `json:"-"`
+	AvatarKey          string       `json:"avatar_key,omitempty"`
+	AvatarImage        string       `json:"avatar_image,omitempty"`
+	CreatedBy          string       `json:"created_by"`
+	CreatedAt          time.Time    `json:"created_at"`
+	MembershipRevision int64        `json:"membership_revision"`
+	Members            []RoomMember `json:"members"`
+	UnreadCount        int          `json:"unread_count"`
+	ActivityStatus     string       `json:"activity_status,omitempty"`
 }
 
 type CreateRoomParams struct {
@@ -198,6 +203,29 @@ type UpdateRoomParams struct {
 	RoomID  string
 	Name    *string
 	Members *[]RoomMember
+}
+
+type RoomRoster struct {
+	RoomID             string                   `json:"room_id"`
+	RoomName           string                   `json:"room_name"`
+	MembershipRevision int64                    `json:"membership_revision"`
+	Members            []AgentCapabilitySummary `json:"members"`
+	AvailableAgents    []AgentCapabilitySummary `json:"available_agents"`
+}
+
+type AgentCapabilitySummary struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Role             string `json:"role,omitempty"`
+	EngineOverride   string `json:"engine_override,omitempty"`
+	ProviderOverride string `json:"provider_override,omitempty"`
+	ModelOverride    string `json:"model_override,omitempty"`
+	EffortOverride   string `json:"effort_override,omitempty"`
+}
+
+type RoomAgentCreateResult struct {
+	Agent AgentCapabilitySummary `json:"agent"`
+	Room  Room                   `json:"room"`
 }
 
 type Message struct {

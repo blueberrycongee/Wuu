@@ -317,6 +317,7 @@ func addRoomChatTools(b *surfaceBuilder) {
 	b.addVisible("chat_work", capability.CapabilityChat)
 	b.addVisible("chat_verify", capability.CapabilityChat)
 	b.addVisible("chat_remind", capability.CapabilityChat)
+	b.addVisible("chat_roster", capability.CapabilityChat)
 }
 
 func addSkillTools(b *surfaceBuilder) {

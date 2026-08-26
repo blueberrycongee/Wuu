@@ -16,7 +16,7 @@ func TestNamedAgentRoomContextChangesOnlyWithRoomStructure(t *testing.T) {
 	t.Cleanup(server.Close)
 	server.channelService.SetWakeSink(nil)
 	ctx := context.Background()
-	alpha, err := server.channelService.CreateNamedAgent(ctx, channels.CreateNamedAgentParams{Name: "Alpha"})
+	alpha, err := server.channelService.CreateNamedAgent(ctx, channels.CreateNamedAgentParams{Name: "Alpha", Role: "implementation"})
 	if err != nil {
 		t.Fatalf("CreateNamedAgent(Alpha) error = %v", err)
 	}
@@ -39,7 +39,7 @@ func TestNamedAgentRoomContextChangesOnlyWithRoomStructure(t *testing.T) {
 	if len(before) != 1 || before[0].Source != namedAgentRoomsContextSource {
 		t.Fatalf("room context blocks = %#v", before)
 	}
-	for _, want := range []string{"Design", "Alpha", "Beta", "User"} {
+	for _, want := range []string{"Design", "Alpha", "Beta", "User", "implementation"} {
 		if !strings.Contains(before[0].Content, want) {
 			t.Fatalf("room context missing %q:\n%s", want, before[0].Content)
 		}

@@ -768,6 +768,7 @@ export type SkillContentResult = {
 export type NamedAgent = {
   id: string;
   name: string;
+  role?: string;
   memory_dir: string;
   avatar_key: string;
   avatar_image?: string;
@@ -796,6 +797,7 @@ export type ChannelRoom = {
   avatar_image?: string;
   created_by: string;
   created_at: string;
+  membership_revision?: number;
   members: ChannelRoomMember[];
   unread_count?: number;
   activity_status?: "idle" | "thinking";
@@ -942,6 +944,7 @@ export type ChannelAgentInsightsResult = { generated_at: string; insights: Chann
 export type ChannelBootstrapResult = { agents: NamedAgent[]; rooms: ChannelRoom[] };
 export type ChannelAgentCreateParams = {
   name: string;
+  role?: string;
   avatar_key?: string;
   avatar_image?: string;
   engine_override?: string;

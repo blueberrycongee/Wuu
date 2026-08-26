@@ -395,6 +395,9 @@ func TestUpdateRoomReplacesAgentMembersWithoutResettingUnchangedCursors(t *testi
 	if len(updated.Members) != 3 {
 		t.Fatalf("updated members = %#v, want local human plus two agents", updated.Members)
 	}
+	if updated.MembershipRevision != room.MembershipRevision+1 {
+		t.Fatalf("membership revision after add = %d, want %d", updated.MembershipRevision, room.MembershipRevision+1)
+	}
 	for agentID, want := range map[string]int64{alpha.Agent.ID: 7, beta.Agent.ID: 0} {
 		var cursor int64
 		if err := service.db.QueryRowContext(ctx, `SELECT last_read_seq FROM room_cursors WHERE room_id = ? AND member_id = ?`, room.ID, agentID).Scan(&cursor); err != nil {
@@ -412,6 +415,16 @@ func TestUpdateRoomReplacesAgentMembersWithoutResettingUnchangedCursors(t *testi
 	}
 	if len(updated.Members) != 2 {
 		t.Fatalf("members after removal = %#v", updated.Members)
+	}
+	if updated.MembershipRevision != room.MembershipRevision+2 {
+		t.Fatalf("membership revision after removal = %d, want %d", updated.MembershipRevision, room.MembershipRevision+2)
+	}
+	messages, err := service.ListMessages(ctx, room.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("ListMessages() error = %v", err)
+	}
+	if len(messages) != 2 || messages[0].Kind != MessageSystem || !strings.Contains(messages[0].Body, "Beta") || !strings.Contains(messages[1].Body, "Alpha") {
+		t.Fatalf("membership messages = %#v", messages)
 	}
 	var hasHuman, hasBeta bool
 	for _, member := range updated.Members {

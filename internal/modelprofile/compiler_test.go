@@ -109,7 +109,7 @@ func TestNamedAgentSurfaceAddsChatToolsToCompleteMainSurface(t *testing.T) {
 }
 
 func TestRoomAgentSurfaceOnlyExposesCoordinationTools(t *testing.T) {
-	want := []string{"chat_check", "chat_read", "chat_remind", "chat_task", "chat_verify", "chat_work", "collaboration_send"}
+	want := []string{"chat_check", "chat_read", "chat_remind", "chat_roster", "chat_task", "chat_verify", "chat_work", "collaboration_send"}
 	for _, profile := range []Profile{
 		Resolve("openai", "gpt-5-codex"),
 		Resolve("anthropic", "claude-sonnet-4-5"),

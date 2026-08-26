@@ -564,6 +564,15 @@
     );
 }
 
+.channel-system-message {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 4px 12px;
+  text-align: center;
+}
+
 .channel-message {
   width: min(100%, var(--channel-content-max-width));
   display: grid;

@@ -2389,6 +2389,7 @@ type ChannelBootstrapResult = channels.BootstrapResult
 
 type ChannelAgentCreateParams struct {
 	Name             string `json:"name"`
+	Role             string `json:"role,omitempty"`
 	AvatarKey        string `json:"avatar_key,omitempty"`
 	AvatarImage      string `json:"avatar_image,omitempty"`
 	EngineOverride   string `json:"engine_override,omitempty"`
@@ -2404,6 +2405,7 @@ type ChannelAgentCreateResult struct {
 type ChannelAgentUpdateParams struct {
 	AgentID          string  `json:"agent_id"`
 	Name             string  `json:"name"`
+	Role             string  `json:"role,omitempty"`
 	AvatarKey        string  `json:"avatar_key,omitempty"`
 	AvatarImage      *string `json:"avatar_image,omitempty"`
 	EngineOverride   string  `json:"engine_override,omitempty"`

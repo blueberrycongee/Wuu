@@ -224,9 +224,14 @@ func TestChatVerifyIsAvailableOnlyToHiddenRoomRuntime(t *testing.T) {
 	kit.SetActiveProfile(modelprofile.Profile{ProviderName: "openai", Model: "test", Family: modelprofile.FamilyCodex}, true)
 	kit.SetChatAgent(client)
 	assertDefinitionPresent(t, kit.Definitions(), "chat_verify")
+	assertDefinitionPresent(t, kit.Definitions(), "chat_roster")
 	assertDefinitionMissing(t, kit.Definitions(), "chat_send")
 	for _, forbidden := range []string{"read_file", "apply_patch", "bash", "web_search", "load_skill", "tool_search", "set_session_workspace"} {
 		assertDefinitionMissing(t, kit.Definitions(), forbidden)
+	}
+	rosterJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_roster", Arguments: `{"action":"create","room_id":"` + room.ID + `","name":"Reviewer"}`})
+	if err != nil || !strings.Contains(rosterJSON, `"name":"Reviewer"`) || !strings.Contains(rosterJSON, `"membership_revision":2`) {
+		t.Fatalf("chat_roster create = %s, err = %v", rosterJSON, err)
 	}
 
 	taskJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_task", Arguments: `{"action":"create","room_id":"` + room.ID + `","title":"Fix callback","owner_id":"` + owner.Agent.ID + `","verification_required":true}`})

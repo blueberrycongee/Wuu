@@ -215,6 +215,8 @@ export const zhCN = {
   "channels.chooseRoom": "选择一个频道",
   "channels.send": "发送",
   "channels.name": "名称",
+  "channels.agentRole": "能力与职责",
+  "channels.agentRolePlaceholder": "例如：负责界面设计、交互评审和视觉验收",
   "channels.avatar": "头像",
   "channels.customAvatar": "选择自定义头像图片",
   "channels.invalidAvatarImage": "请选择不超过 10 MB 的 PNG、JPEG 或 WebP 图片。",

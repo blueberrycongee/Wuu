@@ -37,6 +37,7 @@ type RoomMemberMode = "add" | null;
 
 type AgentDetailDraft = {
   name: string;
+  role: string;
   avatarKey: string;
   avatarImage: string;
   engine: string;
@@ -728,6 +729,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     });
   }, [body, composerFiles, composerImages, onComposerDraftChange, selectedRoomID]);
   const [agentName, setAgentName] = useState("");
+  const [agentRole, setAgentRole] = useState("");
   const [agentAvatarKey, setAgentAvatarKey] = useState<string>(() => randomAgentAvatarKey());
   const [agentAvatarImage, setAgentAvatarImage] = useState("");
   const [agentAvatarError, setAgentAvatarError] = useState("");
@@ -750,10 +752,10 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
   const [taskRoomID, setTaskRoomID] = useState("");
   const [taskOwnerID, setTaskOwnerID] = useState("");
   const [composerFooterNode, setComposerFooterNode] = useState<HTMLDivElement | null>(null);
-  const agentDetailDraftRef = useRef<AgentDetailDraft>({ name: "", avatarKey: "", avatarImage: "", engine: "wuu", model: "", effort: "" });
+  const agentDetailDraftRef = useRef<AgentDetailDraft>({ name: "", role: "", avatarKey: "", avatarImage: "", engine: "wuu", model: "", effort: "" });
   const selectedAgentIDRef = useRef("");
   const previousSectionRef = useRef(section);
-  agentDetailDraftRef.current = { name: agentName, avatarKey: agentAvatarKey, avatarImage: agentAvatarImage, engine: agentEngine, model: agentModel, effort: agentEffort };
+  agentDetailDraftRef.current = { name: agentName, role: agentRole, avatarKey: agentAvatarKey, avatarImage: agentAvatarImage, engine: agentEngine, model: agentModel, effort: agentEffort };
   selectedAgentIDRef.current = selectedAgentID;
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const composerFooterRef = useRef<HTMLDivElement | null>(null);
@@ -853,6 +855,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     if (!newAgentRequest) return;
     setEditingAgentID("");
     setAgentName("");
+    setAgentRole("");
     setAgentAvatarKey(randomAgentAvatarKey());
     setAgentAvatarImage("");
     setAgentAvatarError("");
@@ -1352,6 +1355,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
       const [providerOverride, modelOverride] = agentModel.split("\u0000");
       const params = {
         name: agentName.trim(),
+        role: agentRole.trim() || undefined,
         avatar_key: agentAvatarKey,
         avatar_image: agentAvatarImage,
         engine_override: agentEngine === "wuu" ? undefined : agentEngine,
@@ -1537,6 +1541,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
   function loadAgentDraft(agent: NamedAgent): void {
     setEditingAgentID(agent.id);
     setAgentName(agent.name);
+    setAgentRole(agent.role ?? "");
     setAgentAvatarKey(agent.avatar_key);
     setAgentAvatarImage(agent.avatar_image ?? "");
     setAgentAvatarError("");
@@ -1561,6 +1566,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     const currentAgent = agents.find((agent) => agent.id === agentID);
     if (currentAgent
       && currentAgent.name === draft.name.trim()
+      && (currentAgent.role ?? "") === draft.role.trim()
       && currentAgent.avatar_key === draft.avatarKey
       && (currentAgent.avatar_image ?? "") === draft.avatarImage
       && (currentAgent.engine_override || "wuu") === draft.engine
@@ -1572,6 +1578,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
       const result = await window.wuu.updateNamedAgent({
         agent_id: agentID,
         name: draft.name.trim(),
+        role: draft.role.trim() || undefined,
         avatar_key: draft.avatarKey,
         avatar_image: draft.avatarImage,
         engine_override: draft.engine === "wuu" ? undefined : draft.engine,
@@ -1591,6 +1598,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     setSetupPanel(null);
     setEditingAgentID("");
     setAgentName("");
+    setAgentRole("");
     setAgentAvatarKey(randomAgentAvatarKey());
     setAgentAvatarImage("");
     setAgentAvatarError("");
@@ -1871,6 +1879,9 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
             }
             if (item.kind !== "message") return null;
             const message = item.message;
+            if (message.kind === "system") {
+              return <div className="channel-system-message" key={message.id}>{message.body}</div>;
+            }
             const own = message.author_type === "human";
             const author = own ? t("channels.you") : (agentNames.get(message.author_id) ?? message.author_id);
             const threadReplies = repliesByThread.get(message.id) ?? [];
@@ -2082,6 +2093,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                     if (selectedAgentID) void saveAgentDetails(selectedAgentID, agentDetailDraftRef.current);
                     setEditingAgentID("");
                     setAgentName("");
+                    setAgentRole("");
                     setAgentAvatarKey(randomAgentAvatarKey());
                     setAgentAvatarImage("");
                     setAgentAvatarError("");
@@ -2119,7 +2131,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                     <AgentAvatar id={agent.id} name={agent.name} avatarKey={agent.avatar_key} avatarImage={agent.avatar_image} status={status} statusText={activityText(status)} model={agent.model_override || initialized?.model} modelLabel={t("channels.model")} expressive />
                   </button>
                   <button className="channel-directory-identity channel-agent-directory-identity" type="button" aria-current={selectedAgentID === agent.id ? "page" : undefined} onClick={() => selectAgentDetails(agent)}>
-                    <span><strong>{agent.name}</strong><small>{model} · {t("channels.agentRoomCount", { count: roomCount })}</small></span>
+                    <span><strong>{agent.name}</strong><small>{agent.role || model} · {t("channels.agentRoomCount", { count: roomCount })}</small></span>
                   </button>
                 </div>
               );
@@ -2184,6 +2196,10 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                         <label className="channel-form-field">
                           <span>{t("channels.name")}</span>
                           <input value={agentName} onChange={(event) => setAgentName(event.currentTarget.value)} />
+                        </label>
+                        <label className="channel-form-field">
+                          <span>{t("channels.agentRole")}</span>
+                          <textarea value={agentRole} onChange={(event) => setAgentRole(event.currentTarget.value)} maxLength={280} placeholder={t("channels.agentRolePlaceholder")} />
                         </label>
                         <AgentAvatarCreator
                           seed={selectedAgent.id}
@@ -2365,6 +2381,10 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
             <label className="channel-form-field">
               <span>{t("channels.name")}</span>
               <input value={agentName} onChange={(event) => setAgentName(event.currentTarget.value)} autoFocus placeholder="Andy" />
+            </label>
+            <label className="channel-form-field">
+              <span>{t("channels.agentRole")}</span>
+              <textarea value={agentRole} onChange={(event) => setAgentRole(event.currentTarget.value)} maxLength={280} placeholder={t("channels.agentRolePlaceholder")} />
             </label>
           </div>
           <FieldError id="channel-agent-avatar-error">{agentAvatarError}</FieldError>

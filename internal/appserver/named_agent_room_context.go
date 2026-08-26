@@ -48,9 +48,9 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 		providers.DebugLogf("read named agent identities for room context %q: %v", agentID, err)
 		return nil
 	}
-	agentNames := make(map[string]string, len(agents))
+	agentDirectory := make(map[string]channels.NamedAgent, len(agents))
 	for _, namedAgent := range agents {
-		agentNames[namedAgent.ID] = namedAgent.Name
+		agentDirectory[namedAgent.ID] = namedAgent
 	}
 
 	memberRooms := make([]channels.Room, 0, len(rooms))
@@ -80,7 +80,7 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 				roomName = "Unnamed room"
 			}
 			if roomAgent {
-				fmt.Fprintf(&content, "- %s (%s, room_id: %s)\n", roomName, room.Kind, room.ID)
+				fmt.Fprintf(&content, "- %s (%s, room_id: %s, membership_revision: %d)\n", roomName, room.Kind, room.ID, room.MembershipRevision)
 			} else {
 				fmt.Fprintf(&content, "- %s (%s)\n", roomName, room.Kind)
 			}
@@ -93,10 +93,14 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 			})
 			for _, member := range members {
 				name := "User"
+				role := ""
 				if member.MemberType == channels.MemberAgent {
 					name = "Unnamed agent"
-					if named := strings.TrimSpace(agentNames[member.MemberID]); named != "" {
-						name = named
+					if namedAgent, ok := agentDirectory[member.MemberID]; ok {
+						if named := strings.TrimSpace(namedAgent.Name); named != "" {
+							name = named
+						}
+						role = strings.TrimSpace(namedAgent.Role)
 					}
 				}
 				you := ""
@@ -104,9 +108,17 @@ func (s *Server) namedAgentRoomContextBlocks(agentID string) []wuucontext.Block 
 					you = ", you"
 				}
 				if roomAgent {
-					fmt.Fprintf(&content, "  - %s (%s%s, member_id: %s)\n", name, member.MemberType, you, member.MemberID)
+					fmt.Fprintf(&content, "  - %s (%s%s, member_id: %s", name, member.MemberType, you, member.MemberID)
+					if role != "" {
+						fmt.Fprintf(&content, ", role: %s", role)
+					}
+					content.WriteString(")\n")
 				} else {
-					fmt.Fprintf(&content, "  - %s (%s%s)\n", name, member.MemberType, you)
+					fmt.Fprintf(&content, "  - %s (%s%s", name, member.MemberType, you)
+					if role != "" {
+						fmt.Fprintf(&content, ", role: %s", role)
+					}
+					content.WriteString(")\n")
 				}
 			}
 		}
