@@ -633,6 +633,68 @@ describe("SettingsView provider configuration", () => {
   });
 });
 
+describe("SettingsView collaboration models", () => {
+  it("shows inherited capability models and saves explicit overrides", async () => {
+    installBuildInfoStub({
+      core: undefined,
+      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
+    });
+    const onAdvancedSave = vi.fn().mockResolvedValue(undefined);
+    renderSettings({
+      initialPage: "collaboration",
+      initialized: baseInitialized({
+        provider: "openai",
+        model: "gpt-default",
+        providers: [{
+          name: "openai",
+          type: "openai",
+          model: "gpt-default",
+          models: [
+            { id: "gpt-default", display_name: "GPT Default" },
+            { id: "gpt-review", display_name: "GPT Review" },
+          ],
+        }],
+        model_roles: [
+          { role: "coordination", provider: "openai", model: "gpt-default", inherited: true },
+          { role: "verification", provider: "openai", model: "gpt-default", inherited: true },
+        ],
+      }),
+      onAdvancedSave,
+    });
+
+    const page = container.querySelector('[data-testid="settings-collaboration"]');
+    expect(page).not.toBeNull();
+    const triggers = Array.from(page!.querySelectorAll<HTMLButtonElement>(".settings-select-trigger"));
+    expect(triggers).toHaveLength(2);
+
+    await act(async () => {
+      triggers[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const coordinationOption = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".select-menu-panel .select-menu-item"),
+    ).find((item) => item.getAttribute("data-value") === "openai\u0000gpt-review");
+    await act(async () => {
+      coordinationOption?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({
+      coordination_model: { provider: "openai", model: "gpt-review" },
+    });
+
+    await act(async () => {
+      triggers[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const inheritOption = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".select-menu-panel .select-menu-item"),
+    ).find((item) => item.getAttribute("data-value") === "");
+    await act(async () => {
+      inheritOption?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onAdvancedSave).toHaveBeenLastCalledWith({
+      verification_model: { provider: "", model: "" },
+    });
+  });
+});
+
 describe("SettingsView advanced settings", () => {
   it("renders compaction controls and saves each field on commit", async () => {
     installBuildInfoStub({

@@ -94,6 +94,7 @@ import type { SettingsPageHostAPI, SettingsPageSummaryV1, SettingsValueMapV1 } f
 
 export type SettingsPage =
   | "providers"
+  | "collaboration"
   | "general"
   | "advanced"
   | "usage"
@@ -786,6 +787,7 @@ export function SettingsView({
     ?? settingsPageTitle(activePage, t);
   const availablePages = useMemo<readonly SettingsPageSummaryV1[]>(() => Object.freeze([
     Object.freeze({ id: "providers", label: settingsPageTitle("providers", t) }),
+    Object.freeze({ id: "collaboration", label: settingsPageTitle("collaboration", t) }),
     Object.freeze({ id: "advanced", label: settingsPageTitle("advanced", t) }),
     Object.freeze({ id: "general", label: settingsPageTitle("general", t) }),
     ...(ENABLE_REMOTE_CONTROL
@@ -844,6 +846,9 @@ export function SettingsView({
               <div className="settings-nav-group-label">{t("settings.groupModel")}</div>
               <SettingsNavItem icon={<KeyRound className="icon-lg" />} active={activePage === "providers"} onClick={() => setActivePage("providers")}>
                 {t("settings.providers")}
+              </SettingsNavItem>
+              <SettingsNavItem icon={<Hash className="icon-lg" />} active={activePage === "collaboration"} onClick={() => setActivePage("collaboration")}>
+                {t("settings.collaboration")}
               </SettingsNavItem>
               <SettingsNavItem icon={<SlidersHorizontal className="icon-lg" />} active={activePage === "advanced"} onClick={() => setActivePage("advanced")}>
                 {t("settings.advanced")}
@@ -1008,6 +1013,12 @@ export function SettingsView({
                   disabled={addSubmitDisabled}
                 />
               </>
+            ) : activePage === "collaboration" ? (
+              <SettingsCollaborationPage
+                initialized={initialized}
+                running={running}
+                onSave={onAdvancedSave}
+              />
             ) : activePage === "advanced" ? (
               <>
                 <SettingsAdvancedPage
@@ -1530,6 +1541,75 @@ type AdvancedNumericField =
   | "maxContextTokens"
   | "maxSteps"
   | "temperature";
+
+function SettingsCollaborationPage({
+  initialized,
+  running,
+  onSave,
+}: {
+  initialized?: InitializeResult;
+  running: boolean;
+  onSave: (settings: RuntimeAdvancedSettingsUpdate) => Promise<void>;
+}): JSX.Element {
+  const { t } = useI18n();
+  const options = useMemo(() => {
+    const result = [{ value: "", label: t("settings.collaborationInheritDefault") }];
+    for (const provider of initialized?.providers ?? []) {
+      const models = provider.models?.length
+        ? provider.models
+        : [{ id: provider.model, display_name: provider.model }];
+      for (const model of models) {
+        if (!model.id) continue;
+        result.push({
+          value: `${provider.name}\u0000${model.id}`,
+          label: `${provider.name} · ${model.display_name || model.id}`,
+        });
+      }
+    }
+    return result;
+  }, [initialized?.providers, t]);
+  const roleValue = (name: string): string => {
+    const role = initialized?.model_roles?.find((candidate) => candidate.role === name);
+    return role && !role.inherited ? `${role.provider}\u0000${role.model}` : "";
+  };
+  const saveRole = (field: "coordination_model" | "verification_model", value: string): void => {
+    const [provider = "", model = ""] = value.split("\u0000");
+    void onSave({ [field]: { provider, model } });
+  };
+  return (
+    <SettingsSection testID="settings-collaboration">
+      <SettingsCard>
+        <SettingsRow
+          title={t("settings.coordinationModel")}
+          description={t("settings.coordinationModelDescription")}
+        >
+          <SelectMenu
+            triggerClassName="settings-select-trigger"
+            ariaLabel={t("settings.coordinationModel")}
+            value={roleValue("coordination")}
+            options={options}
+            disabled={running || !initialized}
+            onChange={(value) => saveRole("coordination_model", value)}
+          />
+        </SettingsRow>
+        <SettingsRow
+          title={t("settings.verificationModel")}
+          description={t("settings.verificationModelDescription")}
+        >
+          <SelectMenu
+            triggerClassName="settings-select-trigger"
+            ariaLabel={t("settings.verificationModel")}
+            value={roleValue("verification")}
+            options={options}
+            disabled={running || !initialized}
+            onChange={(value) => saveRole("verification_model", value)}
+          />
+        </SettingsRow>
+      </SettingsCard>
+      <p className="settings-section-description">{t("settings.collaborationUsageNotice")}</p>
+    </SettingsSection>
+  );
+}
 
 function SettingsAdvancedPage({
   initialized,
@@ -2873,6 +2953,8 @@ function settingsPageTitle(page: SettingsPage, t: Translate): string {
   switch (page) {
     case "providers":
       return t("settings.providers");
+    case "collaboration":
+      return t("settings.collaboration");
     case "advanced":
       return t("settings.advanced");
     case "general":

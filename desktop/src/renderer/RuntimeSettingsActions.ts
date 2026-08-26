@@ -291,6 +291,7 @@ export function createRuntimeSettingsActions(
                 updated.model_aliases ??
                 settings.model_aliases ??
                 current.initialized.model_aliases,
+              model_roles: updated.model_roles ?? current.initialized.model_roles,
               providers: updated.providers ?? current.initialized.providers,
             }
           : current.initialized;
