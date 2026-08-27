@@ -572,7 +572,10 @@
 }
 
 .app-shell.compact-navigation {
-  --compact-session-switcher-width: min(80vw, 326px);
+  /* Crossing into compact navigation must not resize an already-open drawer.
+   * Keep the responsive desktop width and only cap it when the phone viewport
+   * genuinely cannot leave enough backdrop visible to dismiss the sheet. */
+  --compact-session-switcher-width: min(var(--sidebar-open-width, 326px), 80vw);
 }
 
 .app-shell.compact-navigation.sidebar-collapsed:is(.sidebar-drawer-open, .sidebar-drawer-closing)

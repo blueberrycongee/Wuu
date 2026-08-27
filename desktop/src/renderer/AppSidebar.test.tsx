@@ -268,6 +268,17 @@ describe("AppSidebar layout", () => {
     );
   });
 
+  it("keeps the drawer width continuous when navigation becomes compact", () => {
+    const compactWidthRule = sidebarCSS.match(
+      /\.app-shell\.compact-navigation\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+
+    expect(compactWidthRule).toContain(
+      "min(var(--sidebar-open-width, 326px), 80vw)",
+    );
+    expect(compactWidthRule).not.toMatch(/min\(80vw,\s*326px\)/);
+  });
+
   it("keeps primary actions outside the scrollable sidebar list", () => {
     renderSidebar();
 
