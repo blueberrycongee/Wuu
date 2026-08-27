@@ -484,21 +484,6 @@ describe("ThreadItemView", () => {
     expect(block?.classList.contains("agent-actions-enter")).toBe(false);
   });
 
-  it("offers a stable user-message fork checkpoint while the turn is running", () => {
-    const onForkMessage = vi.fn();
-    render({
-      item: makeUserMessage("Fork from this prompt"),
-      turnStatus: "in_progress",
-      streaming: false,
-      onForkMessage,
-    });
-
-    const fork = container?.querySelector<HTMLButtonElement>('button[aria-label="分叉"]');
-    expect(fork).not.toBeNull();
-    act(() => fork?.click());
-    expect(onForkMessage).toHaveBeenCalledWith("turn-1", "user-1");
-  });
-
   it("renders historical answers with a hover overlay bar instead of an in-flow slot", () => {
     render({
       item: makeFinalAnswer("completed"),

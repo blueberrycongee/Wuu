@@ -32,7 +32,6 @@ import {
   MessageCopyButton,
   MessageEditButton,
   MessageFileList,
-  MessageForkButton,
   MessageImageGrid,
 } from "./MessageActions";
 import { StreamingMarkdown } from "./StreamingMarkdown";
@@ -221,7 +220,6 @@ function BuiltInThreadItemView({
           (copyable || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0),
       );
       const editActionVisible = editable;
-      const forkable = Boolean(!item.read_only && onForkMessage);
       // Plugin wake messages can hide the real delivered prompt behind a
       // generic query bubble. A durable related session opens in the
       // conversation split; other deliveries use the delivery inspector.
@@ -252,7 +250,7 @@ function BuiltInThreadItemView({
       };
       return (
         <div
-          className={`user-message-block${copyable || editActionVisible || forkable ? " user-message-block-with-actions" : ""}`}
+          className={`user-message-block${copyable || editActionVisible ? " user-message-block-with-actions" : ""}`}
           data-wuu-component="message"
           data-wuu-variant="user"
           id={userMessageAnchorID(turnID, item.id)}
@@ -279,7 +277,7 @@ function BuiltInThreadItemView({
               onOpenFile={onOpenFile}
             />
           )}
-          {!editing && (copyable || editActionVisible || forkable || deliveryViewAvailable) ? (
+          {!editing && (copyable || editActionVisible || deliveryViewAvailable) ? (
             <div
               className="message-actions user-message-actions"
               data-wuu-component="message-actions"
@@ -303,9 +301,6 @@ function BuiltInThreadItemView({
                 >
                   <Info size={15} />
                 </button>
-              ) : null}
-              {forkable ? (
-                <MessageForkButton onFork={() => onForkMessage?.(turnID, item.id)} />
               ) : null}
               {editActionVisible && onEditMessage ? (
                 <MessageEditButton
