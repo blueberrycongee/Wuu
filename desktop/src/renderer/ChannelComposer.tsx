@@ -86,6 +86,7 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
   const mentionAnchorRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     mentionAnchorRef.current =
+      composerRef.current?.querySelector<HTMLElement>("textarea") ??
       composerRef.current?.querySelector<HTMLElement>(".composer-stack") ??
       composerRef.current;
   });
