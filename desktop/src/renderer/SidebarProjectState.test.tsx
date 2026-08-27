@@ -179,6 +179,41 @@ describe("useSidebarProjectState", () => {
     ).toEqual(["thread-alpha"]);
   });
 
+  it("stabilizes the active project cache when listed turns are unchanged", async () => {
+    const alpha = project("alpha", "/tmp/alpha");
+    const alphaThread = {
+      ...thread("thread-alpha", alpha.path),
+      turns: [{
+        id: "turn-alpha",
+        items: [],
+        items_view: "full" as const,
+        status: "completed" as const,
+      }],
+    };
+    const activeContext: RuntimeContext = {
+      kind: "project",
+      project_id: alpha.id,
+      cwd: alpha.path,
+    };
+
+    const hook = await renderSidebarProjectState({ projects: [alpha] });
+    act(() => {
+      hook.get().cacheSidebarThreads([{
+        ...alphaThread,
+        turns: alphaThread.turns.map((turn) => ({ ...turn })),
+      }]);
+    });
+    await hook.rerender({
+      threads: [alphaThread],
+      activeContext,
+      activeProjectID: alpha.id,
+    });
+    const cached = hook.get().projectThreadsByProjectID.alpha;
+    await hook.rerender({ threads: [alphaThread] });
+
+    expect(hook.get().projectThreadsByProjectID.alpha).toBe(cached);
+  });
+
   it("marks expanded project sessions as loading until their snapshot arrives", async () => {
     const alpha = project("alpha", "/tmp/alpha");
     window.localStorage.setItem(
