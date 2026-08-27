@@ -288,21 +288,22 @@ export function WuuMascot({
   useLayoutEffect(() => {
     const bodyLayer =
       svg?.querySelector<SVGGElement>(".mo-bob > g:not(.mo-eyes)") ?? null;
-    if (!bodyLayer) {
+    const eyesLayer = svg?.querySelector<SVGGElement>(".mo-eyes") ?? null;
+    if (!bodyLayer || !eyesLayer) {
       setMascotLayers(null);
       return undefined;
     }
 
     // Accessories need two paint planes to look worn rather than pasted on.
-    // Both live inside the body group so Blobatar's structural body selector
-    // does not repaint them; the core silhouette occludes the rear plane, while
-    // the front plane remains below the eyes.
+    // The rear plane lives inside the body group so the core silhouette
+    // occludes it. The front plane must render above both the body and the
+    // eyes, so it is inserted as a sibling after .mo-eyes in DOM order.
     const rear = document.createElementNS("http://www.w3.org/2000/svg", "g");
     const front = document.createElementNS("http://www.w3.org/2000/svg", "g");
     rear.classList.add("wuu-mascot-layer", "wuu-mascot-layer-rear");
     front.classList.add("wuu-mascot-layer", "wuu-mascot-layer-front");
     bodyLayer.insertBefore(rear, bodyLayer.firstChild);
-    bodyLayer.appendChild(front);
+    eyesLayer.parentElement?.insertBefore(front, eyesLayer.nextSibling);
     setMascotLayers({ rear, front });
 
     return () => {
@@ -583,7 +584,7 @@ function MascotAccessory({
           </>
         ) : null}
         {accessory === "ribbon" ? (
-          <g transform={`translate(${body.cx + body.rx * 0.72} ${top + 5})`}>
+          <g transform={`translate(${body.cx + body.rx * 0.78} ${top})`}>
             <path className="wuu-mascot-fill" d="M -2 0 Q -15 -11 -17 1 Q -14 12 -2 4 Z" />
             <path className="wuu-mascot-fill" d="M 2 0 Q 15 -11 17 1 Q 14 12 2 4 Z" />
           </g>
@@ -658,7 +659,7 @@ function MascotAccessory({
         <path className="wuu-mascot-fill" d={`M ${centerX - 23} ${top + 13} L ${centerX - 23} ${top + 4} Q ${centerX - 26} ${top - 5} ${centerX - 15} ${top - 7} Q ${centerX - 10} ${top - 16} ${centerX} ${top - 12} Q ${centerX + 10} ${top - 17} ${centerX + 16} ${top - 7} Q ${centerX + 27} ${top - 5} ${centerX + 23} ${top + 4} L ${centerX + 23} ${top + 13} Q ${centerX} ${top + 17} ${centerX - 23} ${top + 13} Z`} />
       ) : null}
       {accessory === "flower" ? (
-        <g className="wuu-mascot-flower" transform={`translate(${body.cx - body.rx * 0.7} ${top + 3})`}>
+        <g className="wuu-mascot-flower" transform={`translate(${body.cx - body.rx * 0.75} ${top})`}>
           <circle className="wuu-mascot-petal" cx="0" cy="-6" r="5" />
           <circle className="wuu-mascot-petal" cx="6" cy="0" r="5" />
           <circle className="wuu-mascot-petal" cx="0" cy="6" r="5" />
@@ -701,7 +702,7 @@ function MascotAccessory({
         <path className="wuu-mascot-fill" d={`M ${centerX - 29} ${top + 12} Q ${centerX - 23} ${top - 12} ${centerX} ${top - 14} Q ${centerX + 23} ${top - 12} ${centerX + 29} ${top + 12} Q ${centerX + 11} ${top + 5} ${centerX} ${top + 12} Q ${centerX - 11} ${top + 5} ${centerX - 29} ${top + 12} Z`} />
       ) : null}
       {accessory === "ribbon" ? (
-        <g transform={`translate(${body.cx + body.rx * 0.72} ${top + 5})`}>
+        <g transform={`translate(${body.cx + body.rx * 0.78} ${top})`}>
           <circle className="wuu-mascot-band" cy="2" r="4.5" />
         </g>
       ) : null}
