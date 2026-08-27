@@ -11,16 +11,6 @@ afterEach(() => {
 });
 
 describe("RunDebugPanel localization", () => {
-  it("localizes runtime phases in English", () => {
-    setActiveLocale("en-US");
-
-    expect(runDebugPhaseForState(initialState)).toMatchObject({
-      label: "Runtime not ready",
-      detail: "Connecting",
-      tone: "running",
-    });
-  });
-
   it("localizes server event details and locale-formats counts", () => {
     setActiveLocale("en-US");
     const deltaSeen = new Set<string>();

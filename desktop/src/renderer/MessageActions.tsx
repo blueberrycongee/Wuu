@@ -46,12 +46,10 @@ export function AgentMessageActions({
   getText,
   onFork,
   placement,
-  showFork = true,
 }: {
   getText: () => string;
   onFork?: () => void;
   placement: "overlay" | "persistent";
-  showFork?: boolean;
 }): JSX.Element {
   const { t } = useI18n();
 
@@ -63,7 +61,7 @@ export function AgentMessageActions({
       aria-label={t("message.assistantActions")}
     >
       <MessageCopyButton getText={getText} className="message-action-button" iconSize={15} />
-      {showFork ? <MessageForkButton onFork={onFork} /> : null}
+      <MessageForkButton onFork={onFork} />
     </div>
   );
 }

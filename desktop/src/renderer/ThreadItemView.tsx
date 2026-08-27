@@ -326,27 +326,16 @@ function BuiltInThreadItemView({
         : (item.text ?? "");
       const copyable = agentText.trim() !== "";
       const isProcessText = !item.terminal;
-      const forkVisible =
+      const actionsVisible =
         turnStatus === "completed" &&
         item.id === actionableAgentMessageID &&
         copyable &&
         !isProcessText;
-      // A partial stream is not a useful copy boundary. Expose copy only once
-      // the final message item itself is complete; fork still waits for the
-      // enclosing turn to reach its durable completed boundary.
-      const finalizingCopyVisible =
-        turnStatus === "in_progress" &&
-        item.status === "completed" &&
-        copyable &&
-        !isProcessText;
-      const actionsVisible = forkVisible || finalizingCopyVisible;
       const actionsPersistent =
-        actionsVisible &&
-        (item.id === latestAgentMessageID || finalizingCopyVisible);
+        actionsVisible && item.id === latestAgentMessageID;
       // Only the persistent bar (latest answer, always visible) takes
       // in-flow space; historical answers get a hover overlay so no
-      // invisible slot pads the turn boundary. A live final answer uses the
-      // persistent slot as soon as it can offer a useful copy action.
+      // invisible slot pads the turn boundary.
       return (
         <article
           data-wuu-component="message"
@@ -372,10 +361,7 @@ function BuiltInThreadItemView({
             <AgentMessageActions
               getText={() => streamFieldValue(turnID, item, "text")}
               placement={actionsPersistent ? "persistent" : "overlay"}
-              showFork={forkVisible}
-              onFork={
-                forkVisible && onForkMessage ? () => onForkMessage(turnID, item.id) : undefined
-              }
+              onFork={onForkMessage ? () => onForkMessage(turnID, item.id) : undefined}
             />
           ) : null}
         </article>

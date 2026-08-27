@@ -299,7 +299,10 @@ function ChannelOrchestrationCluster({
                       />
                     </span>
                     <div className="channel-assignment-copy">
-                      <span className="channel-assignment-owner"><span aria-hidden="true">→</span>{ownerName}</span>
+                      <span className="channel-assignment-owner">
+                        <span aria-hidden="true">→</span>
+                        {ownerName}
+                      </span>
                       <strong>{title}</strong>
                       {body ? <div className="channel-assignment-body"><RichContent text={body} /></div> : null}
                     </div>

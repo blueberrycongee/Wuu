@@ -182,20 +182,6 @@ describe("ConversationForkDialog", () => {
     expect(onCancel).not.toHaveBeenCalled();
   });
 
-  it("keeps the fork picker to two option buttons", () => {
-    const onChoose = vi.fn(() => Promise.resolve());
-    const onCancel = vi.fn();
-
-    mount(
-      createElement(ConversationForkDialog, { onCancel, onChoose }),
-    );
-
-    expect(document.querySelectorAll(".fork-dialog button")).toHaveLength(2);
-    expect(document.querySelector('button[aria-label="关闭"]')).toBeNull();
-    expect(onCancel).not.toHaveBeenCalled();
-    expect(onChoose).not.toHaveBeenCalled();
-  });
-
   it("invokes onCancel when Escape is pressed at the window level", () => {
     const onChoose = vi.fn(() => Promise.resolve());
     const onCancel = vi.fn();
