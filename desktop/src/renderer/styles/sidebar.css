@@ -1171,7 +1171,7 @@
   display: block;
   width: var(--collaboration-contact-avatar-size);
   height: var(--collaboration-contact-avatar-size);
-  overflow: hidden;
+  overflow: visible;
   border-radius: 10px;
 }
 

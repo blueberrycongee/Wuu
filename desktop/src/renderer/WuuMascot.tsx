@@ -630,8 +630,8 @@ function MascotAccessory({
       ) : null}
       {accessory === "headphones" ? (
         <>
-          <rect className="wuu-mascot-fill" x={body.cx - body.rx - 3} y={body.cy - 8} width="11" height="23" rx="5.5" />
-          <rect className="wuu-mascot-fill" x={body.cx + body.rx - 8} y={body.cy - 8} width="11" height="23" rx="5.5" />
+          <rect className="wuu-mascot-fill" x={body.cx - body.rx - 4} y={body.cy - 10} width="12" height="26" rx="6" />
+          <rect className="wuu-mascot-fill" x={body.cx + body.rx - 8} y={body.cy - 10} width="12" height="26" rx="6" />
         </>
       ) : null}
       {accessory === "scarf" ? (
