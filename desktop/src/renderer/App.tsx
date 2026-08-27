@@ -124,7 +124,7 @@ import {
   scratchThreadSummaries,
   queryTextsForThread,
   reduceServerEvent,
-  mergeListedThreads,
+  reconcileListedThreadState,
   resolveComposerRunningAction,
   requireThread,
   runtimeContextKey,
@@ -246,7 +246,7 @@ import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
 import { useComposerDraftState } from "./ComposerDraftState";
 import { useComposerPendingState } from "./ComposerPendingState";
 import { useSidebarDrawerState } from "./SidebarDrawerState";
-import { useSidebarProjectState, threadListsEquivalent } from "./SidebarProjectState";
+import { useSidebarProjectState } from "./SidebarProjectState";
 import { useViewSwitchState } from "./ViewSwitchState";
 import { turnTelemetryStore } from "./TurnTelemetryStore";
 import {
@@ -952,6 +952,7 @@ export function App(): JSX.Element {
   const environmentToggleRef = useRef<HTMLButtonElement>(null);
   const environmentPanelRef = useRef<HTMLDivElement>(null);
   const appStateRef = useRef<AppState>(initialState);
+  const runningThreadReconcileInFlightRef = useRef("");
   const workspaceHasDirtyFilesRef = useRef(false);
   const lastFocusOutsideWorkspaceRef = useRef<HTMLElement | null>(null);
   const previousWorkspaceFocusModeRef = useRef({
@@ -1161,6 +1162,64 @@ export function App(): JSX.Element {
       : undefined;
   const activeThread = activeThreadForState(state);
   const activeThreadID = activeThread?.id;
+  const activeThreadRunning = isThreadRunning(activeThread);
+  useEffect(() => {
+    const contextCwd = state.activeContext?.cwd;
+    if (
+      !activeThreadID ||
+      !activeThreadRunning ||
+      !contextCwd ||
+      crossWorkdirRunningThreadIDs.has(activeThreadID)
+    ) {
+      return undefined;
+    }
+
+    // The aggregate main-process snapshot is independent of renderer server
+    // events. If it says the visible thread stopped while this pane still has
+    // an in-progress turn, re-read durable state instead of guessing that the
+    // turn completed. A short delay avoids racing the normal turn/start path.
+    const key = `${contextCwd}\u0000${activeThreadID}`;
+    let disposed = false;
+    const timer = window.setTimeout(() => {
+      if (runningThreadReconcileInFlightRef.current === key) {
+        return;
+      }
+      runningThreadReconcileInFlightRef.current = key;
+      void window.wuu
+        .listThreads()
+        .then((listed) => {
+          if (disposed) {
+            return;
+          }
+          setState((current) => {
+            if (
+              current.activeContext?.cwd !== contextCwd ||
+              activeThreadIDForState(current) !== activeThreadID
+            ) {
+              return current;
+            }
+            return reconcileListedThreadState(current, listed.threads);
+          });
+        })
+        .catch(() => {
+          // The focus/visibility heartbeat below retries transient failures.
+        })
+        .finally(() => {
+          if (runningThreadReconcileInFlightRef.current === key) {
+            runningThreadReconcileInFlightRef.current = "";
+          }
+        });
+    }, 200);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeThreadID,
+    activeThreadRunning,
+    crossWorkdirRunningThreadIDs,
+    state.activeContext?.cwd,
+  ]);
   // Draft engine for the next brand-new conversation. Empty means "follow the
   // settings default". Unlike the fallback chain, an explicit "wuu" selection
   // is stored as-is so it overrides an external default engine. Engine
@@ -1857,16 +1916,11 @@ export function App(): JSX.Element {
           if (!current.initialized) {
             return current;
           }
-          // thread/list carries live threads only; archived entries live in
-          // state and must survive the merge (Settings → Archive reads them).
-          const archived = current.threads.filter((thread) => thread.archived);
-          const merged = mergeListedThreads(current.threads, [
-            ...listed.threads,
-            ...archived,
-          ]);
-          return threadListsEquivalent(current.threads, merged)
-            ? current
-            : { ...current, threads: merged };
+          // Besides sidebar pickup, this is the durable repair path when a
+          // renderer misses turn/completed during a tab/workspace transition.
+          // Reconcile the visible panes and composer running flag as one state
+          // update instead of refreshing only the sidebar copy.
+          return reconcileListedThreadState(current, listed.threads);
         });
       } catch {
         // Transient listing failure; do not surface into app status.

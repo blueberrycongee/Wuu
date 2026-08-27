@@ -1769,19 +1769,110 @@ function mergeListedThreads(current: Thread[], listed: Thread[]): Thread[] {
 }
 
 function mergeListedThread(existing: Thread, listed: Thread): Thread {
+  const turns = mergeListedThreadTurns(existing.turns, listed.turns);
+  const listedStatusRegresses =
+    listed.status === "in_progress" &&
+    existing.status !== "in_progress" &&
+    !turns.some((turn) => turn.status === "in_progress");
   return {
     ...listed,
     title: listed.title?.trim() ? listed.title : existing.title,
     preview: listed.preview?.trim() ? listed.preview : existing.preview,
-    turns:
-      listed.turns.length > 0 || existing.turns.length === 0
-        ? listed.turns
-        : existing.turns,
+    status: listedStatusRegresses ? existing.status : listed.status,
+    turns,
     child_agents:
       listed.child_agents !== undefined
         ? listed.child_agents
         : existing.child_agents,
   };
+}
+
+function mergeListedThreadTurns(existing: Turn[], listed: Turn[]): Turn[] {
+  if (listed.length === 0) {
+    return existing.length === 0 ? listed : existing;
+  }
+
+  let merged = listed;
+  if (
+    existing.length >= listed.length &&
+    listed.every(
+      (turn, index) =>
+        turn.id === existing[index].id && turnItemsArePrefix(turn, existing[index]),
+    )
+  ) {
+    let needsMerge = existing.length > listed.length;
+    const listedTurns = listed.map((turn, index) => {
+      const local = existing[index];
+      if (local.items.length <= turn.items.length) {
+        return turn;
+      }
+      needsMerge = true;
+      return { ...turn, items: [...turn.items, ...local.items.slice(turn.items.length)] };
+    });
+    if (needsMerge) {
+      merged = [...listedTurns, ...existing.slice(listed.length)];
+    }
+  }
+
+  const existingByID = new Map(existing.map((turn) => [turn.id, turn]));
+  let result = merged;
+  merged.forEach((turn, index) => {
+    const local = existingByID.get(turn.id);
+    // Terminal state is monotonic for a turn. A thread/list request can start
+    // before turn/completed and resolve after it; that stale in-progress
+    // snapshot must not resurrect a turn the renderer already settled.
+    if (local && local.status !== "in_progress" && turn.status === "in_progress") {
+      if (result === merged) {
+        result = [...merged];
+      }
+      result[index] = local;
+    }
+  });
+  return result;
+}
+
+function reconcileListedThreadState(state: AppState, listed: Thread[]): AppState {
+  // thread/list carries live threads only; archived entries live in renderer
+  // state and must survive the merge (Settings → Archive reads them).
+  const archived = state.threads.filter((thread) => thread.archived);
+  const threads = mergeListedThreads(state.threads, [...listed, ...archived]);
+  const listedByID = new Map(threads.map((thread) => [thread.id, thread]));
+  const thread = state.thread
+    ? (listedByID.get(state.thread.id) ?? state.thread)
+    : undefined;
+  const secondaryThread = state.secondaryThread
+    ? (listedByID.get(state.secondaryThread.id) ?? state.secondaryThread)
+    : undefined;
+
+  releaseNewlySettledTurnStreams(state.thread, thread);
+  releaseNewlySettledTurnStreams(state.secondaryThread, secondaryThread);
+
+  const reconciled = { ...state, threads, thread, secondaryThread };
+  const wasRunning = state.running || isThreadRunning(activeThreadForState(state));
+  const running = isThreadRunning(activeThreadForState(reconciled));
+  return {
+    ...reconciled,
+    running,
+    status: wasRunning && !running ? "ready" : state.status,
+  };
+}
+
+function releaseNewlySettledTurnStreams(
+  previous: Thread | undefined,
+  next: Thread | undefined,
+): void {
+  if (!previous || !next) {
+    return;
+  }
+  const previousByID = new Map(previous.turns.map((turn) => [turn.id, turn]));
+  for (const turn of next.turns) {
+    if (
+      turn.status !== "in_progress" &&
+      previousByID.get(turn.id)?.status === "in_progress"
+    ) {
+      releaseSettledTurnStreams(turn);
+    }
+  }
 }
 
 export function mergeSidebarThread(existing: Thread, incoming: Thread): Thread {
@@ -3600,6 +3691,7 @@ export {
   markThreadTurnsViewed,
   mergeAgentSummary,
   mergeListedThreads,
+  reconcileListedThreadState,
   openForkThreadAsPrimary,
   parseTodoUpdateArguments,
   persistActiveSessionTabDraft,

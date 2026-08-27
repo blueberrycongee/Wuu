@@ -20,12 +20,13 @@ vi.mock("./ConversationTurnList", () => ({
     turns,
   }: {
     threadID: string;
-    turns: unknown[];
+    turns: Array<{ status?: string }>;
   }): JSX.Element => (
     <div
       data-testid="turn-list-probe"
       data-thread-id={threadID}
       data-turn-count={turns.length}
+      data-latest-turn-status={turns.at(-1)?.status}
     />
   ),
 }));
@@ -157,6 +158,23 @@ function threadA(turns = 1): Thread {
     provider: "provider-a",
     model: "model-a",
   });
+}
+
+function runningThreadA(): Thread {
+  const thread = threadA();
+  return {
+    ...thread,
+    status: "in_progress",
+    turns: thread.turns.map((turn) => ({
+      ...turn,
+      status: "in_progress",
+      items: turn.items.map((item) =>
+        item.type === "agent_message"
+          ? { ...item, status: "completed", terminal: true }
+          : item,
+      ),
+    })),
+  };
 }
 
 function threadB(): Thread {
@@ -494,5 +512,31 @@ describe("session tab switch latency", () => {
     });
 
     expect(visibleRuntimeModel()).toContain("model-a");
+  });
+
+  it("repairs a missed completion from the durable thread refresh", async () => {
+    const { threadsByID } = installWuuApi();
+    threadsByID.set(threadAID, runningThreadA());
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<App />);
+    });
+    await flushAsync();
+
+    expect(activeThreadProbe()?.dataset.latestTurnStatus).toBe("in_progress");
+    expect(container.querySelector(".composer-stop-button")).not.toBeNull();
+
+    // The app-server completed durably, but this renderer missed the terminal
+    // event during a tab/workspace transition.
+    threadsByID.set(threadAID, threadA());
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await flushAsync();
+
+    expect(activeThreadProbe()?.dataset.latestTurnStatus).toBe("completed");
+    expect(container.querySelector(".composer-stop-button")).toBeNull();
+    expect(container.querySelector(".composer-send-button")).not.toBeNull();
   });
 });

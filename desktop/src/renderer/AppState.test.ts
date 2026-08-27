@@ -41,6 +41,7 @@ import {
   latestContextUsageForThread,
   RETAINED_TURN_TELEMETRY_LIMIT,
   mergeListedThreads,
+  reconcileListedThreadState,
   mergeSidebarThread,
   markThreadTurnsViewed,
   openForkThreadAsPrimary,
@@ -2785,6 +2786,114 @@ describe("mergeListedThreads", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0].id).toBe("thread-1");
     expect(merged[0].archived).toBe(true);
+  });
+
+  it("does not regress a terminal turn when an older list response lands later", () => {
+    const completed = {
+      ...threadWithUserTexts(["work"]),
+      id: "thread-1",
+      status: "idle" as const,
+      turns: [
+        {
+          id: "turn-1",
+          items_view: "full" as const,
+          status: "completed" as const,
+          items: [],
+        },
+      ],
+    };
+    const stale = {
+      ...completed,
+      status: "in_progress" as const,
+      turns: [{ ...completed.turns[0], status: "in_progress" as const }],
+    };
+
+    const [merged] = mergeListedThreads([completed], [stale]);
+
+    expect(merged.status).toBe("idle");
+    expect(merged.turns[0].status).toBe("completed");
+  });
+});
+
+describe("reconcileListedThreadState", () => {
+  function runningThread(id: string): Thread {
+    return {
+      ...threadWithUserTexts([id]),
+      id,
+      status: "in_progress",
+      turns: [
+        {
+          id: `${id}-turn`,
+          items_view: "full",
+          status: "in_progress",
+          items: [
+            {
+              id: `${id}-answer`,
+              type: "agent_message",
+              status: "completed",
+              terminal: true,
+              text: "done",
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  function settledThread(thread: Thread): Thread {
+    return {
+      ...thread,
+      status: "idle",
+      updated_at: "2026-01-02T00:00:00Z",
+      turns: thread.turns.map((turn) => ({
+        ...turn,
+        status: "completed",
+        completed_at: "2026-01-02T00:00:00Z",
+      })),
+    };
+  }
+
+  it("repairs a visible in-progress turn when turn/completed was missed", () => {
+    const current = runningThread("thread-1");
+    const completed = settledThread(current);
+
+    const next = reconcileListedThreadState(
+      {
+        ...initialState,
+        thread: current,
+        threads: [current],
+        running: true,
+        status: "streaming",
+      },
+      [completed],
+    );
+
+    expect(next.thread).toBe(next.threads[0]);
+    expect(next.thread?.turns[0].status).toBe("completed");
+    expect(next.thread?.status).toBe("idle");
+    expect(next.running).toBe(false);
+    expect(next.status).toBe("ready");
+  });
+
+  it("reconciles both panes and derives running from the selected pane", () => {
+    const primary = runningThread("primary");
+    const secondary = runningThread("secondary");
+
+    const next = reconcileListedThreadState(
+      {
+        ...initialState,
+        thread: primary,
+        secondaryThread: secondary,
+        activePane: "secondary",
+        threads: [primary, secondary],
+        running: true,
+      },
+      [primary, settledThread(secondary)],
+    );
+
+    expect(next.thread?.turns[0].status).toBe("in_progress");
+    expect(next.secondaryThread?.turns[0].status).toBe("completed");
+    expect(next.running).toBe(false);
   });
 });
 
