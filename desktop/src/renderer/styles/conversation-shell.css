@@ -635,10 +635,14 @@
 
 .app-shell.compact-navigation .titlebar {
   column-gap: 6px;
+  /* Compact navigation also collapses the sidebar, moving this control into
+   * the window's top-left corner. Keep the macOS traffic-light exclusion
+   * zone while preserving the compact 10px gutter on other platforms. */
   padding:
     env(safe-area-inset-top, 0px)
     10px
     0;
+  padding-left: max(10px, calc(var(--window-controls-inset-left) + 10px));
 }
 
 .app-shell.compact-navigation .title-block {

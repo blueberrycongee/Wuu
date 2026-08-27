@@ -58,6 +58,9 @@ describe("window controls corner reservations", () => {
     }
     expect(sidebarCSS).toContain("max(24px, calc(var(--window-controls-inset-left) + 10px))");
     expect(settingsCSS).toContain("max(24px, calc(var(--window-controls-inset-left) + 10px))");
+    expect(shellCSS).toMatch(
+      /\.app-shell\.compact-navigation \.titlebar\s*\{[\s\S]*?padding-left:\s*max\(10px, calc\(var\(--window-controls-inset-left\) \+ 10px\)\);/,
+    );
   });
 
   it("clears the Windows overlay on the strips that touch the top-right corner", () => {

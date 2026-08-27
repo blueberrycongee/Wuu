@@ -1168,34 +1168,15 @@
 }
 
 .channel-assignment-status i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.5;
-}
-
-.channel-assignment-status[data-state="doing"] i,
-.channel-assignment-status[data-state="working"] i,
-.channel-assignment-status[data-state="checking"] i,
-.channel-assignment-status[data-state="revising"] i {
-  animation: channel-status-pulse 2s ease-in-out infinite;
+  display: none;
 }
 
 .channel-assignment-status[data-state="needs_human"] {
   color: var(--danger);
 }
 
-.channel-assignment-status[data-state="needs_human"] i {
-  opacity: 1;
-}
-
 .channel-assignment-status[data-state="done"] {
   color: var(--success);
-}
-
-.channel-assignment-status[data-state="done"] i {
-  opacity: 1;
 }
 
 @keyframes channel-status-pulse {
