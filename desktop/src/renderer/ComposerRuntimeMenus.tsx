@@ -68,7 +68,7 @@ import {
 import { translateCurrent as translate, useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 
-type ChipTone = "neutral" | "safe" | "warning" | "danger";
+type ChipTone = "neutral" | "danger";
 
 // Agent engine display names. The engine abstraction stays out of the UI:
 // to the user these are agent choices on the same level as models.
@@ -158,7 +158,7 @@ type PermissionModeOption = {
   chipLabel: string;
   icon: LucideIcon;
   chipTone: ChipTone;
-  tone: "safe" | "warning" | "danger";
+  tone: ChipTone;
 };
 
 function permissionModeLabels(engine?: string): Record<PermissionMode, { label: string; chipLabel: string }> {
@@ -200,15 +200,15 @@ function permissionModeOptions(engine?: string): PermissionModeOption[] {
       mode: "standard",
       ...labels.standard,
       icon: Shield,
-      chipTone: "warning",
-      tone: "warning"
+      chipTone: "neutral",
+      tone: "neutral"
     },
     {
       mode: "read_only",
       ...labels.read_only,
       icon: Eye,
-      chipTone: "safe",
-      tone: "safe"
+      chipTone: "neutral",
+      tone: "neutral"
     },
     {
       mode: "unconfined",

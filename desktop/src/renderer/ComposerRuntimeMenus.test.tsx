@@ -139,6 +139,24 @@ describe("RuntimePicker", () => {
     });
   });
 
+  it.each([undefined, "codex", "claude"])(
+    "reserves the danger tone for unconfined access regardless of engine (%s)",
+    (engine) => {
+      expect(permissionModeOption("standard", engine)).toMatchObject({
+        chipTone: "neutral",
+        tone: "neutral",
+      });
+      expect(permissionModeOption("read_only", engine)).toMatchObject({
+        chipTone: "neutral",
+        tone: "neutral",
+      });
+      expect(permissionModeOption("unconfined", engine)).toMatchObject({
+        chipTone: "danger",
+        tone: "danger",
+      });
+    },
+  );
+
   it("hides the effort slider when the model does not expose reasoning levels", () => {
     const initialized = runtimeWithEffort();
     initialized.variant = "";
