@@ -1010,61 +1010,35 @@
 .channel-assignment-bubble {
   width: 100%;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) auto;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--wuu-accent) 18%, var(--border-subtle));
   border-radius: 12px;
-  background: color-mix(in srgb, var(--wuu-accent) 3%, var(--surface-1));
-  box-shadow: 0 1px 3px var(--shadow-color-subtle);
-  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+  background: var(--surface-1);
+  transition: background 150ms ease;
 }
 
 .channel-assignment-bubble:hover {
-  border-color: color-mix(in srgb, var(--wuu-accent) 28%, var(--border-subtle));
-  box-shadow: 0 2px 8px var(--shadow-color-subtle);
-  background: color-mix(in srgb, var(--wuu-accent) 5%, var(--surface-1));
-}
-
-.channel-assignment-item[data-state="doing"] .channel-assignment-bubble,
-.channel-assignment-item[data-state="working"] .channel-assignment-bubble {
-  border-color: color-mix(in srgb, var(--warning) 30%, var(--border-subtle));
-  background: color-mix(in srgb, var(--warning) 4%, var(--surface-1));
-}
-
-.channel-assignment-item[data-state="checking"] .channel-assignment-bubble,
-.channel-assignment-item[data-state="revising"] .channel-assignment-bubble {
-  border-color: color-mix(in srgb, var(--info) 30%, var(--border-subtle));
-  background: color-mix(in srgb, var(--info) 4%, var(--surface-1));
-}
-
-.channel-assignment-item[data-state="needs_human"] .channel-assignment-bubble {
-  border-color: color-mix(in srgb, var(--danger) 30%, var(--border-subtle));
-  background: color-mix(in srgb, var(--danger) 4%, var(--surface-1));
+  background: var(--surface-2);
 }
 
 .channel-assignment-item[data-state="done"] .channel-assignment-bubble,
 .channel-assignment-item[data-state="completed"] .channel-assignment-bubble {
-  border-color: color-mix(in srgb, var(--success) 28%, var(--border-subtle));
-  background: color-mix(in srgb, var(--success) 5%, var(--surface-1));
-  opacity: 0.85;
+  opacity: 0.6;
 }
 
 .channel-assignment-item[data-state="failed"] .channel-assignment-bubble,
 .channel-assignment-item[data-state="cancelled"] .channel-assignment-bubble,
 .channel-assignment-item[data-state="interrupted"] .channel-assignment-bubble {
-  border-color: color-mix(in srgb, var(--danger) 28%, var(--border-subtle));
-  background: color-mix(in srgb, var(--danger) 3%, var(--surface-1));
-  opacity: 0.75;
+  opacity: 0.5;
 }
 
 .channel-assignment-target {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   overflow: hidden;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--surface-1);
 }
 
 .channel-assignment-target > * {
@@ -1079,21 +1053,14 @@
 }
 
 .channel-assignment-owner {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-tertiary);
-  font-size: 10.5px;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: 0.01em;
+  display: none;
 }
 
 .channel-assignment-copy > strong {
   overflow: hidden;
-  font-size: 13.5px;
-  font-weight: 620;
-  line-height: 1.35;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
   text-overflow: ellipsis;
   color: var(--text-primary);
 }
@@ -1110,14 +1077,7 @@
 }
 
 .channel-work-card-details {
-  display: grid;
-  gap: 8px;
-  margin: 8px 10px 0 calc(28px + 14px);
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--ink-overlay-3);
-  color: var(--text-tertiary);
-  font-size: 11px;
+  display: none;
 }
 
 .channel-work-summary-line {
@@ -1210,65 +1170,42 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--ink-overlay-6);
-  color: var(--text-secondary);
-  font-size: 10.5px;
-  font-weight: 620;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
   white-space: nowrap;
-  transition: background 180ms ease, color 180ms ease;
 }
 
 .channel-assignment-status i {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--wuu-accent);
-  transition: background 180ms ease, box-shadow 180ms ease;
-}
-
-.channel-assignment-status[data-state="doing"] {
-  background: color-mix(in srgb, var(--warning) 12%, transparent);
-  color: color-mix(in srgb, var(--warning) 85%, var(--ink));
+  background: currentColor;
+  opacity: 0.5;
 }
 
 .channel-assignment-status[data-state="doing"] i,
+.channel-assignment-status[data-state="working"] i,
 .channel-assignment-status[data-state="checking"] i,
-.channel-assignment-status[data-state="revising"] i,
-.channel-assignment-status[data-state="needs_human"] i {
-  background: var(--warning);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 14%, transparent);
+.channel-assignment-status[data-state="revising"] i {
   animation: channel-status-pulse 2s ease-in-out infinite;
 }
 
-.channel-assignment-status[data-state="checking"] {
-  background: color-mix(in srgb, var(--info) 12%, transparent);
-  color: color-mix(in srgb, var(--info) 85%, var(--ink));
-}
-
-.channel-assignment-status[data-state="checking"] i {
-  background: var(--info);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 14%, transparent);
-}
-
 .channel-assignment-status[data-state="needs_human"] {
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  color: color-mix(in srgb, var(--danger) 85%, var(--ink));
+  color: var(--danger);
 }
 
 .channel-assignment-status[data-state="needs_human"] i {
-  background: var(--danger);
+  opacity: 1;
 }
 
 .channel-assignment-status[data-state="done"] {
-  background: color-mix(in srgb, var(--success) 12%, transparent);
   color: var(--success);
 }
 
 .channel-assignment-status[data-state="done"] i {
-  background: var(--success);
+  opacity: 1;
 }
 
 @keyframes channel-status-pulse {
@@ -1279,16 +1216,13 @@
 .channel-orchestration-summary {
   width: min(100%, 540px);
   padding: 0;
-  border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  background: var(--ink-overlay-3);
-  box-shadow: 0 1px 3px var(--shadow-color-subtle);
-  transition: box-shadow 180ms ease, border-color 180ms ease;
+  background: var(--surface-1);
+  transition: background 150ms ease;
 }
 
 .channel-orchestration-summary:hover {
-  border-color: var(--border-default);
-  box-shadow: 0 2px 6px var(--shadow-color-subtle);
+  background: var(--surface-2);
 }
 
 .channel-orchestration-summary > button {
@@ -1297,22 +1231,21 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 13px;
+  padding: 12px 14px;
   border: 0;
   border-radius: inherit;
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: background 180ms ease, color 180ms ease;
+  transition: color 150ms ease;
 }
 
 .channel-orchestration-summary > button:hover,
 .channel-orchestration-summary > button:focus-visible {
-  background: var(--ink-overlay-5);
   color: var(--text-primary);
 }
 
