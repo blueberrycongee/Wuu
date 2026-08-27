@@ -609,8 +609,6 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
   const previousSectionRef = useRef(section);
   agentDetailDraftRef.current = { name: agentName, role: agentRole, avatarKey: agentAvatarKey, avatarImage: agentAvatarImage, engine: agentEngine, model: agentModel, effort: agentEffort };
   selectedAgentIDRef.current = selectedAgentID;
-  const conversationRef = useRef<HTMLDivElement | null>(null);
-  const composerFooterRef = useRef<HTMLDivElement | null>(null);
   const roomComposerRef = useRef<ChannelComposerHandle | null>(null);
   const agentAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const agentDetailAvatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -628,10 +626,6 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     open: section === "rooms" && Boolean(selectedRoomID),
     observeKey: selectedRoomID,
   });
-  const setComposerFooter = useCallback((node: HTMLDivElement | null): void => {
-    composerFooterRef.current = node;
-    setComposerFooterNode(node);
-  }, []);
 
   const updateSplitWidth = useCallback((width: number): void => {
     const nextWidth = clampChannelSplitWidth(width);
@@ -1085,28 +1079,6 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     messageScroll.scrollToBottom();
   }, [messageScroll, messages.length, messages.at(-1)?.id]);
 
-  useLayoutEffect(() => {
-    const conversation = conversationRef.current;
-    const footer = composerFooterRef.current;
-    if (!conversation || !footer) return undefined;
-
-    const updateComposerHeight = (): void => {
-      const height = Math.ceil(footer.getBoundingClientRect().height);
-      if (height > 0) {
-        conversation.style.setProperty("--channel-composer-height", `${height}px`);
-      } else {
-        conversation.style.removeProperty("--channel-composer-height");
-      }
-      messageScroll.scheduleScrollToBottom();
-    };
-
-    updateComposerHeight();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(updateComposerHeight);
-    observer.observe(footer);
-    return () => observer.disconnect();
-  }, [messageScroll]);
-
   async function submitAgent(): Promise<void> {
     if (!window.wuu || !agentName.trim()) return;
     try {
@@ -1518,7 +1490,6 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
       style={section === "agents" ? { gridTemplateColumns: `${listCollapsed ? CHANNEL_SPLIT_COLLAPSED_WIDTH : splitWidth}px minmax(0, 1fr)` } : undefined}
     >
       {section === "rooms" ? <div
-        ref={conversationRef}
         className="channel-conversation"
       >
         <div className="channel-room-main">
@@ -1723,7 +1694,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
           threshold={AUTO_FOLLOW_BOTTOM_THRESHOLD_PX}
         />
         {selectedRoom ? (
-          <div ref={setComposerFooter} className="channel-conversation-footer">
+          <div ref={setComposerFooterNode} className="channel-conversation-footer">
             <ChannelComposer
               ref={roomComposerRef}
               draft={body}

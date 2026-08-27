@@ -488,7 +488,9 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* Keep the composer in normal flow so its current rendered height and the
+     message viewport are resolved in the same layout pass during resizing. */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .channel-conversation-heading {
@@ -554,13 +556,7 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
-  padding: 28px max(30px, var(--channel-horizontal-gutter))
-    calc(
-      var(
-          --channel-composer-height,
-          calc(var(--conversation-composer-min-height, 112px) + 30px)
-        ) + 8px
-    );
+  padding: 28px max(30px, var(--channel-horizontal-gutter)) 8px;
 }
 
 .channel-system-message {
@@ -1342,7 +1338,7 @@
   min-height: 100%;
   max-width: 420px;
   margin: 0 auto;
-  padding: 48px 24px calc(var(--channel-composer-height, 120px) + 36px);
+  padding: 48px 24px 36px;
   align-items: center;
   justify-content: center;
   flex-direction: column;
@@ -1386,13 +1382,8 @@
 }
 
 .channel-conversation-footer {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 5;
+  grid-row: 4;
   min-width: 0;
-  pointer-events: none;
 }
 
 .channel-composer {
