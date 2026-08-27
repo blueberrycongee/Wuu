@@ -643,6 +643,31 @@ func (s *Server) runChannelMaintenance(ctx context.Context) {
 	if err := s.reconcileChannelWorkRuns(ctx); err != nil {
 		log.Printf("wuu: channel work recovery: %v", err)
 	}
+	// A wake can remain outstanding if delivery failed after the database
+	// transaction committed. Retry outstanding wakes during maintenance so a
+	// transient runtime error cannot leave an agent permanently stuck at
+	// "assigned".
+	agents, err := s.channelService.ListAgentRuntimes(ctx)
+	if err != nil {
+		log.Printf("wuu: channel wake recovery: %v", err)
+		return
+	}
+	for _, agent := range agents {
+		state, err := s.channelService.WakeState(ctx, agent.ID)
+		if err != nil {
+			log.Printf("wuu: channel wake state %q: %v", agent.ID, err)
+			continue
+		}
+		if !state.Outstanding {
+			continue
+		}
+		if th := s.thread(agentRuntimeSessionID(agent)); th != nil && threadIsRunning(th) {
+			continue
+		}
+		if err := s.deliverNamedAgentWake(ctx, agent.ID); err != nil {
+			log.Printf("wuu: channel wake recovery %q: %v", agent.ID, err)
+		}
+	}
 }
 
 func (s *Server) stopChannelMaintenance() {
