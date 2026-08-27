@@ -58,7 +58,7 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
   onPasteAttachmentFiles: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
   onRemoveImage: (id: string) => void;
-  onSend: () => void;
+  onSend: (promptOverride?: string) => void;
 }>(function ChannelComposer({
   draft,
   placeholder,

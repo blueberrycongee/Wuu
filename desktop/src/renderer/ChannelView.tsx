@@ -1137,8 +1137,8 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     }
   }
 
-  async function sendMessage(): Promise<void> {
-    const messageBody = body.trim();
+  async function sendMessage(promptOverride?: string): Promise<void> {
+    const messageBody = (promptOverride ?? body).trim();
     if (!window.wuu || !selectedRoomID || (!messageBody && composerImages.length === 0 && composerFiles.length === 0) || sending) return;
     setSending(true);
     try {
@@ -1709,7 +1709,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
               onPasteAttachmentFiles={(files) => void attachMessageFiles(files)}
               onRemoveFile={(id) => setComposerFiles((current) => current.filter((file) => file.id !== id))}
               onRemoveImage={(id) => setComposerImages((current) => current.filter((image) => image.id !== id))}
-              onSend={() => void sendMessage()}
+              onSend={(promptOverride) => void sendMessage(promptOverride)}
             />
           </div>
         ) : null}

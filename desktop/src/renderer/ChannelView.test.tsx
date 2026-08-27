@@ -789,6 +789,33 @@ describe("ChannelView", () => {
     });
   });
 
+  it("sends the textarea value before the deferred room draft catches up", async () => {
+    const api = createApi();
+    Object.defineProperty(window, "wuu", { configurable: true, value: api });
+    root = createRoot(container);
+    act(() => root?.render(<ChannelView selectedRoomID="room-1" />));
+    await settle();
+
+    const textarea = container.querySelector<HTMLTextAreaElement>(".channel-composer textarea");
+    expect(textarea).not.toBeNull();
+    act(() => {
+      setInputValue(textarea!, "send immediately");
+      textarea?.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+    await settle();
+
+    expect(api.sendChannelMessage).toHaveBeenCalledWith({
+      room_id: "room-1",
+      body: "send immediately",
+      images: [],
+      files: [],
+    });
+  });
+
   it("hydrates the next room draft without publishing the previous room draft", async () => {
     const api = createApi();
     const onComposerDraftChange = vi.fn();
