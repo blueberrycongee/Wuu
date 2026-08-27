@@ -91,6 +91,120 @@ func TestHeldDraftResolvePaths(t *testing.T) {
 	})
 }
 
+func TestWorkSessionDraftsAreIsolatedAndRevalidated(t *testing.T) {
+	ctx := context.Background()
+	type fixture struct {
+		service       *Service
+		runtime       *AgentClient
+		ownerClient   *AgentClient
+		sessionClient *AgentClient
+		task          Message
+		latestSeq     int64
+		draft         Draft
+	}
+	setup := func(t *testing.T) fixture {
+		t.Helper()
+		service := openTestService(t, nil)
+		owner := createTestAgent(t, service, "Owner")
+		room := createTestRoom(t, service, owner)
+		runtime, err := service.BindRuntime(ctx, room.RuntimeID)
+		if err != nil {
+			t.Fatalf("BindRuntime() error = %v", err)
+		}
+		ownerClient, err := service.BindAgent(ctx, owner.Agent.ID)
+		if err != nil {
+			t.Fatalf("BindAgent(owner) error = %v", err)
+		}
+		task, err := runtime.CreateTask(ctx, TaskCreateParams{
+			RoomID: room.ID, Title: "Hold scoped output", OwnerID: owner.Agent.ID,
+		})
+		if err != nil {
+			t.Fatalf("CreateTask() error = %v", err)
+		}
+		sessionClient := bindTestWorkSession(t, service, ownerClient, room.ID, task.ID, "held-work-session")
+		if _, err := sessionClient.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunProducer}); err != nil {
+			t.Fatalf("StartWorkRun() error = %v", err)
+		}
+		contextMessage, err := service.SendHuman(ctx, HumanSendParams{
+			RoomID: room.ID, HumanID: "human-1", Body: "New context before the result",
+		})
+		if err != nil {
+			t.Fatalf("SendHuman() error = %v", err)
+		}
+		held, err := sessionClient.Send(ctx, AgentSendParams{
+			RoomID: room.ID, Body: "Result from the current Work session", BasisSeq: task.Seq,
+		})
+		if err != nil || held.Status != SendHeld || held.Draft == nil {
+			t.Fatalf("Send(held Work draft) = %#v, err = %v", held, err)
+		}
+		if held.Draft.SessionRef != sessionClient.SessionRef() {
+			t.Fatalf("held draft session = %q, want %q", held.Draft.SessionRef, sessionClient.SessionRef())
+		}
+		if drafts, err := ownerClient.ListDrafts(ctx); err != nil || len(drafts) != 0 {
+			t.Fatalf("ListDrafts(unbound) = %#v, err = %v", drafts, err)
+		}
+		if _, err := ownerClient.BindCollaborationSession(ctx, CollaborationSessionBindParams{
+			SessionRef: "other-draft-session", RoomID: room.ID, Purpose: CollaborationSessionCoordination,
+		}); err != nil {
+			t.Fatalf("BindCollaborationSession(other) error = %v", err)
+		}
+		otherSession, err := service.BindAgentSession(ctx, owner.Agent.ID, "other-draft-session")
+		if err != nil {
+			t.Fatalf("BindAgentSession(other) error = %v", err)
+		}
+		if drafts, err := otherSession.ListDrafts(ctx); err != nil || len(drafts) != 0 {
+			t.Fatalf("ListDrafts(other session) = %#v, err = %v", drafts, err)
+		}
+		if drafts, err := sessionClient.ListDrafts(ctx); err != nil || len(drafts) != 1 || drafts[0].ID != held.Draft.ID {
+			t.Fatalf("ListDrafts(owner session) = %#v, err = %v", drafts, err)
+		}
+		basis := contextMessage.Message.Seq
+		if _, err := otherSession.ResolveDraft(ctx, ResolveDraftParams{
+			DraftID: held.Draft.ID, Resolution: DraftAsIs, BasisSeq: &basis,
+		}); !errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("ResolveDraft(other session) error = %v, want unauthorized", err)
+		}
+		return fixture{
+			service: service, runtime: runtime, ownerClient: ownerClient, sessionClient: sessionClient,
+			task: task, latestSeq: contextMessage.Message.Seq, draft: *held.Draft,
+		}
+	}
+
+	t.Run("goal revision rejects as-is", func(t *testing.T) {
+		fixture := setup(t)
+		if _, err := fixture.runtime.UpdateTask(ctx, TaskUpdateParams{
+			TaskID: fixture.task.ID, GoalCorrection: "Use the revised goal",
+		}); err != nil {
+			t.Fatalf("UpdateTask(goal correction) error = %v", err)
+		}
+		basis := fixture.latestSeq
+		if _, err := fixture.sessionClient.ResolveDraft(ctx, ResolveDraftParams{
+			DraftID: fixture.draft.ID, Resolution: DraftAsIs, BasisSeq: &basis,
+		}); !errors.Is(err, ErrConflict) {
+			t.Fatalf("ResolveDraft(stale goal) error = %v, want conflict", err)
+		}
+	})
+
+	t.Run("cancellation rejects anyway", func(t *testing.T) {
+		fixture := setup(t)
+		staleBasis := fixture.task.Seq
+		reheld, err := fixture.sessionClient.ResolveDraft(ctx, ResolveDraftParams{
+			DraftID: fixture.draft.ID, Resolution: DraftAsIs, BasisSeq: &staleBasis,
+		})
+		if err != nil || reheld.Status != SendHeld || reheld.Draft.HoldCount != 2 {
+			t.Fatalf("ResolveDraft(rehold) = %#v, err = %v", reheld, err)
+		}
+		if _, err := fixture.ownerClient.CancelWork(ctx, fixture.task.ID, "Stop before publishing"); err != nil {
+			t.Fatalf("CancelWork() error = %v", err)
+		}
+		if _, err := fixture.sessionClient.ResolveDraft(ctx, ResolveDraftParams{
+			DraftID: fixture.draft.ID, Resolution: DraftAnyway,
+		}); !errors.Is(err, ErrConflict) {
+			t.Fatalf("ResolveDraft(cancelled Work) error = %v, want conflict", err)
+		}
+	})
+}
+
 func TestRevisedSendDropsHeldDraft(t *testing.T) {
 	ctx := context.Background()
 	service := openTestService(t, nil)

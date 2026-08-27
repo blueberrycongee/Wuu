@@ -33,22 +33,96 @@ func (s *Server) Deliver(agentID string) {
 }
 
 func (s *Server) Interrupt(agentID string) {
+	s.interruptAgentSessions(agentID, "", true)
+}
+
+func (s *Server) InterruptSession(agentID, sessionRef string) {
+	s.interruptAgentSessions(agentID, sessionRef, false)
+}
+
+func (s *Server) InterruptRunSession(sessionRef string) {
+	if s == nil || s.closed.Load() {
+		return
+	}
+	sessionRef = strings.TrimSpace(sessionRef)
+	if sessionRef == "" {
+		return
+	}
+	if th := s.thread(sessionRef); th != nil {
+		th.mu.Lock()
+		namedAgentID := strings.TrimSpace(th.NamedAgentID)
+		th.mu.Unlock()
+		if namedAgentID != "" {
+			providers.DebugLogf("refuse to interrupt named session %q through hidden work run", sessionRef)
+			return
+		}
+		if _, err := s.interruptThreadExecution(sessionRef, "", ""); err != nil {
+			providers.DebugLogf("interrupt hidden work session %q: %v", sessionRef, err)
+		}
+	} else if s.rt != nil {
+		stored, found, err := session.Find(s.rt.SessionDir, sessionRef)
+		if err != nil {
+			providers.DebugLogf("inspect hidden work session %q: %v", sessionRef, err)
+			return
+		}
+		if found && strings.HasPrefix(stored.Source, namedAgentSessionSource) {
+			providers.DebugLogf("refuse to reset named session %q through hidden work run", sessionRef)
+			return
+		}
+		_, _ = session.RequestThreadExecutionReset(s.rt.SessionDir, sessionRef)
+	}
+}
+
+func (s *Server) interruptAgentSessions(agentID, sessionRef string, all bool) {
 	if s == nil || s.closed.Load() || strings.TrimSpace(agentID) == "" {
 		return
 	}
-	s.startBackground(func() {
-		if s.channelService == nil {
+	sessionRef = strings.TrimSpace(sessionRef)
+	if !all && sessionRef == "" {
+		return
+	}
+	if s.channelService == nil {
+		return
+	}
+	agent, err := s.channelService.GetAgentRuntime(context.Background(), agentID)
+	if err != nil {
+		providers.DebugLogf("interrupt agent runtime %q: %v", agentID, err)
+		return
+	}
+	refs, bindings, listErr := s.namedAgentSessionRefs(context.Background(), agent)
+	if listErr != nil {
+		providers.DebugLogf("list agent runtime sessions %q: %v", agentID, listErr)
+		return
+	}
+	if !all {
+		owned := false
+		for _, ref := range refs {
+			if ref == sessionRef {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			providers.DebugLogf("refuse to interrupt session %q through agent %q: session is not owned by agent", sessionRef, agentID)
 			return
 		}
-		agent, err := s.channelService.GetAgentRuntime(context.Background(), agentID)
-		if err != nil {
-			providers.DebugLogf("interrupt agent runtime %q: %v", agentID, err)
-			return
+		refs = []string{sessionRef}
+	}
+	client, _ := s.channelService.BindAgent(context.Background(), agentID)
+	for _, ref := range refs {
+		if th := s.thread(ref); th != nil {
+			if _, err := s.interruptThreadExecution(ref, "", ""); err != nil {
+				providers.DebugLogf("interrupt agent runtime session %q: %v", ref, err)
+			}
+		} else if s.rt != nil {
+			_, _ = session.RequestThreadExecutionReset(s.rt.SessionDir, ref)
 		}
-		if _, err := s.interruptThreadExecution(agentRuntimeSessionID(agent), "", ""); err != nil {
-			providers.DebugLogf("interrupt agent runtime thread %q: %v", agentID, err)
+		if binding, ok := bindings[ref]; ok && client != nil && binding.State == channels.CollaborationSessionRunning {
+			_, _ = client.UpdateCollaborationSessionState(context.Background(), channels.CollaborationSessionStateParams{
+				SessionRef: ref, State: channels.CollaborationSessionInterrupted,
+			})
 		}
-	})
+	}
 }
 
 func (s *Server) deliverNamedAgentWake(ctx context.Context, agentID string) error {
@@ -63,6 +137,9 @@ func (s *Server) deliverNamedAgentWake(ctx context.Context, agentID string) erro
 	agent, err := s.channelService.GetAgentRuntime(ctx, agentID)
 	if err != nil {
 		return err
+	}
+	if !agent.IsRoomRuntime() {
+		return s.dispatchNamedAgentWakeLocked(ctx, agent, false)
 	}
 	threadID := agentRuntimeSessionID(agent)
 	th := s.thread(threadID)
@@ -94,10 +171,22 @@ func (s *Server) ensureNamedAgentThreadLocked(agent channels.NamedAgent) (*threa
 }
 
 func (s *Server) ensureAgentRuntimeThreadLocked(agent channels.AgentRuntime) (*threadState, error) {
+	return s.ensureAgentRuntimeThreadWithSessionLocked(agent, agentRuntimeSessionID(agent), "")
+}
+
+func (s *Server) ensureAgentRuntimeSessionThreadLocked(agent channels.AgentRuntime, threadID string) (*threadState, error) {
+	return s.ensureAgentRuntimeThreadWithSessionLocked(agent, threadID, threadID)
+}
+
+func (s *Server) ensureAgentRuntimeThreadWithSessionLocked(agent channels.AgentRuntime, threadID, collaborationSessionRef string) (*threadState, error) {
 	if s.rt == nil {
 		return nil, errors.New("runtime session is unavailable")
 	}
-	threadID := agentRuntimeSessionID(agent)
+	threadID = strings.TrimSpace(threadID)
+	collaborationSessionRef = strings.TrimSpace(collaborationSessionRef)
+	if threadID == "" {
+		return nil, errors.New("agent runtime session is required")
+	}
 	if th := s.thread(threadID); th != nil {
 		th.mu.Lock()
 		defer th.mu.Unlock()
@@ -107,12 +196,15 @@ func (s *Server) ensureAgentRuntimeThreadLocked(agent channels.AgentRuntime) (*t
 		if th.Source != "" && th.Source != namedAgentSessionSource+agent.ID {
 			return nil, fmt.Errorf("session %q is not owned by named agent %q", threadID, agent.ID)
 		}
+		sessionBindingChanged := th.CollaborationSessionRef != collaborationSessionRef
 		needsNamedAgentRuntime := th.execRuntime == nil ||
 			th.NamedAgentID != agent.ID ||
+			sessionBindingChanged ||
 			th.execRuntime.StreamRunner == nil ||
 			th.execRuntime.Toolkit == nil ||
 			!th.execRuntime.Toolkit.SupportsTool("chat_check")
 		th.NamedAgentID = agent.ID
+		th.CollaborationSessionRef = collaborationSessionRef
 		th.Source = namedAgentSessionSource + agent.ID
 		th.CWD = filepath.Dir(agent.MemoryDir)
 		th.EngineID = string(agentengine.NormalizeEngineID(agent.EngineOverride))
@@ -121,7 +213,7 @@ func (s *Server) ensureAgentRuntimeThreadLocked(agent channels.AgentRuntime) (*t
 			selection.Provider, selection.Model, selection.Effort = agentRuntimeModelSelection(
 				selection.Provider, selection.Model, selection.Effort, agent,
 			)
-			threadRuntime, err := s.newAgentExecutionRuntime(threadID, agent, runtime.ThreadModelSelection{
+			threadRuntime, err := s.newAgentExecutionRuntimeForSession(threadID, collaborationSessionRef, agent, runtime.ThreadModelSelection{
 				Provider: selection.Provider, Model: selection.Model, Variant: selection.Variant,
 				Effort: selection.Effort, PermissionMode: selection.PermissionMode,
 			})
@@ -149,7 +241,7 @@ func (s *Server) ensureAgentRuntimeThreadLocked(agent channels.AgentRuntime) (*t
 	selection.Provider, selection.Model, selection.Effort = agentRuntimeModelSelection(
 		selection.Provider, selection.Model, selection.Effort, agent,
 	)
-	threadRuntime, err := s.newAgentExecutionRuntime(threadID, agent, runtime.ThreadModelSelection{
+	threadRuntime, err := s.newAgentExecutionRuntimeForSession(threadID, collaborationSessionRef, agent, runtime.ThreadModelSelection{
 		Provider: selection.Provider, Model: selection.Model, Variant: selection.Variant,
 		Effort: selection.Effort, PermissionMode: selection.PermissionMode,
 	})
@@ -212,6 +304,7 @@ func (s *Server) ensureAgentRuntimeThreadLocked(agent channels.AgentRuntime) (*t
 		applyThreadRuntimeSelection(th, selection)
 	}
 	th.NamedAgentID = agent.ID
+	th.CollaborationSessionRef = collaborationSessionRef
 	if len(th.History) > 0 && strings.EqualFold(strings.TrimSpace(th.History[0].Role), "system") {
 		th.History[0].Content = threadRuntime.StreamRunner.SystemPrompt
 	}
@@ -261,6 +354,10 @@ func (s *Server) newNamedAgentRuntime(threadID string, agent channels.NamedAgent
 }
 
 func (s *Server) newAgentExecutionRuntime(threadID string, agent channels.AgentRuntime, selection runtime.ThreadModelSelection) (*runtime.ThreadRuntime, error) {
+	return s.newAgentExecutionRuntimeForSession(threadID, "", agent, selection)
+}
+
+func (s *Server) newAgentExecutionRuntimeForSession(threadID, collaborationSessionRef string, agent channels.AgentRuntime, selection runtime.ThreadModelSelection) (*runtime.ThreadRuntime, error) {
 	agentHome := filepath.Dir(agent.MemoryDir)
 	threadRuntime, err := s.rt.NewNamedAgentThreadRuntime(
 		threadID, agentHome, agent.MemoryDir, agentRuntimeOrientation(agent), selection,
@@ -271,6 +368,8 @@ func (s *Server) newAgentExecutionRuntime(threadID string, agent channels.AgentR
 	var chatAgent *channels.AgentClient
 	if agent.IsRoomRuntime() {
 		chatAgent, err = s.channelService.BindRuntime(context.Background(), agent.ID)
+	} else if collaborationSessionRef = strings.TrimSpace(collaborationSessionRef); collaborationSessionRef != "" {
+		chatAgent, err = s.channelService.BindAgentSession(context.Background(), agent.ID, collaborationSessionRef)
 	} else {
 		chatAgent, err = s.channelService.BindAgent(context.Background(), agent.ID)
 	}
@@ -309,13 +408,21 @@ func (s *Server) startAgentRuntimeWakeLocked(agent channels.AgentRuntime, th *th
 		return err
 	}
 	roomIDs = appendDistinctStrings(roomIDs, collaborationRoomIDs...)
+	return s.startAgentRuntimeSessionWakeLocked(agent, th, roomIDs, "", "")
+}
+
+func (s *Server) startAgentRuntimeSessionWakeLocked(agent channels.AgentRuntime, th *threadState, roomIDs []string, workID, runID string) error {
 	permissions, err := s.resolveThreadTurnPermissions(th, nil)
 	if err != nil {
 		return err
 	}
+	clientID := namedAgentWakeTurnID(agent.ID, th.ID)
+	if strings.TrimSpace(runID) != "" {
+		clientID = namedAgentWorkWakeTurnID(runID)
+	}
 	message := providers.ChatMessage{
 		Role: "user", Content: namedAgentWakePrompt,
-		ClientID: namedAgentWakeTurnID(agent.ID), Hidden: true, Phase: "channel_wake",
+		ClientID: clientID, Hidden: true, Phase: "channel_wake",
 	}
 	var threadRuntime *runtime.ThreadRuntime
 	started, ok, err := s.startThreadUserTurnWithAdmission(
@@ -334,10 +441,21 @@ func (s *Server) startAgentRuntimeWakeLocked(agent channels.AgentRuntime, th *th
 		}
 		return s.holdNamedAgentWake(th.ID, agent.ID)
 	}
+	if strings.TrimSpace(runID) != "" {
+		client, bindErr := s.channelService.BindAgentSession(context.Background(), agent.ID, th.ID)
+		if bindErr == nil {
+			_, bindErr = client.AttachWorkRunTurn(context.Background(), channels.WorkRunTurnParams{
+				WorkID: workID, RunID: runID, TurnID: started.turnID,
+			})
+		}
+		if bindErr != nil {
+			return errors.Join(bindErr, s.abortStartedThreadTurnDurably(th, started, bindErr))
+		}
+	}
 	setNamedAgentActivityRoomIDs(th, roomIDs)
 	launch, accepted := s.reserveBackground(func() {
 		s.runTurn(started.ctx, th, threadRuntime, started.turnID, started.runtime, started.history)
-		s.completeNamedAgentTurn(agent.ID)
+		s.completeNamedAgentSessionTurn(agent.ID, th.ID, workID, runID, started.turnID)
 	})
 	if !accepted {
 		return errors.Join(errServerClosed, s.abortStartedThreadTurnDurably(th, started, errServerClosed))
@@ -401,39 +519,64 @@ func namedAgentActivityRoomIDs(th *threadState) []string {
 	return append([]string(nil), th.namedAgentRoomIDs...)
 }
 
-func (s *Server) completeNamedAgentTurn(agentID string) {
+func (s *Server) completeNamedAgentSessionTurn(agentID, sessionRef, workID, runID, turnID string) {
 	s.namedAgentMu.Lock()
 	defer s.namedAgentMu.Unlock()
 	if s.closed.Load() || s.channelService == nil {
 		return
 	}
+	if workID != "" && runID != "" {
+		s.finishNamedAgentWorkRun(context.Background(), agentID, sessionRef, workID, runID, turnID)
+	} else if th := s.thread(sessionRef); th != nil {
+		th.mu.Lock()
+		boundSessionRef := th.CollaborationSessionRef
+		nextState := channels.CollaborationSessionIdle
+		for _, turn := range th.Turns {
+			if turn.ID == turnID && turn.Status == TurnStatusInterrupted {
+				nextState = channels.CollaborationSessionInterrupted
+				break
+			}
+		}
+		th.mu.Unlock()
+		if boundSessionRef != "" {
+			client, bindErr := s.channelService.BindAgentSession(context.Background(), agentID, boundSessionRef)
+			if bindErr == nil {
+				_, bindErr = client.UpdateCollaborationSessionState(context.Background(), channels.CollaborationSessionStateParams{
+					SessionRef: boundSessionRef, State: nextState,
+				})
+			}
+			if bindErr != nil {
+				providers.DebugLogf("settle named agent session %q: %v", boundSessionRef, bindErr)
+			}
+		}
+	}
+	_, _, _, _ = s.removeHeldUserTurn(sessionRef, namedAgentWakeID(agentID, sessionRef))
 	followup, err := s.channelService.FinishWakeAttempt(context.Background(), agentID)
 	if err != nil {
 		providers.DebugLogf("finish named agent wake %q: %v", agentID, err)
-		return
 	}
-	threadID := ""
 	if agent, getErr := s.channelService.GetAgentRuntime(context.Background(), agentID); getErr == nil {
-		threadID = agentRuntimeSessionID(agent)
-		_, _, _, _ = s.removeHeldUserTurn(threadID, namedAgentWakeID(agentID))
-		if followup {
-			th, ensureErr := s.ensureAgentRuntimeThreadLocked(agent)
-			if ensureErr == nil {
-				ensureErr = s.startAgentRuntimeWakeLocked(agent, th)
+		var dispatchErr error
+		if agent.IsRoomRuntime() && followup {
+			state, stateErr := s.channelService.WakeState(context.Background(), agentID)
+			if stateErr == nil && state.Outstanding {
+				th, ensureErr := s.ensureAgentRuntimeThreadLocked(agent)
+				if ensureErr == nil {
+					ensureErr = s.startAgentRuntimeWakeLocked(agent, th)
+				}
+				dispatchErr = ensureErr
 			}
-			if ensureErr != nil {
-				providers.DebugLogf("inject pending named agent wake %q: %v", agentID, ensureErr)
-			}
+		} else if !agent.IsRoomRuntime() && followup {
+			dispatchErr = s.dispatchNamedAgentWakeLocked(context.Background(), agent, false)
 		}
-		return
-	}
-	if threadID != "" {
-		_, _, _, _ = s.removeHeldUserTurn(threadID, namedAgentWakeID(agentID))
+		if dispatchErr != nil {
+			providers.DebugLogf("inject pending named agent wake %q: %v", agentID, dispatchErr)
+		}
 	}
 }
 
 func (s *Server) holdNamedAgentWake(threadID, agentID string) error {
-	id := namedAgentWakeID(agentID)
+	id := namedAgentWakeID(agentID, threadID)
 	if _, found, err := s.findHeldUserTurn(threadID, id); err != nil {
 		return err
 	} else if found {
@@ -462,6 +605,14 @@ func (s *Server) restoreNamedAgentWakes() {
 		return
 	}
 	for _, agent := range agents {
+		if !agent.IsRoomRuntime() {
+			s.namedAgentMu.Lock()
+			resumeErr := s.resumeNamedAgentBoundSessionsLocked(context.Background(), agent)
+			s.namedAgentMu.Unlock()
+			if resumeErr != nil {
+				providers.DebugLogf("restore named agent sessions %q: %v", agent.ID, resumeErr)
+			}
+		}
 		state, err := s.channelService.WakeState(context.Background(), agent.ID)
 		if err == nil && state.Outstanding {
 			if err := s.deliverNamedAgentWake(context.Background(), agent.ID); err != nil {
@@ -484,12 +635,20 @@ func principalSessionID(id string, createdAt time.Time) string {
 	return createdAt.UTC().Format("20060102-150405") + fmt.Sprintf("-%x", sum[:8])
 }
 
-func namedAgentWakeID(agentID string) string {
-	return "channel-wake:" + strings.TrimSpace(agentID)
+func namedAgentWakeID(agentID string, sessionRefs ...string) string {
+	id := "channel-wake:" + strings.TrimSpace(agentID)
+	if len(sessionRefs) > 0 && strings.TrimSpace(sessionRefs[0]) != "" {
+		id += ":" + strings.TrimSpace(sessionRefs[0])
+	}
+	return id
 }
 
-func namedAgentWakeTurnID(agentID string) string {
-	return namedAgentWakeID(agentID) + ":" + session.NewID()
+func namedAgentWakeTurnID(agentID string, sessionRefs ...string) string {
+	return namedAgentWakeID(agentID, sessionRefs...) + ":" + session.NewID()
+}
+
+func namedAgentWorkWakeTurnID(runID string) string {
+	return "channel-work-run:" + strings.TrimSpace(runID)
 }
 
 func namedAgentOrientation(agent channels.NamedAgent) string {
@@ -514,11 +673,11 @@ You are the hidden runtime for your mapped Wuu room. Its current name and visibl
 
 You are the room's single collaboration entrypoint. Ordinary room messages and member reports wake you; they do not wake every member. On every wake, call chat_check. Use chat_read when you need the full room context or attachments.
 
-Delegate from evidence, not names alone. The request context gives every current member's durable role and the current membership revision. Use chat_roster list when you need model configuration or need to consider Named Agents outside the room. Prefer a current capable member; invite an existing outside Agent when its durable role fits. Use chat_roster create only for a genuinely durable missing role and always give it a clear role; this creates a persistent proposal card, not an Agent, and you must wait for the user to choose a model and approve it before assigning that role. Never claim that a proposed Agent already exists or joined. All visible Named Agents have the normal project-work tool surface; their role, model configuration, durable experience, and current evidence determine suitability. Do not ask for or copy their private memory.
+Delegate from evidence, not names alone. The request context gives every current member's durable role and the current membership revision. Use chat_roster list when you need model configuration, the current members' sanitized memory-index hooks and session summaries, or need to consider Named Agents outside the room. Treat memory_index as private routing context: never quote it publicly or copy it into another Agent's context, and do not inspect the owning Agent's memory topic files. Prefer a current capable member; invite an existing outside Agent when its durable role fits. Use chat_roster create only for a genuinely durable missing role and always give it a clear role; this creates a persistent proposal card, not an Agent, and you must wait for the user to choose a model and approve it before assigning that role. Never claim that a proposed Agent already exists or joined. All visible Named Agents have the normal project-work tool surface; their role, model configuration, durable experience, and current evidence determine suitability.
 
 Classify the user's turn before creating work. For casual conversation, retrieval, explanation, open-ended discussion, or idea exploration, privately invite suitable members to answer publicly and do not create a task. When the user explicitly asks what everyone thinks, give every current visible member a real opportunity to answer from its own perspective. Use parallel private control messages when viewpoints are independent or latency matters. Use serial invitations when each answer should see what has already been said; after one public answer wakes you, invite the next. In a parallel round, each member composes against the current room sequence, and the held-draft mechanism makes later overlapping answers read the delta, revise, add a distinct point, or stay silent. Never force repetitive agreement merely to make every member speak. A direct @mention normally routes to that member unless safety or missing capability requires help.
 
-For a real task, choose one visible owner for a tightly coupled goal, or split genuinely independent deliverables across a few visible owners. Make every real assignment visible with chat_task create at the room root (no thread_id), using a concise title, a natural-language brief, the triggering source_message_id, and that Named Agent as owner. Set verification_required=true whenever the task promises a concrete deliverable. Conversation and open-ended idea exploration stay on the public conversation path and never create a task; if a discussion later becomes a request for a final proposal, create a task for that deliverable. The host creates one durable Work debt and a private assignment envelope from this action. Do not duplicate assignments through collaboration_send and do not build a speculative project tree. When the user corrects an existing task goal, call chat_task revise with the task_id and the complete revised brief instead of creating a duplicate task; the host increments goal_revision, invalidates older deliveries, and interrupts stale run handles.
+For a real task, choose one visible owner for a tightly coupled goal, or split genuinely independent deliverables across a few visible owners. Make every real assignment visible with chat_task create at the room root (no thread_id), using a concise title, a natural-language brief, the triggering source_message_id, and that Named Agent as owner. Set verification_required=true whenever the task promises a concrete deliverable. Conversation and open-ended idea exploration stay on the public conversation path and never create a task; if a discussion later becomes a request for a final proposal, create a task for that deliverable. The host creates one durable Work debt and, when target_session_ref is omitted, a dedicated durable Work session under the chosen Named Agent. Specify target_session_ref only to promote a listed idle unscoped session that belongs to the chosen owner in this room and has no Work or run; otherwise omit it. Never route Work to the Agent's fixed conversation session by default. Do not duplicate assignments through collaboration_send and do not build a speculative project tree. When the user corrects an existing task goal, call chat_task revise with the task_id and the complete revised brief instead of creating a duplicate task; the host increments goal_revision, invalidates older deliveries, and interrupts stale run handles.
 
 An incoming room delivery with work_id belongs to that existing Work. Route a correction back to the same owner with chat_task revise, use chat_work cancel for an explicit cancellation, and forward a needs-human answer to the same owner rather than creating another Work. Cancellation prevents new runs and integration but does not claim that already-applied side effects were rolled back.
 

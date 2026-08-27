@@ -77,6 +77,14 @@ func syncWorkFromTaskTx(ctx context.Context, tx *sql.Tx, task Message, updatedAt
 	if err != nil {
 		return fmt.Errorf("sync durable work projection: %w", err)
 	}
+	if state == WorkCompleted || state == WorkFailed || state == WorkCancelled {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE collaboration_messages SET invalidated_at = ?
+			WHERE work_id = ? AND pulled_at IS NULL AND invalidated_at IS NULL`,
+			toMillis(updatedAt), task.ID); err != nil {
+			return fmt.Errorf("invalidate terminal work deliveries: %w", err)
+		}
+	}
 	if previousState != state {
 		if err := insertWorkEventTx(ctx, tx, WorkEvent{
 			WorkID: task.ID, Kind: "state", State: string(state), Summary: "Work state changed",
@@ -121,6 +129,10 @@ func workStateFromTask(state TaskState) WorkState {
 	default:
 		return WorkOpen
 	}
+}
+
+func terminalWorkState(state WorkState) bool {
+	return state == WorkCompleted || state == WorkFailed || state == WorkCancelled
 }
 
 func (s *Service) GetWork(ctx context.Context, workID string) (Work, error) {
@@ -253,7 +265,9 @@ func (s *Service) listWorkDeliveries(ctx context.Context, workID string) ([]Coll
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT delivery.id, delivery.room_id, delivery.from_type,
 			CASE WHEN sender.kind = 'named_agent' THEN delivery.from_id ELSE '' END,
+			COALESCE(delivery.from_session_ref, ''),
 			delivery.to_agent_id,
+			COALESCE(delivery.target_session_ref, ''),
 			CASE WHEN principal.kind = 'named_agent' THEN delivery.to_agent_id ELSE '' END,
 			delivery.kind, delivery.body, COALESCE(delivery.work_id, ''),
 			COALESCE(delivery.source_message_id, ''), delivery.goal_revision, delivery.candidate_revision,
@@ -274,7 +288,8 @@ func (s *Service) listWorkDeliveries(ctx context.Context, workID string) ([]Coll
 		var artifactRefsJSON string
 		var createdAt, consumedAt, invalidatedAt int64
 		if err := rows.Scan(
-			&message.ID, &message.RoomID, &message.FromType, &message.FromID, &message.ToAgentID,
+			&message.ID, &message.RoomID, &message.FromType, &message.FromID, &message.FromSessionRef, &message.ToAgentID,
+			&message.TargetSessionRef,
 			&message.RecipientNamedAgentID, &message.Kind, &message.Body, &message.WorkID,
 			&message.SourceMessageID, &message.GoalRevision, &message.CandidateRevision,
 			&artifactRefsJSON, &message.ReplyTo, &createdAt, &consumedAt, &invalidatedAt,
@@ -308,6 +323,8 @@ func (s *Service) StartWorkRun(ctx context.Context, params WorkRunStartParams) (
 		return WorkRun{}, err
 	}
 	params.WorkID, params.SessionRef = strings.TrimSpace(params.WorkID), strings.TrimSpace(params.SessionRef)
+	params.NamedAgentID = strings.TrimSpace(params.NamedAgentID)
+	params.Profile = strings.TrimSpace(params.Profile)
 	if params.WorkID == "" || !validWorkRunKind(params.Kind) {
 		return WorkRun{}, errors.New("work run requires a work and valid kind")
 	}
@@ -324,6 +341,50 @@ func (s *Service) StartWorkRun(ctx context.Context, params WorkRunStartParams) (
 	}
 	if err := authorizeWorkActorTx(ctx, tx, work, actor); err != nil {
 		return WorkRun{}, err
+	}
+	namedAgentID := params.NamedAgentID
+	if !actor.IsRoomRuntime() {
+		if namedAgentID != "" && namedAgentID != actor.ID {
+			return WorkRun{}, fmt.Errorf("%w: named agents may only start their own sessions", ErrUnauthorized)
+		}
+		namedAgentID = actor.ID
+	} else if params.Kind == WorkRunVerifier && params.Profile != "" && params.Profile != WorkVerifierProfileIndependent {
+		if namedAgentID != "" && namedAgentID != params.Profile {
+			return WorkRun{}, fmt.Errorf("%w: verifier profile and named session owner must match", ErrConflict)
+		}
+		namedAgentID = params.Profile
+	}
+	if namedAgentID != "" {
+		if err := s.requireRoomAgentMemberTx(ctx, tx, work.RoomID, namedAgentID); err != nil {
+			return WorkRun{}, err
+		}
+	}
+	freshNamedSession := false
+	if params.SessionRef == "" && namedAgentID != "" {
+		params.SessionRef, err = randomID("collab-session", 12)
+		if err != nil {
+			return WorkRun{}, err
+		}
+		freshNamedSession = true
+	}
+	allowFreshNamedSession := freshNamedSession ||
+		(actor.IsRoomRuntime() && params.Kind == WorkRunVerifier && namedAgentID != "")
+	bindRunSession := params.SessionRef != "" && namedAgentID != ""
+	if bindRunSession && (actor.IsRoomRuntime() || params.Kind != WorkRunVerifier) {
+		if err := validateCollaborationSessionRouteTx(ctx, tx, params.SessionRef, namedAgentID, work.RoomID, work.ID); err != nil {
+			if allowFreshNamedSession && errors.Is(err, ErrNotFound) {
+				// The binding is inserted atomically with the run below.
+			} else {
+				// A fresh unscoped conversation binding can be promoted to this run.
+				binding, bindErr := scanCollaborationSession(tx.QueryRowContext(ctx, collaborationSessionSelect+` WHERE binding.session_ref = ?`, params.SessionRef))
+				if bindErr != nil || binding.PrincipalID != namedAgentID || binding.RoomID != work.RoomID || binding.WorkID != "" || binding.RunID != "" || binding.State == CollaborationSessionRunning || binding.State == CollaborationSessionMissing {
+					if bindErr != nil {
+						return WorkRun{}, fmt.Errorf("validate work session: %w", bindErr)
+					}
+					return WorkRun{}, fmt.Errorf("%w: work session is already scoped or unavailable", ErrConflict)
+				}
+			}
+		}
 	}
 	if work.State == WorkCancelled || work.State == WorkCompleted || work.State == WorkFailed {
 		return WorkRun{}, fmt.Errorf("%w: work is %s", ErrConflict, work.State)
@@ -342,6 +403,9 @@ func (s *Service) StartWorkRun(ctx context.Context, params WorkRunStartParams) (
 		if verifierID == "" {
 			verifierID = WorkVerifierProfileIndependent
 			params.Profile = verifierID
+		}
+		if namedAgentID != "" && verifierID != namedAgentID {
+			return WorkRun{}, fmt.Errorf("%w: verifier profile and named session owner must match", ErrConflict)
 		}
 		if verifierID == work.OwnerNamedAgentID {
 			return WorkRun{}, fmt.Errorf("%w: verifier run requires a different named agent", ErrConflict)
@@ -375,16 +439,16 @@ func (s *Service) StartWorkRun(ctx context.Context, params WorkRunStartParams) (
 	}
 	now := fromMillis(toMillis(s.now()))
 	run := WorkRun{
-		ID: id, WorkID: work.ID, Kind: params.Kind, Profile: strings.TrimSpace(params.Profile),
+		ID: id, WorkID: work.ID, NamedAgentID: namedAgentID, Kind: params.Kind, Profile: params.Profile,
 		SessionRef: params.SessionRef, State: WorkRunRunning, GoalRevision: work.GoalRevision,
 		CandidateRevision: work.CandidateRevision, WorkspaceRevision: strings.TrimSpace(params.WorkspaceRevision),
 		StartedAt: now, CreatedAt: now, UpdatedAt: now,
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO work_runs(id, work_id, kind, profile, session_ref, state, goal_revision,
+		INSERT INTO work_runs(id, work_id, named_agent_id, kind, profile, session_ref, state, goal_revision,
 			candidate_revision, workspace_revision, started_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)`,
-		run.ID, run.WorkID, run.Kind, run.Profile, nullableString(run.SessionRef), run.GoalRevision,
+		VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)`,
+		run.ID, run.WorkID, nullableString(run.NamedAgentID), run.Kind, run.Profile, nullableString(run.SessionRef), run.GoalRevision,
 		run.CandidateRevision, run.WorkspaceRevision, toMillis(now), toMillis(now), toMillis(now)); err != nil {
 		return WorkRun{}, fmt.Errorf("insert work run: %w", err)
 	}
@@ -396,6 +460,24 @@ func (s *Service) StartWorkRun(ctx context.Context, params WorkRunStartParams) (
 		UPDATE works SET current_run_ref = ?, verifier_attempts_used = verifier_attempts_used + ?, updated_at = ? WHERE id = ?`,
 		run.ID, verifierIncrement, toMillis(now), work.ID); err != nil {
 		return WorkRun{}, fmt.Errorf("activate work run: %w", err)
+	}
+	if bindRunSession {
+		purpose := CollaborationSessionWork
+		if run.Kind == WorkRunVerifier {
+			purpose = CollaborationSessionVerification
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO collaboration_session_bindings(
+				session_ref, principal_id, named_agent_id, room_id, work_id, run_id,
+				purpose, state, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+			ON CONFLICT(session_ref) DO UPDATE SET
+				room_id = excluded.room_id, work_id = excluded.work_id, run_id = excluded.run_id,
+				purpose = excluded.purpose, state = excluded.state, updated_at = excluded.updated_at`,
+			run.SessionRef, namedAgentID, namedAgentID, work.RoomID, work.ID, run.ID,
+			purpose, toMillis(now), toMillis(now)); err != nil {
+			return WorkRun{}, fmt.Errorf("bind work run session: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return WorkRun{}, err
@@ -446,13 +528,79 @@ func (s *Service) FinishWorkRun(ctx context.Context, params WorkRunFinishParams)
 		run.ChecksRerun, run.FindingsCount, run.RepairOutcome, toMillis(now), toMillis(now), run.ID); err != nil {
 		return WorkRun{}, fmt.Errorf("finish work run: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE works SET current_run_ref = NULL, updated_at = ? WHERE id = ? AND current_run_ref = ?`, toMillis(now), work.ID, run.ID); err != nil {
+	if err := refreshWorkCurrentRunRefTx(ctx, tx, work.ID, now); err != nil {
 		return WorkRun{}, fmt.Errorf("settle work run handle: %w", err)
+	}
+	if run.SessionRef != "" {
+		nextState := CollaborationSessionIdle
+		if run.State == WorkRunInterrupted {
+			nextState = CollaborationSessionInterrupted
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE collaboration_session_bindings SET state = ?, run_id = NULL, updated_at = ?
+			WHERE session_ref = ? AND run_id = ?`, nextState, toMillis(now), run.SessionRef, run.ID); err != nil {
+			return WorkRun{}, fmt.Errorf("release work run session: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return WorkRun{}, err
 	}
 	return run, nil
+}
+
+func (s *Service) AttachWorkRunTurn(ctx context.Context, params WorkRunTurnParams) (WorkRun, error) {
+	actor, err := s.AuthenticatePrincipal(ctx, params.AgentID, params.Token)
+	if err != nil {
+		return WorkRun{}, err
+	}
+	params.WorkID = strings.TrimSpace(params.WorkID)
+	params.RunID = strings.TrimSpace(params.RunID)
+	params.SessionRef = strings.TrimSpace(params.SessionRef)
+	params.TurnID = strings.TrimSpace(params.TurnID)
+	if params.WorkID == "" || params.RunID == "" || params.SessionRef == "" || params.TurnID == "" {
+		return WorkRun{}, errors.New("work run turn requires work, run, session, and turn")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return WorkRun{}, err
+	}
+	defer tx.Rollback()
+	run, err := scanWorkRun(tx.QueryRowContext(ctx, workRunSelect+` WHERE run.id = ? AND run.work_id = ?`, params.RunID, params.WorkID))
+	if err != nil {
+		return WorkRun{}, err
+	}
+	if run.NamedAgentID == "" || run.NamedAgentID != actor.ID || run.SessionRef != params.SessionRef {
+		return WorkRun{}, ErrUnauthorized
+	}
+	if run.State != WorkRunRunning && run.State != WorkRunQueued {
+		return WorkRun{}, fmt.Errorf("%w: work run is already %s", ErrConflict, run.State)
+	}
+	binding, err := scanCollaborationSession(tx.QueryRowContext(ctx, collaborationSessionSelect+` WHERE binding.session_ref = ?`, params.SessionRef))
+	if err != nil {
+		return WorkRun{}, err
+	}
+	if binding.PrincipalID != actor.ID || binding.WorkID != params.WorkID || binding.RunID != params.RunID || binding.State != CollaborationSessionRunning {
+		return WorkRun{}, fmt.Errorf("%w: work run session binding does not match", ErrConflict)
+	}
+	if run.TurnID != "" && run.TurnID != params.TurnID {
+		return WorkRun{}, fmt.Errorf("%w: work run is already attached to turn %q", ErrConflict, run.TurnID)
+	}
+	if run.TurnID == "" {
+		if _, err := tx.ExecContext(ctx, `UPDATE work_runs SET turn_id = ?, updated_at = ? WHERE id = ?`, params.TurnID, toMillis(s.now()), run.ID); err != nil {
+			return WorkRun{}, fmt.Errorf("attach work run turn: %w", err)
+		}
+	}
+	updated, err := scanWorkRun(tx.QueryRowContext(ctx, workRunSelect+` WHERE run.id = ?`, run.ID))
+	if err != nil {
+		return WorkRun{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return WorkRun{}, err
+	}
+	return updated, nil
 }
 
 func (s *Service) AddWorkArtifact(ctx context.Context, params WorkArtifactAddParams) (WorkArtifact, error) {
@@ -538,6 +686,14 @@ func (s *Service) CancelWork(ctx context.Context, workID, reason, agentID, token
 	if work.State == WorkCompleted {
 		return Work{}, fmt.Errorf("%w: completed work cannot be cancelled", ErrConflict)
 	}
+	interruptTargets, err := activeWorkSessionInterruptTargetsTx(ctx, tx, work.ID)
+	if err != nil {
+		return Work{}, err
+	}
+	wakeRecipients, err := pendingWorkWakeRecipientsTx(ctx, tx, work.ID)
+	if err != nil {
+		return Work{}, err
+	}
 	now := fromMillis(toMillis(s.now()))
 	if _, err := tx.ExecContext(ctx, `UPDATE works SET state = 'cancelled', current_run_ref = NULL, failure_reason = ?, cancelled_at = ?, updated_at = ? WHERE id = ?`, strings.TrimSpace(reason), toMillis(now), toMillis(now), work.ID); err != nil {
 		return Work{}, err
@@ -548,16 +704,125 @@ func (s *Service) CancelWork(ctx context.Context, workID, reason, agentID, token
 	if _, err := tx.ExecContext(ctx, `UPDATE collaboration_messages SET invalidated_at = ? WHERE work_id = ? AND pulled_at IS NULL`, toMillis(now), work.ID); err != nil {
 		return Work{}, err
 	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE inbox_items SET pulled_at = ?
+		WHERE member_type = 'agent' AND message_id = ? AND kind = 'task' AND pulled_at IS NULL`, toMillis(now), work.ID); err != nil {
+		return Work{}, fmt.Errorf("retire cancelled work inbox: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE collaboration_session_bindings
+		SET state = 'interrupted', run_id = NULL, updated_at = ?
+		WHERE work_id = ? AND state != 'missing'`, toMillis(now), work.ID); err != nil {
+		return Work{}, err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE work_runs SET state = 'cancelled', ended_at = ?, updated_at = ? WHERE work_id = ? AND state IN ('queued', 'running')`, toMillis(now), toMillis(now), work.ID); err != nil {
 		return Work{}, err
 	}
 	if err := insertWorkEventTx(ctx, tx, WorkEvent{WorkID: work.ID, Kind: "cancellation", State: string(WorkCancelled), Summary: strings.TrimSpace(reason), GoalRevision: work.GoalRevision, CandidateRevision: work.CandidateRevision, CreatedAt: now}); err != nil {
 		return Work{}, err
 	}
+	for _, recipientID := range wakeRecipients {
+		if err := recomputeAgentWakeTx(ctx, tx, recipientID, toMillis(now)); err != nil {
+			return Work{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return Work{}, err
 	}
+	s.interruptWorkSessions(interruptTargets)
 	return s.GetWork(ctx, work.ID)
+}
+
+type workSessionInterruptTarget struct {
+	agentID    string
+	sessionRef string
+}
+
+func pendingWorkWakeRecipientsTx(ctx context.Context, tx *sql.Tx, workID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT member_id FROM inbox_items
+		WHERE member_type = 'agent' AND message_id = ? AND kind = 'task' AND pulled_at IS NULL
+		UNION
+		SELECT to_agent_id FROM collaboration_messages
+		WHERE work_id = ? AND pulled_at IS NULL AND invalidated_at IS NULL
+		ORDER BY 1`, workID, workID)
+	if err != nil {
+		return nil, fmt.Errorf("list cancelled work wake recipients: %w", err)
+	}
+	defer rows.Close()
+	recipients := make([]string, 0)
+	for rows.Next() {
+		var recipientID string
+		if err := rows.Scan(&recipientID); err != nil {
+			return nil, fmt.Errorf("scan cancelled work wake recipient: %w", err)
+		}
+		if recipientID != "" {
+			recipients = append(recipients, recipientID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate cancelled work wake recipients: %w", err)
+	}
+	return recipients, nil
+}
+
+func activeWorkSessionInterruptTargetsTx(ctx context.Context, tx *sql.Tx, workID string) ([]workSessionInterruptTarget, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT DISTINCT
+			COALESCE(NULLIF(run.named_agent_id, ''), NULLIF(binding.named_agent_id, ''), ''),
+			COALESCE(NULLIF(run.session_ref, ''), NULLIF(binding.session_ref, ''), '')
+		FROM work_runs run
+		LEFT JOIN collaboration_session_bindings binding ON binding.run_id = run.id
+		WHERE run.work_id = ? AND run.state IN ('queued', 'running')
+		ORDER BY 1, 2`, workID)
+	if err != nil {
+		return nil, fmt.Errorf("list active work sessions for cancellation: %w", err)
+	}
+	defer rows.Close()
+	targets := make([]workSessionInterruptTarget, 0)
+	for rows.Next() {
+		var target workSessionInterruptTarget
+		if err := rows.Scan(&target.agentID, &target.sessionRef); err != nil {
+			return nil, fmt.Errorf("scan active work session for cancellation: %w", err)
+		}
+		if target.sessionRef != "" {
+			targets = append(targets, target)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate active work sessions for cancellation: %w", err)
+	}
+	return targets, nil
+}
+
+func (s *Service) interruptWorkSessions(targets []workSessionInterruptTarget) {
+	if s == nil || s.wake == nil {
+		return
+	}
+	namedInterrupt, hasNamedInterrupt := s.wake.(WakeSessionInterruptSink)
+	runInterrupt, hasRunInterrupt := s.wake.(WakeRunSessionInterruptSink)
+	fallback, hasFallback := s.wake.(WakeInterruptSink)
+	interruptedAgents := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		if target.agentID == "" {
+			if hasRunInterrupt {
+				runInterrupt.InterruptRunSession(target.sessionRef)
+			}
+			continue
+		}
+		if hasNamedInterrupt {
+			namedInterrupt.InterruptSession(target.agentID, target.sessionRef)
+			continue
+		}
+		if !hasFallback {
+			continue
+		}
+		if _, exists := interruptedAgents[target.agentID]; exists {
+			continue
+		}
+		interruptedAgents[target.agentID] = struct{}{}
+		fallback.Interrupt(target.agentID)
+	}
 }
 
 func (s *Service) UpdateWorkPolicy(ctx context.Context, params WorkPolicyUpdateParams) (Work, error) {
@@ -648,6 +913,18 @@ func authorizeWorkActorTx(ctx context.Context, tx *sql.Tx, work Work, actor Agen
 	return ErrUnauthorized
 }
 
+func refreshWorkCurrentRunRefTx(ctx context.Context, tx *sql.Tx, workID string, updatedAt time.Time) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE works
+		SET current_run_ref = (
+			SELECT run.id FROM work_runs run
+			WHERE run.work_id = works.id AND run.state IN ('queued', 'running')
+			ORDER BY run.created_at DESC, run.id DESC LIMIT 1
+		), updated_at = ?
+		WHERE id = ?`, toMillis(updatedAt), workID)
+	return err
+}
+
 func validWorkRunKind(kind WorkRunKind) bool {
 	return kind == WorkRunProducer || kind == WorkRunVerifier || kind == WorkRunSelector || kind == WorkRunIntegration
 }
@@ -666,7 +943,7 @@ func validWorkArtifactKind(kind WorkArtifactKind) bool {
 }
 
 const workRunSelect = `
-	SELECT run.id, run.work_id, run.kind, run.profile, COALESCE(run.session_ref, ''), run.state,
+	SELECT run.id, run.work_id, COALESCE(run.named_agent_id, ''), run.kind, run.profile, COALESCE(run.session_ref, ''), run.turn_id, run.state,
 		run.goal_revision, run.candidate_revision, run.workspace_revision, run.provider, run.model,
 		run.input_tokens, run.output_tokens, run.checks_rerun, run.findings_count, run.outcome,
 		run.repair_outcome, run.started_at, run.ended_at, run.created_at, run.updated_at
@@ -676,7 +953,7 @@ func scanWorkRun(row scanner) (WorkRun, error) {
 	var run WorkRun
 	var startedAt, endedAt sql.NullInt64
 	var createdAt, updatedAt int64
-	if err := row.Scan(&run.ID, &run.WorkID, &run.Kind, &run.Profile, &run.SessionRef, &run.State,
+	if err := row.Scan(&run.ID, &run.WorkID, &run.NamedAgentID, &run.Kind, &run.Profile, &run.SessionRef, &run.TurnID, &run.State,
 		&run.GoalRevision, &run.CandidateRevision, &run.WorkspaceRevision, &run.Provider, &run.Model,
 		&run.InputTokens, &run.OutputTokens, &run.ChecksRerun, &run.FindingsCount, &run.Outcome,
 		&run.RepairOutcome, &startedAt, &endedAt, &createdAt, &updatedAt); err != nil {
@@ -696,7 +973,7 @@ func scanWorkRun(row scanner) (WorkRun, error) {
 }
 
 func (s *Service) listWorkRuns(ctx context.Context, workID string) ([]WorkRun, error) {
-	rows, err := s.db.QueryContext(ctx, workRunSelect+` WHERE run.work_id = ? ORDER BY run.created_at, run.id`, workID)
+	rows, err := s.db.QueryContext(ctx, workRunSelect+` WHERE run.work_id = ? ORDER BY run.created_at, run.rowid`, workID)
 	if err != nil {
 		return nil, err
 	}

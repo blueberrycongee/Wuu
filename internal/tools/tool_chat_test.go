@@ -33,7 +33,7 @@ func TestNamedAgentChatToolsAreIsolatedAndRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tools.New() error = %v", err)
 	}
-	profile := modelprofile.Profile{ProviderName: "openai", Model: "test", Family: modelprofile.FamilyCodex}
+	profile := modelprofile.Resolve("openai", "gpt-5-codex")
 	kit.SetActiveProfile(profile, true)
 	assertDefinitionMissing(t, kit.Definitions(), "chat_check")
 	assertDefinitionMissing(t, kit.Definitions(), "chat_draft")
@@ -52,6 +52,8 @@ func TestNamedAgentChatToolsAreIsolatedAndRoundTrip(t *testing.T) {
 	for _, name := range []string{"chat_check", "chat_read", "chat_send", "collaboration_send", "chat_draft", "chat_task", "chat_work", "chat_remind"} {
 		assertDefinitionPresent(t, kit.Definitions(), name)
 	}
+	assertDefinitionProperties(t, kit.Definitions(), "collaboration_send", "target_session_ref", "work_id")
+	assertDefinitionProperties(t, kit.Definitions(), "chat_task", "target_session_ref")
 	assertDefinitionMissing(t, kit.Definitions(), "chat_verify")
 	for _, definition := range kit.Definitions() {
 		if definition.Name != "chat_send" {
@@ -233,13 +235,16 @@ func TestChatVerifyIsAvailableOnlyToHiddenRoomRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tools.New() error = %v", err)
 	}
-	kit.SetActiveProfile(modelprofile.Profile{ProviderName: "openai", Model: "test", Family: modelprofile.FamilyCodex}, true)
+	kit.SetActiveProfile(modelprofile.Resolve("openai", "gpt-5-codex"), true)
 	kit.SetChatAgent(client)
 	assertDefinitionPresent(t, kit.Definitions(), "chat_verify")
 	assertDefinitionPresent(t, kit.Definitions(), "chat_roster")
 	assertDefinitionMissing(t, kit.Definitions(), "chat_send")
-	for _, forbidden := range []string{"read_file", "apply_patch", "bash", "web_search", "load_skill", "tool_search", "set_session_workspace"} {
-		assertDefinitionMissing(t, kit.Definitions(), forbidden)
+	for _, projectTool := range []string{"read_file", "apply_patch", "bash", "web_search", "load_skill", "tool_search"} {
+		assertDefinitionPresent(t, kit.Definitions(), projectTool)
+	}
+	if !kit.SupportsTool("set_session_workspace") {
+		t.Fatal("room agent surface must retain deferred session workspace support")
 	}
 	rosterJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_roster", Arguments: `{"action":"create","room_id":"` + room.ID + `","name":"Reviewer"}`})
 	if err != nil || !strings.Contains(rosterJSON, `"name":"Reviewer"`) || !strings.Contains(rosterJSON, `"state":"pending"`) {
@@ -305,4 +310,21 @@ func assertDefinitionMissing(t *testing.T, definitions []providers.ToolDefinitio
 			t.Fatalf("tool definition %q unexpectedly present", name)
 		}
 	}
+}
+
+func assertDefinitionProperties(t *testing.T, definitions []providers.ToolDefinition, name string, properties ...string) {
+	t.Helper()
+	for _, definition := range definitions {
+		if definition.Name != name {
+			continue
+		}
+		schemaProperties, _ := definition.InputSchema["properties"].(map[string]any)
+		for _, property := range properties {
+			if _, ok := schemaProperties[property]; !ok {
+				t.Fatalf("tool definition %q missing property %q", name, property)
+			}
+		}
+		return
+	}
+	t.Fatalf("tool definition %q missing", name)
 }

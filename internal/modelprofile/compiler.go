@@ -56,13 +56,13 @@ const (
 	// main-agent surface and adds the group-chat tools.
 	SurfaceNamedAgent
 	// SurfaceRoomAgent is the hidden room coordinator. It can inspect and
-	// coordinate collaboration state, but it cannot execute project work or
-	// publish user-facing messages itself.
+	// coordinate collaboration state with the ordinary project tool surface,
+	// but it cannot publish user-facing messages itself.
 	SurfaceRoomAgent
 )
 
 func (k SurfaceKind) includesSessionWorkspace() bool {
-	return k == SurfaceMain || k == SurfaceNamedAgent
+	return k == SurfaceMain || k == SurfaceNamedAgent || k == SurfaceRoomAgent
 }
 
 func (k SurfaceKind) includesChat() bool {
@@ -84,12 +84,6 @@ type DefaultCompiler struct{}
 func (DefaultCompiler) Compile(p Profile, kind SurfaceKind) capability.Surface {
 	key := ResolveProfileKey(p)
 	b := newBuilder(p, key)
-	if kind == SurfaceRoomAgent {
-		addRoomChatTools(b)
-		b.surface.SystemFragment = "[Tool surface: room coordinator]"
-		b.sortCaps()
-		return b.surface
-	}
 	switch key {
 	case ProfileOpenAICodex:
 		compileOpenAICodex(b, p)
@@ -105,6 +99,10 @@ func (DefaultCompiler) Compile(p Profile, kind SurfaceKind) capability.Surface {
 	}
 	if kind.includesChat() {
 		addChatTools(b)
+	}
+	if kind == SurfaceRoomAgent {
+		addRoomChatTools(b)
+		b.surface.SystemFragment = strings.TrimSpace(b.surface.SystemFragment + "\n[Runtime role: hidden room coordinator; public chat_send unavailable.]")
 	}
 	b.sortCaps()
 	return b.surface

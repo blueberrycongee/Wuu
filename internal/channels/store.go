@@ -309,7 +309,9 @@ func (s *Service) migrate() error {
 			room_id TEXT NOT NULL,
 			from_type TEXT NOT NULL CHECK (from_type IN ('human', 'agent')),
 			from_id TEXT NOT NULL,
+			from_session_ref TEXT,
 			to_agent_id TEXT NOT NULL,
+			target_session_ref TEXT,
 			kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'assignment', 'peer_result', 'candidate_ready', 'verification_feedback', 'completion')),
 			body TEXT NOT NULL,
 			work_id TEXT,
@@ -383,9 +385,11 @@ func (s *Service) migrate() error {
 		`CREATE TABLE IF NOT EXISTS work_runs (
 			id TEXT PRIMARY KEY,
 			work_id TEXT NOT NULL,
+			named_agent_id TEXT,
 			kind TEXT NOT NULL CHECK (kind IN ('producer', 'verifier', 'selector', 'integration')),
 			profile TEXT NOT NULL DEFAULT '',
 			session_ref TEXT,
+			turn_id TEXT NOT NULL DEFAULT '',
 			state TEXT NOT NULL CHECK (state IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
 			goal_revision INTEGER NOT NULL,
 			candidate_revision INTEGER NOT NULL DEFAULT 0,
@@ -402,10 +406,33 @@ func (s *Service) migrate() error {
 			ended_at INTEGER,
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL,
-			FOREIGN KEY (work_id) REFERENCES works(id) ON DELETE CASCADE
+			FOREIGN KEY (work_id) REFERENCES works(id) ON DELETE CASCADE,
+			FOREIGN KEY (named_agent_id) REFERENCES named_agents(id) ON DELETE SET NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_work_runs_work ON work_runs(work_id, created_at, id)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_work_runs_session ON work_runs(session_ref) WHERE session_ref IS NOT NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_work_runs_active_session ON work_runs(session_ref) WHERE session_ref IS NOT NULL AND state IN ('queued', 'running')`,
+		`CREATE TABLE IF NOT EXISTS collaboration_session_bindings (
+			session_ref TEXT PRIMARY KEY,
+			principal_id TEXT NOT NULL,
+			named_agent_id TEXT,
+			room_id TEXT,
+			work_id TEXT,
+			run_id TEXT UNIQUE,
+			purpose TEXT NOT NULL CHECK (purpose IN ('conversation', 'coordination', 'work', 'verification')),
+			state TEXT NOT NULL CHECK (state IN ('idle', 'running', 'interrupted', 'missing')),
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			CHECK (named_agent_id IS NULL OR named_agent_id = principal_id),
+			CHECK (work_id IS NULL OR room_id IS NOT NULL),
+			CHECK (run_id IS NULL OR work_id IS NOT NULL),
+			FOREIGN KEY (principal_id) REFERENCES collaboration_principals(id) ON DELETE CASCADE,
+			FOREIGN KEY (named_agent_id) REFERENCES named_agents(id) ON DELETE CASCADE,
+			FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+			FOREIGN KEY (work_id) REFERENCES works(id) ON DELETE CASCADE,
+			FOREIGN KEY (run_id) REFERENCES work_runs(id) ON DELETE SET NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_collaboration_sessions_principal ON collaboration_session_bindings(principal_id, state, updated_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_collaboration_sessions_scope ON collaboration_session_bindings(room_id, work_id, principal_id)`,
 		`CREATE TABLE IF NOT EXISTS work_artifacts (
 			id TEXT PRIMARY KEY,
 			work_id TEXT NOT NULL,
@@ -435,6 +462,7 @@ func (s *Service) migrate() error {
 		`CREATE TABLE IF NOT EXISTS drafts (
 			id TEXT PRIMARY KEY,
 			agent_id TEXT NOT NULL,
+			session_ref TEXT,
 			room_id TEXT NOT NULL,
 			thread_id TEXT,
 			body TEXT NOT NULL,
@@ -490,6 +518,9 @@ func (s *Service) migrate() error {
 		return err
 	}
 	if err := s.migrateInternalDeliveries(); err != nil {
+		return err
+	}
+	if err := s.migrateCollaborationSessions(); err != nil {
 		return err
 	}
 	if err := s.migrateWorks(); err != nil {
@@ -677,6 +708,8 @@ func (s *Service) ensureLegacyColumns() error {
 		{table: "collaboration_messages", name: "goal_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "collaboration_messages", name: "candidate_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "collaboration_messages", name: "work_id", definition: "TEXT"},
+		{table: "collaboration_messages", name: "from_session_ref", definition: "TEXT"},
+		{table: "collaboration_messages", name: "target_session_ref", definition: "TEXT"},
 		{table: "collaboration_messages", name: "artifact_refs_json", definition: "TEXT NOT NULL DEFAULT '[]'"},
 		{table: "collaboration_messages", name: "consumed_at", definition: "INTEGER"},
 		{table: "collaboration_messages", name: "invalidated_at", definition: "INTEGER"},
@@ -684,6 +717,9 @@ func (s *Service) ensureLegacyColumns() error {
 		{table: "task_verifications", name: "candidate_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "task_verifications", name: "evidence_refs_json", definition: "TEXT NOT NULL DEFAULT '[]'"},
 		{table: "task_verifications", name: "run_ref", definition: "TEXT"},
+		{table: "work_runs", name: "named_agent_id", definition: "TEXT"},
+		{table: "work_runs", name: "turn_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "drafts", name: "session_ref", definition: "TEXT"},
 	}
 	for _, column := range columns {
 		exists, err := s.tableHasColumn(column.table, column.name)

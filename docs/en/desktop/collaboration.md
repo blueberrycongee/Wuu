@@ -3,231 +3,258 @@
 > **Experimental**: named-agent group chat is still being aligned with the plugin
 > architecture. Development builds include its entry by default for dogfooding;
 > release builds do not. A release-style build can still opt in explicitly with
-> `VITE_ENABLE_GROUP_CHAT=true npm run build`. The rest of this page describes
-> the behavior when enabled and may change as the feature evolves.
+> `VITE_ENABLE_GROUP_CHAT=true npm run build`. The behavior described here may
+> change as the feature evolves.
 
-wuu offers two ways of agent collaboration:
+wuu has two collaboration paths:
 
-- **Anonymous subagents** are dispatched automatically by the main agent within a
-  task, suiting parallel investigation, independent implementation, and result
-  review. Their identity, context, and file isolation are decided by the main agent;
-  the user does not need to create or manage them manually. See [agent collaboration
-  and subagents](subagents.md).
-- **Named-agent group chat** lets multiple named agents with memory collaborate with
-  you over time in channels or DMs. This page is about that kind of collaboration.
+- **Anonymous subagents** are temporary workers dispatched by the main agent for
+  bounded investigation, implementation, or review. They are not user-visible
+  long-lived identities. See [agent collaboration and subagents](subagents.md).
+- **Named-agent collaboration** lets named agents with durable memory work with
+  people in channels and DMs. This page describes that path.
 
-The first time you open Collaboration, wuu creates a default agent and channel. You
-do not need to choose tools, connect external software, or configure a runtime first;
-send something you are actively working on and the default agent will begin helping.
-Add more roles or change model settings later when you need them.
+## The architecture in one line
 
-## What a Named Agent is
+```text
+user message
+  -> hidden Room Agent understands intent and current state
+  -> chooses Named Agents, splits work, selects or creates sessions, and chooses serial or parallel execution
+  -> one or more sessions execute and exchange private control messages
+  -> an optional hidden Verifier checks a concrete deliverable
+  -> the responsible Named Agent replies to the user
+```
 
-A Named Agent is a first-class citizen of wuu. It has a name, persistent memory that
-belongs only to it, channel membership, and its own model and thinking-effort
-configuration. Restarts, session compaction, or history clearing do not make it lose
-its identity.
+The Room Agent is the hidden orchestration entrypoint for a room, not a member that
+speaks in the channel. It sees room messages, the member directory, durable roles,
+sanitized index hooks from each current member's long-term memory, and current
+session state, then produces a routing and execution plan. It cannot impersonate a
+Named Agent. Structural changes such as work creation, owner changes, or
+verification outcomes may appear as system events or a work card; those are system
+facts, not Room Agent persona messages.
 
-Named Agents only exist in the group-chat path. They cannot operate on files in your
-workspace and have no `bash`, `edit_file`, or similar tools — their tool surface
-revolves around **reading, sending group-chat messages, and managing tasks**.
+## Identity and sessions
 
-## Difference from anonymous subagents
+### Named Agents are stable identities
 
-| | Anonymous subagent | Named Agent |
-|---|---|---|
-| Identity | No persistent identity; disappears when the task ends | Has a name and persistent memory; survives restarts |
-| Creation | The main agent spawns automatically within a task | The user creates manually in the collaboration panel |
-| Tools | Same file and command tools as the main agent | Group-chat tools only (chat_check / read / send, etc.) |
-| File access | Can read and write in the current workspace | Cannot access workspace files |
-| Collaboration partners | Only interacts with the main agent that dispatched it | Interacts with everyone in the channel (humans and agents) |
-| Memory | No independent memory | Each agent has its own `MEMORY.md` |
+A Named Agent has a name, avatar, role, model configuration, room membership, and
+long-term memory that belongs only to it. The identity is the anchor for durable
+responsibility and user-facing attribution. Restarts, history clearing, and the end
+of one execution do not change it. Public replies, task ownership, and final
+delivery belong to this identity.
+
+### Sessions are the execution units
+
+A session is an independent model context and tool execution stream. It can be
+bound to a room, a Work, a verification run, or an ordinary conversation, and has
+its own running, recovery, interruption, and completion state. **One Named Agent can
+own many sessions at the same time**: unrelated tasks can run in parallel, and a
+larger request can be split into independent Work sessions without creating more
+public identities.
+
+A session is not a new user-visible identity. Public output from a session is still
+published under its Named Agent's name. Private handoffs record the sending session,
+the receiving Named Agent, and the target session when one is selected. This keeps
+responsibility stable without making one fixed conversation the concurrency limit.
+
+The Room Agent considers durable roles, sanitized memory-index hooks, active
+sessions, Work state, and room context when choosing a route. Topic files and raw
+private memory remain available only to their owning Named Agent; index hooks are
+routing context and are not copied into another agent's context or quoted publicly.
+Shared facts are passed explicitly through room messages, tasks, and artifacts.
+
+## Conversation, work, and verification
+
+### Ordinary conversation
+
+Chat, explanations, retrieval, and open-ended discussion use the conversation path.
+They do not create a Work or trigger verification. The Room Agent may ask one Named
+Agent to answer, or ask several Named Agents for independent or serial contributions.
+Each selected session may decide that silence is the right result.
+
+### Concrete deliverables
+
+Requests such as changing code, investigating a problem, or producing a checkable
+report create a durable Work. The Room Agent chooses one visible Named Agent as
+owner, or splits genuinely independent deliverables among a few owners, and binds
+each execution to a concrete session. The host persists the goal revision, candidate
+artifacts, run records, and state, so it can reconcile and recover them after a
+crash or restart. Private control messages do not replace Work state.
+
+### Optional verification
+
+When a Work has a deliverable that can be independently checked, the host may start
+a hidden Verifier. By default it uses a fresh context, reads the user goal and the
+machine-listed artifacts, and reruns the relevant code, commands, or tests. It
+returns a pass, block, or insufficient-evidence decision; it does not repair the
+candidate or speak publicly as a persona. After a pass, the original responsible
+Named Agent publishes the result. After a block, the report is sent privately to
+that owner for another revision. Ordinary conversation and discussion without a
+checkable deliverable do not need a Verifier. A Named Agent is used as verifier only
+when the user explicitly asks that identity to review the result.
 
 ## Create and manage Named Agents
 
-### Create
+The first time you open Collaboration, wuu creates a default agent and channel. You
+do not need to choose tools or configure a runtime first; send something you are
+working on and the default agent can begin helping. Create more durable roles from
+the agent management workspace when needed.
 
 Use the mode switch beside the **wuu** wordmark to enter **Collaboration**, open
-**Manage Agents** from the **Agents** section header, then choose the plus button in
-the management workspace:
+**Manage Agents** from the **Agents** section header, and choose the plus button:
 
-- **Name:** the name the agent shows in channels.
-- **Avatar:** pick from presets, or upload a custom image.
-- **Model:** inherits the current model provider by default; you can assign a specific
-  model and thinking effort to this agent.
-- **Autostart:** whether to start immediately after creation. When on, the agent
-  responds automatically after receiving a message; when off, the agent keeps its
-  identity and memory but does not process messages automatically.
+- **Name:** the name shown in channels and public replies.
+- **Avatar:** choose a preset or upload a custom image.
+- **Role:** durable expertise used by the Room Agent for routing.
+- **Model:** inherits the current provider by default; a separate model and
+  thinking effort can be assigned.
+- **Autostart:** whether eligible events start sessions automatically.
 
-After creation, the agent has its own persistent session and memory directory. You can
-change the name, avatar, or model configuration at any time in the agent's details, or
-reset its session state.
-
-### Manage
-
-Named Agents live directly in the Collaboration sidebar as direct-message contacts.
-Use the settings button in the **Agents** section header to open the management workspace and:
-
-- view all Named Agents and their current state (idle / thinking);
-- edit an agent's name, avatar, and model configuration;
-- reset an agent's session (keeps identity and memory, clears the conversation
-  history);
-- delete an agent (removes the identity, session, and channel membership).
-
-Agent state is maintained in real time by the wuu core. An agent processing a message
-shows as "thinking" with the channel it is currently in.
+Creation establishes a stable identity and memory directory, not a single session
+that every task must reuse. The orchestrator creates or reuses Work sessions while
+the management view aggregates activity across all of them. Resetting a conversation
+does not delete the identity or long-term memory. After an agent is deleted, the host
+does not assign new execution to it.
 
 ## What the collaboration space contains
 
-The group-chat collaboration space contains the following objects:
-
 ### Channels
 
-A channel is a group-chat space shared by humans and agents. Each channel has at most
-32 total members, including at most 6 Named Agents. You can view and switch channels in the
-sidebar; the unread count appears next to the channel name.
-
-Sending a message in a channel does not need concurrency control such as `basis_seq` —
-human messages always land directly. Only agent replies need to consider concurrency
-(see below).
+A channel is a group-chat space shared by people and Named Agents. Each channel has
+at most 32 total members, including at most 6 Named Agents. You can switch channels
+from the sidebar; unread counts appear next to channel names.
 
 ### DMs
 
-Named Agents already appear as direct-message contacts in the Collaboration sidebar.
-One-on-one messaging is not implemented yet; selecting a contact shows that limitation.
+Named Agents appear as direct-message contacts in the Collaboration sidebar. A DM
+is an independent private room. Messages route deterministically to that identity's
+conversation session; they are not broadcast to the other agents in a channel.
+Agent-to-agent work handoffs also use private delivery, bound to a Work and a
+concrete session for recovery and audit.
 
-### Messages
+### Messages, threads, and tasks
 
 Messages are ordered within a channel by sequence number. Message types include:
 
-- **text**: ordinary chat messages, at most 4000 characters;
-- **task**: lightweight task cards with a title, content, and state
-  (open / doing / done);
-- **system**: system notices such as members joining or leaving.
+- **text:** ordinary chat, limited to 4000 characters;
+- **task:** a Work entry with a title, content, owner, and state such as open,
+  doing, checking, revising, needs_human, or done;
+- **system:** notices about membership, work creation, owner changes, and terminal
+  verification outcomes.
 
-Messages can include image and file attachments. Replying to a message establishes an
-explicit reply relationship; the continuous discussion expanding under a message forms
-a Thread.
+Messages can include image and file attachments. Replying to a message establishes
+an explicit reply relationship; the continuous discussion under a message forms a
+Thread. Task discussion belongs in its Thread, while execution and artifacts are
+tracked by the Work and its sessions.
 
-### Threads
+## How the Room Agent orchestrates
 
-A Thread starts from a reply to a message in a channel and carries the converging
-discussion around that message. Messages in a Thread have their own sequence space and
-do not mix with the main channel stream.
+After a user speaks in a channel, the hidden Room Agent normally decides:
 
-### Tasks
+- whether this is conversation or a Work with a deliverable;
+- which Named Agent's durable role and current state fit the request;
+- whether to split the request into independent pieces;
+- whether each piece should reuse an idle session or start a new one; and
+- whether sessions should run serially or in parallel.
 
-A Task is lightweight task tracking in a channel. Agents can create tasks, update
-their state, and assign owners. Only the task owner can update its state; progress
-should be written in the Thread of the corresponding task message.
+The same Named Agent may appear in several plans and may run several sessions at
+once. The orchestrator does not put unrelated work into one context merely because
+the public name is the same; session targets and Work revisions are persisted by the
+host. Membership changes, goal revisions, and session interruptions invalidate or
+recompute stale routes instead of allowing them to present old state as current.
 
-## How agents participate in group chat
+## Session routing and private collaboration
 
-A Named Agent's tool surface is completely different from a workspace agent's: it
-does not read or write files and participates in group chat through the following
-tools:
+A private collaboration message can include:
 
-### Inbox: chat_check
+- the sending and receiving Named Agent;
+- the sending session;
+- an optional target session; and
+- the Work, goal revision, and candidate revision.
 
-Agents do not passively receive every new message in a channel. They **actively pull**
-unread entries from their inbox with `chat_check`. Each check returns:
+When a target session is specified, the host verifies that it still belongs to the
+target Named Agent and the relevant room and Work. A missing, interrupted, or stale
+target is not silently redirected to another identity. For Work-scoped delivery,
+omitting the target lets the scheduler reuse that Work's bound session or create a
+dedicated one. Unscoped conversation delivery uses the identity's conversation
+session unless an existing coordination session is targeted explicitly. A parallel
+plan can start another Work session under the same Named Agent.
 
-- the latest sequence numbers of the current channel and Thread;
-- unread inbox entries (at most 50), each with its type, source, and an 80-character
-  preview.
+### Inbox: `chat_check`
 
-Inbox entry types include: being mentioned, being replied to, Thread updates, task
-assignments, and reminder triggers. The agent decides for itself which entries are
-worth reading into context and which can be skipped.
+Sessions do not passively receive every channel message. They actively pull unread
+entries with `chat_check`, including current channel and Thread sequence numbers,
+source, type, and preview. Ordinary room messages first enter the Room Agent's
+orchestration view; only sessions selected by the plan receive the corresponding
+execution event.
 
-### Reading messages: chat_read
+### Reading messages: `chat_read`
 
-Agents can get message bodies in two ways:
+A session can read message bodies in batches by inbox entry ID or pull a channel and
+sequence range. Images are provided as visual input when the model supports it.
+Private delivery bodies are visible only to the session selected by the route.
 
-- read in batch by inbox entry ID;
-- pull by channel ID and sequence range.
+### Sending messages: `chat_send` and held drafts
 
-When reading an image attachment and the current model supports image input, the image
-is given to the agent as visual content.
+For a public channel reply, a session must include the `basis_seq` it saw while
+writing. If the channel changed, the reply is held as a **held draft**. The session
+then reads the new messages and chooses whether to revise, publish as-is, or stay
+silent. This freshness check applies to public replies; private control delivery
+uses the persisted session route.
 
-### Sending messages: chat_send and held drafts
+### Handling drafts: `chat_draft`
 
-When sending a message, an agent must include `basis_seq` — the channel's latest
-sequence number it saw when writing the reply. This mechanism prevents multiple agents
-from submitting in parallel based on the same stale snapshot.
+`chat_draft` lets a session list or handle its held drafts:
 
-When the agent's `basis_seq` is already behind (the channel gained new messages while
-it was thinking), its reply is stashed as a **held draft**. After receiving a held
-result, the agent needs to:
+- **as_is:** publish unchanged with a new `basis_seq`;
+- **silent:** drop the utterance;
+- **anyway:** force publication after the structural hold limit.
 
-1. pull the new messages with `chat_read` to understand what changed in the channel;
-2. decide whether to revise the reply, publish it as-is, or drop this utterance.
+Drafts expire automatically after 24 hours. Private handoffs are not limited by a
+public Thread's speaking budget, but a Work remains bounded by its own budget,
+revisions, and deadline.
 
-### Handling drafts: chat_draft
+## Wake-ups and recovery
 
-`chat_draft` lets an agent list or handle its own held drafts:
+User messages, mentions, replies, task assignments, and reminders first become
+persistent events. The Room Agent then decides which Named Agent and which session
+to wake. Wake notifications do not contain the whole message; the selected session
+uses `chat_check` and `chat_read` to obtain its authorized context.
 
-- **as_is**: publish the draft unchanged with a new `basis_seq`. Suits cases where the
-  agent judges that new messages do not affect its view.
-- **silent**: discard the draft without publishing. Suits cases where the agent judges
-  it need not speak.
-- **anyway**: force-publish. Only available when the same draft has been held at least
-  2 times. This is a structural upper bound preventing "the room keeps moving so the
-  message never goes out".
+If a target session is already running, the host records a pending event. Independent
+Work can run in another session instead of making the identity wait behind one fixed
+conversation. If Wuu restarts or the machine goes offline, the model turn in progress
+may be interrupted. Persisted Work, private delivery, session bindings, and held
+drafts are reconciled during recovery; expired or missing runs are marked interrupted
+and reported to the owner.
 
-Drafts expire automatically after 24 hours without handling. Agent-only @mention
-handoffs are bounded per Thread; once the budget is exhausted, further messages
-stay in the inbox until human participation resets it.
+## Tools and isolation boundaries
 
-Silence is a legitimate outcome. The server does not record "who is expected to
-reply", does not force speech, and does not punish an agent that chooses not to
-respond.
-
-## Wake-ups: how new messages reach an agent
-
-When an event an agent should know about happens in a channel (being mentioned,
-replied to, assigned a task, or a reminder firing), the system **wakes** the
-corresponding Named Agent.
-
-A wake-up is **content-free**: the agent receives a short notice like "you have new
-messages, check them with chat_check", without the message content. The agent must
-first check its inbox with `chat_check`, then decide which messages to read. This
-design structurally prevents "multiple agents submitting in parallel from the same
-stale snapshot".
-
-If the agent is already processing the previous round of messages, the new wake-up is
-marked pending and triggers the next round after the current one ends.
-
-Agents can also set reminders for themselves with `chat_remind` during a
-conversation, which wake them at the scheduled time. The minimum reminder granularity
-is 1 minute.
-
-## Path isolation
-
-Workspace paths and group-chat paths are fully separated in tool registration, UI
-entry, and storage:
-
-- any session in the workspace **never** has chat tools and **never** has a Named
-  Agent identity;
-- a Named Agent **can never** use file tools (bash, edit_file, read_file, etc.) nor
-  access your workspace directories;
-- the two paths do not contaminate each other.
-
-This means: when you let an agent change code or run tests in the workspace, you do
-not need to worry about it suddenly speaking in group chat; when you discuss plans
-with an agent in group chat, it cannot touch your project files either.
+- The Room Agent is a hidden orchestration identity. It cannot publish persona
+  messages to the room or impersonate a Named Agent.
+- Each Named Agent session has an independent context. When a project is needed, it
+  uses the registered workspace and permission mode's project tools; the host and
+  operating-system boundaries still apply.
+- Long-term memory belongs to the Named Agent identity. Starting a new session does
+  not erase it, and a session's temporary thoughts and tool trace are not silently
+  written into another agent's memory.
+- A hidden Verifier uses an independent context to inspect a candidate and return a
+  decision; it does not repair or publish the result for the owner.
+- Anonymous subagents and Named Agent sessions are separate paths. A temporary
+  anonymous subagent identity does not appear in the collaboration channel.
 
 ## Current limitations
 
 - Creating and managing Named Agents happens in the desktop; the CLI does not yet
-  provide corresponding commands.
-- A channel holds at most 32 total members and at most 6 Named Agents.
+  provide corresponding management commands.
+- A channel holds at most 32 total members and at most 6 Named Agents. The number of
+  sessions is controlled by runtime resources and scheduling state, so work can
+  queue or be interrupted.
 - A single message is limited to 4000 characters.
-- Agents do not proactively read ordinary channel messages that are not inbox
-  entries; a human mention or reply is needed to trigger attention.
-- When the agent is closed, Wuu restarts, or the machine goes offline, an in-progress
-  group-chat turn may be interrupted; held drafts survive restarts and the agent can
-  continue handling them the next time it is woken.
+- Agents do not proactively read ordinary channel messages that have not entered
+  their inbox or private delivery; the Room Agent decides whether to route them.
+- Recovery persists Work and delivery state for reconciliation, but cannot guarantee
+  resuming an offline model turn at the same token position.
 - Named Agents do not currently support external agent cores (such as Claude Code);
   model diversity is achieved through wuu's own provider/model configuration.
 
@@ -238,4 +265,4 @@ with an agent in group chat, it cannot touch your project files either.
 - [Conversations and branches](conversations.md) — managing conversations in the
   workspace path
 - [Skills](../customize/skills.md) — making agents follow fixed workflows
-- [Memory](../customize/memory.md) — named-agent memory uses the same memory system
+- [Memory](../customize/memory.md) — Named Agent memory and session-memory boundaries

@@ -90,53 +90,66 @@ func collectChannelAgentInsight(sessDir string, namedAgent channels.NamedAgent, 
 		AgentID: namedAgent.ID, WindowDays: channelAgentInsightWindowDays,
 		Languages: []ChannelAgentLanguageUsage{}, AttributionPartial: true,
 	}
-	metadata, found, err := session.Find(sessDir, namedAgentSessionID(namedAgent))
-	if err != nil || !found {
-		return result
-	}
-	if !metadata.UpdatedAt.IsZero() {
-		result.LastActiveAt = metadata.UpdatedAt.UTC().Format(time.RFC3339Nano)
-	}
-	if cwd := strings.TrimSpace(metadata.CWD); cwd != "" {
-		result.Workspace = filepath.Base(filepath.Clean(cwd))
-	}
-	records, err := session.LoadHistoryRecords(sessDir, metadata.ID, true)
+	allSessions, err := session.List(sessDir, 0)
 	if err != nil {
 		return result
+	}
+	owned := make([]session.Session, 0)
+	defaultSessionID := namedAgentSessionID(namedAgent)
+	for _, metadata := range allSessions {
+		if metadata.ID == defaultSessionID || metadata.Source == namedAgentSessionSource+namedAgent.ID {
+			owned = append(owned, metadata)
+		}
 	}
 	cutoff := now.AddDate(0, 0, -channelAgentInsightWindowDays)
 	files := make(map[string]struct{})
 	languageLines := make(map[string]int)
-	for _, record := range records {
-		if record.At.IsZero() || record.At.Before(cutoff) || record.At.After(now.Add(time.Minute)) {
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(record.Role), "meta") && strings.TrimSpace(record.Content) == "token_usage" {
-			result.InputTokens += record.InputTokens + record.CacheReadTokens
-			result.OutputTokens += record.OutputTokens
-			continue
-		}
-		if !strings.EqualFold(strings.TrimSpace(record.Role), "tool") {
-			continue
-		}
-		name := strings.TrimSpace(record.Name)
-		if name != "apply_patch" && name != "edit_file" && name != "write_file" {
-			continue
-		}
-		for _, edit := range attributableEdits(record.ToolResult) {
-			path := strings.TrimSpace(edit.Path)
-			if strings.TrimSpace(edit.MovePath) != "" {
-				path = strings.TrimSpace(edit.MovePath)
+	var lastActive time.Time
+	for _, metadata := range owned {
+		if metadata.UpdatedAt.After(lastActive) {
+			lastActive = metadata.UpdatedAt
+			if cwd := strings.TrimSpace(metadata.CWD); cwd != "" {
+				result.Workspace = filepath.Base(filepath.Clean(cwd))
 			}
-			if path == "" {
+		}
+		records, loadErr := session.LoadHistoryRecords(sessDir, metadata.ID, true)
+		if loadErr != nil {
+			continue
+		}
+		for _, record := range records {
+			if record.At.IsZero() || record.At.Before(cutoff) || record.At.After(now.Add(time.Minute)) {
 				continue
 			}
-			additions, deletions := summarizeInsightDiff(edit.Diff)
-			files[path] = struct{}{}
-			result.Additions += additions
-			result.Deletions += deletions
-			languageLines[languageForPath(path)] += additions + deletions
+			if strings.EqualFold(strings.TrimSpace(record.Role), "meta") && strings.TrimSpace(record.Content) == "token_usage" {
+				result.InputTokens += record.InputTokens + record.CacheReadTokens
+				result.OutputTokens += record.OutputTokens
+				continue
+			}
+			if !strings.EqualFold(strings.TrimSpace(record.Role), "tool") {
+				continue
+			}
+			name := strings.TrimSpace(record.Name)
+			if name != "apply_patch" && name != "edit_file" && name != "write_file" {
+				continue
+			}
+			for _, edit := range attributableEdits(record.ToolResult) {
+				path := strings.TrimSpace(edit.Path)
+				if strings.TrimSpace(edit.MovePath) != "" {
+					path = strings.TrimSpace(edit.MovePath)
+				}
+				if path == "" {
+					continue
+				}
+				additions, deletions := summarizeInsightDiff(edit.Diff)
+				files[path] = struct{}{}
+				result.Additions += additions
+				result.Deletions += deletions
+				languageLines[languageForPath(path)] += additions + deletions
+			}
 		}
+	}
+	if !lastActive.IsZero() {
+		result.LastActiveAt = lastActive.UTC().Format(time.RFC3339Nano)
 	}
 	result.FilesChanged = len(files)
 	result.Languages = buildAgentLanguageUsage(languageLines)

@@ -12,6 +12,7 @@ type AgentClient struct {
 	agentID       string
 	principalKind PrincipalKind
 	token         string
+	sessionRef    string
 }
 
 func (s *Service) BindAgent(ctx context.Context, agentID string) (*AgentClient, error) {
@@ -46,6 +47,22 @@ func (s *Service) BindRuntime(ctx context.Context, runtimeID string) (*AgentClie
 	return &AgentClient{service: s, agentID: runtimeID, principalKind: runtime.Kind, token: token}, nil
 }
 
+func (s *Service) BindAgentSession(ctx context.Context, agentID, sessionRef string) (*AgentClient, error) {
+	client, err := s.BindAgent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	binding, err := s.GetCollaborationSession(ctx, client.agentID, client.token, strings.TrimSpace(sessionRef))
+	if err != nil {
+		return nil, err
+	}
+	if binding.PrincipalID != client.agentID {
+		return nil, ErrUnauthorized
+	}
+	client.sessionRef = binding.SessionRef
+	return client, nil
+}
+
 func (c *AgentClient) AgentID() string {
 	if c == nil {
 		return ""
@@ -58,6 +75,13 @@ func (c *AgentClient) IsRoomRuntime() bool {
 		return false
 	}
 	return c.principalKind == PrincipalRoomRuntime
+}
+
+func (c *AgentClient) SessionRef() string {
+	if c == nil {
+		return ""
+	}
+	return c.sessionRef
 }
 
 func (c *AgentClient) RoomRoster(ctx context.Context, roomID string) (RoomRoster, error) {
@@ -85,6 +109,9 @@ func (c *AgentClient) Check(ctx context.Context) (CheckResult, error) {
 	if c == nil || c.service == nil {
 		return CheckResult{}, errors.New("chat agent is not bound")
 	}
+	if c.sessionRef != "" {
+		return c.service.CheckSession(ctx, c.agentID, c.token, c.sessionRef)
+	}
 	return c.service.Check(ctx, c.agentID, c.token)
 }
 
@@ -111,6 +138,7 @@ func (c *AgentClient) Send(ctx context.Context, params AgentSendParams) (SendRes
 	}
 	params.AgentID = c.agentID
 	params.Token = c.token
+	params.SessionRef = c.sessionRef
 	return c.service.SendAgent(ctx, params)
 }
 
@@ -120,14 +148,41 @@ func (c *AgentClient) SendCollaboration(ctx context.Context, params Collaboratio
 	}
 	params.AgentID = c.agentID
 	params.Token = c.token
+	if params.FromSessionRef == "" {
+		params.FromSessionRef = c.sessionRef
+	}
 	return c.service.SendCollaboration(ctx, params)
+}
+
+func (c *AgentClient) BindCollaborationSession(ctx context.Context, params CollaborationSessionBindParams) (CollaborationSessionBinding, error) {
+	if c == nil || c.service == nil {
+		return CollaborationSessionBinding{}, errors.New("chat agent is not bound")
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	return c.service.BindCollaborationSession(ctx, params)
+}
+
+func (c *AgentClient) ListCollaborationSessions(ctx context.Context, params CollaborationSessionListParams) ([]CollaborationSessionBinding, error) {
+	if c == nil || c.service == nil {
+		return nil, errors.New("chat agent is not bound")
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	return c.service.ListCollaborationSessions(ctx, params)
+}
+
+func (c *AgentClient) UpdateCollaborationSessionState(ctx context.Context, params CollaborationSessionStateParams) (CollaborationSessionBinding, error) {
+	if c == nil || c.service == nil {
+		return CollaborationSessionBinding{}, errors.New("chat agent is not bound")
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	return c.service.UpdateCollaborationSessionState(ctx, params)
 }
 
 func (c *AgentClient) ListDrafts(ctx context.Context) ([]Draft, error) {
 	if c == nil || c.service == nil {
 		return nil, errors.New("chat agent is not bound")
 	}
-	return c.service.ListDrafts(ctx, c.agentID, c.token)
+	return c.service.listDrafts(ctx, c.agentID, c.token, c.sessionRef)
 }
 
 func (c *AgentClient) CreateTask(ctx context.Context, params TaskCreateParams) (Message, error) {
@@ -145,6 +200,7 @@ func (c *AgentClient) UpdateTask(ctx context.Context, params TaskUpdateParams) (
 	}
 	params.AgentID = c.agentID
 	params.Token = c.token
+	params.SessionRef = c.sessionRef
 	return c.service.UpdateTask(ctx, params)
 }
 
@@ -202,6 +258,7 @@ func (c *AgentClient) ResolveDraft(ctx context.Context, params ResolveDraftParam
 	}
 	params.AgentID = c.agentID
 	params.Token = c.token
+	params.SessionRef = c.sessionRef
 	return c.service.ResolveDraft(ctx, params)
 }
 
@@ -237,6 +294,12 @@ func (c *AgentClient) StartWorkRun(ctx context.Context, params WorkRunStartParam
 		return WorkRun{}, errors.New("chat agent is not bound")
 	}
 	params.AgentID, params.Token = c.agentID, c.token
+	if params.SessionRef == "" {
+		params.SessionRef = c.sessionRef
+	}
+	if params.NamedAgentID == "" && !c.IsRoomRuntime() {
+		params.NamedAgentID = c.agentID
+	}
 	return c.service.StartWorkRun(ctx, params)
 }
 
@@ -246,6 +309,20 @@ func (c *AgentClient) FinishWorkRun(ctx context.Context, params WorkRunFinishPar
 	}
 	params.AgentID, params.Token = c.agentID, c.token
 	return c.service.FinishWorkRun(ctx, params)
+}
+
+func (c *AgentClient) AttachWorkRunTurn(ctx context.Context, params WorkRunTurnParams) (WorkRun, error) {
+	if c == nil || c.service == nil {
+		return WorkRun{}, errors.New("chat agent is not bound")
+	}
+	if c.sessionRef == "" {
+		return WorkRun{}, errors.New("work run turn requires a bound collaboration session")
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	if params.SessionRef == "" {
+		params.SessionRef = c.sessionRef
+	}
+	return c.service.AttachWorkRunTurn(ctx, params)
 }
 
 func (c *AgentClient) AddWorkArtifact(ctx context.Context, params WorkArtifactAddParams) (WorkArtifact, error) {

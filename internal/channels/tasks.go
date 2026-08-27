@@ -34,6 +34,7 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 	params.Body = strings.TrimSpace(params.Body)
 	params.OwnerID = strings.TrimSpace(params.OwnerID)
 	params.LeadNamedAgentID = strings.TrimSpace(params.LeadNamedAgentID)
+	params.TargetSessionRef = strings.TrimSpace(params.TargetSessionRef)
 	params.SourceMessageID = strings.TrimSpace(params.SourceMessageID)
 	params.ThreadID = strings.TrimSpace(params.ThreadID)
 	if params.RoomID == "" || params.Title == "" || params.OwnerID == "" {
@@ -64,6 +65,20 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 			return Message{}, err
 		}
 	}
+	if params.TargetSessionRef != "" {
+		binding, err := scanCollaborationSession(tx.QueryRowContext(ctx, collaborationSessionSelect+` WHERE binding.session_ref = ?`, params.TargetSessionRef))
+		if err != nil {
+			return Message{}, fmt.Errorf("validate task target session: %w", err)
+		}
+		if binding.PrincipalID != params.OwnerID {
+			return Message{}, fmt.Errorf("%w: task target session belongs to another principal", ErrUnauthorized)
+		}
+		if binding.RoomID != params.RoomID || binding.WorkID != "" || binding.RunID != "" ||
+			binding.State == CollaborationSessionRunning || binding.State == CollaborationSessionInterrupted ||
+			binding.State == CollaborationSessionMissing {
+			return Message{}, fmt.Errorf("%w: task target session is not available for this room", ErrConflict)
+		}
+	}
 	if params.ThreadID != "" {
 		thread, err := loadMessageTx(ctx, tx, params.ThreadID)
 		if err != nil {
@@ -83,6 +98,14 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 	if err := insertWorkTx(ctx, tx, message, params); err != nil {
 		return Message{}, err
 	}
+	if params.TargetSessionRef != "" {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE collaboration_session_bindings
+			SET work_id = ?, purpose = 'work', updated_at = ? WHERE session_ref = ?`,
+			message.ID, toMillis(message.CreatedAt), params.TargetSessionRef); err != nil {
+			return Message{}, fmt.Errorf("bind task target session: %w", err)
+		}
+	}
 	assignmentFromType := MemberAgent
 	assignmentFromID := ""
 	if params.HumanID != "" {
@@ -91,7 +114,8 @@ func (s *Service) createTask(ctx context.Context, params TaskCreateParams) (Mess
 	}
 	if _, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
 		RoomID: message.RoomID, FromType: assignmentFromType, FromID: assignmentFromID,
-		ToAgentID: params.OwnerID, WorkID: message.ID, Kind: CollaborationAssignment,
+		ToAgentID: params.OwnerID, TargetSessionRef: params.TargetSessionRef,
+		WorkID: message.ID, Kind: CollaborationAssignment,
 		Body: params.Body, SourceMessageID: params.SourceMessageID,
 		GoalRevision: message.TaskGoalRevision, CreatedAt: message.CreatedAt,
 	}); err != nil {
@@ -135,6 +159,7 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	params.TaskID = strings.TrimSpace(params.TaskID)
 	params.OwnerID = strings.TrimSpace(params.OwnerID)
 	params.GoalCorrection = strings.TrimSpace(params.GoalCorrection)
+	params.SessionRef = strings.TrimSpace(params.SessionRef)
 	if params.TaskID == "" {
 		return Message{}, errors.New("task id is required")
 	}
@@ -186,6 +211,23 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if !callerOk || !correctionOk {
 		return Message{}, ErrUnauthorized
 	}
+	var workState WorkState
+	if err := tx.QueryRowContext(ctx, `SELECT state FROM works WHERE id = ?`, message.ID).Scan(&workState); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Message{}, fmt.Errorf("%w: work %q", ErrNotFound, message.ID)
+		}
+		return Message{}, fmt.Errorf("load task work state: %w", err)
+	}
+	if terminalWorkState(workState) && params.GoalCorrection == "" {
+		return Message{}, fmt.Errorf("%w: work is %s", ErrConflict, workState)
+	}
+	if params.AgentID != "" {
+		if err := validateCollaborationSessionWriteTx(
+			ctx, tx, params.SessionRef, params.AgentID, message.RoomID, message.ID, message.TaskGoalRevision,
+		); err != nil {
+			return Message{}, err
+		}
+	}
 	oldOwner := message.TaskOwner
 	newOwner := message.TaskOwner
 	if params.OwnerID != "" {
@@ -194,7 +236,20 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 		}
 		newOwner = params.OwnerID
 	}
+	ownerChanged := newOwner != oldOwner
 	updatedAt := fromMillis(toMillis(s.now()))
+	interruptTargets := make([]workSessionInterruptTarget, 0)
+	if params.GoalCorrection != "" || ownerChanged {
+		activeTargets, err := activeWorkSessionInterruptTargetsTx(ctx, tx, message.ID)
+		if err != nil {
+			return Message{}, err
+		}
+		for _, target := range activeTargets {
+			if params.GoalCorrection != "" || target.agentID == oldOwner {
+				interruptTargets = append(interruptTargets, target)
+			}
+		}
+	}
 	setState := message.TaskState
 	if params.State != "" {
 		setState = string(params.State)
@@ -208,6 +263,15 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 			WHERE work_id = ? AND goal_revision < ? AND pulled_at IS NULL`,
 			toMillis(updatedAt), message.ID, message.TaskGoalRevision); err != nil {
 			return Message{}, fmt.Errorf("invalidate stale work deliveries: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE collaboration_session_bindings
+			SET state = 'interrupted', run_id = NULL, updated_at = ?
+			WHERE run_id IN (
+				SELECT id FROM work_runs
+				WHERE work_id = ? AND goal_revision < ? AND state IN ('queued', 'running')
+			)`, toMillis(updatedAt), message.ID, message.TaskGoalRevision); err != nil {
+			return Message{}, fmt.Errorf("release stale work sessions: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE work_runs SET state = 'interrupted', outcome = 'goal revised', ended_at = ?, updated_at = ?
@@ -227,7 +291,8 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 			return Message{}, err
 		}
 		if _, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
-			RoomID: message.RoomID, ToAgentID: newOwner, WorkID: message.ID, Kind: CollaborationControl,
+			RoomID: message.RoomID, ToAgentID: newOwner,
+			WorkID: message.ID, Kind: CollaborationControl,
 			Body:            "The user changed this task's goal. Output for the previous goal was not applied or delivered. Stop the old approach, read the complete current task, and continue on this same task.",
 			SourceMessageID: message.ID, GoalRevision: message.TaskGoalRevision,
 			CandidateRevision: message.TaskCandidateRevision, CreatedAt: updatedAt,
@@ -238,9 +303,52 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if message.TaskVerificationRequired && params.State == TaskStateChecking && message.TaskState != string(TaskStateChecking) {
 		message.TaskCandidateRevision++
 	}
-	if newOwner != oldOwner {
+	if ownerChanged {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM task_verifications WHERE task_id = ?`, message.ID); err != nil {
 			return Message{}, fmt.Errorf("invalidate reassigned task verification: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE collaboration_messages SET invalidated_at = ?
+			WHERE work_id = ? AND to_agent_id = ? AND pulled_at IS NULL AND invalidated_at IS NULL`,
+			toMillis(updatedAt), message.ID, oldOwner); err != nil {
+			return Message{}, fmt.Errorf("invalidate previous owner work deliveries: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE work_runs
+			SET state = 'interrupted', outcome = 'owner reassigned', ended_at = ?, updated_at = ?
+			WHERE work_id = ? AND state IN ('queued', 'running') AND (
+				named_agent_id = ? OR id IN (
+					SELECT run_id FROM collaboration_session_bindings
+					WHERE work_id = ? AND principal_id = ? AND run_id IS NOT NULL
+				)
+			)`, toMillis(updatedAt), toMillis(updatedAt), message.ID,
+			oldOwner, message.ID, oldOwner); err != nil {
+			return Message{}, fmt.Errorf("interrupt previous owner work runs: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE collaboration_session_bindings
+			SET state = 'interrupted', run_id = NULL, updated_at = ?
+			WHERE work_id = ? AND principal_id = ? AND state != 'missing'`,
+			toMillis(updatedAt), message.ID, oldOwner); err != nil {
+			return Message{}, fmt.Errorf("interrupt previous owner work sessions: %w", err)
+		}
+		if err := refreshWorkCurrentRunRefTx(ctx, tx, message.ID, updatedAt); err != nil {
+			return Message{}, fmt.Errorf("settle reassigned work run handle: %w", err)
+		}
+		assignmentFromType := MemberAgent
+		assignmentFromID := ""
+		if params.HumanID != "" {
+			assignmentFromType = MemberHuman
+			assignmentFromID = params.HumanID
+		}
+		if _, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
+			RoomID: message.RoomID, FromType: assignmentFromType, FromID: assignmentFromID,
+			ToAgentID: newOwner, WorkID: message.ID, Kind: CollaborationAssignment,
+			Body: message.Body, SourceMessageID: message.ID,
+			GoalRevision: message.TaskGoalRevision, CandidateRevision: message.TaskCandidateRevision,
+			CreatedAt: updatedAt,
+		}); err != nil {
+			return Message{}, fmt.Errorf("enqueue reassigned work assignment: %w", err)
 		}
 		setState = string(TaskStateOpen)
 	}
@@ -294,6 +402,18 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if err := s.taskEventInboxTx(ctx, tx, message, newOwner, oldOwner); err != nil {
 		return Message{}, err
 	}
+	if ownerChanged {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE inbox_items SET pulled_at = ?
+			WHERE member_type = 'agent' AND member_id = ? AND message_id = ?
+				AND kind = 'task' AND pulled_at IS NULL`,
+			toMillis(updatedAt), oldOwner, message.ID); err != nil {
+			return Message{}, fmt.Errorf("settle previous owner task inbox: %w", err)
+		}
+		if err := recomputeAgentWakeTx(ctx, tx, oldOwner, toMillis(updatedAt)); err != nil {
+			return Message{}, err
+		}
+	}
 	requested, err := requestWakeTx(ctx, tx, newOwner, toMillis(updatedAt))
 	if err != nil {
 		return Message{}, err
@@ -301,13 +421,9 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if err := tx.Commit(); err != nil {
 		return Message{}, fmt.Errorf("commit task update: %w", err)
 	}
+	s.interruptWorkSessions(interruptTargets)
 	if requested && s.wake != nil {
 		s.wake.Deliver(newOwner)
-	}
-	if params.GoalCorrection != "" {
-		if interrupt, ok := s.wake.(WakeInterruptSink); ok {
-			interrupt.Interrupt(newOwner)
-		}
 	}
 	if work, err := s.GetWork(ctx, message.ID); err == nil {
 		message.Work = &work

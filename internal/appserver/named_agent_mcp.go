@@ -36,7 +36,7 @@ type namedAgentMCPResponse struct {
 	Error   any             `json:"error,omitempty"`
 }
 
-func (s *Server) namedAgentMCPURL(agentID string) (string, error) {
+func (s *Server) namedAgentMCPURL(agentID string, sessionRefs ...string) (string, error) {
 	agentID = strings.TrimSpace(agentID)
 	if s == nil || s.closed.Load() || agentID == "" {
 		return "", errors.New("named agent MCP bridge is unavailable")
@@ -44,9 +44,25 @@ func (s *Server) namedAgentMCPURL(agentID string) (string, error) {
 	if s.channelService == nil {
 		return "", errors.New("channels service is unavailable")
 	}
-	if _, err := s.channelService.GetNamedAgent(context.Background(), agentID); err != nil {
+	agent, err := s.channelService.GetNamedAgent(context.Background(), agentID)
+	if err != nil {
 		return "", err
 	}
+	sessionRef := namedAgentSessionID(agent)
+	if len(sessionRefs) > 0 && strings.TrimSpace(sessionRefs[0]) != "" {
+		sessionRef = strings.TrimSpace(sessionRefs[0])
+	}
+	thread := s.thread(sessionRef)
+	if thread == nil {
+		return "", errors.New("named agent session is unavailable")
+	}
+	thread.mu.Lock()
+	ownedByAgent := thread.NamedAgentID == agentID
+	thread.mu.Unlock()
+	if !ownedByAgent {
+		return "", errors.New("named agent session is unavailable")
+	}
+	capabilityKey := agentID + "\x00" + sessionRef
 
 	s.namedAgentMCPMu.Lock()
 	defer s.namedAgentMCPMu.Unlock()
@@ -58,6 +74,7 @@ func (s *Server) namedAgentMCPURL(agentID string) (string, error) {
 		s.namedAgentMCPBaseURL = "http://" + listener.Addr().String()
 		s.namedAgentMCPTokenByAgent = make(map[string]string)
 		s.namedAgentMCPAgentByToken = make(map[string]string)
+		s.namedAgentMCPSessionByToken = make(map[string]string)
 		s.namedAgentMCPServer = &http.Server{
 			Handler:           http.HandlerFunc(s.handleNamedAgentMCP),
 			ReadHeaderTimeout: 5 * time.Second,
@@ -69,15 +86,16 @@ func (s *Server) namedAgentMCPURL(agentID string) (string, error) {
 			}
 		}()
 	}
-	token := s.namedAgentMCPTokenByAgent[agentID]
+	token := s.namedAgentMCPTokenByAgent[capabilityKey]
 	if token == "" {
 		tokenBytes := make([]byte, 32)
 		if _, err := rand.Read(tokenBytes); err != nil {
 			return "", fmt.Errorf("create named agent MCP capability: %w", err)
 		}
 		token = hex.EncodeToString(tokenBytes)
-		s.namedAgentMCPTokenByAgent[agentID] = token
+		s.namedAgentMCPTokenByAgent[capabilityKey] = token
 		s.namedAgentMCPAgentByToken[token] = agentID
+		s.namedAgentMCPSessionByToken[token] = sessionRef
 	}
 	return fmt.Sprintf("%s/%s", s.namedAgentMCPBaseURL, token), nil
 }
@@ -92,6 +110,7 @@ func (s *Server) closeNamedAgentMCP() {
 	s.namedAgentMCPBaseURL = ""
 	s.namedAgentMCPTokenByAgent = nil
 	s.namedAgentMCPAgentByToken = nil
+	s.namedAgentMCPSessionByToken = nil
 	s.namedAgentMCPMu.Unlock()
 	if server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -108,6 +127,7 @@ func (s *Server) handleNamedAgentMCP(w http.ResponseWriter, r *http.Request) {
 	s.namedAgentMCPMu.Lock()
 	token := strings.Trim(r.URL.Path, "/")
 	agentID := s.namedAgentMCPAgentByToken[token]
+	sessionRef := s.namedAgentMCPSessionByToken[token]
 	s.namedAgentMCPMu.Unlock()
 	if token == "" || strings.Contains(token, "/") || agentID == "" {
 		http.NotFound(w, r)
@@ -132,7 +152,7 @@ func (s *Server) handleNamedAgentMCP(w http.ResponseWriter, r *http.Request) {
 			"serverInfo":      map[string]any{"name": namedAgentMCPServerName, "version": "1"},
 		}
 	case "tools/list":
-		toolkit, err := s.namedAgentToolkit(agentID)
+		toolkit, err := s.namedAgentToolkit(agentID, sessionRef)
 		if err != nil {
 			response.Error = map[string]any{"code": -32000, "message": err.Error()}
 			break
@@ -161,7 +181,7 @@ func (s *Server) handleNamedAgentMCP(w http.ResponseWriter, r *http.Request) {
 			response.Error = map[string]any{"code": -32602, "message": "unknown collaboration tool"}
 			break
 		}
-		toolkit, err := s.namedAgentToolkit(agentID)
+		toolkit, err := s.namedAgentToolkit(agentID, sessionRef)
 		if err != nil {
 			response.Error = map[string]any{"code": -32000, "message": err.Error()}
 			break
@@ -182,7 +202,7 @@ func (s *Server) handleNamedAgentMCP(w http.ResponseWriter, r *http.Request) {
 	writeNamedAgentMCPResponse(w, response)
 }
 
-func (s *Server) namedAgentToolkit(agentID string) (interface {
+func (s *Server) namedAgentToolkit(agentID string, sessionRefs ...string) (interface {
 	Definitions() []providers.ToolDefinition
 	Execute(context.Context, providers.ToolCall) (string, error)
 }, error) {
@@ -196,7 +216,11 @@ func (s *Server) namedAgentToolkit(agentID string) (interface {
 	if err != nil {
 		return nil, err
 	}
-	thread := s.thread(namedAgentSessionID(agent))
+	sessionRef := namedAgentSessionID(agent)
+	if len(sessionRefs) > 0 && strings.TrimSpace(sessionRefs[0]) != "" {
+		sessionRef = strings.TrimSpace(sessionRefs[0])
+	}
+	thread := s.thread(sessionRef)
 	if thread == nil {
 		return nil, errors.New("named agent runtime is unavailable")
 	}

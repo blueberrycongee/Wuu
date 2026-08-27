@@ -214,13 +214,25 @@ type RoomRoster struct {
 }
 
 type AgentCapabilitySummary struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	Role             string `json:"role,omitempty"`
-	EngineOverride   string `json:"engine_override,omitempty"`
-	ProviderOverride string `json:"provider_override,omitempty"`
-	ModelOverride    string `json:"model_override,omitempty"`
-	EffortOverride   string `json:"effort_override,omitempty"`
+	ID               string                `json:"id"`
+	Name             string                `json:"name"`
+	Role             string                `json:"role,omitempty"`
+	MemoryIndex      string                `json:"memory_index,omitempty"`
+	EngineOverride   string                `json:"engine_override,omitempty"`
+	ProviderOverride string                `json:"provider_override,omitempty"`
+	ModelOverride    string                `json:"model_override,omitempty"`
+	EffortOverride   string                `json:"effort_override,omitempty"`
+	Sessions         []AgentSessionSummary `json:"sessions"`
+}
+
+type AgentSessionSummary struct {
+	SessionRef string                      `json:"session_ref"`
+	RoomID     string                      `json:"room_id,omitempty"`
+	WorkID     string                      `json:"work_id,omitempty"`
+	RunID      string                      `json:"run_id,omitempty"`
+	Purpose    CollaborationSessionPurpose `json:"purpose"`
+	State      CollaborationSessionState   `json:"state"`
+	UpdatedAt  time.Time                   `json:"updated_at"`
 }
 
 type AgentCreationProposalState string
@@ -302,13 +314,14 @@ type HumanSendParams struct {
 }
 
 type AgentSendParams struct {
-	RoomID   string
-	AgentID  string
-	Token    string
-	ThreadID string
-	ReplyTo  string
-	Body     string
-	BasisSeq int64
+	RoomID     string
+	AgentID    string
+	Token      string
+	SessionRef string
+	ThreadID   string
+	ReplyTo    string
+	Body       string
+	BasisSeq   int64
 }
 
 type SendResult struct {
@@ -344,16 +357,17 @@ const (
 )
 
 type Draft struct {
-	ID        string     `json:"id"`
-	AgentID   string     `json:"agent_id"`
-	RoomID    string     `json:"room_id"`
-	ThreadID  string     `json:"thread_id,omitempty"`
-	Body      string     `json:"body"`
-	BasisSeq  int64      `json:"basis_seq"`
-	HoldCount int        `json:"hold_count"`
-	State     DraftState `json:"state"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID         string     `json:"id"`
+	AgentID    string     `json:"agent_id"`
+	SessionRef string     `json:"session_ref,omitempty"`
+	RoomID     string     `json:"room_id"`
+	ThreadID   string     `json:"thread_id,omitempty"`
+	Body       string     `json:"body"`
+	BasisSeq   int64      `json:"basis_seq"`
+	HoldCount  int        `json:"hold_count"`
+	State      DraftState `json:"state"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 type DraftDeltaItem struct {
@@ -372,6 +386,7 @@ type DraftDelta struct {
 type ResolveDraftParams struct {
 	AgentID    string
 	Token      string
+	SessionRef string
 	DraftID    string
 	Resolution DraftResolution
 	BasisSeq   *int64
@@ -427,7 +442,9 @@ type CollaborationMessage struct {
 	RoomID                string            `json:"room_id"`
 	FromType              MemberType        `json:"from_type,omitempty"`
 	FromID                string            `json:"from_id,omitempty"`
+	FromSessionRef        string            `json:"from_session_ref,omitempty"`
 	ToAgentID             string            `json:"to_agent_id,omitempty"`
+	TargetSessionRef      string            `json:"target_session_ref,omitempty"`
 	WorkID                string            `json:"work_id,omitempty"`
 	RecipientNamedAgentID string            `json:"recipient_named_agent_id,omitempty"`
 	Kind                  CollaborationKind `json:"kind,omitempty"`
@@ -442,16 +459,30 @@ type CollaborationMessage struct {
 	InvalidatedAt         time.Time         `json:"invalidated_at,omitempty"`
 }
 
+// CollaborationDispatch is the minimal unconsumed-delivery envelope used by
+// the host scheduler. Message bodies remain private to the session that claims
+// them through Check or CheckSession.
+type CollaborationDispatch struct {
+	ID               string            `json:"id"`
+	RoomID           string            `json:"room_id"`
+	TargetSessionRef string            `json:"target_session_ref,omitempty"`
+	WorkID           string            `json:"work_id,omitempty"`
+	Kind             CollaborationKind `json:"kind,omitempty"`
+}
+
 type CollaborationSendParams struct {
-	AgentID         string
-	Token           string
-	RoomID          string
-	ToAgentID       string
-	Kind            CollaborationKind
-	Body            string
-	ArtifactRefs    []string
-	SourceMessageID string
-	ReplyTo         string
+	AgentID          string
+	Token            string
+	FromSessionRef   string
+	RoomID           string
+	ToAgentID        string
+	TargetSessionRef string
+	Kind             CollaborationKind
+	Body             string
+	ArtifactRefs     []string
+	SourceMessageID  string
+	WorkID           string
+	ReplyTo          string
 }
 
 type TaskVerification struct {
@@ -502,6 +533,18 @@ type WakeInterruptSink interface {
 	Interrupt(agentID string)
 }
 
+type WakeSessionInterruptSink interface {
+	WakeSink
+	InterruptSession(agentID, sessionRef string)
+}
+
+// WakeRunSessionInterruptSink interrupts a hidden Work run that has a durable
+// session ref but no Named Agent owner, such as an independent verifier.
+type WakeRunSessionInterruptSink interface {
+	WakeSink
+	InterruptRunSession(sessionRef string)
+}
+
 type TelemetryEvent struct {
 	Name       string     `json:"name"`
 	MemberType MemberType `json:"member_type,omitempty"`
@@ -535,6 +578,7 @@ type TaskCreateParams struct {
 	Body                 string
 	OwnerID              string
 	LeadNamedAgentID     string
+	TargetSessionRef     string
 	VerificationRequired bool
 	AgentID              string
 	Token                string
@@ -547,6 +591,7 @@ type TaskUpdateParams struct {
 	State          TaskState
 	OwnerID        string
 	GoalCorrection string
+	SessionRef     string
 	AgentID        string
 	Token          string
 	HumanID        string

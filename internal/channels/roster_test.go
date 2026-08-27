@@ -2,6 +2,8 @@ package channels
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -11,10 +13,23 @@ func TestRoomRuntimeCanInviteAndProposePersistentNamedAgents(t *testing.T) {
 	service := openTestService(t, wake)
 	andy := createTestAgent(t, service, "Andy")
 	reviewer := createTestAgent(t, service, "Reviewer")
+	if err := os.WriteFile(filepath.Join(andy.Agent.MemoryDir, agentMemoryIndexFile), []byte("- [Sessions](sessions.md) - Recovers interrupted work safely\n"), 0o600); err != nil {
+		t.Fatalf("write member memory index: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(reviewer.Agent.MemoryDir, agentMemoryIndexFile), []byte("- [Private](private.md) - Outside-room memory\n"), 0o600); err != nil {
+		t.Fatalf("write available agent memory index: %v", err)
+	}
 	room := createTestRoom(t, service, andy)
 	client, err := service.BindRuntime(ctx, room.RuntimeID)
 	if err != nil {
 		t.Fatalf("BindRuntime() error = %v", err)
+	}
+	bound, err := client.BindCollaborationSession(ctx, CollaborationSessionBindParams{
+		SessionRef: "andy-room-session", PrincipalID: andy.Agent.ID, RoomID: room.ID,
+		Purpose: CollaborationSessionCoordination, State: CollaborationSessionRunning,
+	})
+	if err != nil {
+		t.Fatalf("BindCollaborationSession() error = %v", err)
 	}
 
 	roster, err := client.RoomRoster(ctx, room.ID)
@@ -23,6 +38,20 @@ func TestRoomRuntimeCanInviteAndProposePersistentNamedAgents(t *testing.T) {
 	}
 	if roster.MembershipRevision != 1 || len(roster.Members) != 1 || len(roster.AvailableAgents) != 1 || roster.AvailableAgents[0].Name != "Reviewer" {
 		t.Fatalf("initial roster = %#v", roster)
+	}
+	if len(roster.Members[0].Sessions) != 1 || roster.Members[0].Sessions[0].SessionRef != bound.SessionRef ||
+		roster.Members[0].Sessions[0].Purpose != CollaborationSessionCoordination ||
+		roster.Members[0].Sessions[0].State != CollaborationSessionRunning {
+		t.Fatalf("member sessions = %#v", roster.Members[0].Sessions)
+	}
+	if roster.Members[0].MemoryIndex != "- [Sessions](sessions.md) - Recovers interrupted work safely" {
+		t.Fatalf("member memory index = %q", roster.Members[0].MemoryIndex)
+	}
+	if roster.AvailableAgents[0].MemoryIndex != "" {
+		t.Fatalf("available agent memory index = %q, want hidden", roster.AvailableAgents[0].MemoryIndex)
+	}
+	if roster.AvailableAgents[0].Sessions == nil || len(roster.AvailableAgents[0].Sessions) != 0 {
+		t.Fatalf("available agent sessions = %#v, want an empty current-room inventory", roster.AvailableAgents[0].Sessions)
 	}
 
 	invited, err := client.InviteRoomAgent(ctx, room.ID, reviewer.Agent.ID)

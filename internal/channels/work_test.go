@@ -32,6 +32,7 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
+	ownerSession := bindTestWorkSession(t, service, ownerClient, room.ID, task.ID, "durable-owner-work")
 	work, err := ownerClient.GetWork(ctx, task.ID)
 	if err != nil {
 		t.Fatalf("GetWork() error = %v", err)
@@ -43,7 +44,7 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	if err != nil || len(listedMessages) < 2 || listedMessages[1].Work == nil || len(listedMessages[1].Work.Events) != 1 {
 		t.Fatalf("task Work projection = %#v, err = %v", listedMessages, err)
 	}
-	check, err := ownerClient.Check(ctx)
+	check, err := ownerSession.Check(ctx)
 	if err != nil || len(check.Collaboration) != 1 || check.Collaboration[0].Kind != CollaborationAssignment || check.Collaboration[0].WorkID != task.ID {
 		t.Fatalf("assignment delivery = %#v, err = %v", check.Collaboration, err)
 	}
@@ -140,7 +141,8 @@ func TestGoalRevisionInvalidatesPendingDeliveriesAndRunningHandles(t *testing.T)
 	runtime, _ := service.BindRuntime(ctx, room.RuntimeID)
 	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
 	task, _ := runtime.CreateTask(ctx, TaskCreateParams{RoomID: room.ID, Title: "Fix", OwnerID: owner.Agent.ID, VerificationRequired: true})
-	_, _ = ownerClient.Check(ctx)
+	ownerSession := bindTestWorkSession(t, service, ownerClient, room.ID, task.ID, "recovery-owner-work")
+	_, _ = ownerSession.Check(ctx)
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing})
 	checking, _ := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
 	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID, SessionRef: "session-stale"})
@@ -179,7 +181,8 @@ func TestWorkRunRecoverySettlesMissingVerifierAsUnknown(t *testing.T) {
 	runtime, _ := service.BindRuntime(ctx, room.RuntimeID)
 	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
 	task, _ := runtime.CreateTask(ctx, TaskCreateParams{RoomID: room.ID, Title: "Fix", OwnerID: owner.Agent.ID, VerificationRequired: true})
-	_, _ = ownerClient.Check(ctx)
+	ownerSession := bindTestWorkSession(t, service, ownerClient, room.ID, task.ID, "missing-recovery-owner-work")
+	_, _ = ownerSession.Check(ctx)
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing})
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
 	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID, SessionRef: "lost-session"})
@@ -193,7 +196,7 @@ func TestWorkRunRecoverySettlesMissingVerifierAsUnknown(t *testing.T) {
 	if err != nil || work.State != WorkNeedsHuman || work.VerificationState != WorkVerificationUnknown || work.CurrentRunRef != "" || len(work.Runs) != 1 || work.Runs[0].State != WorkRunInterrupted {
 		t.Fatalf("recovered work = %#v, err = %v", work, err)
 	}
-	check, err := ownerClient.Check(ctx)
+	check, err := ownerSession.Check(ctx)
 	if err != nil || len(check.Collaboration) != 1 || check.Collaboration[0].Kind != CollaborationVerificationFeedback || check.Collaboration[0].FromID != "" {
 		t.Fatalf("recovery feedback = %#v, err = %v", check.Collaboration, err)
 	}
@@ -275,5 +278,62 @@ func TestIndependentVerifierDoesNotRequireAnotherRoomMember(t *testing.T) {
 	}
 	if run.Profile != WorkVerifierProfileIndependent || run.SessionRef != "fresh-verifier" {
 		t.Fatalf("independent verifier run = %#v", run)
+	}
+}
+
+func TestCancelWorkRetiresPendingTaskWake(t *testing.T) {
+	ctx := context.Background()
+	service, err := Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer service.Close()
+	owner, err := service.CreateNamedAgent(ctx, CreateNamedAgentParams{Name: "Owner"})
+	if err != nil {
+		t.Fatalf("CreateNamedAgent() error = %v", err)
+	}
+	room, err := service.CreateRoom(ctx, CreateRoomParams{
+		Kind: RoomChannel, Name: "Work", CreatedBy: "local-user",
+		Members: []RoomMember{
+			{MemberType: MemberHuman, MemberID: "local-user"},
+			{MemberType: MemberAgent, MemberID: owner.Agent.ID},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+	task, err := service.CreateTaskHuman(ctx, TaskCreateParams{
+		RoomID: room.ID, HumanID: "local-user", Title: "Cancel before dispatch", OwnerID: owner.Agent.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateTaskHuman() error = %v", err)
+	}
+	ownerClient, err := service.BindAgent(ctx, owner.Agent.ID)
+	if err != nil {
+		t.Fatalf("BindAgent() error = %v", err)
+	}
+	if _, err := ownerClient.CancelWork(ctx, task.ID, "No longer needed"); err != nil {
+		t.Fatalf("CancelWork() error = %v", err)
+	}
+	items, err := service.ListInbox(ctx, owner.Agent.ID, true)
+	if err != nil {
+		t.Fatalf("ListInbox() error = %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("pending inbox after cancellation = %#v", items)
+	}
+	dispatches, err := service.PendingCollaborationDispatches(ctx, owner.Agent.ID)
+	if err != nil {
+		t.Fatalf("PendingCollaborationDispatches() error = %v", err)
+	}
+	if len(dispatches) != 0 {
+		t.Fatalf("pending collaboration after cancellation = %#v", dispatches)
+	}
+	wake, err := service.WakeState(ctx, owner.Agent.ID)
+	if err != nil {
+		t.Fatalf("WakeState() error = %v", err)
+	}
+	if wake.Outstanding || wake.Pending {
+		t.Fatalf("wake after cancellation = %#v, want idle", wake)
 	}
 }

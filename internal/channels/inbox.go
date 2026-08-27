@@ -23,6 +23,202 @@ func (s *Service) Check(ctx context.Context, agentID, token string) (CheckResult
 	return s.checkAgent(ctx, agentID)
 }
 
+// CheckSession atomically claims unassigned collaboration deliveries within a
+// session's room/work scope and consumes only that session's private inbox.
+func (s *Service) CheckSession(ctx context.Context, agentID, token, sessionRef string) (CheckResult, error) {
+	actor, err := s.AuthenticatePrincipal(ctx, agentID, token)
+	if err != nil {
+		return CheckResult{}, err
+	}
+	sessionRef = strings.TrimSpace(sessionRef)
+	if sessionRef == "" {
+		return CheckResult{}, errors.New("collaboration session ref is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return CheckResult{}, fmt.Errorf("begin collaboration session check: %w", err)
+	}
+	defer tx.Rollback()
+	binding, err := scanCollaborationSession(tx.QueryRowContext(ctx, collaborationSessionSelect+` WHERE binding.session_ref = ?`, sessionRef))
+	if err != nil {
+		return CheckResult{}, err
+	}
+	if binding.PrincipalID != actor.ID {
+		return CheckResult{}, ErrUnauthorized
+	}
+	if binding.State == CollaborationSessionInterrupted || binding.State == CollaborationSessionMissing {
+		return CheckResult{}, fmt.Errorf("%w: collaboration session %q is unavailable", ErrConflict, binding.SessionRef)
+	}
+	checkedAt := fromMillis(toMillis(s.now()))
+	items := make([]CheckItem, 0, 1)
+	if binding.WorkID != "" {
+		rows, err := tx.QueryContext(ctx, `
+			SELECT inbox.id, inbox.room_id, inbox.message_id, inbox.kind, inbox.created_at,
+				COALESCE(message.thread_id, ''), message.author_type, message.author_id,
+				message.body, message.seq
+			FROM inbox_items inbox
+			JOIN room_messages message ON message.id = inbox.message_id
+			WHERE inbox.member_type = 'agent' AND inbox.member_id = ?
+				AND inbox.message_id = ? AND inbox.kind = 'task' AND inbox.pulled_at IS NULL
+				AND EXISTS (
+					SELECT 1 FROM collaboration_messages assignment
+					WHERE assignment.to_agent_id = inbox.member_id
+						AND assignment.work_id = inbox.message_id AND assignment.kind = 'assignment'
+						AND assignment.invalidated_at IS NULL
+						AND (assignment.target_session_ref = ? OR
+							(assignment.target_session_ref IS NULL AND assignment.pulled_at IS NULL))
+				)
+			ORDER BY inbox.created_at, inbox.rowid`, actor.ID, binding.WorkID, binding.SessionRef)
+		if err != nil {
+			return CheckResult{}, fmt.Errorf("query collaboration session task inbox: %w", err)
+		}
+		for rows.Next() {
+			var item CheckItem
+			var authorType string
+			var createdAt int64
+			if err := rows.Scan(
+				&item.ID, &item.RoomID, &item.MessageID, &item.Kind, &createdAt,
+				&item.ThreadID, &authorType, &item.AuthorID, &item.Preview, &item.Seq,
+			); err != nil {
+				rows.Close()
+				return CheckResult{}, fmt.Errorf("scan collaboration session task inbox: %w", err)
+			}
+			item.AuthorType = MemberType(authorType)
+			item.Preview = preview(item.Preview, checkPreviewRunes)
+			item.CreatedAt = fromMillis(createdAt)
+			items = append(items, item)
+		}
+		if err := rows.Close(); err != nil {
+			return CheckResult{}, fmt.Errorf("close collaboration session task inbox: %w", err)
+		}
+		if err := rows.Err(); err != nil {
+			return CheckResult{}, fmt.Errorf("iterate collaboration session task inbox: %w", err)
+		}
+		for _, item := range items {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE inbox_items SET pulled_at = ?
+				WHERE id = ? AND member_type = 'agent' AND member_id = ? AND pulled_at IS NULL`,
+				toMillis(checkedAt), item.ID, actor.ID); err != nil {
+				return CheckResult{}, fmt.Errorf("claim collaboration session task inbox: %w", err)
+			}
+		}
+	}
+
+	scopeSQL := "0"
+	scopeArgs := make([]any, 0, 2)
+	if binding.WorkID != "" {
+		scopeSQL = "delivery.room_id = ? AND delivery.work_id = ?"
+		scopeArgs = append(scopeArgs, binding.RoomID, binding.WorkID)
+	} else if binding.RoomID != "" {
+		scopeSQL = "delivery.room_id = ? AND delivery.work_id IS NULL"
+		scopeArgs = append(scopeArgs, binding.RoomID)
+	}
+	query := `
+		SELECT delivery.id, delivery.room_id, delivery.from_type,
+			CASE WHEN sender.kind = 'named_agent' THEN delivery.from_id ELSE '' END,
+			COALESCE(delivery.from_session_ref, ''), delivery.to_agent_id,
+			COALESCE(delivery.target_session_ref, ''),
+			CASE WHEN principal.kind = 'named_agent' THEN delivery.to_agent_id ELSE '' END,
+			delivery.kind, delivery.body, COALESCE(delivery.work_id, ''),
+			COALESCE(delivery.source_message_id, ''), delivery.goal_revision, delivery.candidate_revision,
+			delivery.artifact_refs_json, COALESCE(delivery.reply_to, ''), delivery.created_at
+		FROM collaboration_messages delivery
+		JOIN collaboration_principals principal ON principal.id = delivery.to_agent_id
+		LEFT JOIN collaboration_principals sender ON sender.id = delivery.from_id
+		WHERE delivery.to_agent_id = ? AND delivery.pulled_at IS NULL AND delivery.invalidated_at IS NULL
+			AND (delivery.target_session_ref = ? OR (delivery.target_session_ref IS NULL AND (` + scopeSQL + `)))
+		ORDER BY delivery.created_at, delivery.rowid LIMIT ?`
+	args := []any{actor.ID, binding.SessionRef}
+	args = append(args, scopeArgs...)
+	remaining := max(0, checkLimit-len(items))
+	args = append(args, remaining+1)
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return CheckResult{}, fmt.Errorf("query collaboration session inbox: %w", err)
+	}
+	messages := make([]CollaborationMessage, 0, checkLimit)
+	messageIDs := make([]string, 0, checkLimit)
+	hasMore := false
+	for rows.Next() {
+		var message CollaborationMessage
+		var artifactRefsJSON string
+		var createdAt int64
+		if err := rows.Scan(
+			&message.ID, &message.RoomID, &message.FromType, &message.FromID,
+			&message.FromSessionRef, &message.ToAgentID, &message.TargetSessionRef,
+			&message.RecipientNamedAgentID, &message.Kind, &message.Body, &message.WorkID,
+			&message.SourceMessageID, &message.GoalRevision, &message.CandidateRevision,
+			&artifactRefsJSON, &message.ReplyTo, &createdAt,
+		); err != nil {
+			rows.Close()
+			return CheckResult{}, fmt.Errorf("scan collaboration session inbox: %w", err)
+		}
+		if len(messages) == remaining {
+			hasMore = true
+			continue
+		}
+		message.CreatedAt = fromMillis(createdAt)
+		message.TargetSessionRef = binding.SessionRef
+		if message.RecipientNamedAgentID == "" {
+			message.ToAgentID = ""
+		}
+		if strings.TrimSpace(message.FromID) == "" {
+			message.FromType = ""
+		}
+		if err := json.Unmarshal([]byte(artifactRefsJSON), &message.ArtifactRefs); err != nil {
+			rows.Close()
+			return CheckResult{}, fmt.Errorf("decode collaboration session artifacts: %w", err)
+		}
+		messages = append(messages, message)
+		messageIDs = append(messageIDs, message.ID)
+	}
+	if err := rows.Close(); err != nil {
+		return CheckResult{}, fmt.Errorf("close collaboration session inbox: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return CheckResult{}, fmt.Errorf("iterate collaboration session inbox: %w", err)
+	}
+	for _, id := range messageIDs {
+		result, err := tx.ExecContext(ctx, `
+			UPDATE collaboration_messages
+			SET target_session_ref = COALESCE(target_session_ref, ?), pulled_at = ?, consumed_at = ?
+			WHERE id = ? AND to_agent_id = ? AND pulled_at IS NULL AND invalidated_at IS NULL
+				AND (target_session_ref IS NULL OR target_session_ref = ?)`,
+			binding.SessionRef, toMillis(checkedAt), toMillis(checkedAt), id, actor.ID, binding.SessionRef)
+		if err != nil {
+			return CheckResult{}, fmt.Errorf("claim collaboration session delivery: %w", err)
+		}
+		if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+			if err != nil {
+				return CheckResult{}, fmt.Errorf("count claimed collaboration session delivery: %w", err)
+			}
+			return CheckResult{}, fmt.Errorf("%w: collaboration delivery %q was claimed concurrently", ErrConflict, id)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE collaboration_session_bindings SET updated_at = ? WHERE session_ref = ?`, toMillis(checkedAt), binding.SessionRef); err != nil {
+		return CheckResult{}, fmt.Errorf("touch collaboration session binding: %w", err)
+	}
+	if err := recomputeAgentWakeTx(ctx, tx, actor.ID, toMillis(checkedAt)); err != nil {
+		return CheckResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return CheckResult{}, fmt.Errorf("commit collaboration session check: %w", err)
+	}
+	scopes := make([]ScopeSequence, 0, 1)
+	if binding.RoomID != "" {
+		var seq int64
+		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) FROM room_messages WHERE room_id = ?`, binding.RoomID).Scan(&seq); err == nil {
+			scopes = append(scopes, ScopeSequence{RoomID: binding.RoomID, Seq: seq})
+		}
+	}
+	return CheckResult{
+		Items: items, Collaboration: messages, Reminders: []Reminder{},
+		Scopes: scopes, HasMore: hasMore, CheckedAt: checkedAt,
+	}, nil
+}
+
 func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, error) {
 	agentID = strings.TrimSpace(agentID)
 	s.mu.Lock()
@@ -51,6 +247,9 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 		LEFT JOIN room_messages message ON message.id = inbox.message_id
 		LEFT JOIN reminders reminder ON reminder.id = inbox.reminder_id
 		WHERE inbox.member_type = 'agent' AND inbox.member_id = ? AND inbox.pulled_at IS NULL
+			AND NOT (inbox.kind = 'task' AND EXISTS (
+				SELECT 1 FROM works work WHERE work.id = inbox.message_id
+			))
 		ORDER BY inbox.created_at, inbox.rowid LIMIT ?`, agentID, checkLimit+1)
 	if err != nil {
 		return CheckResult{}, fmt.Errorf("query chat check inbox: %w", err)
@@ -116,7 +315,9 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 	rows, err = tx.QueryContext(ctx, `
 		SELECT delivery.id, delivery.room_id, delivery.from_type,
 			CASE WHEN sender.kind = 'named_agent' THEN delivery.from_id ELSE '' END,
+			COALESCE(delivery.from_session_ref, ''),
 			delivery.to_agent_id,
+			COALESCE(delivery.target_session_ref, ''),
 			CASE WHEN principal.kind = 'named_agent' THEN delivery.to_agent_id ELSE '' END,
 			delivery.kind, delivery.body, COALESCE(delivery.work_id, ''),
 			COALESCE(delivery.source_message_id, ''), delivery.goal_revision, delivery.candidate_revision,
@@ -124,7 +325,9 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 		FROM collaboration_messages delivery
 		JOIN collaboration_principals principal ON principal.id = delivery.to_agent_id
 		LEFT JOIN collaboration_principals sender ON sender.id = delivery.from_id
-		WHERE delivery.to_agent_id = ? AND delivery.pulled_at IS NULL AND delivery.invalidated_at IS NULL
+		WHERE delivery.to_agent_id = ? AND delivery.target_session_ref IS NULL
+			AND (principal.kind != 'named_agent' OR delivery.work_id IS NULL)
+			AND delivery.pulled_at IS NULL AND delivery.invalidated_at IS NULL
 		ORDER BY delivery.created_at, delivery.rowid LIMIT ?`, agentID, checkLimit+1)
 	if err != nil {
 		return CheckResult{}, fmt.Errorf("query collaboration inbox: %w", err)
@@ -135,7 +338,8 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 		var createdAt int64
 		var artifactRefsJSON string
 		if err := rows.Scan(
-			&message.ID, &message.RoomID, &message.FromType, &message.FromID, &message.ToAgentID,
+			&message.ID, &message.RoomID, &message.FromType, &message.FromID, &message.FromSessionRef, &message.ToAgentID,
+			&message.TargetSessionRef,
 			&message.RecipientNamedAgentID, &message.Kind, &message.Body, &message.WorkID,
 			&message.SourceMessageID, &message.GoalRevision, &message.CandidateRevision,
 			&artifactRefsJSON, &message.ReplyTo, &createdAt,
@@ -180,10 +384,8 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 		WHERE member_type = 'agent' AND member_id = ?`, agentID); err != nil {
 		return CheckResult{}, fmt.Errorf("advance chat check cursors: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE agent_wake_state SET outstanding = 0, pending = 0, updated_at = ? WHERE agent_id = ?`,
-		toMillis(checkedAt), agentID); err != nil {
-		return CheckResult{}, fmt.Errorf("clear chat check wake: %w", err)
+	if err := recomputeAgentWakeTx(ctx, tx, agentID, toMillis(checkedAt)); err != nil {
+		return CheckResult{}, err
 	}
 	scopes, err := checkScopesTx(ctx, tx, agentID, items)
 	if err != nil {
@@ -193,6 +395,31 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 		return CheckResult{}, fmt.Errorf("commit chat check: %w", err)
 	}
 	return CheckResult{Items: items, Collaboration: collaboration, Reminders: reminders, Scopes: scopes, HasMore: hasMore, CheckedAt: checkedAt}, nil
+}
+
+func recomputeAgentWakeTx(ctx context.Context, tx *sql.Tx, agentID string, now int64) error {
+	var pending int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM collaboration_messages
+			 WHERE to_agent_id = ? AND pulled_at IS NULL AND invalidated_at IS NULL) +
+			(SELECT COUNT(*) FROM inbox_items
+			 WHERE member_type = 'agent' AND member_id = ? AND pulled_at IS NULL)`,
+		agentID, agentID).Scan(&pending); err != nil {
+		return fmt.Errorf("count pending agent deliveries: %w", err)
+	}
+	outstanding := 0
+	pendingFollowup := 0
+	if pending > 0 {
+		outstanding = 1
+		pendingFollowup = 1
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE agent_wake_state SET outstanding = ?, pending = ?, updated_at = ? WHERE agent_id = ?`,
+		outstanding, pendingFollowup, now, agentID); err != nil {
+		return fmt.Errorf("recompute agent wake: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) ReadInboxMessages(ctx context.Context, agentID, token string, itemIDs []string) ([]Message, error) {

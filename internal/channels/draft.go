@@ -23,19 +23,24 @@ func currentScopeSequenceTx(ctx context.Context, tx *sql.Tx, roomID, threadID st
 	return seq, nil
 }
 
-func holdNewDraftTx(ctx context.Context, tx *sql.Tx, agentID, roomID, threadID, body string, basisSeq int64, now time.Time) (Draft, DraftDelta, error) {
+const draftSelect = `
+	SELECT id, agent_id, COALESCE(session_ref, ''), room_id, COALESCE(thread_id, ''),
+		body, basis_seq, hold_count, state, created_at, updated_at
+	FROM drafts`
+
+func holdNewDraftTx(ctx context.Context, tx *sql.Tx, agentID, sessionRef, roomID, threadID, body string, basisSeq int64, now time.Time) (Draft, DraftDelta, error) {
 	id, err := randomID("draft", 12)
 	if err != nil {
 		return Draft{}, DraftDelta{}, err
 	}
 	draft := Draft{
-		ID: id, AgentID: agentID, RoomID: roomID, ThreadID: threadID, Body: body,
+		ID: id, AgentID: agentID, SessionRef: sessionRef, RoomID: roomID, ThreadID: threadID, Body: body,
 		BasisSeq: basisSeq, HoldCount: 1, State: DraftHeld, CreatedAt: now, UpdatedAt: now,
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO drafts (id, agent_id, room_id, thread_id, body, basis_seq, hold_count, state, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 'held', ?, ?)`,
-		draft.ID, draft.AgentID, draft.RoomID, nullableString(draft.ThreadID), draft.Body,
+		INSERT INTO drafts (id, agent_id, session_ref, room_id, thread_id, body, basis_seq, hold_count, state, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'held', ?, ?)`,
+		draft.ID, draft.AgentID, nullableString(draft.SessionRef), draft.RoomID, nullableString(draft.ThreadID), draft.Body,
 		draft.BasisSeq, draft.HoldCount, toMillis(draft.CreatedAt), toMillis(draft.UpdatedAt)); err != nil {
 		return Draft{}, DraftDelta{}, fmt.Errorf("insert held draft: %w", err)
 	}
@@ -96,16 +101,14 @@ func draftDeltaTx(ctx context.Context, tx *sql.Tx, roomID, threadID string, basi
 }
 
 func loadDraftTx(ctx context.Context, tx *sql.Tx, draftID string) (Draft, error) {
-	return scanDraft(tx.QueryRowContext(ctx, `
-		SELECT id, agent_id, room_id, COALESCE(thread_id, ''), body, basis_seq,
-			hold_count, state, created_at, updated_at FROM drafts WHERE id = ?`, draftID))
+	return scanDraft(tx.QueryRowContext(ctx, draftSelect+` WHERE id = ?`, draftID))
 }
 
 func scanDraft(row scanner) (Draft, error) {
 	var draft Draft
 	var createdAt, updatedAt int64
 	if err := row.Scan(
-		&draft.ID, &draft.AgentID, &draft.RoomID, &draft.ThreadID, &draft.Body,
+		&draft.ID, &draft.AgentID, &draft.SessionRef, &draft.RoomID, &draft.ThreadID, &draft.Body,
 		&draft.BasisSeq, &draft.HoldCount, &draft.State, &createdAt, &updatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -119,19 +122,23 @@ func scanDraft(row scanner) (Draft, error) {
 }
 
 func (s *Service) ListDrafts(ctx context.Context, agentID, token string) ([]Draft, error) {
+	return s.listDrafts(ctx, agentID, token, "")
+}
+
+func (s *Service) listDrafts(ctx context.Context, agentID, token, sessionRef string) ([]Draft, error) {
 	if _, err := s.AuthenticateAgent(ctx, agentID, token); err != nil {
 		return nil, err
 	}
 	agentID = strings.TrimSpace(agentID)
+	sessionRef = strings.TrimSpace(sessionRef)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.expireDraftsLocked(ctx); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, agent_id, room_id, COALESCE(thread_id, ''), body, basis_seq,
-			hold_count, state, created_at, updated_at
-		FROM drafts WHERE agent_id = ? AND state = 'held' ORDER BY created_at, id`, agentID)
+	rows, err := s.db.QueryContext(ctx, draftSelect+`
+		WHERE agent_id = ? AND COALESCE(session_ref, '') = ? AND state = 'held'
+		ORDER BY created_at, id`, agentID, sessionRef)
 	if err != nil {
 		return nil, fmt.Errorf("list held drafts: %w", err)
 	}
@@ -158,12 +165,13 @@ func (s *Service) ResolveDraft(ctx context.Context, params ResolveDraftParams) (
 		return DraftResult{}, err
 	}
 	params.AgentID = strings.TrimSpace(params.AgentID)
+	params.SessionRef = strings.TrimSpace(params.SessionRef)
 	params.DraftID = strings.TrimSpace(params.DraftID)
 	if params.DraftID == "" {
 		return DraftResult{}, errors.New("chat draft id is required")
 	}
 	if params.Resolution == DraftSilent {
-		return s.dropDraft(ctx, params.AgentID, params.DraftID)
+		return s.dropDraft(ctx, params.AgentID, params.SessionRef, params.DraftID)
 	}
 	if params.Resolution != DraftAsIs && params.Resolution != DraftAnyway {
 		return DraftResult{}, errors.New("chat draft resolution must be as_is, silent, or anyway")
@@ -174,13 +182,11 @@ func (s *Service) ResolveDraft(ctx context.Context, params ResolveDraftParams) (
 	if params.BasisSeq != nil && *params.BasisSeq < 0 {
 		return DraftResult{}, errors.New("chat draft basis sequence cannot be negative")
 	}
-	draft, err := scanDraft(s.db.QueryRowContext(ctx, `
-		SELECT id, agent_id, room_id, COALESCE(thread_id, ''), body, basis_seq,
-			hold_count, state, created_at, updated_at FROM drafts WHERE id = ?`, params.DraftID))
+	draft, err := scanDraft(s.db.QueryRowContext(ctx, draftSelect+` WHERE id = ?`, params.DraftID))
 	if err != nil {
 		return DraftResult{}, err
 	}
-	if draft.AgentID != params.AgentID {
+	if draft.AgentID != params.AgentID || draft.SessionRef != params.SessionRef {
 		return DraftResult{}, ErrUnauthorized
 	}
 	basisSeq := draft.BasisSeq
@@ -189,7 +195,8 @@ func (s *Service) ResolveDraft(ctx context.Context, params ResolveDraftParams) (
 	}
 	result, err := s.send(ctx, sendParams{
 		RoomID: draft.RoomID, AuthorType: MemberAgent, AuthorID: draft.AgentID,
-		ThreadID: draft.ThreadID, Body: draft.Body, BasisSeq: basisSeq,
+		SessionRef: draft.SessionRef,
+		ThreadID:   draft.ThreadID, Body: draft.Body, BasisSeq: basisSeq,
 		DraftID: draft.ID, Force: params.Resolution == DraftAnyway,
 	})
 	if err != nil {
@@ -203,7 +210,7 @@ func (s *Service) ResolveDraft(ctx context.Context, params ResolveDraftParams) (
 	return DraftResult{Status: SendCommitted, Draft: draft, Message: &result.Message}, nil
 }
 
-func (s *Service) dropDraft(ctx context.Context, agentID, draftID string) (DraftResult, error) {
+func (s *Service) dropDraft(ctx context.Context, agentID, sessionRef, draftID string) (DraftResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -215,7 +222,7 @@ func (s *Service) dropDraft(ctx context.Context, agentID, draftID string) (Draft
 	if err != nil {
 		return DraftResult{}, err
 	}
-	if draft.AgentID != agentID {
+	if draft.AgentID != agentID || draft.SessionRef != sessionRef {
 		return DraftResult{}, ErrUnauthorized
 	}
 	if draft.State != DraftHeld {

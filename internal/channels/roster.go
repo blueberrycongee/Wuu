@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/blueberrycongee/wuu/internal/memdir"
 )
 
 func (s *Service) RoomRoster(ctx context.Context, runtimeID, token, roomID string) (RoomRoster, error) {
@@ -20,6 +22,22 @@ func (s *Service) RoomRoster(ctx context.Context, runtimeID, token, roomID strin
 	if err != nil {
 		return RoomRoster{}, err
 	}
+	sessions, err := s.ListCollaborationSessions(ctx, CollaborationSessionListParams{
+		RoomID: room.ID, AgentID: runtimeID, Token: token,
+	})
+	if err != nil {
+		return RoomRoster{}, err
+	}
+	sessionsByAgent := make(map[string][]AgentSessionSummary)
+	for _, session := range sessions {
+		if session.NamedAgentID == "" {
+			continue
+		}
+		sessionsByAgent[session.NamedAgentID] = append(sessionsByAgent[session.NamedAgentID], AgentSessionSummary{
+			SessionRef: session.SessionRef, RoomID: session.RoomID, WorkID: session.WorkID,
+			RunID: session.RunID, Purpose: session.Purpose, State: session.State, UpdatedAt: session.UpdatedAt,
+		})
+	}
 	memberIDs := make(map[string]struct{}, len(room.Members))
 	for _, member := range room.Members {
 		if member.MemberType == MemberAgent {
@@ -30,6 +48,12 @@ func (s *Service) RoomRoster(ctx context.Context, runtimeID, token, roomID strin
 	for _, agent := range agents {
 		summary := agentCapabilitySummary(agent)
 		if _, ok := memberIDs[agent.ID]; ok {
+			memoryIndex, readErr := memdir.ReadIndex(agent.MemoryDir)
+			if readErr != nil {
+				return RoomRoster{}, fmt.Errorf("read named agent %q memory index: %w", agent.ID, readErr)
+			}
+			summary.MemoryIndex = memoryIndex.Content
+			summary.Sessions = sessionsByAgent[agent.ID]
 			result.Members = append(result.Members, summary)
 		} else {
 			result.AvailableAgents = append(result.AvailableAgents, summary)
@@ -117,6 +141,7 @@ func agentCapabilitySummary(agent NamedAgent) AgentCapabilitySummary {
 		ID: agent.ID, Name: agent.Name, Role: agent.Role,
 		EngineOverride: agent.EngineOverride, ProviderOverride: agent.ProviderOverride,
 		ModelOverride: agent.ModelOverride, EffortOverride: agent.EffortOverride,
+		Sessions: []AgentSessionSummary{},
 	}
 }
 

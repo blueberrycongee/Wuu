@@ -108,19 +108,32 @@ func TestNamedAgentSurfaceAddsChatToolsToCompleteMainSurface(t *testing.T) {
 	}
 }
 
-func TestRoomAgentSurfaceOnlyExposesCoordinationTools(t *testing.T) {
-	want := []string{"chat_check", "chat_read", "chat_remind", "chat_roster", "chat_task", "chat_verify", "chat_work", "collaboration_send"}
+func TestRoomAgentSurfaceKeepsMainToolsWithoutPublicChatSend(t *testing.T) {
+	coordinationTools := []string{"chat_check", "chat_read", "chat_remind", "chat_roster", "chat_task", "chat_verify", "chat_work", "collaboration_send"}
 	for _, profile := range []Profile{
 		Resolve("openai", "gpt-5-codex"),
 		Resolve("anthropic", "claude-sonnet-4-5"),
 		Resolve("ollama", "llama-coder"),
 	} {
+		main := DefaultCompiler{}.Compile(profile, SurfaceMain)
 		surface := DefaultCompiler{}.Compile(profile, SurfaceRoomAgent)
-		if got := sortedKeys(surface.Tools); !slices.Equal(got, want) {
-			t.Errorf("%s room tools = %v, want %v", profile.Model, got, want)
+		for name, capabilityName := range main.Tools {
+			if surface.Tools[name] != capabilityName {
+				t.Errorf("%s room surface lost main tool %s", profile.Model, name)
+			}
 		}
-		if len(surface.DeferredTools) != 0 || len(surface.HiddenTools) != 0 || len(surface.DeferredCapabilities) != 0 {
-			t.Errorf("%s room surface exposes deferred or hidden tools: %+v", profile.Model, surface)
+		for _, name := range coordinationTools {
+			if surface.Tools[name] != capability.CapabilityChat {
+				t.Errorf("%s room surface must expose %s as chat capability", profile.Model, name)
+			}
+		}
+		if _, ok := surface.Tools["chat_send"]; ok {
+			t.Errorf("%s room surface exposes public chat_send", profile.Model)
+		}
+		if !slices.Equal(sortedKeys(surface.DeferredTools), sortedKeys(main.DeferredTools)) ||
+			!slices.Equal(sortedKeys(surface.HiddenTools), sortedKeys(main.HiddenTools)) ||
+			!slices.Equal(toCapabilityStrings(surface.DeferredCapabilities), toCapabilityStrings(main.DeferredCapabilities)) {
+			t.Errorf("%s room surface did not retain the main deferred/hidden surface", profile.Model)
 		}
 	}
 }

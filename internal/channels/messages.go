@@ -40,6 +40,7 @@ func (s *Service) SendAgent(ctx context.Context, params AgentSendParams) (SendRe
 		RoomID:     params.RoomID,
 		AuthorType: MemberAgent,
 		AuthorID:   params.AgentID,
+		SessionRef: params.SessionRef,
 		ThreadID:   params.ThreadID,
 		ReplyTo:    params.ReplyTo,
 		Body:       params.Body,
@@ -71,6 +72,7 @@ type sendParams struct {
 	RoomID     string
 	AuthorType MemberType
 	AuthorID   string
+	SessionRef string
 	ThreadID   string
 	ReplyTo    string
 	Body       string
@@ -84,6 +86,7 @@ type sendParams struct {
 func (s *Service) send(ctx context.Context, params sendParams) (SendResult, error) {
 	params.RoomID = strings.TrimSpace(params.RoomID)
 	params.AuthorID = strings.TrimSpace(params.AuthorID)
+	params.SessionRef = strings.TrimSpace(params.SessionRef)
 	params.ThreadID = strings.TrimSpace(params.ThreadID)
 	params.ReplyTo = strings.TrimSpace(params.ReplyTo)
 	params.DraftID = strings.TrimSpace(params.DraftID)
@@ -108,6 +111,11 @@ func (s *Service) send(ctx context.Context, params sendParams) (SendResult, erro
 	if err := requireMemberTx(ctx, tx, params.RoomID, params.AuthorType, params.AuthorID); err != nil {
 		return SendResult{}, err
 	}
+	if params.AuthorType == MemberAgent {
+		if err := validateCollaborationSessionWriteTx(ctx, tx, params.SessionRef, params.AuthorID, params.RoomID, "", 0); err != nil {
+			return SendResult{}, err
+		}
+	}
 	threadID, reply, err := resolveThreadTx(ctx, tx, params.RoomID, params.ThreadID, params.ReplyTo)
 	if err != nil {
 		return SendResult{}, err
@@ -118,7 +126,8 @@ func (s *Service) send(ctx context.Context, params sendParams) (SendResult, erro
 		if err != nil {
 			return SendResult{}, err
 		}
-		if draft.AgentID != params.AuthorID || draft.RoomID != params.RoomID || draft.ThreadID != threadID || draft.Body != params.Body {
+		if draft.AgentID != params.AuthorID || draft.SessionRef != params.SessionRef ||
+			draft.RoomID != params.RoomID || draft.ThreadID != threadID || draft.Body != params.Body {
 			return SendResult{}, ErrUnauthorized
 		}
 		if draft.State != DraftHeld {
@@ -141,7 +150,9 @@ func (s *Service) send(ctx context.Context, params sendParams) (SendResult, erro
 			if existingDraft != nil {
 				draft, delta, err = reholdDraftTx(ctx, tx, *existingDraft, params.BasisSeq, now)
 			} else {
-				draft, delta, err = holdNewDraftTx(ctx, tx, params.AuthorID, params.RoomID, threadID, params.Body, params.BasisSeq, now)
+				draft, delta, err = holdNewDraftTx(
+					ctx, tx, params.AuthorID, params.SessionRef, params.RoomID, threadID, params.Body, params.BasisSeq, now,
+				)
 			}
 			if err != nil {
 				return SendResult{}, err
@@ -220,8 +231,9 @@ func (s *Service) send(ctx context.Context, params sendParams) (SendResult, erro
 	if params.AuthorType == MemberAgent {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE drafts SET state = 'dropped', updated_at = ?
-			WHERE agent_id = ? AND room_id = ? AND COALESCE(thread_id, '') = ? AND state = 'held' AND id != ?`,
-			toMillis(now), params.AuthorID, params.RoomID, threadID, params.DraftID); err != nil {
+			WHERE agent_id = ? AND COALESCE(session_ref, '') = ? AND room_id = ?
+				AND COALESCE(thread_id, '') = ? AND state = 'held' AND id != ?`,
+			toMillis(now), params.AuthorID, params.SessionRef, params.RoomID, threadID, params.DraftID); err != nil {
 			return SendResult{}, fmt.Errorf("drop replaced held drafts: %w", err)
 		}
 	}

@@ -31,21 +31,14 @@ func (s *Server) handleChannelAgentList(ctx context.Context, req Request) error 
 	if err == nil {
 		for i := range agents {
 			agents[i].ActivityStatus = "idle"
-			threadID := namedAgentSessionID(agents[i])
-			if thread := s.thread(threadID); thread != nil && threadIsRunning(thread) {
-				agents[i].ActivityStatus = "thinking"
-				agents[i].ActivityRoomIDs = namedAgentActivityRoomIDs(thread)
-				continue
+			thinking, roomIDs, activityErr := s.namedAgentActivity(ctx, agentRuntimeFromNamed(agents[i]))
+			if activityErr != nil {
+				err = activityErr
+				break
 			}
-			if s.rt != nil {
-				active, activeErr := session.ThreadExecutionActive(s.rt.SessionDir, threadID)
-				if activeErr != nil {
-					err = activeErr
-					break
-				}
-				if active {
-					agents[i].ActivityStatus = "thinking"
-				}
+			if thinking {
+				agents[i].ActivityStatus = "thinking"
+				agents[i].ActivityRoomIDs = roomIDs
 			}
 		}
 	}
@@ -89,11 +82,14 @@ func (s *Server) handleChannelAgentUpdate(ctx context.Context, req Request) erro
 	if s.rt == nil || !s.rt.EngineAvailable(engineID) {
 		return s.writeResponse(req.ID, nil, agentengine.ErrUnknownEngine)
 	}
-	thread := s.thread(namedAgentSessionID(current))
+	sessionRefs, _, sessionErr := s.namedAgentSessionRefs(ctx, agentRuntimeFromNamed(current))
+	if sessionErr != nil {
+		return s.writeResponse(req.ID, nil, sessionErr)
+	}
 	agent, err := s.channelService.UpdateNamedAgent(ctx, channels.UpdateNamedAgentParams{
 		ID: params.AgentID, Name: params.Name, Role: params.Role, AvatarKey: params.AvatarKey, AvatarImage: params.AvatarImage, EngineOverride: string(engineID), ProviderOverride: params.ProviderOverride, ModelOverride: params.ModelOverride, EffortOverride: params.EffortOverride,
 	})
-	if err == nil && thread != nil {
+	if err == nil {
 		selection := s.currentSessionRuntimeSelection()
 		if agent.ModelOverride != "" {
 			selection.Provider = firstNonEmpty(agent.ProviderOverride, agent.EngineOverride)
@@ -102,33 +98,40 @@ func (s *Server) handleChannelAgentUpdate(ctx context.Context, req Request) erro
 		if agent.EffortOverride != "" {
 			selection.Effort = agent.EffortOverride
 		}
-		var detached detachedThreadRuntime
-		thread.mu.Lock()
-		runtimeConfigChanged := current.Name != agent.Name || current.Role != agent.Role || current.EngineOverride != agent.EngineOverride ||
-			thread.ModelProvider != strings.TrimSpace(selection.Provider) ||
-			thread.Model != strings.TrimSpace(selection.Model) ||
-			thread.ModelVariant != strings.TrimSpace(selection.Variant) ||
-			thread.ModelEffort != strings.TrimSpace(selection.Effort)
-		thread.Title = agent.Name
-		thread.EngineID = string(engineID)
-		thread.EngineRef = ""
-		applyThreadRuntimeSelection(thread, selection)
-		if runtimeConfigChanged && thread.execRuntime != nil {
-			if thread.running || threadRuntimeHasOutstandingWork(thread.ID, thread.execRuntime) {
-				thread.pendingRuntimeReset = true
-			} else {
-				detached = detachThreadRuntimeLocked(thread)
+		for _, sessionRef := range sessionRefs {
+			thread := s.thread(sessionRef)
+			var detached detachedThreadRuntime
+			if thread != nil {
+				thread.mu.Lock()
+				runtimeConfigChanged := current.Name != agent.Name || current.Role != agent.Role || current.EngineOverride != agent.EngineOverride ||
+					thread.ModelProvider != strings.TrimSpace(selection.Provider) ||
+					thread.Model != strings.TrimSpace(selection.Model) ||
+					thread.ModelVariant != strings.TrimSpace(selection.Variant) ||
+					thread.ModelEffort != strings.TrimSpace(selection.Effort)
+				thread.Title = agent.Name
+				thread.EngineID = string(engineID)
+				thread.EngineRef = ""
+				applyThreadRuntimeSelection(thread, selection)
+				if runtimeConfigChanged && thread.execRuntime != nil {
+					if thread.running || threadRuntimeHasOutstandingWork(thread.ID, thread.execRuntime) {
+						thread.pendingRuntimeReset = true
+					} else {
+						detached = detachThreadRuntimeLocked(thread)
+					}
+				}
+				thread.mu.Unlock()
 			}
-		}
-		thread.mu.Unlock()
-		if detached.runtime != nil || detached.subscription != nil {
-			releaseDetachedThreadRuntime(detached)
-		}
-		if s.rt != nil {
-			_, _ = session.UpdateTitle(s.rt.SessionDir, thread.ID, agent.Name)
-			_, _ = session.SetEngine(s.rt.SessionDir, thread.ID, string(engineID))
-			_, _ = session.SetEngineRef(s.rt.SessionDir, thread.ID, "")
-			_, _ = session.SetRuntimeSelection(s.rt.SessionDir, thread.ID, selection)
+			if detached.runtime != nil || detached.subscription != nil {
+				releaseDetachedThreadRuntime(detached)
+			}
+			if s.rt != nil {
+				if _, found, _ := session.Find(s.rt.SessionDir, sessionRef); found {
+					_, _ = session.UpdateTitle(s.rt.SessionDir, sessionRef, agent.Name)
+					_, _ = session.SetEngine(s.rt.SessionDir, sessionRef, string(engineID))
+					_, _ = session.SetEngineRef(s.rt.SessionDir, sessionRef, "")
+					_, _ = session.SetRuntimeSelection(s.rt.SessionDir, sessionRef, selection)
+				}
+			}
 		}
 	}
 	if err == nil {
@@ -175,11 +178,14 @@ func (s *Server) handleChannelAgentStart(ctx context.Context, req Request) error
 		return s.writeResponse(req.ID, nil, err)
 	}
 	started := false
-	if state.Outstanding && !threadIsRunning(thread) {
-		if err := s.startNamedAgentWakeLocked(agent, thread); err != nil {
+	if state.Outstanding {
+		if err := s.dispatchNamedAgentWakeLocked(ctx, agentRuntimeFromNamed(agent), true); err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
-		started = true
+		started, _, err = s.namedAgentActivity(ctx, agentRuntimeFromNamed(agent))
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
 	}
 	return s.writeResponse(req.ID, ChannelAgentStartResult{Agent: agent, WakeState: state, Started: started, ThreadID: thread.ID}, nil)
 }
@@ -197,9 +203,20 @@ func (s *Server) handleChannelAgentReset(ctx context.Context, req Request) error
 		return s.writeResponse(req.ID, nil, err)
 	}
 	threadID := namedAgentSessionID(agent)
-	requested, err := session.RequestThreadExecutionReset(s.rt.SessionDir, threadID)
+	refs, _, err := s.namedAgentSessionRefs(ctx, agentRuntimeFromNamed(agent))
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
+	}
+	requested := false
+	for _, ref := range refs {
+		oneRequested, resetErr := session.RequestThreadExecutionReset(s.rt.SessionDir, ref)
+		if resetErr != nil {
+			return s.writeResponse(req.ID, nil, resetErr)
+		}
+		requested = requested || oneRequested
+		if !oneRequested {
+			_, _, _, _ = s.removeHeldUserTurn(ref, namedAgentWakeID(agent.ID, ref))
+		}
 	}
 	if !requested {
 		// No owner will complete this wake. Normalize stale queue ownership while
@@ -207,7 +224,6 @@ func (s *Server) handleChannelAgentReset(ctx context.Context, req Request) error
 		if err := s.channelService.ClearWakeOnCheck(ctx, agent.ID); err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
-		_, _, _, _ = s.removeHeldUserTurn(threadID, namedAgentWakeID(agent.ID))
 	}
 	state, err := s.channelService.WakeState(ctx, agent.ID)
 	if err != nil {

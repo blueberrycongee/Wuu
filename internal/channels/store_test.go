@@ -18,9 +18,15 @@ import (
 )
 
 type recordingWakeSink struct {
-	mu         sync.Mutex
-	delivered  []string
-	interrupts []string
+	mu                sync.Mutex
+	delivered         []string
+	interrupts        []string
+	sessionInterrupts []recordedSessionInterrupt
+}
+
+type recordedSessionInterrupt struct {
+	agentID    string
+	sessionRef string
 }
 
 func (s *recordingWakeSink) Deliver(agentID string) {
@@ -33,6 +39,19 @@ func (s *recordingWakeSink) Interrupt(agentID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.interrupts = append(s.interrupts, agentID)
+}
+
+func (s *recordingWakeSink) InterruptSession(agentID, sessionRef string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.interrupts = append(s.interrupts, agentID)
+	s.sessionInterrupts = append(s.sessionInterrupts, recordedSessionInterrupt{agentID: agentID, sessionRef: sessionRef})
+}
+
+func (s *recordingWakeSink) InterruptRunSession(sessionRef string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sessionInterrupts = append(s.sessionInterrupts, recordedSessionInterrupt{sessionRef: sessionRef})
 }
 
 func (s *recordingWakeSink) take() []string {
@@ -48,6 +67,14 @@ func (s *recordingWakeSink) takeInterrupts() []string {
 	defer s.mu.Unlock()
 	result := append([]string(nil), s.interrupts...)
 	s.interrupts = nil
+	return result
+}
+
+func (s *recordingWakeSink) takeSessionInterrupts() []recordedSessionInterrupt {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := append([]recordedSessionInterrupt(nil), s.sessionInterrupts...)
+	s.sessionInterrupts = nil
 	return result
 }
 
@@ -80,6 +107,24 @@ func openTestService(t *testing.T, wake WakeSink) *Service {
 		}
 	})
 	return service
+}
+
+func bindTestWorkSession(t *testing.T, service *Service, client *AgentClient, roomID, workID, sessionRef string) *AgentClient {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := client.BindCollaborationSession(ctx, CollaborationSessionBindParams{
+		SessionRef: sessionRef,
+		RoomID:     roomID,
+		WorkID:     workID,
+		Purpose:    CollaborationSessionWork,
+	}); err != nil {
+		t.Fatalf("BindCollaborationSession(%s) error = %v", sessionRef, err)
+	}
+	sessionClient, err := service.BindAgentSession(ctx, client.AgentID(), sessionRef)
+	if err != nil {
+		t.Fatalf("BindAgentSession(%s) error = %v", sessionRef, err)
+	}
+	return sessionClient
 }
 
 func TestSQLiteDSNNormalizesPaths(t *testing.T) {
@@ -1218,6 +1263,8 @@ func TestOpenAddsColumnsMissingFromLegacySchema(t *testing.T) {
 		t.Fatalf("open legacy fixture database: %v", err)
 	}
 	for _, statement := range []string{
+		`DROP INDEX IF EXISTS idx_drafts_agent_session_state`,
+		`ALTER TABLE drafts DROP COLUMN session_ref`,
 		`ALTER TABLE room_messages DROP COLUMN task_title`,
 		`ALTER TABLE reminders DROP COLUMN created_at`,
 		`ALTER TABLE named_agents DROP COLUMN avatar_key`,
@@ -1237,6 +1284,9 @@ func TestOpenAddsColumnsMissingFromLegacySchema(t *testing.T) {
 		t.Fatalf("Open(legacy) error = %v", err)
 	}
 	t.Cleanup(func() { _ = upgraded.Close() })
+	if exists, err := upgraded.tableHasColumn("drafts", "session_ref"); err != nil || !exists {
+		t.Fatalf("upgraded drafts.session_ref exists = %v, err = %v", exists, err)
+	}
 	upgradedAgent, err := upgraded.GetNamedAgent(ctx, alpha.Agent.ID)
 	if err != nil || upgradedAgent.AvatarKey == "" || upgradedAgent.EffortOverride != "" {
 		t.Fatalf("GetNamedAgent(upgraded) = %#v, err %v", upgradedAgent, err)

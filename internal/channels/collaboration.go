@@ -16,8 +16,11 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	}
 	params.RoomID = strings.TrimSpace(params.RoomID)
 	params.ToAgentID = strings.TrimSpace(params.ToAgentID)
+	params.FromSessionRef = strings.TrimSpace(params.FromSessionRef)
+	params.TargetSessionRef = strings.TrimSpace(params.TargetSessionRef)
 	params.Body = strings.TrimSpace(params.Body)
 	params.SourceMessageID = strings.TrimSpace(params.SourceMessageID)
+	params.WorkID = strings.TrimSpace(params.WorkID)
 	params.ReplyTo = strings.TrimSpace(params.ReplyTo)
 	for index := range params.ArtifactRefs {
 		params.ArtifactRefs[index] = strings.TrimSpace(params.ArtifactRefs[index])
@@ -52,13 +55,48 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 		}
 		implicitRoomRecipient = true
 	}
-	if params.ToAgentID == params.AgentID {
-		return CollaborationMessage{}, errors.New("collaboration recipient must be another principal")
+	if params.ToAgentID == params.AgentID &&
+		(params.FromSessionRef == "" || params.TargetSessionRef == "" || params.FromSessionRef == params.TargetSessionRef) {
+		return CollaborationMessage{}, errors.New("same-principal collaboration requires two distinct sessions")
+	}
+	if params.Kind == CollaborationCandidateReady || params.Kind == CollaborationPeerResult {
+		if params.WorkID != "" && params.WorkID != params.SourceMessageID {
+			return CollaborationMessage{}, fmt.Errorf("%w: verification delivery work must match its source task", ErrConflict)
+		}
+		params.WorkID = params.SourceMessageID
+	} else if params.WorkID == "" && params.SourceMessageID != "" {
+		var sourceWorkRoomID string
+		err := tx.QueryRowContext(ctx, `SELECT room_id FROM works WHERE id = ?`, params.SourceMessageID).Scan(&sourceWorkRoomID)
+		if err == nil {
+			if sourceWorkRoomID != params.RoomID {
+				return CollaborationMessage{}, fmt.Errorf("%w: source work belongs to another room", ErrConflict)
+			}
+			params.WorkID = params.SourceMessageID
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return CollaborationMessage{}, fmt.Errorf("resolve collaboration source work: %w", err)
+		}
+	}
+	if params.WorkID != "" {
+		var workRoomID string
+		if err := tx.QueryRowContext(ctx, `SELECT room_id FROM works WHERE id = ?`, params.WorkID).Scan(&workRoomID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return CollaborationMessage{}, fmt.Errorf("%w: work %q", ErrNotFound, params.WorkID)
+			}
+			return CollaborationMessage{}, fmt.Errorf("load collaboration work: %w", err)
+		} else if workRoomID != params.RoomID {
+			return CollaborationMessage{}, fmt.Errorf("%w: collaboration work belongs to another room", ErrConflict)
+		}
 	}
 	for _, agentID := range []string{params.AgentID, params.ToAgentID} {
 		if err := requireRoomPrincipalAccessTx(ctx, tx, params.RoomID, agentID); err != nil {
 			return CollaborationMessage{}, err
 		}
+	}
+	if err := validateCollaborationSessionWriteTx(ctx, tx, params.FromSessionRef, params.AgentID, params.RoomID, params.WorkID, 0); err != nil {
+		return CollaborationMessage{}, err
+	}
+	if err := validateCollaborationSessionRouteTx(ctx, tx, params.TargetSessionRef, params.ToAgentID, params.RoomID, params.WorkID); err != nil {
+		return CollaborationMessage{}, err
 	}
 	var goalRevision, candidateRevision int
 	if params.Kind == CollaborationCandidateReady || params.Kind == CollaborationPeerResult {
@@ -124,8 +162,9 @@ func (s *Service) SendCollaboration(ctx context.Context, params CollaborationSen
 	now := fromMillis(toMillis(s.now()))
 	message, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{
 		RoomID: params.RoomID, FromType: MemberAgent, FromID: params.AgentID,
-		ToAgentID: params.ToAgentID, Kind: params.Kind, Body: params.Body,
-		WorkID: params.SourceMessageID, ArtifactRefs: params.ArtifactRefs,
+		FromSessionRef: params.FromSessionRef, ToAgentID: params.ToAgentID,
+		TargetSessionRef: params.TargetSessionRef, Kind: params.Kind, Body: params.Body,
+		WorkID: params.WorkID, ArtifactRefs: params.ArtifactRefs,
 		SourceMessageID: params.SourceMessageID, GoalRevision: goalRevision, CandidateRevision: candidateRevision,
 		ReplyTo: params.ReplyTo, CreatedAt: now,
 	})
@@ -183,10 +222,10 @@ func enqueueCollaborationTx(ctx context.Context, tx *sql.Tx, message Collaborati
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO collaboration_messages (
-			id, room_id, from_type, from_id, to_agent_id, kind, body, work_id, source_message_id,
+			id, room_id, from_type, from_id, from_session_ref, to_agent_id, target_session_ref, kind, body, work_id, source_message_id,
 			goal_revision, candidate_revision, artifact_refs_json, reply_to, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		message.ID, message.RoomID, message.FromType, message.FromID, message.ToAgentID, message.Kind, message.Body,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		message.ID, message.RoomID, message.FromType, message.FromID, nullableString(message.FromSessionRef), message.ToAgentID, nullableString(message.TargetSessionRef), message.Kind, message.Body,
 		nullableString(message.WorkID), nullableString(message.SourceMessageID), message.GoalRevision, message.CandidateRevision, string(artifactRefsJSON),
 		nullableString(message.ReplyTo), toMillis(message.CreatedAt))
 	if err != nil {
@@ -215,4 +254,75 @@ func (s *Service) PendingCollaborationRoomIDs(ctx context.Context, agentID strin
 		return nil, fmt.Errorf("iterate pending collaboration rooms: %w", err)
 	}
 	return roomIDs, nil
+}
+
+// PendingCollaborationDispatches returns only routing metadata. It does not
+// claim messages or reveal their contents; the selected session must still use
+// CheckSession to consume its own delivery.
+func (s *Service) PendingCollaborationDispatches(ctx context.Context, agentID string) ([]CollaborationDispatch, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return nil, errors.New("collaboration recipient is required")
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, room_id, COALESCE(target_session_ref, ''), COALESCE(work_id, ''), kind
+		FROM collaboration_messages
+		WHERE to_agent_id = ? AND pulled_at IS NULL AND invalidated_at IS NULL
+		ORDER BY created_at, rowid`, agentID)
+	if err != nil {
+		return nil, fmt.Errorf("list pending collaboration dispatches: %w", err)
+	}
+	defer rows.Close()
+	dispatches := make([]CollaborationDispatch, 0)
+	for rows.Next() {
+		var dispatch CollaborationDispatch
+		if err := rows.Scan(&dispatch.ID, &dispatch.RoomID, &dispatch.TargetSessionRef, &dispatch.WorkID, &dispatch.Kind); err != nil {
+			return nil, fmt.Errorf("scan pending collaboration dispatch: %w", err)
+		}
+		dispatches = append(dispatches, dispatch)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending collaboration dispatches: %w", err)
+	}
+	return dispatches, nil
+}
+
+// RoutePendingCollaborationToSession durably assigns every currently pending
+// delivery for one Work to its selected session before any agent turn starts.
+func (s *Service) RoutePendingCollaborationToSession(ctx context.Context, agentID, workID, sessionRef string) error {
+	agentID = strings.TrimSpace(agentID)
+	workID = strings.TrimSpace(workID)
+	sessionRef = strings.TrimSpace(sessionRef)
+	if agentID == "" || workID == "" || sessionRef == "" {
+		return errors.New("collaboration recipient, work, and session are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin collaboration session route: %w", err)
+	}
+	defer tx.Rollback()
+	binding, err := scanCollaborationSession(tx.QueryRowContext(ctx, collaborationSessionSelect+` WHERE binding.session_ref = ?`, sessionRef))
+	if err != nil {
+		return err
+	}
+	if binding.PrincipalID != agentID {
+		return ErrUnauthorized
+	}
+	if binding.WorkID != workID || binding.RoomID == "" ||
+		binding.State == CollaborationSessionInterrupted || binding.State == CollaborationSessionMissing {
+		return fmt.Errorf("%w: collaboration session does not own the requested work", ErrConflict)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE collaboration_messages SET target_session_ref = ?
+		WHERE to_agent_id = ? AND work_id = ? AND room_id = ?
+			AND target_session_ref IS NULL AND pulled_at IS NULL AND invalidated_at IS NULL`,
+		sessionRef, agentID, workID, binding.RoomID); err != nil {
+		return fmt.Errorf("route pending collaboration deliveries: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit collaboration session route: %w", err)
+	}
+	return nil
 }

@@ -30,7 +30,9 @@ func (s *Service) migrateInternalDeliveries() error {
 			room_id TEXT NOT NULL,
 			from_type TEXT NOT NULL CHECK (from_type IN ('human', 'agent')),
 			from_id TEXT NOT NULL,
+			from_session_ref TEXT,
 			to_agent_id TEXT NOT NULL,
+			target_session_ref TEXT,
 			kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'assignment', 'peer_result', 'candidate_ready', 'verification_feedback', 'completion')),
 			body TEXT NOT NULL,
 			work_id TEXT,
@@ -53,11 +55,11 @@ func (s *Service) migrateInternalDeliveries() error {
 	}
 	if _, err := tx.Exec(`
 		INSERT INTO collaboration_messages(
-			id, room_id, from_type, from_id, to_agent_id, kind, body, work_id, source_message_id,
+			id, room_id, from_type, from_id, from_session_ref, to_agent_id, target_session_ref, kind, body, work_id, source_message_id,
 			goal_revision, candidate_revision, artifact_refs_json, reply_to, created_at, pulled_at,
 			consumed_at, invalidated_at
 		)
-		SELECT id, room_id, from_type, from_id, to_agent_id, kind, body, work_id, source_message_id,
+		SELECT id, room_id, from_type, from_id, from_session_ref, to_agent_id, target_session_ref, kind, body, work_id, source_message_id,
 			goal_revision, candidate_revision, artifact_refs_json, reply_to, created_at, pulled_at,
 			consumed_at, invalidated_at
 		FROM collaboration_messages_envelope_legacy`); err != nil {

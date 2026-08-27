@@ -49,9 +49,14 @@ func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
+	ownerClient, err := service.BindAgent(ctx, owner.Agent.ID)
+	if err != nil {
+		t.Fatalf("BindAgent(owner) error = %v", err)
+	}
+	ownerSession := bindTestWorkSession(t, service, ownerClient, room.ID, task.ID, "verification-owner-work")
 	sink.take() // Assignment wake is not part of the verification assertion.
-	if _, err := service.Check(ctx, owner.Agent.ID, owner.Token); err != nil {
-		t.Fatalf("Check(owner assignment) error = %v", err)
+	if _, err := ownerSession.Check(ctx); err != nil {
+		t.Fatalf("CheckSession(owner assignment) error = %v", err)
 	}
 	if _, err := service.UpdateTask(ctx, TaskUpdateParams{
 		TaskID: task.ID, State: TaskStateDone, AgentID: owner.Agent.ID, Token: owner.Token,
@@ -87,9 +92,9 @@ func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 		t.Fatalf("verification wakes = %v, want owner", got)
 	}
 
-	checked, err := service.Check(ctx, owner.Agent.ID, owner.Token)
+	checked, err := ownerSession.Check(ctx)
 	if err != nil {
-		t.Fatalf("Check(owner) error = %v", err)
+		t.Fatalf("CheckSession(owner) error = %v", err)
 	}
 	found := false
 	for _, delivery := range checked.Collaboration {
@@ -202,6 +207,17 @@ func TestNamedVerifierReturnsAuditableResultToRoomRuntime(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("StartWorkRun(verifier) error = %v", err)
+	}
+	if run.NamedAgentID != verifier.Agent.ID {
+		t.Fatalf("verifier run named agent = %q, want %q", run.NamedAgentID, verifier.Agent.ID)
+	}
+	binding, err := service.GetCollaborationSession(ctx, verifier.Agent.ID, verifier.Token, run.SessionRef)
+	if err != nil {
+		t.Fatalf("GetCollaborationSession(verifier) error = %v", err)
+	}
+	if binding.Purpose != CollaborationSessionVerification || binding.WorkID != task.ID ||
+		binding.RunID != run.ID || binding.State != CollaborationSessionRunning {
+		t.Fatalf("verifier session binding = %#v", binding)
 	}
 	control, err := roomRuntime.SendCollaboration(ctx, CollaborationSendParams{
 		RoomID: room.ID, ToAgentID: verifier.Agent.ID, Kind: CollaborationControl,
@@ -337,8 +353,9 @@ func TestTaskVerificationRejectsStaleGoalAndCandidateRevisions(t *testing.T) {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
-	if _, err := ownerClient.Check(ctx); err != nil {
-		t.Fatalf("Check(owner assignment) error = %v", err)
+	ownerSession := bindTestWorkSession(t, service, ownerClient, room.ID, task.ID, "stale-revision-owner-work")
+	if _, err := ownerSession.Check(ctx); err != nil {
+		t.Fatalf("CheckSession(owner assignment) error = %v", err)
 	}
 	sink.take()
 	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
@@ -357,12 +374,12 @@ func TestTaskVerificationRejectsStaleGoalAndCandidateRevisions(t *testing.T) {
 	if revised.TaskGoalRevision != 2 || revised.TaskState != string(TaskStateOpen) {
 		t.Fatalf("revised task = %#v", revised)
 	}
-	if interrupted := sink.takeInterrupts(); len(interrupted) != 1 || interrupted[0] != owner.Agent.ID {
-		t.Fatalf("goal revision interruptions = %v, want owner", interrupted)
+	if interrupted := sink.takeInterrupts(); len(interrupted) != 0 {
+		t.Fatalf("goal revision interrupted an idle session: %v", interrupted)
 	}
-	ownerInbox, err := ownerClient.Check(ctx)
+	ownerInbox, err := ownerSession.Check(ctx)
 	if err != nil {
-		t.Fatalf("Check(owner goal revision) error = %v", err)
+		t.Fatalf("CheckSession(owner goal revision) error = %v", err)
 	}
 	foundRevisionNotice := false
 	for _, delivery := range ownerInbox.Collaboration {
@@ -424,8 +441,10 @@ func TestCandidateAndFeedbackDeliveriesRecoverAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
-	if _, err := ownerClient.Check(ctx); err != nil {
-		t.Fatalf("Check(owner assignment) error = %v", err)
+	const ownerSessionRef = "recovery-owner-work"
+	ownerSession := bindTestWorkSession(t, service, ownerClient, room.ID, task.ID, ownerSessionRef)
+	if _, err := ownerSession.Check(ctx); err != nil {
+		t.Fatalf("CheckSession(owner assignment) error = %v", err)
 	}
 	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
 	if err != nil {
@@ -466,8 +485,12 @@ func TestCandidateAndFeedbackDeliveriesRecoverAfterRestart(t *testing.T) {
 		t.Fatalf("SubmitTaskVerification(block) error = %v", err)
 	}
 	ownerClient, _ = service.BindAgent(ctx, owner.Agent.ID)
-	if _, err := ownerClient.Check(ctx); err != nil {
-		t.Fatalf("Check(owner feedback) error = %v", err)
+	ownerSession, err = service.BindAgentSession(ctx, owner.Agent.ID, ownerSessionRef)
+	if err != nil {
+		t.Fatalf("BindAgentSession(owner after candidate recovery) error = %v", err)
+	}
+	if _, err := ownerSession.Check(ctx); err != nil {
+		t.Fatalf("CheckSession(owner feedback) error = %v", err)
 	}
 	if err := service.Close(); err != nil {
 		t.Fatalf("Close(before feedback recovery) error = %v", err)
@@ -479,7 +502,11 @@ func TestCandidateAndFeedbackDeliveriesRecoverAfterRestart(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = service.Close() })
 	ownerClient, _ = service.BindAgent(ctx, owner.Agent.ID)
-	recovered, err = ownerClient.Check(ctx)
+	ownerSession, err = service.BindAgentSession(ctx, owner.Agent.ID, ownerSessionRef)
+	if err != nil {
+		t.Fatalf("BindAgentSession(owner after feedback recovery) error = %v", err)
+	}
+	recovered, err = ownerSession.Check(ctx)
 	if err != nil || len(recovered.Collaboration) != 1 || recovered.Collaboration[0].ID != blocked.Delivery.ID {
 		t.Fatalf("recovered feedback = %#v, err = %v", recovered.Collaboration, err)
 	}

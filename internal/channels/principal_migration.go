@@ -71,7 +71,9 @@ func (s *Service) migrateCollaborationPrincipals() error {
 				room_id TEXT NOT NULL,
 				from_type TEXT NOT NULL CHECK (from_type IN ('human', 'agent')),
 				from_id TEXT NOT NULL,
+				from_session_ref TEXT,
 				to_agent_id TEXT NOT NULL,
+				target_session_ref TEXT,
 				kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'candidate_ready', 'verification_feedback')),
 				body TEXT NOT NULL,
 				source_message_id TEXT,
@@ -89,10 +91,10 @@ func (s *Service) migrateCollaborationPrincipals() error {
 		}
 		if _, err := tx.Exec(`
 			INSERT INTO collaboration_messages(
-				id, room_id, from_type, from_id, to_agent_id, kind, body, source_message_id,
+				id, room_id, from_type, from_id, from_session_ref, to_agent_id, target_session_ref, kind, body, source_message_id,
 				goal_revision, candidate_revision, reply_to, created_at, pulled_at
 			)
-			SELECT id, room_id, from_type, from_id, to_agent_id, kind, body, source_message_id,
+			SELECT id, room_id, from_type, from_id, from_session_ref, to_agent_id, target_session_ref, kind, body, source_message_id,
 				goal_revision, candidate_revision, reply_to, created_at, pulled_at
 			FROM collaboration_messages_legacy`); err != nil {
 			return fmt.Errorf("copy principal collaboration messages: %w", err)

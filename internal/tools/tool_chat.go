@@ -222,13 +222,15 @@ func (t *CollaborationSendTool) Definition() providers.ToolDefinition {
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"room_id":           map[string]any{"type": "string"},
-				"to_agent_id":       map[string]any{"type": "string"},
-				"kind":              map[string]any{"type": "string", "enum": []string{"control", "candidate_ready", "peer_result"}},
-				"source_message_id": map[string]any{"type": "string"},
-				"artifact_refs":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"body":              map[string]any{"type": "string", "maxLength": channels.MaxMessageRunes},
-				"reply_to":          map[string]any{"type": "string"},
+				"room_id":            map[string]any{"type": "string"},
+				"to_agent_id":        map[string]any{"type": "string"},
+				"target_session_ref": map[string]any{"type": "string", "description": "Deliver only to this session of the target named agent."},
+				"work_id":            map[string]any{"type": "string", "description": "Scope this private message to one durable work item."},
+				"kind":               map[string]any{"type": "string", "enum": []string{"control", "candidate_ready", "peer_result"}},
+				"source_message_id":  map[string]any{"type": "string"},
+				"artifact_refs":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"body":               map[string]any{"type": "string", "maxLength": channels.MaxMessageRunes},
+				"reply_to":           map[string]any{"type": "string"},
 			},
 			"required": []string{"room_id", "body"},
 		},
@@ -239,19 +241,22 @@ func (t *CollaborationSendTool) Execute(ctx context.Context, argsJSON string) (s
 		return "", errors.New("collaboration_send is available only in a named-agent session")
 	}
 	var args struct {
-		RoomID          string   `json:"room_id"`
-		ToAgent         string   `json:"to_agent_id"`
-		Kind            string   `json:"kind"`
-		SourceMessageID string   `json:"source_message_id"`
-		ArtifactRefs    []string `json:"artifact_refs"`
-		Body            string   `json:"body"`
-		ReplyTo         string   `json:"reply_to"`
+		RoomID           string   `json:"room_id"`
+		ToAgent          string   `json:"to_agent_id"`
+		TargetSessionRef string   `json:"target_session_ref"`
+		WorkID           string   `json:"work_id"`
+		Kind             string   `json:"kind"`
+		SourceMessageID  string   `json:"source_message_id"`
+		ArtifactRefs     []string `json:"artifact_refs"`
+		Body             string   `json:"body"`
+		ReplyTo          string   `json:"reply_to"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", err
 	}
 	message, err := t.env.ChatAgent.SendCollaboration(ctx, channels.CollaborationSendParams{
-		RoomID: args.RoomID, ToAgentID: args.ToAgent, Kind: channels.CollaborationKind(args.Kind),
+		RoomID: args.RoomID, ToAgentID: args.ToAgent, TargetSessionRef: args.TargetSessionRef,
+		WorkID: args.WorkID, Kind: channels.CollaborationKind(args.Kind),
 		SourceMessageID: args.SourceMessageID, ArtifactRefs: args.ArtifactRefs,
 		Body: args.Body, ReplyTo: args.ReplyTo,
 	})
@@ -346,6 +351,7 @@ func (t *ChatTaskTool) Definition() providers.ToolDefinition {
 				"body":                map[string]any{"type": "string"},
 				"owner_id":            map[string]any{"type": "string"},
 				"lead_named_agent_id": map[string]any{"type": "string"},
+				"target_session_ref":  map[string]any{"type": "string", "description": "Assign the new task delivery to one existing session of the owner."},
 				"verification_required": map[string]any{
 					"type": "boolean", "description": "Require an independent pass before the owner may mark the task done.",
 				},
@@ -371,6 +377,7 @@ func (t *ChatTaskTool) Execute(ctx context.Context, argsJSON string) (string, er
 		Body                 string `json:"body"`
 		OwnerID              string `json:"owner_id"`
 		LeadNamedAgentID     string `json:"lead_named_agent_id"`
+		TargetSessionRef     string `json:"target_session_ref"`
 		VerificationRequired bool   `json:"verification_required"`
 		State                string `json:"state"`
 	}
@@ -382,7 +389,8 @@ func (t *ChatTaskTool) Execute(ctx context.Context, argsJSON string) (string, er
 		message, err := t.env.ChatAgent.CreateTask(ctx, channels.TaskCreateParams{
 			RoomID: args.RoomID, ThreadID: args.ThreadID, SourceMessageID: args.SourceMessageID,
 			Title: args.Title, Body: args.Body, OwnerID: args.OwnerID,
-			LeadNamedAgentID: args.LeadNamedAgentID, VerificationRequired: args.VerificationRequired,
+			LeadNamedAgentID: args.LeadNamedAgentID, TargetSessionRef: args.TargetSessionRef,
+			VerificationRequired: args.VerificationRequired,
 		})
 		if err != nil {
 			return "", err

@@ -34,7 +34,12 @@ func TestM3TaskCreateWakeUpdateDone(t *testing.T) {
 		t.Fatalf("task create wake = %v, want beta", got)
 	}
 
-	betaCheck, err := service.Check(ctx, beta.Agent.ID, beta.Token)
+	betaClient, err := service.BindAgent(ctx, beta.Agent.ID)
+	if err != nil {
+		t.Fatalf("BindAgent(beta) error = %v", err)
+	}
+	betaSession := bindTestWorkSession(t, service, betaClient, room.ID, task.ID, "m3-beta-work")
+	betaCheck, err := betaSession.Check(ctx)
 	if err != nil || len(betaCheck.Items) != 1 || betaCheck.Items[0].Kind != InboxTask || betaCheck.Items[0].MessageID != task.ID {
 		t.Fatalf("beta check = %#v, err = %v", betaCheck, err)
 	}
@@ -54,7 +59,7 @@ func TestM3TaskCreateWakeUpdateDone(t *testing.T) {
 	if got := sink.take(); len(got) != 1 || got[0] != beta.Agent.ID {
 		t.Fatalf("task update wake = %v, want beta", got)
 	}
-	betaCheck, err = service.Check(ctx, beta.Agent.ID, beta.Token)
+	betaCheck, err = betaSession.Check(ctx)
 	if err != nil || len(betaCheck.Items) != 1 || betaCheck.Items[0].MessageID != task.ID {
 		t.Fatalf("beta second check = %#v, err = %v", betaCheck, err)
 	}
@@ -152,12 +157,12 @@ func TestM3TaskHumanCreatesAndReassignsOwner(t *testing.T) {
 		t.Fatalf("reassign wake = %v, want beta", wakes)
 	}
 	alphaCheck, err := service.Check(ctx, alpha.Agent.ID, alpha.Token)
-	if err != nil || len(alphaCheck.Items) != 1 || alphaCheck.Items[0].MessageID != task.ID {
-		t.Fatalf("alpha old-owner inbox = %#v, err = %v", alphaCheck, err)
+	if err != nil || len(alphaCheck.Items) != 0 || len(alphaCheck.Collaboration) != 0 {
+		t.Fatalf("alpha agent-level check consumed reassigned Work = %#v, err = %v", alphaCheck, err)
 	}
 	betaCheck, err := service.Check(ctx, beta.Agent.ID, beta.Token)
-	if err != nil || len(betaCheck.Items) != 1 {
-		t.Fatalf("beta new-owner inbox = %#v, err = %v", betaCheck, err)
+	if err != nil || len(betaCheck.Items) != 0 || len(betaCheck.Collaboration) != 0 {
+		t.Fatalf("beta agent-level check consumed reassigned Work = %#v, err = %v", betaCheck, err)
 	}
 }
 

@@ -887,6 +887,7 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 	modelEffort := th.ModelEffort
 	permissionMode := th.PermissionMode
 	namedAgentID := strings.TrimSpace(th.NamedAgentID)
+	collaborationSessionRef := strings.TrimSpace(th.CollaborationSessionRef)
 	th.mu.Unlock()
 	if detached.runtime != nil || detached.subscription != nil {
 		releaseDetachedThreadRuntime(detached)
@@ -912,7 +913,7 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 		if agentErr != nil {
 			return nil, agentErr
 		}
-		threadRuntime, err = s.newAgentExecutionRuntime(th.ID, principal, selection)
+		threadRuntime, err = s.newAgentExecutionRuntimeForSession(th.ID, collaborationSessionRef, principal, selection)
 	} else {
 		threadRuntime, err = s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, selection)
 	}
@@ -934,7 +935,7 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 			if agentErr != nil {
 				return nil, agentErr
 			}
-			threadRuntime, err = s.newAgentExecutionRuntime(th.ID, principal, healedSelection)
+			threadRuntime, err = s.newAgentExecutionRuntimeForSession(th.ID, collaborationSessionRef, principal, healedSelection)
 		} else {
 			threadRuntime, err = s.rt.NewThreadRuntimeForRootModel(th.ID, browserWorkdir, healedSelection)
 		}
@@ -1911,7 +1912,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 			sessionInstructions = threadRuntime.StreamRunner.SystemPrompt
 		}
 		var endpoint string
-		endpoint, hostMCPError = s.namedAgentMCPURL(namedAgentID)
+		endpoint, hostMCPError = s.namedAgentMCPURL(namedAgentID, th.ID)
 		if hostMCPError == nil {
 			hostMCPServers = []agentengine.MCPServer{{Name: namedAgentMCPServerName, URL: endpoint}}
 		}

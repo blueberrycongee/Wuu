@@ -18,7 +18,7 @@ func (t *ChatRosterTool) IsConcurrencySafe() bool { return false }
 func (t *ChatRosterTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name:        "chat_roster",
-		Description: "List this room's named agents, invite an existing named agent, or propose a persistent named agent for user approval. Creating a new role always requires the user's model choice in the room. Use create only for a durable distinct role; never create anonymous or disposable workers.",
+		Description: "List this room's named agents with their roles, sanitized long-term memory indexes, and current room-scoped sessions; invite an existing named agent; or propose a persistent named agent for user approval. Memory indexes are routing context and must not be quoted publicly. Creating a new role always requires the user's model choice in the room. Use create only for a durable distinct role; never create anonymous or disposable workers.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

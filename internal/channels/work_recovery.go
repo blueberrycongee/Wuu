@@ -10,9 +10,11 @@ import (
 type WorkRunRecoveryState string
 
 const (
-	WorkRunRecoveryActive    WorkRunRecoveryState = "active"
-	WorkRunRecoveryCompleted WorkRunRecoveryState = "completed"
-	WorkRunRecoveryMissing   WorkRunRecoveryState = "missing"
+	WorkRunRecoveryActive      WorkRunRecoveryState = "active"
+	WorkRunRecoveryCompleted   WorkRunRecoveryState = "completed"
+	WorkRunRecoveryFailed      WorkRunRecoveryState = "failed"
+	WorkRunRecoveryInterrupted WorkRunRecoveryState = "interrupted"
+	WorkRunRecoveryMissing     WorkRunRecoveryState = "missing"
 )
 
 type WorkRunRecovery struct {
@@ -86,17 +88,38 @@ func (s *Service) reconcileWorkRun(ctx context.Context, recovery WorkRunRecovery
 	verificationState := work.VerificationState
 	recipientID := ""
 	deliveryBody := fmt.Sprintf("Background %s run %s completed during restart recovery. Read session %s, then submit its revision-safe result.", run.Kind, run.ID, run.SessionRef)
-	if recovery.State == WorkRunRecoveryMissing {
+	bindingState := CollaborationSessionIdle
+	switch recovery.State {
+	case WorkRunRecoveryFailed:
+		runState = WorkRunFailed
+		outcome = "session turn failed during restart recovery"
+		recipientID = work.OwnerNamedAgentID
+		deliveryBody = fmt.Sprintf("Background %s run %s failed before restart recovery completed. Inspect session %s and decide whether to retry.", run.Kind, run.ID, run.SessionRef)
+		var runtimeID string
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM room_runtimes WHERE room_id = ?`, work.RoomID).Scan(&runtimeID); err == nil {
+			recipientID = runtimeID
+		}
+		if recipientID == "" {
+			recipientID = work.OwnerNamedAgentID
+		}
+	case WorkRunRecoveryInterrupted:
+		runState = WorkRunInterrupted
+		outcome = "session turn was interrupted during restart recovery"
+		bindingState = CollaborationSessionInterrupted
+		recipientID = work.OwnerNamedAgentID
+		deliveryBody = fmt.Sprintf("Work %s %s run was interrupted before restart recovery completed. No completion or rollback is being claimed. Review session %s and decide whether to retry.", work.ID, run.Kind, run.SessionRef)
+	case WorkRunRecoveryMissing:
 		runState = WorkRunInterrupted
 		outcome = "session handle missing during restart recovery"
 		workState = WorkInterrupted
+		bindingState = CollaborationSessionMissing
 		recipientID = work.OwnerNamedAgentID
 		deliveryBody = fmt.Sprintf("Work %s %s run was interrupted during restart recovery because session %s could not be found. No completion or rollback is being claimed. Review existing artifacts and decide whether to retry.", work.ID, run.Kind, run.SessionRef)
 		if run.Kind == WorkRunVerifier {
 			workState = WorkNeedsHuman
 			verificationState = WorkVerificationUnknown
 		}
-	} else {
+	default:
 		var runtimeID string
 		if err := tx.QueryRowContext(ctx, `SELECT id FROM room_runtimes WHERE room_id = ?`, work.RoomID).Scan(&runtimeID); err == nil {
 			recipientID = runtimeID
@@ -108,9 +131,35 @@ func (s *Service) reconcileWorkRun(ctx context.Context, recovery WorkRunRecovery
 		return fmt.Errorf("settle recovered work run: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE works SET state = ?, verification_state = ?, current_run_ref = NULL,
-			failure_reason = CASE WHEN ? = 'interrupted' THEN ? ELSE failure_reason END, updated_at = ?
-		WHERE id = ?`, workState, verificationState, runState, outcome, toMillis(now), work.ID); err != nil {
+		UPDATE collaboration_session_bindings SET state = ?, run_id = NULL, updated_at = ?
+		WHERE session_ref = ? AND run_id = ?`, bindingState, toMillis(now), run.SessionRef, run.ID); err != nil {
+		return fmt.Errorf("settle recovered work session: %w", err)
+	}
+	var activeRunRef string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE((
+			SELECT id FROM work_runs
+			WHERE work_id = ? AND state IN ('queued', 'running')
+			ORDER BY created_at DESC, id DESC LIMIT 1
+		), '')`, work.ID).Scan(&activeRunRef); err != nil {
+		return fmt.Errorf("find surviving work run: %w", err)
+	}
+	interruptRecovery := recovery.State == WorkRunRecoveryMissing || recovery.State == WorkRunRecoveryInterrupted || recovery.State == WorkRunRecoveryFailed
+	interruptWork := interruptRecovery && activeRunRef == ""
+	if interruptWork {
+		workState = WorkInterrupted
+		if run.Kind == WorkRunVerifier {
+			workState = WorkNeedsHuman
+			verificationState = WorkVerificationUnknown
+		}
+	} else if interruptRecovery {
+		workState = work.State
+		verificationState = work.VerificationState
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE works SET state = ?, verification_state = ?, current_run_ref = ?,
+			failure_reason = CASE WHEN ? THEN ? ELSE failure_reason END, updated_at = ?
+		WHERE id = ?`, workState, verificationState, nullableString(activeRunRef), boolInt(interruptWork), outcome, toMillis(now), work.ID); err != nil {
 		return fmt.Errorf("settle recovered work: %w", err)
 	}
 	if err := insertWorkEventTx(ctx, tx, WorkEvent{WorkID: work.ID, Kind: "recovery", State: string(workState), Summary: outcome, GoalRevision: run.GoalRevision, CandidateRevision: run.CandidateRevision, CreatedAt: now}); err != nil {
@@ -119,7 +168,7 @@ func (s *Service) reconcileWorkRun(ctx context.Context, recovery WorkRunRecovery
 	shouldDeliver := false
 	if recipientID != "" {
 		kind := CollaborationCompletion
-		if recovery.State == WorkRunRecoveryMissing {
+		if interruptRecovery {
 			kind = CollaborationVerificationFeedback
 		}
 		if _, err := enqueueCollaborationTx(ctx, tx, CollaborationMessage{

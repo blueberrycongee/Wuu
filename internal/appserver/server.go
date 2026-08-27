@@ -46,9 +46,13 @@ type threadState struct {
 	Owner        string
 	Visibility   string
 	NamedAgentID string
-	ParentID     string
-	AgentPath    string
-	History      []providers.ChatMessage
+	// CollaborationSessionRef is non-empty only when this Named Agent thread is
+	// bound to one durable Room/Work session. Ordinary Named Agent conversations
+	// keep Agent-level chat semantics even when their thread ID is non-default.
+	CollaborationSessionRef string
+	ParentID                string
+	AgentPath               string
+	History                 []providers.ChatMessage
 	// historyHeadSeq is the physical append-only session_messages head that
 	// History was reconstructed through. It must not be derived from the
 	// logical messages: a checkpoint may retain no records or only old seqs.
@@ -264,19 +268,20 @@ type Server struct {
 	// sideThreadStore persists side threads (1:<=1 binding per main
 	// thread). Nil when SessionDir is unset; handleSideThreadOpen /
 	// handleSideThreadGetHistory treat nil as the "feature off" path.
-	sideThreadStore            *sidethread.Store
-	channelService             *channels.Service
-	channelMaintenanceStop     chan struct{}
-	channelMaintenanceDone     chan struct{}
-	channelMaintenanceStopOnce sync.Once
-	namedAgentMu               sync.Mutex
-	namedAgentMCPMu            sync.Mutex
-	namedAgentMCPServer        *http.Server
-	namedAgentMCPBaseURL       string
-	namedAgentMCPTokenByAgent  map[string]string
-	namedAgentMCPAgentByToken  map[string]string
-	sideTurnMu                 sync.Mutex
-	sideTurns                  map[string]*sideThreadTurn
+	sideThreadStore             *sidethread.Store
+	channelService              *channels.Service
+	channelMaintenanceStop      chan struct{}
+	channelMaintenanceDone      chan struct{}
+	channelMaintenanceStopOnce  sync.Once
+	namedAgentMu                sync.Mutex
+	namedAgentMCPMu             sync.Mutex
+	namedAgentMCPServer         *http.Server
+	namedAgentMCPBaseURL        string
+	namedAgentMCPTokenByAgent   map[string]string
+	namedAgentMCPAgentByToken   map[string]string
+	namedAgentMCPSessionByToken map[string]string
+	sideTurnMu                  sync.Mutex
+	sideTurns                   map[string]*sideThreadTurn
 }
 
 func New(rt *runtime.Session, out io.Writer) *Server {
@@ -653,6 +658,14 @@ func (s *Server) runChannelMaintenance(ctx context.Context) {
 		return
 	}
 	for _, agent := range agents {
+		if !agent.IsRoomRuntime() {
+			s.namedAgentMu.Lock()
+			resumeErr := s.resumeNamedAgentBoundSessionsLocked(ctx, agent)
+			s.namedAgentMu.Unlock()
+			if resumeErr != nil {
+				log.Printf("wuu: channel session recovery %q: %v", agent.ID, resumeErr)
+			}
+		}
 		state, err := s.channelService.WakeState(ctx, agent.ID)
 		if err != nil {
 			log.Printf("wuu: channel wake state %q: %v", agent.ID, err)
@@ -661,8 +674,10 @@ func (s *Server) runChannelMaintenance(ctx context.Context) {
 		if !state.Outstanding {
 			continue
 		}
-		if th := s.thread(agentRuntimeSessionID(agent)); th != nil && threadIsRunning(th) {
-			continue
+		if agent.IsRoomRuntime() {
+			if th := s.thread(agentRuntimeSessionID(agent)); th != nil && threadIsRunning(th) {
+				continue
+			}
 		}
 		if err := s.deliverNamedAgentWake(ctx, agent.ID); err != nil {
 			log.Printf("wuu: channel wake recovery %q: %v", agent.ID, err)

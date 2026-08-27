@@ -99,9 +99,11 @@ const (
 type WorkRun struct {
 	ID                string       `json:"id"`
 	WorkID            string       `json:"work_id"`
+	NamedAgentID      string       `json:"named_agent_id,omitempty"`
 	Kind              WorkRunKind  `json:"kind"`
 	Profile           string       `json:"profile,omitempty"`
 	SessionRef        string       `json:"session_ref,omitempty"`
+	TurnID            string       `json:"turn_id,omitempty"`
 	State             WorkRunState `json:"state"`
 	GoalRevision      int          `json:"goal_revision"`
 	CandidateRevision int          `json:"candidate_revision"`
@@ -146,6 +148,7 @@ type WorkArtifact struct {
 
 type WorkRunStartParams struct {
 	WorkID            string
+	NamedAgentID      string
 	Kind              WorkRunKind
 	Profile           string
 	SessionRef        string
@@ -168,6 +171,15 @@ type WorkRunFinishParams struct {
 	RepairOutcome string
 	AgentID       string
 	Token         string
+}
+
+type WorkRunTurnParams struct {
+	WorkID     string
+	RunID      string
+	SessionRef string
+	TurnID     string
+	AgentID    string
+	Token      string
 }
 
 type WorkArtifactAddParams struct {
