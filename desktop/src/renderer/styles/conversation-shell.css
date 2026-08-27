@@ -203,19 +203,19 @@
   overflow: clip;
 }
 
-/* Keep inactive panes out of layout without destroying Chromium's remembered
- * content-visibility sizes. Warm tab switches can then reuse the exact message
- * geometry that was already painted instead of rebuilding it from estimates. */
+/* Keep inactive panes out of layout. Use visibility:hidden instead of
+ * content-visibility:hidden to avoid triggering thousands of warnings when
+ * React components update in background tabs (timers, WebSocket, async state). */
 .cached-conversation-pane[data-active="false"] {
   position: absolute;
   inset: 0;
-  content-visibility: hidden;
+  visibility: hidden;
   pointer-events: none;
 }
 
 .cached-conversation-pane[data-active="true"] {
   position: relative;
-  content-visibility: visible;
+  visibility: visible;
 }
 
 .conversation-pane.side-thread-panel-visible {
