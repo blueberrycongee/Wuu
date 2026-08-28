@@ -152,6 +152,7 @@ export function EmptyConversationHome({
             className="empty-home-mascot"
             activity={mascotActivity}
             followPointer
+            animate="hover"
             aria-hidden="true"
           />
           <h2>{title}</h2>

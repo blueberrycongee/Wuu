@@ -45,21 +45,19 @@ describe("RuntimeLoading", () => {
 });
 
 describe("EmptyConversationHome", () => {
-  it("greets with an always-animating round blobatar", () => {
+  it("keeps the idle round blobatar inline without always-on motion", () => {
     const view = render(
       <EmptyConversationHome title="Hello">
         <div className="hero-composer" />
       </EmptyConversationHome>,
     );
 
-    // The mascot is now an inline-SVG blobatar; "always" animation puts the
-    // mo-root/mo-always classes and seeded motion properties on an inner <g>
-    // so expression changes transition on the same element (see blobatar/react).
     const mascot = view.querySelector<SVGSVGElement>("svg.empty-home-mascot");
-    const motionRoot = mascot?.querySelector<SVGGElement>("g.mo-root.mo-always");
+    const motionRoot = mascot?.querySelector<SVGGElement>("g.mo-root");
     expect(mascot).not.toBeNull();
     expect(mascot?.getAttribute("aria-hidden")).toBe("true");
     expect(motionRoot).not.toBeNull();
+    expect(motionRoot?.classList.contains("mo-always")).toBe(false);
     expect(motionRoot?.getAttribute("style")).toContain("--mo-phase");
   });
 });

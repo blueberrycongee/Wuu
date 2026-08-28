@@ -156,6 +156,30 @@
   animation-play-state: paused !important;
 }
 
+/* Blobatar's hover mode intentionally keeps its registered-property loops
+ * running at zero amplitude so hover-out remains smooth. Cached panes can hold
+ * several avatars and never receive pointer input, so that tradeoff only burns
+ * renderer time there. Pause every mascot effect while its pane or window is
+ * not paintable; the active pane resumes at the retained animation phase. */
+:root[data-renderer-hidden] .mo-root,
+:root[data-renderer-hidden] .mo-root *,
+.cached-conversation-pane[data-active="false"] .mo-root,
+.cached-conversation-pane[data-active="false"] .mo-root * {
+  animation-play-state: paused !important;
+}
+
+/* Blobatar's ambient layers continuously recalculate registered SVG properties,
+ * including while their visible amplitude is zero. Wuu already communicates
+ * work through separate activity-prop animations and expression transitions,
+ * so keep the decorative idle loops parked without freezing those signals. */
+.mo-root,
+.mo-breathe,
+.mo-bob,
+.mo-eyes,
+.mo-eye > * {
+  animation-play-state: paused !important;
+}
+
 .wuu-mascot-activity-prop {
   pointer-events: none;
   transform-box: view-box;

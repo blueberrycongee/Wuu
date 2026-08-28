@@ -1,10 +1,14 @@
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Thread } from "../shared/protocol";
 import type { TurnStreamStatus } from "./AppState";
 import { CachedConversationPanes } from "./CachedConversationPanes";
 import { ImagePreviewProvider } from "./ImagePreview";
+
+const mascotCSS = readFileSync(resolve(__dirname, "styles/wuu-mascot.css"), "utf8");
 
 const turnListRenders = vi.hoisted(() => new Map<string, number>());
 
@@ -99,6 +103,15 @@ function renderPane(
 }
 
 describe("CachedConversationPanes session switching", () => {
+  it("pauses ambient and inactive mascot animation work", () => {
+    expect(mascotCSS).toContain(
+      '.cached-conversation-pane[data-active="false"] .mo-root *',
+    );
+    expect(mascotCSS).toContain(".mo-breathe,");
+    expect(mascotCSS).toContain(".mo-eye > *");
+    expect(mascotCSS).toContain("animation-play-state: paused !important;");
+  });
+
   it("shows a newly mounted conversation without layout polling", () => {
     const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame");
     const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get");
