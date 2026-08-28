@@ -202,10 +202,47 @@ describe("isStateActiveThreadRunning with a background agent", () => {
     const thread = {
       ...idleThread,
       status: "in_progress" as const,
-      turns: idleThread.turns.map((turn) => ({ ...turn, status: "in_progress" as const })),
+      turns: idleThread.turns.map((turn) => ({
+        ...turn,
+        status: "in_progress" as const,
+        items: [
+          ...turn.items,
+          {
+            id: "commentary-1",
+            type: "agent_message" as const,
+            status: "completed" as const,
+            terminal: false,
+            text: "I will inspect that.",
+          },
+        ],
+      })),
     };
 
     expect(resolveComposerRunningAction("steer", thread)).toBe("steer");
+  });
+
+  it("queues Enter once the final answer item completed but the turn is still settling", () => {
+    const idleThread = threadWithUserTexts(["parent is settling"]);
+    const thread = {
+      ...idleThread,
+      status: "in_progress" as const,
+      turns: idleThread.turns.map((turn) => ({
+        ...turn,
+        status: "in_progress" as const,
+        items: [
+          ...turn.items,
+          {
+            id: "answer-1",
+            type: "agent_message" as const,
+            status: "completed" as const,
+            terminal: true,
+            text: "done",
+          },
+        ],
+      })),
+    };
+
+    expect(resolveComposerRunningAction("steer", thread)).toBe("queue");
   });
 });
 

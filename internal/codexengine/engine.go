@@ -469,6 +469,8 @@ type codexStreamItem struct {
 	ID                string          `json:"id"`
 	Type              string          `json:"type"`
 	Status            string          `json:"status"`
+	Text              string          `json:"text"`
+	Phase             string          `json:"phase"`
 	Command           string          `json:"command"`
 	CWD               string          `json:"cwd"`
 	CommandActions    json.RawMessage `json:"commandActions"`
@@ -505,13 +507,16 @@ type turnSubscription struct {
 	sink   agentengine.EventSink
 	done   chan turnOutcome
 
-	events    chan turnNotification
-	mu        sync.Mutex
-	closed    bool
-	unsubs    []func()
-	labels    map[string]string
-	tools     map[string]struct{}
-	reasoning map[string]struct{}
+	events          chan turnNotification
+	mu              sync.Mutex
+	closed          bool
+	unsubs          []func()
+	labels          map[string]string
+	tools           map[string]struct{}
+	reasoning       map[string]struct{}
+	lastAgentText   string
+	lastAgentPhase  providers.MessagePhase
+	lastAgentItemID string
 }
 
 func newTurnSubscription(client *Client, sink agentengine.EventSink, done chan turnOutcome) *turnSubscription {
@@ -685,6 +690,9 @@ func (sub *turnSubscription) run() {
 				StopReason:   status,
 			})
 			content := text.String()
+			if strings.TrimSpace(sub.lastAgentText) != "" {
+				content = sub.lastAgentText
+			}
 			result := agent.LoopResult{
 				Content:         strings.TrimSpace(content),
 				FinishReason:    finishReason,
@@ -696,6 +704,8 @@ func (sub *turnSubscription) run() {
 					Role:             "assistant",
 					Content:          content,
 					ReasoningContent: reasoning.String(),
+					Phase:            sub.lastAgentPhase,
+					ProviderItemID:   sub.lastAgentItemID,
 				}},
 			}
 			sub.finish(result, nil)
@@ -712,6 +722,31 @@ func (sub *turnSubscription) emitItem(method string, raw json.RawMessage) {
 	}
 	var item codexStreamItem
 	if err := json.Unmarshal(raw, &item); err != nil || strings.TrimSpace(item.ID) == "" {
+		return
+	}
+	if item.Type == "agentMessage" {
+		if method != NotifyItemCompleted || strings.TrimSpace(item.Text) == "" {
+			return
+		}
+		phase := providers.NormalizeMessagePhase(item.Phase)
+		sub.lastAgentText = item.Text
+		sub.lastAgentPhase = phase
+		sub.lastAgentItemID = item.ID
+		// Older Codex builds can omit phase. Without that semantic signal an
+		// agentMessage may be commentary followed by more tools, so leave the live
+		// item open and reconcile it at turn/completed rather than guessing.
+		if phase == "" {
+			return
+		}
+		sub.emit(providers.StreamEvent{
+			Type: providers.EventMessage,
+			Message: &providers.ChatMessage{
+				Role:           "assistant",
+				Content:        item.Text,
+				Phase:          phase,
+				ProviderItemID: item.ID,
+			},
+		})
 		return
 	}
 

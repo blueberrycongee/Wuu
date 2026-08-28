@@ -1542,6 +1542,9 @@ func isToolResultMessage(msg providers.ChatMessage) bool {
 }
 
 func assistantMessageTerminal(msg providers.ChatMessage) bool {
+	if msg.Phase != "" {
+		return msg.Phase == providers.MessagePhaseFinalAnswer
+	}
 	return len(msg.ToolCalls) == 0
 }
 

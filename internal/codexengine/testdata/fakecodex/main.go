@@ -115,7 +115,7 @@ func main() {
 			notify("item/completed", map[string]any{
 				"threadId": params.ThreadID,
 				"turnId":   "turn-1",
-				"item":     map[string]any{"id": "item-1", "type": "agentMessage", "text": "Hello from codex."},
+				"item":     map[string]any{"id": "item-1", "type": "agentMessage", "text": "Hello from codex.", "phase": "final_answer"},
 			})
 			notify("turn/completed", map[string]any{
 				"threadId": params.ThreadID,

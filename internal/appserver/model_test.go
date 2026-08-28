@@ -316,6 +316,51 @@ func TestThreadStateUsesProviderPhaseOnStreamingText(t *testing.T) {
 	}
 }
 
+func TestThreadStateCompletesPhasedProviderMessageBeforeTurnSettlement(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "inspect"}, now)
+
+	out := th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type: providers.EventMessage,
+		Message: &providers.ChatMessage{
+			Role:    "assistant",
+			Content: "The result is clear.",
+			Phase:   providers.MessagePhaseFinalAnswer,
+		},
+	}, now)
+
+	turn := th.ensureTurnLocked("turn", now)
+	answer := turn.Items[len(turn.Items)-1]
+	if answer.Status != ThreadItemStatusCompleted || !answer.Terminal {
+		t.Fatalf("completed final answer = %+v, want completed terminal item", answer)
+	}
+	if got := countNotifications(out, NotificationItemCompleted); got != 1 {
+		t.Fatalf("item/completed notifications = %d, want 1", got)
+	}
+}
+
+func TestThreadStateKeepsCompletedCommentaryOutOfFinalAnswer(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "inspect"}, now)
+
+	th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type: providers.EventMessage,
+		Message: &providers.ChatMessage{
+			Role:    "assistant",
+			Content: "I will inspect that now.",
+			Phase:   providers.MessagePhaseCommentary,
+		},
+	}, now)
+
+	turn := th.ensureTurnLocked("turn", now)
+	commentary := turn.Items[len(turn.Items)-1]
+	if commentary.Status != ThreadItemStatusCompleted || commentary.Terminal {
+		t.Fatalf("completed commentary = %+v, want completed non-terminal item", commentary)
+	}
+}
+
 func TestThreadStateToolResultMessageDoesNotDuplicateCompletion(t *testing.T) {
 	now := time.Unix(0, 0).UTC()
 	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
@@ -841,8 +886,8 @@ func TestTurnsFromHistoryPreservesProviderAssistantPhase(t *testing.T) {
 		t.Fatalf("expected one turn with user and assistant, got %+v", turns)
 	}
 	item := turns[0].Items[1]
-	if item.Type != ThreadItemAgentMessage || !item.Terminal {
-		t.Fatalf("history should mark the no-tool-call assistant message terminal, got %+v", item)
+	if item.Type != ThreadItemAgentMessage || item.Terminal {
+		t.Fatalf("history should preserve explicit commentary as non-terminal, got %+v", item)
 	}
 }
 

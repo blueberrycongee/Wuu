@@ -84,6 +84,24 @@ func TestEngineEndToEndFakeCodex(t *testing.T) {
 	if len(result.Result.NewMessages) != 1 || result.Result.NewMessages[0].Role != "assistant" {
 		t.Fatalf("NewMessages = %+v, want one assistant message", result.Result.NewMessages)
 	}
+	if result.Result.NewMessages[0].Phase != providers.MessagePhaseFinalAnswer {
+		t.Fatalf("NewMessages phase = %q, want final_answer", result.Result.NewMessages[0].Phase)
+	}
+	messageIndex, doneIndex := -1, -1
+	for index, event := range events {
+		if event.Type == providers.EventMessage && event.Message != nil {
+			messageIndex = index
+			if event.Message.Content != "Hello from codex." || event.Message.Phase != providers.MessagePhaseFinalAnswer {
+				t.Fatalf("completed agent message = %+v, want final answer", event.Message)
+			}
+		}
+		if event.Type == providers.EventDone {
+			doneIndex = index
+		}
+	}
+	if messageIndex < 0 || doneIndex < 0 || messageIndex >= doneIndex {
+		t.Fatalf("event order message=%d done=%d, want completed message before turn done", messageIndex, doneIndex)
+	}
 	if result.Result.InputTokens != 60 || result.Result.OutputTokens != 25 || result.Result.CacheReadTokens != 40 {
 		t.Fatalf("usage = in %d out %d cache %d, want 60/25/40",
 			result.Result.InputTokens, result.Result.OutputTokens, result.Result.CacheReadTokens)
@@ -130,6 +148,25 @@ func TestEngineMissingBinaryFailsClearly(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "codex") {
 		t.Fatalf("error should mention codex, got: %v", err)
+	}
+}
+
+func TestCompletedAgentMessageRequiresKnownPhaseForEarlyCompletion(t *testing.T) {
+	var events []providers.StreamEvent
+	sub := &turnSubscription{
+		sink: func(event providers.StreamEvent) {
+			events = append(events, event)
+		},
+	}
+
+	sub.emitItem(NotifyItemCompleted, json.RawMessage(`{"id":"message-1","type":"agentMessage","text":"still working"}`))
+	if len(events) != 0 {
+		t.Fatalf("phase-less agent message emitted early events: %+v", events)
+	}
+
+	sub.emitItem(NotifyItemCompleted, json.RawMessage(`{"id":"message-2","type":"agentMessage","text":"done","phase":"final_answer"}`))
+	if len(events) != 1 || events[0].Type != providers.EventMessage || events[0].Message == nil {
+		t.Fatalf("final agent message events = %+v, want one message event", events)
 	}
 }
 

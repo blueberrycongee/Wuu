@@ -2951,9 +2951,22 @@ function resolveComposerRunningAction(
   requestedAction: ComposerRunningAction,
   thread: Thread | undefined,
 ): ComposerRunningAction {
-  return requestedAction === "steer" && activeTurnIDForThread(thread)
+  return requestedAction === "steer" && activeTurnAcceptsSteering(thread)
     ? "steer"
     : "queue";
+}
+
+function activeTurnAcceptsSteering(thread: Thread | undefined): boolean {
+  const turn = activeTurnForThread(thread);
+  return Boolean(
+    turn &&
+      !turn.items.some(
+        (item) =>
+          item.type === "agent_message" &&
+          item.status === "completed" &&
+          item.terminal === true,
+      ),
+  );
 }
 
 function activeTurnForThread(thread: Thread | undefined): Turn | undefined {
@@ -3704,6 +3717,7 @@ export {
   reconcileChannelRoomSessionTabs,
   reduceNotification,
   reduceServerEvent,
+  activeTurnAcceptsSteering,
   resolveComposerRunningAction,
   removeSessionTab,
   replaceStreamText,

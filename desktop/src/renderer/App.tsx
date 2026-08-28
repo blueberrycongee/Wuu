@@ -97,6 +97,7 @@ import {
   activeSessionTab,
   activeThreadForState,
   activeThreadIDForState,
+  activeTurnAcceptsSteering,
   activeTurnForThread,
   latestContextUsageForThread,
   activeTurnIDForThread,
@@ -2507,7 +2508,7 @@ export function App(): JSX.Element {
   );
   const activeThreadReadOnly = Boolean(activeThread?.read_only);
   const activeThreadIsRunning = isStateActiveThreadRunning(state);
-  const activeThreadCanSteer = Boolean(activeTurnIDForThread(activeThread));
+  const activeThreadCanSteer = activeTurnAcceptsSteering(activeThread);
   const activeThreadStreamStatus = turnStreamStatusForThread(state, activeThread);
   const anyThreadIsRunning = isAnyThreadRunning(state) || viewContextSwitchPending;
   const runningThreadKey = useMemo(() => {
