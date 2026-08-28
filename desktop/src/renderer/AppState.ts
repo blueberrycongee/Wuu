@@ -1828,6 +1828,16 @@ function mergeListedThreadTurns(existing: Turn[], listed: Turn[]): Turn[] {
       result[index] = local;
     }
   });
+  // A shorter listed snapshot can preserve the cached tail while reusing the
+  // same listed prefix on every reconciliation. Keep the original array once
+  // every resulting element is already present at the same position; callers
+  // use this identity to stop cache synchronization effects from self-looping.
+  if (
+    result.length === existing.length &&
+    result.every((turn, index) => turn === existing[index])
+  ) {
+    return existing;
+  }
   return result;
 }
 

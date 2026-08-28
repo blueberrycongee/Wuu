@@ -12,6 +12,7 @@ import {
   SIDEBAR_SECTION_PINNED,
 } from "./AppSidebar";
 import {
+  mergeSidebarThreadSnapshots,
   useSidebarProjectState,
   type SidebarProjectStateController,
 } from "./SidebarProjectState";
@@ -58,6 +59,38 @@ function thread(id: string, cwd: string): Thread {
     turns: [],
   } as unknown as Thread;
 }
+
+describe("mergeSidebarThreadSnapshots", () => {
+  it("stabilizes when the cached thread contains a longer turn history", () => {
+    const firstTurn = {
+      id: "turn-first",
+      items: [],
+      items_view: "full" as const,
+      status: "completed" as const,
+    };
+    const listed = {
+      ...thread("thread-alpha", "/tmp/alpha"),
+      turns: [firstTurn],
+    };
+    const cached = {
+      ...listed,
+      turns: [
+        { ...firstTurn },
+        {
+          id: "turn-second",
+          items: [],
+          items_view: "full" as const,
+          status: "completed" as const,
+        },
+      ],
+    };
+
+    const reconciled = mergeSidebarThreadSnapshots([cached], [listed]);
+    const repeated = mergeSidebarThreadSnapshots(reconciled, [listed]);
+
+    expect(repeated).toBe(reconciled);
+  });
+});
 
 async function renderSidebarProjectState({
   projects = [],
