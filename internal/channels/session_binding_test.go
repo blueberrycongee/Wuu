@@ -480,8 +480,8 @@ func TestTaskReassignmentHandsWorkToANewOwnerSession(t *testing.T) {
 	}) {
 		t.Fatalf("reassignment session interrupts = %#v", got)
 	}
-	if got := sink.take(); len(got) != 1 || got[0] != newOwner.Agent.ID {
-		t.Fatalf("reassignment wakes = %v, want new owner", got)
+	if got := sink.take(); len(got) != 2 || got[0] != newOwner.Agent.ID || got[1] != room.RuntimeID {
+		t.Fatalf("reassignment wakes = %v, want new owner and room runtime", got)
 	}
 	oldBinding, err := service.GetCollaborationSession(ctx, oldOwner.Agent.ID, oldOwner.Token, oldSession.SessionRef())
 	if err != nil {
@@ -660,26 +660,13 @@ func TestStartWorkRunSeparatesHiddenAndNamedAgentSessions(t *testing.T) {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 
-	hiddenRun, err := runtime.StartWorkRun(ctx, WorkRunStartParams{
+	_, err = runtime.StartWorkRun(ctx, WorkRunStartParams{
 		WorkID:     task.ID,
 		Kind:       WorkRunIntegration,
 		SessionRef: "hidden-integration-session",
 	})
-	if err != nil {
-		t.Fatalf("StartWorkRun(hidden integration) error = %v", err)
-	}
-	if hiddenRun.NamedAgentID != "" || hiddenRun.SessionRef != "hidden-integration-session" {
-		t.Fatalf("hidden integration run = %#v", hiddenRun)
-	}
-	if _, err := service.GetCollaborationSession(ctx, owner.Agent.ID, owner.Token, hiddenRun.SessionRef); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("hidden runtime session binding error = %v, want not found", err)
-	}
-	if _, err := runtime.FinishWorkRun(ctx, WorkRunFinishParams{
-		WorkID: task.ID,
-		RunID:  hiddenRun.ID,
-		State:  WorkRunCompleted,
-	}); err != nil {
-		t.Fatalf("FinishWorkRun(hidden integration) error = %v", err)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("StartWorkRun(hidden integration) error = %v, want unauthorized", err)
 	}
 
 	if _, err := ownerClient.BindCollaborationSession(ctx, CollaborationSessionBindParams{
@@ -1100,9 +1087,7 @@ func TestGoalCorrectionAndCancellationInterruptHiddenWorkSessions(t *testing.T) 
 			if err != nil {
 				t.Fatalf("CreateTask() error = %v", err)
 			}
-			if _, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking}); err != nil {
-				t.Fatalf("UpdateTask(checking) error = %v", err)
-			}
+			_ = promoteTestCandidate(t, service, ownerClient, task.ID)
 			const sessionRef = "hidden-verifier-session"
 			if _, err := runtime.StartWorkRun(ctx, WorkRunStartParams{
 				WorkID: task.ID, Kind: WorkRunVerifier, SessionRef: sessionRef,

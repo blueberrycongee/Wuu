@@ -57,6 +57,12 @@ published under its Named Agent's name. Private handoffs record the sending sess
 the receiving Named Agent, and the target session when one is selected. This keeps
 responsibility stable without making one fixed conversation the concurrency limit.
 
+Each Named Agent can have at most five admitted Work sessions that are starting or
+running. A room and the whole application have separate limits. Runs beyond those
+limits stay in a durable queue instead of being dropped or recreated. Completion,
+cancellation, interruption, or timeout releases capacity and admits the oldest
+eligible queued Run; historical and idle sessions do not consume these five slots.
+
 The Room Agent considers durable roles, sanitized memory-index hooks, active
 sessions, Work state, and room context when choosing a route. Topic files and raw
 private memory remain available only to their owning Named Agent; index hooks are
@@ -80,6 +86,16 @@ owner, or splits genuinely independent deliverables among a few owners, and bind
 each execution to a concrete session. The host persists the goal revision, candidate
 artifacts, run records, and state, so it can reconcile and recover them after a
 crash or restart. Private control messages do not replace Work state.
+
+A difficult Work that benefits from parallelism may have several differentiated
+Producer Runs. Their candidate Artifacts remain separate; ordinary Producer
+completion never overwrites the canonical candidate. Only a legal single-candidate
+flow or a visible Lead Named Agent's Selector/Integration Run can explicitly promote
+one Artifact. Promotion is atomic and revision-safe, and only the promoted candidate
+enters checking and independent verification. Completion, failure, cancellation,
+interruption, and timeout all create durable terminal events. The Room Agent uses
+those facts to start another wave, continue after partial failure, integrate, stop,
+or ask the user for input.
 
 ### Optional verification
 

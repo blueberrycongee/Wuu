@@ -265,12 +265,24 @@ func TestChatVerifyIsAvailableOnlyToHiddenRoomRuntime(t *testing.T) {
 	if err != nil || !strings.Contains(revisedJSON, `"task_goal_revision":2`) {
 		t.Fatalf("chat_task revise = %s, err = %v", revisedJSON, err)
 	}
-	checking, err := service.UpdateTask(ctx, channels.TaskUpdateParams{
-		TaskID: taskResult.Task.ID, State: channels.TaskStateChecking,
-		AgentID: owner.Agent.ID, Token: owner.Token,
-	})
+	ownerClient, err := service.BindAgent(ctx, owner.Agent.ID)
 	if err != nil {
-		t.Fatalf("mark task checking: %v", err)
+		t.Fatalf("bind task owner: %v", err)
+	}
+	producerRun, err := ownerClient.StartWorkRun(ctx, channels.WorkRunStartParams{WorkID: taskResult.Task.ID, Kind: channels.WorkRunProducer, RequestID: "tool-test-producer"})
+	if err != nil {
+		t.Fatalf("start producer run: %v", err)
+	}
+	candidate, err := ownerClient.AddWorkArtifact(ctx, channels.WorkArtifactAddParams{WorkID: taskResult.Task.ID, RunID: producerRun.ID, Kind: channels.WorkArtifactCandidate, URI: "artifact://tool-test"})
+	if err != nil {
+		t.Fatalf("add candidate: %v", err)
+	}
+	promoted, err := ownerClient.PromoteWorkCandidate(ctx, channels.WorkCandidatePromoteParams{WorkID: taskResult.Task.ID, RunID: producerRun.ID, ArtifactRef: candidate.ID, RequestID: "tool-test-promotion", SelectionReason: "single candidate"})
+	if err != nil {
+		t.Fatalf("promote candidate: %v", err)
+	}
+	if _, err := ownerClient.FinishWorkRun(ctx, channels.WorkRunFinishParams{WorkID: taskResult.Task.ID, RunID: producerRun.ID, State: channels.WorkRunCompleted}); err != nil {
+		t.Fatalf("finish producer run: %v", err)
 	}
 	verifierRun, err := client.StartWorkRun(ctx, channels.WorkRunStartParams{
 		WorkID: taskResult.Task.ID, Kind: channels.WorkRunVerifier, SessionRef: "independent-verifier",
@@ -285,7 +297,7 @@ func TestChatVerifyIsAvailableOnlyToHiddenRoomRuntime(t *testing.T) {
 	}
 	verifyArgs := fmt.Sprintf(
 		`{"room_id":%q,"task_id":%q,"goal_revision":%d,"candidate_revision":%d,"decision":"block","report":"Replay still succeeds.","run_ref":%q}`,
-		room.ID, taskResult.Task.ID, checking.TaskGoalRevision, checking.TaskCandidateRevision, verifierRun.ID,
+		room.ID, taskResult.Task.ID, promoted.GoalRevision, promoted.CandidateRevision, verifierRun.ID,
 	)
 	verifiedJSON, err := kit.Execute(ctx, providers.ToolCall{Name: "chat_verify", Arguments: verifyArgs})
 	if err != nil || !strings.Contains(verifiedJSON, `"decision":"block"`) || !strings.Contains(verifiedJSON, `"kind":"verification_feedback"`) {

@@ -3,8 +3,18 @@ package channels
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 )
+
+func findRunState(runs []WorkRun, id string) WorkRunState {
+	for _, run := range runs {
+		if run.ID == id {
+			return run.State
+		}
+	}
+	return ""
+}
 
 func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	ctx := context.Background()
@@ -54,10 +64,7 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	if _, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing}); err != nil {
 		t.Fatalf("start task: %v", err)
 	}
-	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
-	if err != nil {
-		t.Fatalf("check task: %v", err)
-	}
+	checking := promoteTestCandidate(t, service, ownerClient, task.ID)
 	artifact, err := ownerClient.AddWorkArtifact(ctx, WorkArtifactAddParams{
 		WorkID: task.ID, Kind: WorkArtifactDiff, URI: "artifact://diff-1",
 		Summary: "2 files changed", WorkspaceRevision: "git:abc",
@@ -83,7 +90,7 @@ func TestDurableWorkTracksDebtRunsArtifactsAndVerification(t *testing.T) {
 	runtime, _ = service.BindRuntime(ctx, room.RuntimeID)
 	ownerClient, _ = service.BindAgent(ctx, owner.Agent.ID)
 	restored, err := ownerClient.GetWork(ctx, task.ID)
-	if err != nil || restored.CurrentRunRef != run.ID || len(restored.Runs) != 1 || len(restored.Artifacts) != 1 || restored.CandidateArtifactRef != artifact.ID {
+	if err != nil || restored.CurrentRunRef != run.ID || len(restored.Runs) != 2 || len(restored.Artifacts) != 2 || restored.CandidateArtifactRef == "" || restored.CandidateArtifactRef == artifact.ID {
 		t.Fatalf("restored work = %#v, err = %v", restored, err)
 	}
 	if _, err := runtime.FinishWorkRun(ctx, WorkRunFinishParams{
@@ -144,7 +151,7 @@ func TestGoalRevisionInvalidatesPendingDeliveriesAndRunningHandles(t *testing.T)
 	ownerSession := bindTestWorkSession(t, service, ownerClient, room.ID, task.ID, "recovery-owner-work")
 	_, _ = ownerSession.Check(ctx)
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing})
-	checking, _ := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
+	checking := promoteTestCandidate(t, service, ownerClient, task.ID)
 	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID, SessionRef: "session-stale"})
 	if err != nil {
 		t.Fatalf("StartWorkRun() error = %v", err)
@@ -160,7 +167,7 @@ func TestGoalRevisionInvalidatesPendingDeliveriesAndRunningHandles(t *testing.T)
 	if err != nil || work.CurrentRunRef != "" || work.State != WorkOpen || work.VerificationState != WorkVerificationPending {
 		t.Fatalf("revised work = %#v, err = %v", work, err)
 	}
-	if len(work.Runs) != 1 || work.Runs[0].ID != run.ID || work.Runs[0].State != WorkRunInterrupted {
+	if len(work.Runs) != 2 || findRunState(work.Runs, run.ID) != WorkRunInterrupted {
 		t.Fatalf("stale run not interrupted: %#v", work.Runs)
 	}
 	if _, err := runtime.FinishWorkRun(ctx, WorkRunFinishParams{WorkID: task.ID, RunID: run.ID, State: WorkRunCompleted}); !errors.Is(err, ErrConflict) {
@@ -184,7 +191,7 @@ func TestWorkRunRecoverySettlesMissingVerifierAsUnknown(t *testing.T) {
 	ownerSession := bindTestWorkSession(t, service, ownerClient, room.ID, task.ID, "missing-recovery-owner-work")
 	_, _ = ownerSession.Check(ctx)
 	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing})
-	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
+	_ = promoteTestCandidate(t, service, ownerClient, task.ID)
 	run, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID, SessionRef: "lost-session"})
 	if err != nil {
 		t.Fatalf("StartWorkRun() error = %v", err)
@@ -193,7 +200,7 @@ func TestWorkRunRecoverySettlesMissingVerifierAsUnknown(t *testing.T) {
 		t.Fatalf("ReconcileWorkRuns() error = %v", err)
 	}
 	work, err := ownerClient.GetWork(ctx, task.ID)
-	if err != nil || work.State != WorkNeedsHuman || work.VerificationState != WorkVerificationUnknown || work.CurrentRunRef != "" || len(work.Runs) != 1 || work.Runs[0].State != WorkRunInterrupted {
+	if err != nil || work.State != WorkNeedsHuman || work.VerificationState != WorkVerificationUnknown || work.CurrentRunRef != "" || len(work.Runs) != 2 || findRunState(work.Runs, run.ID) != WorkRunInterrupted {
 		t.Fatalf("recovered work = %#v, err = %v", work, err)
 	}
 	check, err := ownerSession.Check(ctx)
@@ -215,27 +222,38 @@ func TestMultiCandidateSelectorAndDomainVerifierAreOptIn(t *testing.T) {
 	runtime, _ := service.BindRuntime(ctx, room.RuntimeID)
 	ownerClient, _ := service.BindAgent(ctx, owner.Agent.ID)
 	task, _ := runtime.CreateTask(ctx, TaskCreateParams{RoomID: room.ID, Title: "Compare", OwnerID: owner.Agent.ID, VerificationRequired: true})
-	if _, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunSelector, SessionRef: "selector-default"}); !errors.Is(err, ErrConflict) {
-		t.Fatalf("default selector error = %v, want conflict", err)
+	if _, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunSelector, SessionRef: "selector-default"}); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("default selector error = %v, want unauthorized", err)
 	}
 	policy, err := runtime.UpdateWorkPolicy(ctx, WorkPolicyUpdateParams{WorkID: task.ID, MaxVerifierAttempts: 4, MaxCandidates: 2, FanoutReason: "two mutually exclusive migration strategies"})
 	if err != nil || policy.MaxCandidates != 2 {
 		t.Fatalf("UpdateWorkPolicy() = %#v, %v", policy, err)
 	}
-	for _, uri := range []string{"artifact://candidate-a", "artifact://candidate-b"} {
-		if _, err := ownerClient.AddWorkArtifact(ctx, WorkArtifactAddParams{WorkID: task.ID, Kind: WorkArtifactCandidate, URI: uri}); err != nil {
+	var candidates []WorkArtifact
+	for index, uri := range []string{"artifact://candidate-a", "artifact://candidate-b"} {
+		producer, err := ownerClient.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunProducer, RequestID: fmt.Sprintf("producer-%d", index)})
+		if err != nil {
+			t.Fatalf("StartWorkRun(producer %d) error = %v", index, err)
+		}
+		artifact, err := ownerClient.AddWorkArtifact(ctx, WorkArtifactAddParams{WorkID: task.ID, RunID: producer.ID, Kind: WorkArtifactCandidate, URI: uri})
+		if err != nil {
 			t.Fatalf("AddWorkArtifact(%s) error = %v", uri, err)
 		}
+		candidates = append(candidates, artifact)
+		if _, err := ownerClient.FinishWorkRun(ctx, WorkRunFinishParams{WorkID: task.ID, RunID: producer.ID, State: WorkRunCompleted, Qualified: true}); err != nil {
+			t.Fatalf("FinishWorkRun(producer %d) error = %v", index, err)
+		}
 	}
-	selector, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunSelector, Profile: "selection", SessionRef: "selector-opt-in"})
+	selector, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, NamedAgentID: owner.Agent.ID, Kind: WorkRunSelector, Profile: "selection"})
 	if err != nil || selector.Kind != WorkRunSelector {
 		t.Fatalf("selector = %#v, %v", selector, err)
+	}
+	if _, err := runtime.PromoteWorkCandidate(ctx, WorkCandidatePromoteParams{WorkID: task.ID, RunID: selector.ID, ArtifactRef: candidates[1].ID, RequestID: "select-b", SelectionReason: "candidate b covers migration"}); err != nil {
+		t.Fatalf("promote selector result: %v", err)
 	}
 	if _, err := runtime.FinishWorkRun(ctx, WorkRunFinishParams{WorkID: task.ID, RunID: selector.ID, State: WorkRunCompleted, Outcome: "candidate-b"}); err != nil {
 		t.Fatalf("finish selector: %v", err)
 	}
-	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateDoing})
-	_, _ = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
 	verifier, err := runtime.StartWorkRun(ctx, WorkRunStartParams{WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifierAgent.Agent.ID, SessionRef: "migration-verifier"})
 	if err != nil || verifier.Profile != verifierAgent.Agent.ID {
 		t.Fatalf("domain verifier = %#v, %v", verifier, err)
@@ -262,9 +280,7 @@ func TestIndependentVerifierDoesNotRequireAnotherRoomMember(t *testing.T) {
 	if _, err := ownerClient.Check(ctx); err != nil {
 		t.Fatalf("Check(owner assignment) error = %v", err)
 	}
-	if _, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking}); err != nil {
-		t.Fatalf("UpdateTask(checking) error = %v", err)
-	}
+	_ = promoteTestCandidate(t, service, ownerClient, task.ID)
 	if _, err := ownerClient.StartWorkRun(ctx, WorkRunStartParams{
 		WorkID: task.ID, Kind: WorkRunVerifier, SessionRef: "owner-verifier",
 	}); !errors.Is(err, ErrUnauthorized) {

@@ -275,6 +275,9 @@ function ChannelOrchestrationCluster({
               const elapsed = elapsedMinutes >= 60
                 ? `${Math.floor(elapsedMinutes / 60)}h ${elapsedMinutes % 60}m`
                 : `${elapsedMinutes}m`;
+              const inputTokens = work?.runs?.reduce((sum, run) => sum + (run.input_tokens ?? 0), 0) ?? 0;
+              const outputTokens = work?.runs?.reduce((sum, run) => sum + (run.output_tokens ?? 0), 0) ?? 0;
+              const queuedRuns = work?.runs?.filter((run) => run.state === "queued").length ?? 0;
               const hasInternalDetails = Boolean(
                 work?.checks_summary
                 || work?.verification?.report
@@ -326,6 +329,28 @@ function ChannelOrchestrationCluster({
                         <details className="channel-work-evidence">
                           <summary>{t("channels.workDetails")}</summary>
                           <div className="channel-work-evidence-body">
+                            <section>
+                              <strong>{t("channels.workOrchestration")}</strong>
+                              <p>{t("channels.workRevisions", { goal: work.goal_revision, candidate: work.candidate_revision })}</p>
+                              <p>{t("channels.workRounds", { current: work.current_round ?? 1, max: work.max_rounds ?? 3, qualified: work.qualified_candidates ?? 0, candidates: work.candidates_used })}</p>
+                              <p>{t("channels.workUsage", { input: inputTokens.toLocaleString(), output: outputTokens.toLocaleString(), queued: queuedRuns })}</p>
+                              {work.total_cost_usd ? <p>{t("channels.workCost", { cost: work.total_cost_usd.toFixed(4) })}</p> : null}
+                              {work.owner_capacity && work.room_capacity && work.global_capacity ? (
+                                <p>{t("channels.workCapacity", {
+                                  ownerActive: work.owner_capacity.active + work.owner_capacity.starting,
+                                  ownerStarting: work.owner_capacity.starting,
+                                  ownerLimit: work.owner_capacity.limit,
+                                  roomActive: work.room_capacity.active + work.room_capacity.starting,
+                                  roomStarting: work.room_capacity.starting,
+                                  roomLimit: work.room_capacity.limit,
+                                  globalActive: work.global_capacity.active + work.global_capacity.starting,
+                                  globalStarting: work.global_capacity.starting,
+                                  globalLimit: work.global_capacity.limit,
+                                })}</p>
+                              ) : null}
+                              {work.deadline_at ? <p>{t("channels.workDeadline", { deadline: new Date(work.deadline_at).toLocaleString() })}</p> : null}
+                              {work.selection_reason ? <p>{t("channels.workSelection", { reason: work.selection_reason })}</p> : null}
+                            </section>
                             {work.checks_summary ? <p>{t("channels.workChecks", { summary: work.checks_summary })}</p> : null}
                             {work.verification?.report ? (
                               <section>
@@ -337,7 +362,10 @@ function ChannelOrchestrationCluster({
                               <section>
                                 <strong>{t("channels.workArtifacts")}</strong>
                                 <ul>{work.artifacts.map((artifact) => (
-                                  <li key={artifact.id}><a href={artifact.uri}>{artifact.label || artifact.summary || artifact.kind}</a></li>
+                                  <li key={artifact.id}>
+                                    <a href={artifact.uri}>{artifact.label || artifact.summary || artifact.kind}</a>
+                                    {artifact.id === work.candidate_artifact_ref ? <strong> · {t("channels.workCanonicalCandidate")}</strong> : null}
+                                  </li>
                                 ))}</ul>
                               </section>
                             ) : null}
@@ -346,7 +374,16 @@ function ChannelOrchestrationCluster({
                                 <strong>{t("channels.workRuns")}</strong>
                                 <ul>{work.runs.map((run) => (
                                   <li key={run.id}>
-                                    <span>{run.profile || run.kind} · {run.state}</span>
+                                    <span>
+                                      {run.profile || run.kind} · {run.state} · {t("channels.workRunRound", { round: run.round ?? 1 })}
+                                      {run.qualified ? ` · ${t("channels.workQualified")}` : ""}
+                                      {(run.input_tokens || run.output_tokens) ? ` · ${((run.input_tokens ?? 0) + (run.output_tokens ?? 0)).toLocaleString()} tokens` : ""}
+                                      {run.cost_usd ? ` · $${run.cost_usd.toFixed(4)}` : ""}
+                                      {run.started_at && Date.parse(run.started_at) > Date.parse(run.created_at)
+                                        ? ` · ${t("channels.workQueuedFor", { seconds: Math.max(1, Math.round((Date.parse(run.started_at) - Date.parse(run.created_at)) / 1000)) })}`
+                                        : ""}
+                                      {run.queue_reason ? ` · ${run.queue_reason}` : ""}
+                                    </span>
                                     {run.session_ref ? (
                                       <button className="channel-work-session-link" type="button" onClick={() => onOpenSession?.(run.session_ref ?? "")}>
                                         <code>{run.session_ref}</code>
@@ -361,7 +398,12 @@ function ChannelOrchestrationCluster({
                                 <strong>{t("channels.workPrivateMessages")}</strong>
                                 <ul>{work.deliveries.map((delivery) => (
                                   <li key={delivery.id}>
-                                    <span>{delivery.kind || "control"}{delivery.invalidated_at ? ` · ${t("channels.workMessageInvalidated")}` : ""}</span>
+                                    <span>
+                                      {delivery.kind || "control"} · {delivery.visibility ?? "private"} · {delivery.target_kind ?? "named_agent"}{delivery.target_id ? `:${delivery.target_id}` : ""}
+                                      {delivery.terminal_state ? ` · ${delivery.terminal_state}` : ""}
+                                      {delivery.correlation_id ? ` · #${delivery.correlation_id}` : ""}
+                                      {delivery.invalidated_at ? ` · ${t("channels.workMessageInvalidated")}` : ""}
+                                    </span>
                                     <RichContent text={delivery.body} />
                                   </li>
                                 ))}</ul>
@@ -1958,6 +2000,16 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                       <h3>{t("channels.agentInfo")}</h3>
                       <dl>
                         <div><dt>{t("channels.agentAutostart")}</dt><dd>{selectedAgent.autostart ? t("channels.enabled") : t("channels.disabled")}</dd></div>
+                        <div>
+                          <dt>{t("channels.agentCapacity")}</dt>
+                          <dd>{t("channels.agentCapacitySummary", {
+                            active: (selectedAgent.session_capacity?.active ?? 0) + (selectedAgent.session_capacity?.starting ?? 0),
+                            starting: selectedAgent.session_capacity?.starting ?? 0,
+                            limit: selectedAgent.session_capacity?.limit ?? 5,
+                            queued: selectedAgent.session_capacity?.queued ?? 0,
+                            idle: selectedAgent.session_capacity?.idle ?? 0,
+                          })}</dd>
+                        </div>
                         <div>
                           <dt>{t("channels.agentMemoryDirectory")}</dt>
                           <dd>

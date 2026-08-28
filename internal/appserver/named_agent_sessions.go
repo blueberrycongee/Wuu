@@ -250,6 +250,19 @@ func (s *Server) startNamedAgentDispatchTargetLocked(ctx context.Context, agent 
 			return err
 		}
 	}
+	if target.workID != "" && runID != "" {
+		work, err := client.GetWork(ctx, target.workID)
+		if err != nil {
+			return err
+		}
+		for _, run := range work.Runs {
+			if run.ID == runID && run.State == channels.WorkRunQueued {
+				// The durable admission queue owns this wake. A terminal event will
+				// promote the run and send a fresh control delivery when capacity opens.
+				return nil
+			}
+		}
+	}
 	if threadIsRunning(th) {
 		if err := s.channelService.MarkWakePending(ctx, agent.ID); err != nil {
 			return err
@@ -325,11 +338,11 @@ func (s *Server) ensureNamedAgentProducerRun(ctx context.Context, client *channe
 		return "", err
 	}
 	for _, run := range work.Runs {
-		if run.ID != work.CurrentRunRef || run.State != channels.WorkRunRunning {
+		if run.State != channels.WorkRunRunning && run.State != channels.WorkRunQueued {
 			continue
 		}
 		if run.SessionRef != binding.SessionRef || run.NamedAgentID != binding.NamedAgentID {
-			return "", fmt.Errorf("work %q is already running in session %q", work.ID, run.SessionRef)
+			continue
 		}
 		return run.ID, nil
 	}
@@ -371,6 +384,7 @@ func (s *Server) finishNamedAgentWorkRun(ctx context.Context, agentID, sessionRe
 	outcome := "turn_failed"
 	var provider, model string
 	var inputTokens, outputTokens int64
+	qualified := false
 	if th := s.thread(sessionRef); th != nil {
 		th.mu.Lock()
 		for _, turn := range th.Turns {
@@ -389,9 +403,18 @@ func (s *Server) finishNamedAgentWorkRun(ctx context.Context, agentID, sessionRe
 		}
 		th.mu.Unlock()
 	}
+	if state == channels.WorkRunCompleted && current.Kind == channels.WorkRunProducer {
+		for _, artifact := range work.Artifacts {
+			if artifact.RunID == current.ID && artifact.Kind == channels.WorkArtifactCandidate {
+				qualified = true
+				break
+			}
+		}
+	}
 	if _, err := client.FinishWorkRun(ctx, channels.WorkRunFinishParams{
 		WorkID: workID, RunID: runID, State: state, Outcome: outcome,
 		Provider: provider, Model: model, InputTokens: inputTokens, OutputTokens: outputTokens,
+		Qualified: qualified,
 	}); err != nil && !errors.Is(err, channels.ErrConflict) {
 		providers.DebugLogf("finish named agent work run %q: %v", runID, err)
 	}

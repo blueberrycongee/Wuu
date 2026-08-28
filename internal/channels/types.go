@@ -77,6 +77,36 @@ const (
 	CollaborationCandidateReady       CollaborationKind = "candidate_ready"
 	CollaborationVerificationFeedback CollaborationKind = "verification_feedback"
 	CollaborationCompletion           CollaborationKind = "completion"
+	CollaborationWorkRunTerminal      CollaborationKind = "work_run_terminal"
+)
+
+type CollaborationTargetKind string
+
+const (
+	CollaborationTargetRoom        CollaborationTargetKind = "room"
+	CollaborationTargetNamedAgent  CollaborationTargetKind = "named_agent"
+	CollaborationTargetSession     CollaborationTargetKind = "session"
+	CollaborationTargetRoomRuntime CollaborationTargetKind = "room_runtime"
+)
+
+type CollaborationVisibility string
+
+const (
+	CollaborationVisibilityRoom        CollaborationVisibility = "room"
+	CollaborationVisibilityPrivate     CollaborationVisibility = "private"
+	CollaborationVisibilityWorkPrivate CollaborationVisibility = "work_private"
+	CollaborationVisibilitySystem      CollaborationVisibility = "system"
+)
+
+type CollaborationTerminalState string
+
+const (
+	CollaborationTerminalCompleted     CollaborationTerminalState = "completed"
+	CollaborationTerminalFailed        CollaborationTerminalState = "failed"
+	CollaborationTerminalInterrupted   CollaborationTerminalState = "interrupted"
+	CollaborationTerminalCancelled     CollaborationTerminalState = "cancelled"
+	CollaborationTerminalTimedOut      CollaborationTerminalState = "timed_out"
+	CollaborationTerminalUndeliverable CollaborationTerminalState = "undeliverable"
 )
 
 type VerificationDecision string
@@ -96,20 +126,21 @@ const (
 )
 
 type NamedAgent struct {
-	ID               string    `json:"id"`
-	Name             string    `json:"name"`
-	Role             string    `json:"role,omitempty"`
-	MemoryDir        string    `json:"memory_dir"`
-	AvatarKey        string    `json:"avatar_key"`
-	AvatarImage      string    `json:"avatar_image,omitempty"`
-	EngineOverride   string    `json:"engine_override,omitempty"`
-	ProviderOverride string    `json:"provider_override,omitempty"`
-	ModelOverride    string    `json:"model_override,omitempty"`
-	EffortOverride   string    `json:"effort_override,omitempty"`
-	Autostart        bool      `json:"autostart"`
-	CreatedAt        time.Time `json:"created_at"`
-	ActivityStatus   string    `json:"activity_status,omitempty"`
-	ActivityRoomIDs  []string  `json:"activity_room_ids,omitempty"`
+	ID               string       `json:"id"`
+	Name             string       `json:"name"`
+	Role             string       `json:"role,omitempty"`
+	MemoryDir        string       `json:"memory_dir"`
+	AvatarKey        string       `json:"avatar_key"`
+	AvatarImage      string       `json:"avatar_image,omitempty"`
+	EngineOverride   string       `json:"engine_override,omitempty"`
+	ProviderOverride string       `json:"provider_override,omitempty"`
+	ModelOverride    string       `json:"model_override,omitempty"`
+	EffortOverride   string       `json:"effort_override,omitempty"`
+	Autostart        bool         `json:"autostart"`
+	CreatedAt        time.Time    `json:"created_at"`
+	ActivityStatus   string       `json:"activity_status,omitempty"`
+	ActivityRoomIDs  []string     `json:"activity_room_ids,omitempty"`
+	SessionCapacity  WorkCapacity `json:"session_capacity"`
 }
 
 // AgentRuntime is the internal execution identity used by the wake/session
@@ -438,36 +469,45 @@ type CheckResult struct {
 }
 
 type CollaborationMessage struct {
-	ID                    string            `json:"id"`
-	RoomID                string            `json:"room_id"`
-	FromType              MemberType        `json:"from_type,omitempty"`
-	FromID                string            `json:"from_id,omitempty"`
-	FromSessionRef        string            `json:"from_session_ref,omitempty"`
-	ToAgentID             string            `json:"to_agent_id,omitempty"`
-	TargetSessionRef      string            `json:"target_session_ref,omitempty"`
-	WorkID                string            `json:"work_id,omitempty"`
-	RecipientNamedAgentID string            `json:"recipient_named_agent_id,omitempty"`
-	Kind                  CollaborationKind `json:"kind,omitempty"`
-	Body                  string            `json:"body"`
-	ArtifactRefs          []string          `json:"artifact_refs,omitempty"`
-	SourceMessageID       string            `json:"source_message_id,omitempty"`
-	GoalRevision          int               `json:"goal_revision,omitempty"`
-	CandidateRevision     int               `json:"candidate_revision,omitempty"`
-	ReplyTo               string            `json:"reply_to,omitempty"`
-	CreatedAt             time.Time         `json:"created_at"`
-	ConsumedAt            time.Time         `json:"consumed_at,omitempty"`
-	InvalidatedAt         time.Time         `json:"invalidated_at,omitempty"`
+	ID                    string                     `json:"id"`
+	RoomID                string                     `json:"room_id"`
+	FromType              MemberType                 `json:"from_type,omitempty"`
+	FromID                string                     `json:"from_id,omitempty"`
+	FromSessionRef        string                     `json:"from_session_ref,omitempty"`
+	ToAgentID             string                     `json:"to_agent_id,omitempty"`
+	TargetSessionRef      string                     `json:"target_session_ref,omitempty"`
+	WorkID                string                     `json:"work_id,omitempty"`
+	RecipientNamedAgentID string                     `json:"recipient_named_agent_id,omitempty"`
+	Kind                  CollaborationKind          `json:"kind,omitempty"`
+	Body                  string                     `json:"body"`
+	ArtifactRefs          []string                   `json:"artifact_refs,omitempty"`
+	SourceMessageID       string                     `json:"source_message_id,omitempty"`
+	GoalRevision          int                        `json:"goal_revision,omitempty"`
+	CandidateRevision     int                        `json:"candidate_revision,omitempty"`
+	ReplyTo               string                     `json:"reply_to,omitempty"`
+	TargetKind            CollaborationTargetKind    `json:"target_kind"`
+	TargetID              string                     `json:"target_id,omitempty"`
+	Visibility            CollaborationVisibility    `json:"visibility"`
+	CorrelationID         string                     `json:"correlation_id,omitempty"`
+	RequestID             string                     `json:"request_id,omitempty"`
+	TerminalState         CollaborationTerminalState `json:"terminal_state,omitempty"`
+	CreatedAt             time.Time                  `json:"created_at"`
+	ConsumedAt            time.Time                  `json:"consumed_at,omitempty"`
+	InvalidatedAt         time.Time                  `json:"invalidated_at,omitempty"`
 }
 
 // CollaborationDispatch is the minimal unconsumed-delivery envelope used by
 // the host scheduler. Message bodies remain private to the session that claims
 // them through Check or CheckSession.
 type CollaborationDispatch struct {
-	ID               string            `json:"id"`
-	RoomID           string            `json:"room_id"`
-	TargetSessionRef string            `json:"target_session_ref,omitempty"`
-	WorkID           string            `json:"work_id,omitempty"`
-	Kind             CollaborationKind `json:"kind,omitempty"`
+	ID               string                  `json:"id"`
+	RoomID           string                  `json:"room_id"`
+	TargetSessionRef string                  `json:"target_session_ref,omitempty"`
+	WorkID           string                  `json:"work_id,omitempty"`
+	Kind             CollaborationKind       `json:"kind,omitempty"`
+	TargetKind       CollaborationTargetKind `json:"target_kind"`
+	Visibility       CollaborationVisibility `json:"visibility"`
+	CorrelationID    string                  `json:"correlation_id,omitempty"`
 }
 
 type CollaborationSendParams struct {
@@ -483,6 +523,12 @@ type CollaborationSendParams struct {
 	SourceMessageID  string
 	WorkID           string
 	ReplyTo          string
+	TargetKind       CollaborationTargetKind
+	TargetID         string
+	Visibility       CollaborationVisibility
+	CorrelationID    string
+	RequestID        string
+	TerminalState    CollaborationTerminalState
 }
 
 type TaskVerification struct {

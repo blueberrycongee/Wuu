@@ -63,12 +63,11 @@ func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 	}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("unverified completion error = %v, want conflict", err)
 	}
-	checking, err := service.UpdateTask(ctx, TaskUpdateParams{
-		TaskID: task.ID, State: TaskStateChecking, AgentID: owner.Agent.ID, Token: owner.Token,
-	})
-	if err != nil || checking.TaskGoalRevision != 1 || checking.TaskCandidateRevision != 1 {
-		t.Fatalf("initial checking task = %#v, err = %v", checking, err)
+	checking := promoteTestCandidate(t, service, ownerSession, task.ID)
+	if checking.TaskGoalRevision != 1 || checking.TaskCandidateRevision != 1 {
+		t.Fatalf("initial checking task = %#v", checking)
 	}
+	sink.take() // Candidate promotion wake is not part of the feedback assertion.
 
 	blockRunRef := completeIndependentVerifierRun(t, ctx, roomRuntime, task.ID, "block-check")
 	blocked, err := roomRuntime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
@@ -113,11 +112,9 @@ func TestTaskVerificationPersistsAndWakesVisibleOwner(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpdateTask(repair doing) error = %v", err)
 	}
-	checking, err = service.UpdateTask(ctx, TaskUpdateParams{
-		TaskID: task.ID, State: TaskStateChecking, AgentID: owner.Agent.ID, Token: owner.Token,
-	})
-	if err != nil || checking.TaskCandidateRevision != 2 {
-		t.Fatalf("repair checking task = %#v, err = %v", checking, err)
+	checking = promoteTestCandidate(t, service, ownerSession, task.ID)
+	if checking.TaskCandidateRevision != 2 {
+		t.Fatalf("repair checking task = %#v", checking)
 	}
 
 	passRunRef := completeIndependentVerifierRun(t, ctx, roomRuntime, task.ID, "pass-check")
@@ -190,16 +187,7 @@ func TestNamedVerifierReturnsAuditableResultToRoomRuntime(t *testing.T) {
 	}
 	_, _ = ownerClient.Check(ctx)
 	_, _ = verifierClient.Check(ctx)
-	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
-	if err != nil {
-		t.Fatalf("UpdateTask(checking) error = %v", err)
-	}
-	if _, err := ownerClient.SendCollaboration(ctx, CollaborationSendParams{
-		RoomID: room.ID, Kind: CollaborationCandidateReady, SourceMessageID: task.ID,
-		Body: "Candidate ready; focused tests pass.",
-	}); err != nil {
-		t.Fatalf("SendCollaboration(candidate_ready) error = %v", err)
-	}
+	checking := promoteTestCandidate(t, service, ownerClient, task.ID)
 	_, _ = roomRuntime.Check(ctx)
 	run, err := roomRuntime.StartWorkRun(ctx, WorkRunStartParams{
 		WorkID: task.ID, Kind: WorkRunVerifier, Profile: verifier.Agent.ID,
@@ -358,10 +346,7 @@ func TestTaskVerificationRejectsStaleGoalAndCandidateRevisions(t *testing.T) {
 		t.Fatalf("CheckSession(owner assignment) error = %v", err)
 	}
 	sink.take()
-	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
-	if err != nil {
-		t.Fatalf("UpdateTask(checking) error = %v", err)
-	}
+	checking := promoteTestCandidate(t, service, ownerClient, task.ID)
 	if _, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, GoalCorrection: "owner rewrite"}); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("owner goal correction error = %v, want unauthorized", err)
 	}
@@ -396,10 +381,7 @@ func TestTaskVerificationRejectsStaleGoalAndCandidateRevisions(t *testing.T) {
 		t.Fatalf("stale goal verification error = %v, want conflict", err)
 	}
 
-	checking, err = ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
-	if err != nil {
-		t.Fatalf("UpdateTask(revised checking) error = %v", err)
-	}
+	checking = promoteTestCandidate(t, service, ownerClient, task.ID)
 	newGoalRunRef := completeIndependentVerifierRun(t, ctx, roomRuntime, task.ID, "new-goal-check")
 	if _, err := roomRuntime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
 		RoomID: room.ID, TaskID: task.ID, Decision: VerificationPass, Report: "new goal passed",
@@ -446,16 +428,19 @@ func TestCandidateAndFeedbackDeliveriesRecoverAfterRestart(t *testing.T) {
 	if _, err := ownerSession.Check(ctx); err != nil {
 		t.Fatalf("CheckSession(owner assignment) error = %v", err)
 	}
-	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
+	checking := promoteTestCandidate(t, service, ownerClient, task.ID)
+	promotedWork, err := ownerClient.GetWork(ctx, task.ID)
 	if err != nil {
-		t.Fatalf("UpdateTask(checking) error = %v", err)
+		t.Fatalf("GetWork(promoted) error = %v", err)
 	}
-	delivery, err := ownerClient.SendCollaboration(ctx, CollaborationSendParams{
-		RoomID: room.ID, ToAgentID: room.AgentID, Kind: CollaborationCandidateReady,
-		SourceMessageID: task.ID, Body: "Candidate is ready; focused tests pass.",
-	})
-	if err != nil {
-		t.Fatalf("SendCollaboration(candidate ready) error = %v", err)
+	var delivery CollaborationMessage
+	for _, candidateDelivery := range promotedWork.Deliveries {
+		if candidateDelivery.Kind == CollaborationCandidateReady {
+			delivery = candidateDelivery
+		}
+	}
+	if delivery.ID == "" {
+		t.Fatal("promoted candidate delivery was not persisted")
 	}
 	if delivery.GoalRevision != checking.TaskGoalRevision || delivery.CandidateRevision != checking.TaskCandidateRevision {
 		t.Fatalf("candidate delivery = %#v", delivery)
@@ -561,10 +546,7 @@ func TestVerifierAttemptExhaustionReturnsTheSameTaskToTheUser(t *testing.T) {
 		t.Fatalf("UpdateWorkPolicy() error = %v", err)
 	}
 	_, _ = ownerClient.Check(ctx)
-	checking, err := ownerClient.UpdateTask(ctx, TaskUpdateParams{TaskID: task.ID, State: TaskStateChecking})
-	if err != nil {
-		t.Fatalf("UpdateTask(checking) error = %v", err)
-	}
+	checking := promoteTestCandidate(t, service, ownerClient, task.ID)
 	runRef := completeIndependentVerifierRun(t, ctx, runtime, task.ID, "last-check")
 	blocked, err := runtime.SubmitTaskVerification(ctx, TaskVerificationSubmitParams{
 		RoomID: room.ID, TaskID: task.ID, Decision: VerificationBlock, Report: "The result still misses the requested output.",

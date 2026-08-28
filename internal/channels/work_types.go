@@ -41,6 +41,9 @@ type Work struct {
 	CurrentRunRef              string                 `json:"current_run_ref,omitempty"`
 	CandidateArtifactRef       string                 `json:"candidate_artifact_ref,omitempty"`
 	CandidateWorkspaceRevision string                 `json:"candidate_workspace_revision,omitempty"`
+	PromotionRunRef            string                 `json:"promotion_run_ref,omitempty"`
+	SelectionReason            string                 `json:"selection_reason,omitempty"`
+	PromotionRequestID         string                 `json:"-"`
 	VerificationState          WorkVerificationState  `json:"verification_state"`
 	VerificationRequired       bool                   `json:"verification_required"`
 	PendingDeliveryRefs        []string               `json:"pending_delivery_refs,omitempty"`
@@ -50,6 +53,16 @@ type Work struct {
 	VerifierAttemptsUsed       int                    `json:"verifier_attempts_used"`
 	CandidatesUsed             int                    `json:"candidates_used"`
 	FanoutReason               string                 `json:"fanout_reason,omitempty"`
+	MaxRounds                  int                    `json:"max_rounds"`
+	CurrentRound               int                    `json:"current_round"`
+	QualifiedCandidates        int                    `json:"qualified_candidates"`
+	MaxInputTokens             int64                  `json:"max_input_tokens,omitempty"`
+	MaxOutputTokens            int64                  `json:"max_output_tokens,omitempty"`
+	DeadlineAt                 time.Time              `json:"deadline_at,omitempty"`
+	OwnerCapacity              WorkCapacity           `json:"owner_capacity"`
+	RoomCapacity               WorkCapacity           `json:"room_capacity"`
+	GlobalCapacity             WorkCapacity           `json:"global_capacity"`
+	TotalCostUSD               float64                `json:"total_cost_usd,omitempty"`
 	ChecksSummary              string                 `json:"checks_summary,omitempty"`
 	ChangedFilesCount          int                    `json:"changed_files_count,omitempty"`
 	UnresolvedItems            string                 `json:"unresolved_items,omitempty"`
@@ -94,6 +107,7 @@ const (
 	WorkRunFailed      WorkRunState = "failed"
 	WorkRunCancelled   WorkRunState = "cancelled"
 	WorkRunInterrupted WorkRunState = "interrupted"
+	WorkRunTimedOut    WorkRunState = "timed_out"
 )
 
 type WorkRun struct {
@@ -112,10 +126,17 @@ type WorkRun struct {
 	Model             string       `json:"model,omitempty"`
 	InputTokens       int64        `json:"input_tokens,omitempty"`
 	OutputTokens      int64        `json:"output_tokens,omitempty"`
+	CostUSD           float64      `json:"cost_usd,omitempty"`
 	ChecksRerun       int          `json:"checks_rerun,omitempty"`
 	FindingsCount     int          `json:"findings_count,omitempty"`
 	Outcome           string       `json:"outcome,omitempty"`
 	RepairOutcome     string       `json:"repair_outcome,omitempty"`
+	RequestID         string       `json:"request_id,omitempty"`
+	FinishRequestID   string       `json:"-"`
+	Round             int          `json:"round"`
+	Qualified         bool         `json:"qualified,omitempty"`
+	DeadlineAt        time.Time    `json:"deadline_at,omitempty"`
+	QueueReason       string       `json:"queue_reason,omitempty"`
 	StartedAt         time.Time    `json:"started_at,omitempty"`
 	EndedAt           time.Time    `json:"ended_at,omitempty"`
 	CreatedAt         time.Time    `json:"created_at"`
@@ -153,6 +174,9 @@ type WorkRunStartParams struct {
 	Profile           string
 	SessionRef        string
 	WorkspaceRevision string
+	RequestID         string
+	Round             int
+	Deadline          time.Duration
 	AgentID           string
 	Token             string
 }
@@ -166,9 +190,12 @@ type WorkRunFinishParams struct {
 	Model         string
 	InputTokens   int64
 	OutputTokens  int64
+	CostUSD       float64
 	ChecksRerun   int
 	FindingsCount int
 	RepairOutcome string
+	RequestID     string
+	Qualified     bool
 	AgentID       string
 	Token         string
 }
@@ -200,6 +227,10 @@ type WorkPolicyUpdateParams struct {
 	MaxVerifierAttempts int
 	MaxCandidates       int
 	FanoutReason        string
+	MaxRounds           int
+	MaxInputTokens      int64
+	MaxOutputTokens     int64
+	DeadlineAt          time.Time
 	AgentID             string
 	Token               string
 }
@@ -211,4 +242,25 @@ type WorkEvidenceUpdateParams struct {
 	UnresolvedItems   string
 	AgentID           string
 	Token             string
+}
+
+type WorkCandidatePromoteParams struct {
+	WorkID            string
+	ArtifactRef       string
+	RunID             string
+	RequestID         string
+	SelectionReason   string
+	WorkspaceRevision string
+	AgentID           string
+	Token             string
+}
+
+type WorkCapacity struct {
+	NamedAgentID string `json:"named_agent_id,omitempty"`
+	RoomID       string `json:"room_id,omitempty"`
+	Active       int    `json:"active"`
+	Starting     int    `json:"starting"`
+	Queued       int    `json:"queued"`
+	Idle         int    `json:"idle"`
+	Limit        int    `json:"limit"`
 }

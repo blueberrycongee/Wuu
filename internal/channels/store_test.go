@@ -127,6 +127,52 @@ func bindTestWorkSession(t *testing.T, service *Service, client *AgentClient, ro
 	return sessionClient
 }
 
+func promoteTestCandidate(t *testing.T, service *Service, client *AgentClient, workID string) Message {
+	t.Helper()
+	ctx := context.Background()
+	work, err := client.GetWork(ctx, workID)
+	if err != nil {
+		t.Fatalf("GetWork(%s) error = %v", workID, err)
+	}
+	requestSuffix := fmt.Sprintf("%d", work.CandidateRevision+1)
+	run, err := client.StartWorkRun(ctx, WorkRunStartParams{
+		WorkID: workID, Kind: WorkRunProducer, RequestID: "test-producer-" + requestSuffix,
+	})
+	if err != nil {
+		t.Fatalf("StartWorkRun(test candidate) error = %v", err)
+	}
+	artifact, err := client.AddWorkArtifact(ctx, WorkArtifactAddParams{
+		WorkID: workID, RunID: run.ID, Kind: WorkArtifactCandidate,
+		URI: "artifact://candidate-" + requestSuffix, WorkspaceRevision: "git:test-" + requestSuffix,
+	})
+	if err != nil {
+		t.Fatalf("AddWorkArtifact(test candidate) error = %v", err)
+	}
+	if _, err := client.PromoteWorkCandidate(ctx, WorkCandidatePromoteParams{
+		WorkID: workID, RunID: run.ID, ArtifactRef: artifact.ID,
+		RequestID: "test-promotion-" + requestSuffix, SelectionReason: "single test candidate",
+	}); err != nil {
+		t.Fatalf("PromoteWorkCandidate(test candidate) error = %v", err)
+	}
+	if _, err := client.FinishWorkRun(ctx, WorkRunFinishParams{
+		WorkID: workID, RunID: run.ID, State: WorkRunCompleted,
+		Outcome: "test candidate completed", Qualified: true,
+	}); err != nil {
+		t.Fatalf("FinishWorkRun(test candidate) error = %v", err)
+	}
+	messages, err := service.ListMessages(ctx, work.RoomID, 0, 200)
+	if err != nil {
+		t.Fatalf("ListMessages(test candidate) error = %v", err)
+	}
+	for _, message := range messages {
+		if message.ID == workID {
+			return message
+		}
+	}
+	t.Fatalf("promoted task %s was not found", workID)
+	return Message{}
+}
+
 func TestSQLiteDSNNormalizesPaths(t *testing.T) {
 	const suffix = "?_pragma=busy_timeout%285000%29&_pragma=foreign_keys%281%29&_txlock=immediate"
 

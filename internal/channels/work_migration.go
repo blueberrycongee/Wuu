@@ -10,7 +10,7 @@ func (s *Service) migrateInternalDeliveries() error {
 	if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'collaboration_messages'`).Scan(&schema); err != nil {
 		return fmt.Errorf("inspect internal delivery schema: %w", err)
 	}
-	if strings.Contains(schema, "'assignment'") && strings.Contains(schema, "artifact_refs_json") {
+	if strings.Contains(schema, "'work_run_terminal'") && strings.Contains(schema, "target_kind") {
 		return nil
 	}
 	tx, err := s.db.Begin()
@@ -33,7 +33,7 @@ func (s *Service) migrateInternalDeliveries() error {
 			from_session_ref TEXT,
 			to_agent_id TEXT NOT NULL,
 			target_session_ref TEXT,
-			kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'assignment', 'peer_result', 'candidate_ready', 'verification_feedback', 'completion')),
+			kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'assignment', 'peer_result', 'candidate_ready', 'verification_feedback', 'completion', 'work_run_terminal')),
 			body TEXT NOT NULL,
 			work_id TEXT,
 			source_message_id TEXT,
@@ -41,6 +41,12 @@ func (s *Service) migrateInternalDeliveries() error {
 			candidate_revision INTEGER NOT NULL DEFAULT 0,
 			artifact_refs_json TEXT NOT NULL DEFAULT '[]',
 			reply_to TEXT,
+			target_kind TEXT NOT NULL DEFAULT 'named_agent' CHECK (target_kind IN ('room', 'named_agent', 'session', 'room_runtime')),
+			target_id TEXT NOT NULL DEFAULT '',
+			visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('room', 'private', 'work_private', 'system')),
+			correlation_id TEXT NOT NULL DEFAULT '',
+			request_id TEXT NOT NULL DEFAULT '',
+			terminal_state TEXT NOT NULL DEFAULT '',
 			created_at INTEGER NOT NULL,
 			pulled_at INTEGER,
 			consumed_at INTEGER,
@@ -56,11 +62,13 @@ func (s *Service) migrateInternalDeliveries() error {
 	if _, err := tx.Exec(`
 		INSERT INTO collaboration_messages(
 			id, room_id, from_type, from_id, from_session_ref, to_agent_id, target_session_ref, kind, body, work_id, source_message_id,
-			goal_revision, candidate_revision, artifact_refs_json, reply_to, created_at, pulled_at,
+			goal_revision, candidate_revision, artifact_refs_json, reply_to, target_kind, target_id,
+			visibility, correlation_id, request_id, terminal_state, created_at, pulled_at,
 			consumed_at, invalidated_at
 		)
 		SELECT id, room_id, from_type, from_id, from_session_ref, to_agent_id, target_session_ref, kind, body, work_id, source_message_id,
-			goal_revision, candidate_revision, artifact_refs_json, reply_to, created_at, pulled_at,
+			goal_revision, candidate_revision, artifact_refs_json, reply_to, target_kind, target_id,
+			visibility, correlation_id, request_id, terminal_state, created_at, pulled_at,
 			consumed_at, invalidated_at
 		FROM collaboration_messages_envelope_legacy`); err != nil {
 		return fmt.Errorf("copy internal delivery envelopes: %w", err)

@@ -183,11 +183,28 @@ func (s *Service) reconcileWorkRun(ctx context.Context, recovery WorkRunRecovery
 			return err
 		}
 	}
+	run.State, run.Outcome, run.EndedAt = runState, outcome, now
+	terminalWakeIDs, err := s.enqueueWorkRunTerminalTx(ctx, tx, work, run, now)
+	if err != nil {
+		return err
+	}
+	admittedWakeIDs, err := s.admitQueuedWorkRunsTx(ctx, tx, now)
+	if err != nil {
+		return err
+	}
+	terminalWakeIDs = appendUniqueStrings(terminalWakeIDs, admittedWakeIDs...)
 	if err := tx.Commit(); err != nil {
 		return err
 	}
 	if shouldDeliver && s.wake != nil {
 		s.wake.Deliver(recipientID)
+	}
+	if s.wake != nil {
+		for _, id := range terminalWakeIDs {
+			if !shouldDeliver || id != recipientID {
+				s.wake.Deliver(id)
+			}
+		}
 	}
 	return nil
 }

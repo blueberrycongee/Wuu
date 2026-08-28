@@ -30,6 +30,12 @@ func (s *Server) handleChannelAgentList(ctx context.Context, req Request) error 
 	agents, err := s.channelService.ListNamedAgents(ctx)
 	if err == nil {
 		for i := range agents {
+			capacity, capacityErr := s.channelService.NamedAgentCapacity(ctx, agents[i].ID)
+			if capacityErr != nil {
+				err = capacityErr
+				break
+			}
+			agents[i].SessionCapacity = capacity
 			agents[i].ActivityStatus = "idle"
 			thinking, roomIDs, activityErr := s.namedAgentActivity(ctx, agentRuntimeFromNamed(agents[i]))
 			if activityErr != nil {

@@ -15,6 +15,7 @@ type CollaborationSessionState string
 
 const (
 	CollaborationSessionIdle        CollaborationSessionState = "idle"
+	CollaborationSessionStarting    CollaborationSessionState = "starting"
 	CollaborationSessionRunning     CollaborationSessionState = "running"
 	CollaborationSessionInterrupted CollaborationSessionState = "interrupted"
 	CollaborationSessionMissing     CollaborationSessionState = "missing"

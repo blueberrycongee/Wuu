@@ -329,8 +329,40 @@ func (c *AgentClient) AddWorkArtifact(ctx context.Context, params WorkArtifactAd
 	if c == nil || c.service == nil {
 		return WorkArtifact{}, errors.New("chat agent is not bound")
 	}
+	if params.RunID == "" && c.sessionRef != "" {
+		work, err := c.GetWork(ctx, params.WorkID)
+		if err != nil {
+			return WorkArtifact{}, err
+		}
+		for _, run := range work.Runs {
+			if run.SessionRef == c.sessionRef && (run.State == WorkRunRunning || run.State == WorkRunQueued) {
+				params.RunID = run.ID
+				break
+			}
+		}
+	}
 	params.AgentID, params.Token = c.agentID, c.token
 	return c.service.AddWorkArtifact(ctx, params)
+}
+
+func (c *AgentClient) PromoteWorkCandidate(ctx context.Context, params WorkCandidatePromoteParams) (Work, error) {
+	if c == nil || c.service == nil {
+		return Work{}, errors.New("chat agent is not bound")
+	}
+	if params.RunID == "" && params.ArtifactRef != "" {
+		work, err := c.GetWork(ctx, params.WorkID)
+		if err != nil {
+			return Work{}, err
+		}
+		for _, artifact := range work.Artifacts {
+			if artifact.ID == params.ArtifactRef {
+				params.RunID = artifact.RunID
+				break
+			}
+		}
+	}
+	params.AgentID, params.Token = c.agentID, c.token
+	return c.service.PromoteWorkCandidate(ctx, params)
 }
 
 func (c *AgentClient) CancelWork(ctx context.Context, workID, reason string) (Work, error) {

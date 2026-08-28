@@ -31,6 +31,9 @@ const (
 	agentMemoryIndexFile  = "MEMORY.md"
 	namedAgentAvatarCount = 9
 	maxAgentAvatarBytes   = 512 * 1024
+	defaultAgentRunLimit  = 5
+	defaultRoomRunLimit   = 12
+	defaultGlobalRunLimit = 24
 )
 
 var (
@@ -40,12 +43,20 @@ var (
 )
 
 type Service struct {
-	dir         string
-	db          *sql.DB
-	wake        WakeSink
-	now         func() time.Time
-	mu          sync.Mutex
-	bootstrapMu sync.Mutex
+	dir                  string
+	db                   *sql.DB
+	wake                 WakeSink
+	now                  func() time.Time
+	mu                   sync.Mutex
+	bootstrapMu          sync.Mutex
+	agentRunLimit        int
+	roomRunLimit         int
+	globalRunLimit       int
+	roomInputTokenLimit  int64
+	roomOutputTokenLimit int64
+	stopOnce             sync.Once
+	stopCh               chan struct{}
+	doneCh               chan struct{}
 
 	telemetryMu sync.RWMutex
 	telemetry   TelemetrySink
@@ -69,11 +80,21 @@ func Open(dir string, wake WakeSink) (*Service, error) {
 	}
 	db.SetMaxOpenConns(1)
 	service := &Service{
-		dir:  dir,
-		db:   db,
-		wake: wake,
-		now:  func() time.Time { return time.Now().UTC() },
+		dir:            dir,
+		db:             db,
+		wake:           wake,
+		now:            func() time.Time { return time.Now().UTC() },
+		agentRunLimit:  defaultAgentRunLimit,
+		roomRunLimit:   defaultRoomRunLimit,
+		globalRunLimit: defaultGlobalRunLimit,
+		stopCh:         make(chan struct{}),
+		doneCh:         make(chan struct{}),
 	}
+	service.agentRunLimit = positiveEnvInt("WUU_COLLAB_AGENT_RUN_LIMIT", service.agentRunLimit)
+	service.roomRunLimit = positiveEnvInt("WUU_COLLAB_ROOM_RUN_LIMIT", service.roomRunLimit)
+	service.globalRunLimit = positiveEnvInt("WUU_COLLAB_GLOBAL_RUN_LIMIT", service.globalRunLimit)
+	service.roomInputTokenLimit = positiveEnvInt64("WUU_COLLAB_ROOM_INPUT_TOKEN_LIMIT", 0)
+	service.roomOutputTokenLimit = positiveEnvInt64("WUU_COLLAB_ROOM_OUTPUT_TOKEN_LIMIT", 0)
 	if err := service.configure(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -90,7 +111,24 @@ func Open(dir string, wake WakeSink) (*Service, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	go service.runDeadlineLoop()
 	return service, nil
+}
+
+func positiveEnvInt(name string, fallback int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name)))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func positiveEnvInt64(name string, fallback int64) int64 {
+	value, err := strconv.ParseInt(strings.TrimSpace(os.Getenv(name)), 10, 64)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 func (s *Service) ensureNamedAgentMemoryIndexes() error {
@@ -118,7 +156,23 @@ func (s *Service) Close() error {
 	if s == nil || s.db == nil {
 		return nil
 	}
+	s.stopOnce.Do(func() { close(s.stopCh) })
+	<-s.doneCh
 	return s.db.Close()
+}
+
+func (s *Service) runDeadlineLoop() {
+	defer close(s.doneCh)
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			_, _ = s.ExpireWorkRuns(context.Background())
+		case <-s.stopCh:
+			return
+		}
+	}
 }
 
 func (s *Service) Dir() string {
@@ -126,6 +180,25 @@ func (s *Service) Dir() string {
 		return ""
 	}
 	return s.dir
+}
+
+// SetCollaborationRunLimits configures Host admission ceilings. Non-positive
+// values preserve the current limit.
+func (s *Service) SetCollaborationRunLimits(agent, room, global int) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if agent > 0 {
+		s.agentRunLimit = agent
+	}
+	if room > 0 {
+		s.roomRunLimit = room
+	}
+	if global > 0 {
+		s.globalRunLimit = global
+	}
 }
 
 func (s *Service) SetWakeSink(wake WakeSink) {
@@ -312,7 +385,7 @@ func (s *Service) migrate() error {
 			from_session_ref TEXT,
 			to_agent_id TEXT NOT NULL,
 			target_session_ref TEXT,
-			kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'assignment', 'peer_result', 'candidate_ready', 'verification_feedback', 'completion')),
+			kind TEXT NOT NULL DEFAULT 'control' CHECK (kind IN ('control', 'assignment', 'peer_result', 'candidate_ready', 'verification_feedback', 'completion', 'work_run_terminal')),
 			body TEXT NOT NULL,
 			work_id TEXT,
 			source_message_id TEXT,
@@ -320,6 +393,12 @@ func (s *Service) migrate() error {
 			candidate_revision INTEGER NOT NULL DEFAULT 0,
 			artifact_refs_json TEXT NOT NULL DEFAULT '[]',
 			reply_to TEXT,
+			target_kind TEXT NOT NULL DEFAULT 'named_agent' CHECK (target_kind IN ('room', 'named_agent', 'session', 'room_runtime')),
+			target_id TEXT NOT NULL DEFAULT '',
+			visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('room', 'private', 'work_private', 'system')),
+			correlation_id TEXT NOT NULL DEFAULT '',
+			request_id TEXT NOT NULL DEFAULT '',
+			terminal_state TEXT NOT NULL DEFAULT '',
 			created_at INTEGER NOT NULL,
 			pulled_at INTEGER,
 			consumed_at INTEGER,
@@ -361,6 +440,9 @@ func (s *Service) migrate() error {
 			current_run_ref TEXT,
 			candidate_artifact_ref TEXT,
 			candidate_workspace_revision TEXT,
+			promotion_run_ref TEXT NOT NULL DEFAULT '',
+			selection_reason TEXT NOT NULL DEFAULT '',
+			promotion_request_id TEXT NOT NULL DEFAULT '',
 			verification_state TEXT NOT NULL DEFAULT 'not_required' CHECK (verification_state IN ('not_required', 'pending', 'pass', 'block', 'unknown')),
 			verification_required INTEGER NOT NULL DEFAULT 0 CHECK (verification_required IN (0, 1)),
 			max_verifier_attempts INTEGER NOT NULL DEFAULT 3,
@@ -368,6 +450,12 @@ func (s *Service) migrate() error {
 			verifier_attempts_used INTEGER NOT NULL DEFAULT 0,
 			candidates_used INTEGER NOT NULL DEFAULT 0,
 			fanout_reason TEXT NOT NULL DEFAULT '',
+			max_rounds INTEGER NOT NULL DEFAULT 3,
+			current_round INTEGER NOT NULL DEFAULT 1,
+			qualified_candidates INTEGER NOT NULL DEFAULT 0,
+			max_input_tokens INTEGER NOT NULL DEFAULT 0,
+			max_output_tokens INTEGER NOT NULL DEFAULT 0,
+			deadline_at INTEGER,
 			checks_summary TEXT NOT NULL DEFAULT '',
 			changed_files_count INTEGER NOT NULL DEFAULT 0,
 			unresolved_items TEXT NOT NULL DEFAULT '',
@@ -390,7 +478,7 @@ func (s *Service) migrate() error {
 			profile TEXT NOT NULL DEFAULT '',
 			session_ref TEXT,
 			turn_id TEXT NOT NULL DEFAULT '',
-			state TEXT NOT NULL CHECK (state IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
+			state TEXT NOT NULL CHECK (state IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'timed_out')),
 			goal_revision INTEGER NOT NULL,
 			candidate_revision INTEGER NOT NULL DEFAULT 0,
 			workspace_revision TEXT NOT NULL DEFAULT '',
@@ -398,10 +486,17 @@ func (s *Service) migrate() error {
 			model TEXT NOT NULL DEFAULT '',
 			input_tokens INTEGER NOT NULL DEFAULT 0,
 			output_tokens INTEGER NOT NULL DEFAULT 0,
+			cost_usd REAL NOT NULL DEFAULT 0,
 			checks_rerun INTEGER NOT NULL DEFAULT 0,
 			findings_count INTEGER NOT NULL DEFAULT 0,
 			outcome TEXT NOT NULL DEFAULT '',
 			repair_outcome TEXT NOT NULL DEFAULT '',
+			request_id TEXT NOT NULL DEFAULT '',
+			finish_request_id TEXT NOT NULL DEFAULT '',
+			round INTEGER NOT NULL DEFAULT 1,
+			qualified INTEGER NOT NULL DEFAULT 0 CHECK (qualified IN (0, 1)),
+			deadline_at INTEGER,
+			queue_reason TEXT NOT NULL DEFAULT '',
 			started_at INTEGER,
 			ended_at INTEGER,
 			created_at INTEGER NOT NULL,
@@ -419,7 +514,7 @@ func (s *Service) migrate() error {
 			work_id TEXT,
 			run_id TEXT UNIQUE,
 			purpose TEXT NOT NULL CHECK (purpose IN ('conversation', 'coordination', 'work', 'verification')),
-			state TEXT NOT NULL CHECK (state IN ('idle', 'running', 'interrupted', 'missing')),
+			state TEXT NOT NULL CHECK (state IN ('idle', 'starting', 'running', 'interrupted', 'missing')),
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL,
 			CHECK (named_agent_id IS NULL OR named_agent_id = principal_id),
@@ -541,6 +636,8 @@ func (s *Service) migrate() error {
 	for _, statement := range []string{
 		`CREATE INDEX IF NOT EXISTS idx_inbox_items_agent_pull ON inbox_items(member_type, member_id, pulled_at, created_at, id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_items_unique ON inbox_items(member_type, member_id, COALESCE(message_id,''), COALESCE(reminder_id,''), kind)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_work_runs_start_request ON work_runs(work_id, request_id) WHERE request_id != ''`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_collaboration_request ON collaboration_messages(room_id, from_id, request_id, target_id) WHERE request_id != ''`,
 	} {
 		if _, err := s.db.Exec(statement); err != nil {
 			return fmt.Errorf("migrate channels inbox index: %w", err)
@@ -713,12 +810,34 @@ func (s *Service) ensureLegacyColumns() error {
 		{table: "collaboration_messages", name: "artifact_refs_json", definition: "TEXT NOT NULL DEFAULT '[]'"},
 		{table: "collaboration_messages", name: "consumed_at", definition: "INTEGER"},
 		{table: "collaboration_messages", name: "invalidated_at", definition: "INTEGER"},
+		{table: "collaboration_messages", name: "target_kind", definition: "TEXT NOT NULL DEFAULT 'named_agent'"},
+		{table: "collaboration_messages", name: "target_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "collaboration_messages", name: "visibility", definition: "TEXT NOT NULL DEFAULT 'private'"},
+		{table: "collaboration_messages", name: "correlation_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "collaboration_messages", name: "request_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "collaboration_messages", name: "terminal_state", definition: "TEXT NOT NULL DEFAULT ''"},
 		{table: "task_verifications", name: "goal_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "task_verifications", name: "candidate_revision", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{table: "task_verifications", name: "evidence_refs_json", definition: "TEXT NOT NULL DEFAULT '[]'"},
 		{table: "task_verifications", name: "run_ref", definition: "TEXT"},
 		{table: "work_runs", name: "named_agent_id", definition: "TEXT"},
 		{table: "work_runs", name: "turn_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "work_runs", name: "request_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "work_runs", name: "finish_request_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "work_runs", name: "round", definition: "INTEGER NOT NULL DEFAULT 1"},
+		{table: "work_runs", name: "qualified", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "work_runs", name: "deadline_at", definition: "INTEGER"},
+		{table: "work_runs", name: "queue_reason", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "work_runs", name: "cost_usd", definition: "REAL NOT NULL DEFAULT 0"},
+		{table: "works", name: "max_rounds", definition: "INTEGER NOT NULL DEFAULT 3"},
+		{table: "works", name: "current_round", definition: "INTEGER NOT NULL DEFAULT 1"},
+		{table: "works", name: "qualified_candidates", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "works", name: "max_input_tokens", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "works", name: "max_output_tokens", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{table: "works", name: "deadline_at", definition: "INTEGER"},
+		{table: "works", name: "promotion_run_ref", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "works", name: "selection_reason", definition: "TEXT NOT NULL DEFAULT ''"},
+		{table: "works", name: "promotion_request_id", definition: "TEXT NOT NULL DEFAULT ''"},
 		{table: "drafts", name: "session_ref", definition: "TEXT"},
 	}
 	for _, column := range columns {

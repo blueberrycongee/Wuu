@@ -214,16 +214,20 @@ func (t *CollaborationSendTool) IsReadOnly() bool        { return false }
 func (t *CollaborationSendTool) IsConcurrencySafe() bool { return false }
 func (t *CollaborationSendTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
-		Name: "collaboration_send",
-		Description: "Send private internal control traffic to another runtime in the same room. " +
-			"Use kind=candidate_ready with source_message_id to hand a checking task to its room runtime; the host routes it without exposing that runtime's identity. " +
-			"Use kind=peer_result with source_message_id to return an assigned independent verification to the room runtime. " +
-			"it does not post to the shared transcript.",
+		Name:        "collaboration_send",
+		Description: "Send one versioned Collaboration envelope to a room, named agent, exact session, or hidden room runtime. Room-visible sends require basis_seq; private requests should use stable request_id and correlation_id.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"room_id":            map[string]any{"type": "string"},
 				"to_agent_id":        map[string]any{"type": "string"},
+				"target_kind":        map[string]any{"type": "string", "enum": []string{"room", "named_agent", "session", "room_runtime"}},
+				"target_id":          map[string]any{"type": "string"},
+				"visibility":         map[string]any{"type": "string", "enum": []string{"room", "private", "work_private", "system"}},
+				"correlation_id":     map[string]any{"type": "string"},
+				"request_id":         map[string]any{"type": "string"},
+				"terminal_state":     map[string]any{"type": "string", "enum": []string{"completed", "failed", "interrupted", "cancelled", "timed_out", "undeliverable"}},
+				"basis_seq":          map[string]any{"type": "integer", "minimum": 0},
 				"target_session_ref": map[string]any{"type": "string", "description": "Deliver only to this session of the target named agent."},
 				"work_id":            map[string]any{"type": "string", "description": "Scope this private message to one durable work item."},
 				"kind":               map[string]any{"type": "string", "enum": []string{"control", "candidate_ready", "peer_result"}},
@@ -250,15 +254,34 @@ func (t *CollaborationSendTool) Execute(ctx context.Context, argsJSON string) (s
 		ArtifactRefs     []string `json:"artifact_refs"`
 		Body             string   `json:"body"`
 		ReplyTo          string   `json:"reply_to"`
+		TargetKind       string   `json:"target_kind"`
+		TargetID         string   `json:"target_id"`
+		Visibility       string   `json:"visibility"`
+		CorrelationID    string   `json:"correlation_id"`
+		RequestID        string   `json:"request_id"`
+		TerminalState    string   `json:"terminal_state"`
+		BasisSeq         int64    `json:"basis_seq"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", err
+	}
+	if channels.CollaborationTargetKind(args.TargetKind) == channels.CollaborationTargetRoom {
+		if args.Visibility != "" && channels.CollaborationVisibility(args.Visibility) != channels.CollaborationVisibilityRoom {
+			return "", errors.New("room target requires room visibility")
+		}
+		result, err := t.env.ChatAgent.Send(ctx, channels.AgentSendParams{RoomID: args.RoomID, ReplyTo: args.ReplyTo, Body: args.Body, BasisSeq: args.BasisSeq})
+		if err != nil {
+			return "", err
+		}
+		return mustJSON(result)
 	}
 	message, err := t.env.ChatAgent.SendCollaboration(ctx, channels.CollaborationSendParams{
 		RoomID: args.RoomID, ToAgentID: args.ToAgent, TargetSessionRef: args.TargetSessionRef,
 		WorkID: args.WorkID, Kind: channels.CollaborationKind(args.Kind),
 		SourceMessageID: args.SourceMessageID, ArtifactRefs: args.ArtifactRefs,
-		Body: args.Body, ReplyTo: args.ReplyTo,
+		Body: args.Body, ReplyTo: args.ReplyTo, TargetKind: channels.CollaborationTargetKind(args.TargetKind),
+		TargetID: args.TargetID, Visibility: channels.CollaborationVisibility(args.Visibility),
+		CorrelationID: args.CorrelationID, RequestID: args.RequestID, TerminalState: channels.CollaborationTerminalState(args.TerminalState),
 	})
 	if err != nil {
 		return "", err

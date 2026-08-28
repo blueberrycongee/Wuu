@@ -780,6 +780,13 @@ export type NamedAgent = {
   created_at: string;
   activity_status?: "idle" | "thinking";
   activity_room_ids?: string[];
+  session_capacity?: {
+    active: number;
+    starting: number;
+    queued: number;
+    idle: number;
+    limit: number;
+  };
 };
 
 export type ChannelRoomMember = {
@@ -844,13 +851,23 @@ export type ChannelMessage = {
 export type ChannelWorkState = "open" | "working" | "checking" | "revising" | "integrating" | "needs_human" | "completed" | "failed" | "cancelled" | "interrupted";
 export type ChannelWorkVerificationState = "not_required" | "pending" | "pass" | "block" | "unknown";
 
+export type ChannelWorkCapacity = {
+  named_agent_id?: string;
+  room_id?: string;
+  active: number;
+  starting: number;
+  queued: number;
+  idle: number;
+  limit: number;
+};
+
 export type ChannelWorkRun = {
   id: string;
   work_id: string;
   kind: "producer" | "verifier" | "selector" | "integration";
   profile?: string;
   session_ref?: string;
-  state: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
+  state: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted" | "timed_out";
   goal_revision: number;
   candidate_revision: number;
   workspace_revision?: string;
@@ -858,10 +875,16 @@ export type ChannelWorkRun = {
   model?: string;
   input_tokens?: number;
   output_tokens?: number;
+  cost_usd?: number;
   checks_rerun?: number;
   findings_count?: number;
   outcome?: string;
   repair_outcome?: string;
+  request_id?: string;
+  round?: number;
+  qualified?: boolean;
+  deadline_at?: string;
+  queue_reason?: string;
   started_at?: string;
   ended_at?: string;
   created_at: string;
@@ -910,13 +933,19 @@ export type ChannelCollaborationMessage = {
   room_id: string;
   from_id?: string;
   to_agent_id?: string;
-  kind?: "control" | "assignment" | "peer_result" | "candidate_ready" | "verification_feedback" | "completion";
+  kind?: "control" | "assignment" | "peer_result" | "candidate_ready" | "verification_feedback" | "completion" | "work_run_terminal";
   body: string;
   work_id?: string;
   source_message_id?: string;
   goal_revision?: number;
   candidate_revision?: number;
   artifact_refs?: string[];
+  target_kind?: "room" | "named_agent" | "session" | "room_runtime";
+  target_id?: string;
+  visibility?: "room" | "private" | "work_private" | "system";
+  correlation_id?: string;
+  request_id?: string;
+  terminal_state?: "completed" | "failed" | "interrupted" | "cancelled" | "timed_out" | "undeliverable";
   created_at: string;
   consumed_at?: string;
   invalidated_at?: string;
@@ -936,6 +965,8 @@ export type ChannelWork = {
   current_run_ref?: string;
   candidate_artifact_ref?: string;
   candidate_workspace_revision?: string;
+  promotion_run_ref?: string;
+  selection_reason?: string;
   verification_state: ChannelWorkVerificationState;
   verification_required: boolean;
   pending_delivery_refs?: string[];
@@ -945,6 +976,16 @@ export type ChannelWork = {
   verifier_attempts_used: number;
   candidates_used: number;
   fanout_reason?: string;
+  max_rounds?: number;
+  current_round?: number;
+  qualified_candidates?: number;
+  max_input_tokens?: number;
+  max_output_tokens?: number;
+  deadline_at?: string;
+  owner_capacity?: ChannelWorkCapacity;
+  room_capacity?: ChannelWorkCapacity;
+  global_capacity?: ChannelWorkCapacity;
+  total_cost_usd?: number;
   checks_summary?: string;
   changed_files_count?: number;
   unresolved_items?: string;

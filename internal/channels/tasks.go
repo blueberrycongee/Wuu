@@ -211,13 +211,11 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if !callerOk || !correctionOk {
 		return Message{}, ErrUnauthorized
 	}
-	var workState WorkState
-	if err := tx.QueryRowContext(ctx, `SELECT state FROM works WHERE id = ?`, message.ID).Scan(&workState); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Message{}, fmt.Errorf("%w: work %q", ErrNotFound, message.ID)
-		}
-		return Message{}, fmt.Errorf("load task work state: %w", err)
+	terminalWork, err := scanWork(tx.QueryRowContext(ctx, workSelect+` WHERE work.id = ?`, message.ID))
+	if err != nil {
+		return Message{}, err
 	}
+	workState := terminalWork.State
 	if terminalWorkState(workState) && params.GoalCorrection == "" {
 		return Message{}, fmt.Errorf("%w: work is %s", ErrConflict, workState)
 	}
@@ -239,6 +237,7 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	ownerChanged := newOwner != oldOwner
 	updatedAt := fromMillis(toMillis(s.now()))
 	interruptTargets := make([]workSessionInterruptTarget, 0)
+	interruptedRuns := make([]WorkRun, 0)
 	if params.GoalCorrection != "" || ownerChanged {
 		activeTargets, err := activeWorkSessionInterruptTargetsTx(ctx, tx, message.ID)
 		if err != nil {
@@ -248,6 +247,23 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 			if params.GoalCorrection != "" || target.agentID == oldOwner {
 				interruptTargets = append(interruptTargets, target)
 			}
+		}
+		rows, err := tx.QueryContext(ctx, workRunSelect+` WHERE run.work_id = ? AND run.state IN ('queued', 'running') ORDER BY run.created_at, run.id`, message.ID)
+		if err != nil {
+			return Message{}, err
+		}
+		for rows.Next() {
+			run, err := scanWorkRun(rows)
+			if err != nil {
+				rows.Close()
+				return Message{}, err
+			}
+			if params.GoalCorrection != "" || run.NamedAgentID == oldOwner {
+				interruptedRuns = append(interruptedRuns, run)
+			}
+		}
+		if err := rows.Close(); err != nil {
+			return Message{}, err
 		}
 	}
 	setState := message.TaskState
@@ -300,8 +316,8 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 			return Message{}, fmt.Errorf("enqueue goal revision notice: %w", err)
 		}
 	}
-	if message.TaskVerificationRequired && params.State == TaskStateChecking && message.TaskState != string(TaskStateChecking) {
-		message.TaskCandidateRevision++
+	if params.State == TaskStateChecking && message.TaskState != string(TaskStateChecking) {
+		return Message{}, fmt.Errorf("%w: checking is entered only by canonical candidate promotion", ErrConflict)
 	}
 	if ownerChanged {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM task_verifications WHERE task_id = ?`, message.ID); err != nil {
@@ -418,12 +434,38 @@ func (s *Service) updateTask(ctx context.Context, params TaskUpdateParams) (Mess
 	if err != nil {
 		return Message{}, err
 	}
+	var terminalWakeIDs []string
+	for _, run := range interruptedRuns {
+		run.State, run.EndedAt = WorkRunInterrupted, updatedAt
+		if params.GoalCorrection != "" {
+			run.Outcome = "goal revised"
+		} else {
+			run.Outcome = "owner reassigned"
+		}
+		ids, err := s.enqueueWorkRunTerminalTx(ctx, tx, terminalWork, run, updatedAt)
+		if err != nil {
+			return Message{}, err
+		}
+		terminalWakeIDs = appendUniqueStrings(terminalWakeIDs, ids...)
+	}
+	admittedWakeIDs, err := s.admitQueuedWorkRunsTx(ctx, tx, updatedAt)
+	if err != nil {
+		return Message{}, err
+	}
+	terminalWakeIDs = appendUniqueStrings(terminalWakeIDs, admittedWakeIDs...)
 	if err := tx.Commit(); err != nil {
 		return Message{}, fmt.Errorf("commit task update: %w", err)
 	}
 	s.interruptWorkSessions(interruptTargets)
 	if requested && s.wake != nil {
 		s.wake.Deliver(newOwner)
+	}
+	if s.wake != nil {
+		for _, id := range terminalWakeIDs {
+			if !requested || id != newOwner {
+				s.wake.Deliver(id)
+			}
+		}
 	}
 	if work, err := s.GetWork(ctx, message.ID); err == nil {
 		message.Work = &work

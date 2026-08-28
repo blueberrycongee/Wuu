@@ -123,7 +123,9 @@ func (s *Service) CheckSession(ctx context.Context, agentID, token, sessionRef s
 			CASE WHEN principal.kind = 'named_agent' THEN delivery.to_agent_id ELSE '' END,
 			delivery.kind, delivery.body, COALESCE(delivery.work_id, ''),
 			COALESCE(delivery.source_message_id, ''), delivery.goal_revision, delivery.candidate_revision,
-			delivery.artifact_refs_json, COALESCE(delivery.reply_to, ''), delivery.created_at
+			delivery.artifact_refs_json, COALESCE(delivery.reply_to, ''), delivery.target_kind,
+			delivery.target_id, delivery.visibility, delivery.correlation_id, delivery.request_id,
+			delivery.terminal_state, delivery.created_at
 		FROM collaboration_messages delivery
 		JOIN collaboration_principals principal ON principal.id = delivery.to_agent_id
 		LEFT JOIN collaboration_principals sender ON sender.id = delivery.from_id
@@ -150,7 +152,8 @@ func (s *Service) CheckSession(ctx context.Context, agentID, token, sessionRef s
 			&message.FromSessionRef, &message.ToAgentID, &message.TargetSessionRef,
 			&message.RecipientNamedAgentID, &message.Kind, &message.Body, &message.WorkID,
 			&message.SourceMessageID, &message.GoalRevision, &message.CandidateRevision,
-			&artifactRefsJSON, &message.ReplyTo, &createdAt,
+			&artifactRefsJSON, &message.ReplyTo, &message.TargetKind, &message.TargetID,
+			&message.Visibility, &message.CorrelationID, &message.RequestID, &message.TerminalState, &createdAt,
 		); err != nil {
 			rows.Close()
 			return CheckResult{}, fmt.Errorf("scan collaboration session inbox: %w", err)
@@ -321,7 +324,9 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 			CASE WHEN principal.kind = 'named_agent' THEN delivery.to_agent_id ELSE '' END,
 			delivery.kind, delivery.body, COALESCE(delivery.work_id, ''),
 			COALESCE(delivery.source_message_id, ''), delivery.goal_revision, delivery.candidate_revision,
-			delivery.artifact_refs_json, COALESCE(delivery.reply_to, ''), delivery.created_at
+			delivery.artifact_refs_json, COALESCE(delivery.reply_to, ''), delivery.target_kind,
+			delivery.target_id, delivery.visibility, delivery.correlation_id, delivery.request_id,
+			delivery.terminal_state, delivery.created_at
 		FROM collaboration_messages delivery
 		JOIN collaboration_principals principal ON principal.id = delivery.to_agent_id
 		LEFT JOIN collaboration_principals sender ON sender.id = delivery.from_id
@@ -342,7 +347,8 @@ func (s *Service) checkAgent(ctx context.Context, agentID string) (CheckResult, 
 			&message.TargetSessionRef,
 			&message.RecipientNamedAgentID, &message.Kind, &message.Body, &message.WorkID,
 			&message.SourceMessageID, &message.GoalRevision, &message.CandidateRevision,
-			&artifactRefsJSON, &message.ReplyTo, &createdAt,
+			&artifactRefsJSON, &message.ReplyTo, &message.TargetKind, &message.TargetID,
+			&message.Visibility, &message.CorrelationID, &message.RequestID, &message.TerminalState, &createdAt,
 		); err != nil {
 			rows.Close()
 			return CheckResult{}, fmt.Errorf("scan collaboration inbox: %w", err)
