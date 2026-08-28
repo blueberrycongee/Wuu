@@ -233,6 +233,42 @@ describe("ChannelView", () => {
     expect(assignmentState("needs_human")).toBe("needs_human");
   });
 
+  it("does not start a second directory poll when the parent owns the directory", async () => {
+    vi.useFakeTimers();
+    try {
+      const api = createApi();
+      const onDirectoryAgentsChange = vi.fn();
+      const onDirectoryRoomsChange = vi.fn();
+      Object.defineProperty(window, "wuu", { configurable: true, value: api });
+      root = createRoot(container);
+      act(() => root?.render(
+        <ChannelView
+          directoryAgents={agents}
+          directoryRooms={rooms}
+          onDirectoryAgentsChange={onDirectoryAgentsChange}
+          onDirectoryRoomsChange={onDirectoryRoomsChange}
+          selectedRoomID="room-2"
+        />,
+      ));
+      await settle();
+
+      expect(api.bootstrapChannels).not.toHaveBeenCalled();
+      expect(api.listNamedAgents).not.toHaveBeenCalled();
+      expect(api.listChannelRooms).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+
+      expect(api.listNamedAgents).not.toHaveBeenCalled();
+      expect(api.listChannelRooms).not.toHaveBeenCalled();
+      expect(onDirectoryAgentsChange).not.toHaveBeenCalled();
+      expect(onDirectoryRoomsChange).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps Room-created roles pending until the user chooses a configured model", async () => {
     const api = createApi();
     api.listChannelMessages = vi.fn(async ({ room_id }) => ({ messages: room_id === "room-1" ? [{

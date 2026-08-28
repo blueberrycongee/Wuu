@@ -10,6 +10,11 @@ import { ChannelGroupAvatar } from "./ChannelGroupAvatar";
 import { ChannelMemberPicker } from "./ChannelMemberPicker";
 import { buildComposerAttachments } from "./ComposerDraftState";
 import { ComposerAttachmentStrip } from "./ComposerInputSections";
+import {
+  sameChannelMessages,
+  sameChannelRooms,
+  sameNamedAgents,
+} from "./ChannelRoomState";
 import { HumanAvatarMark } from "./DefaultAvatar";
 import { FieldError } from "./FieldError";
 import {
@@ -490,7 +495,10 @@ function taskBoardColumnKey(column: TaskBoardColumn):
   return "channels.taskBoard.todo";
 }
 
-export function ChannelView({ initialized, engines = [], section = "rooms", archivedRoomIDs = [], onSectionChange, selectedRoomID: controlledRoomID, onSelectRoom, onRoomRead, onOpenMemoryDirectory, onOpenSession, composerDraft, onComposerDraftChange, newRoomRequest, onNewRoomRequestHandled, newAgentRequest, onNewAgentRequestHandled, editAgentRequestID, onEditAgentRequestHandled }: {
+type ChannelDirectoryStateUpdater<T> =
+  (update: T[] | ((current: T[]) => T[])) => void;
+
+export function ChannelView({ initialized, engines = [], section = "rooms", archivedRoomIDs = [], onSectionChange, selectedRoomID: controlledRoomID, onSelectRoom, onRoomRead, onOpenMemoryDirectory, onOpenSession, composerDraft, onComposerDraftChange, newRoomRequest, onNewRoomRequestHandled, newAgentRequest, onNewAgentRequestHandled, editAgentRequestID, onEditAgentRequestHandled, directoryAgents, directoryRooms, onDirectoryAgentsChange, onDirectoryRoomsChange }: {
   initialized?: InitializeResult;
   engines?: EngineInfo[];
   section?: ChannelSection;
@@ -522,11 +530,23 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
   onNewAgentRequestHandled?: () => void;
   editAgentRequestID?: string;
   onEditAgentRequestHandled?: () => void;
+  // App.tsx owns these arrays in the full desktop shell. Standalone tests and
+  // embedded callers may omit them and keep the legacy local directory state.
+  directoryAgents?: NamedAgent[];
+  directoryRooms?: ChannelRoom[];
+  onDirectoryAgentsChange?: ChannelDirectoryStateUpdater<NamedAgent>;
+  onDirectoryRoomsChange?: ChannelDirectoryStateUpdater<ChannelRoom>;
 }): JSX.Element {
   const { formatDate, locale, t } = useI18n();
-  const [agents, setAgents] = useState<NamedAgent[]>([]);
+  const [localAgents, setLocalAgents] = useState<NamedAgent[]>([]);
   const [agentInsights, setAgentInsights] = useState<Record<string, ChannelAgentInsight>>({});
-  const [rooms, setRooms] = useState<ChannelRoom[]>([]);
+  const [localRooms, setLocalRooms] = useState<ChannelRoom[]>([]);
+  const agents = directoryAgents ?? localAgents;
+  const rooms = directoryRooms ?? localRooms;
+  const setAgents = onDirectoryAgentsChange ?? setLocalAgents;
+  const setRooms = onDirectoryRoomsChange ?? setLocalRooms;
+  const directoryIsControlled =
+    directoryAgents !== undefined && directoryRooms !== undefined;
   const [internalSelectedRoomID, setInternalSelectedRoomID] = useState("");
   const selectedRoomID = controlledRoomID ?? internalSelectedRoomID;
   const setSelectedRoomID = useCallback((value: string | ((current: string) => string)): void => {
@@ -617,7 +637,10 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
   const savedRoomNameRef = useRef("");
   const messagesByRoomIDRef = useRef<Map<string, ChannelMessage[]>>(new Map());
   const messageRefreshGenerationByRoomRef = useRef<Map<string, number>>(new Map());
+  const messageRefreshInFlightByRoomRef = useRef<Set<string>>(new Set());
   const markedMessageSeqByRoomRef = useRef<Map<string, number>>(new Map());
+  const directoryRefreshInFlightRef = useRef(false);
+  const trackedTasksRefreshInFlightRef = useRef(false);
   const visibleRoomIDRef = useRef("");
   visibleRoomIDRef.current = section === "rooms" ? selectedRoomID : "";
   const sendingTimersRef = useRef<Map<string, number>>(new Map());
@@ -900,14 +923,20 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
   const refreshRoomsAndAgents = useCallback(async (): Promise<void> => {
     if (!window.wuu) return;
     const result = await window.wuu.bootstrapChannels();
-    setAgents(result.agents ?? []);
-    setRooms(result.rooms ?? []);
+    const nextAgents = result.agents ?? [];
+    const nextRooms = result.rooms ?? [];
+    setAgents((current) =>
+      sameNamedAgents(current, nextAgents) ? current : nextAgents,
+    );
+    setRooms((current) =>
+      sameChannelRooms(current, nextRooms) ? current : nextRooms,
+    );
     setSelectedRoomID((current) =>
       current && result.rooms.some((room) => room.id === current)
         ? current
         : (result.rooms[0]?.id ?? ""),
     );
-  }, []);
+  }, [setAgents, setRooms]);
 
   const markRoomRead = useCallback((roomID: string, latestMessageSeq: number): void => {
     if (!roomID || !window.wuu) return;
@@ -924,64 +953,97 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     });
   }, [onRoomRead]);
 
-  const refreshMessages = useCallback(async (roomID: string): Promise<void> => {
+  const refreshMessages = useCallback(async (roomID: string, force = false): Promise<void> => {
     if (!window.wuu || !roomID) return;
-    const generation = (messageRefreshGenerationByRoomRef.current.get(roomID) ?? 0) + 1;
-    messageRefreshGenerationByRoomRef.current.set(roomID, generation);
-    const result = await window.wuu.listChannelMessages({ room_id: roomID, limit: 500 });
-    if (messageRefreshGenerationByRoomRef.current.get(roomID) !== generation) return;
-    const nextMessages = result.messages ?? [];
-    const previousMessages = messagesByRoomIDRef.current.get(roomID) ?? [];
-    messagesByRoomIDRef.current.set(roomID, nextMessages);
-    setMessagesByRoomID((current) => ({ ...current, [roomID]: nextMessages }));
-    setLoadedRoomIDs((current) => {
-      if (current.has(roomID)) return current;
-      return new Set(current).add(roomID);
-    });
-    if (visibleRoomIDRef.current !== roomID) return;
-    const known = new Set(previousMessages.map((message) => message.id));
-    if (known.size > 0) {
-      for (const message of nextMessages) {
-        if (message.author_type !== "agent" || known.has(message.id)) continue;
-        const agentID = message.author_id;
-        const previousTimer = sendingTimersRef.current.get(agentID);
-        if (previousTimer) window.clearTimeout(previousTimer);
-        setSendingAgentIDs((current) => new Set(current).add(agentID));
-        const timer = window.setTimeout(() => {
-          setSendingAgentIDs((current) => {
-            const next = new Set(current);
-            next.delete(agentID);
-            return next;
-          });
-          sendingTimersRef.current.delete(agentID);
-        }, 1_800);
-        sendingTimersRef.current.set(agentID, timer);
-      }
+    if (
+      !force &&
+      messageRefreshInFlightByRoomRef.current.has(roomID)
+    ) {
+      return;
     }
-    const latestMessageSeq = nextMessages.reduce(
-      (latest, message) => Math.max(latest, message.seq),
-      0,
-    );
-    if (latestMessageSeq > 0) markRoomRead(roomID, latestMessageSeq);
+    messageRefreshInFlightByRoomRef.current.add(roomID);
+    try {
+      const generation = (messageRefreshGenerationByRoomRef.current.get(roomID) ?? 0) + 1;
+      messageRefreshGenerationByRoomRef.current.set(roomID, generation);
+      const result = await window.wuu.listChannelMessages({ room_id: roomID, limit: 500 });
+      if (messageRefreshGenerationByRoomRef.current.get(roomID) !== generation) return;
+      const nextMessages = result.messages ?? [];
+      const previousMessages = messagesByRoomIDRef.current.get(roomID) ?? [];
+      const messagesUnchanged = sameChannelMessages(previousMessages, nextMessages);
+      setLoadedRoomIDs((current) => {
+        if (current.has(roomID)) return current;
+        return new Set(current).add(roomID);
+      });
+      if (messagesUnchanged) {
+        if (visibleRoomIDRef.current === roomID) {
+          const latestMessageSeq = nextMessages.reduce(
+            (latest, message) => Math.max(latest, message.seq),
+            0,
+          );
+          if (latestMessageSeq > 0) markRoomRead(roomID, latestMessageSeq);
+        }
+        return;
+      }
+      messagesByRoomIDRef.current.set(roomID, nextMessages);
+      setMessagesByRoomID((current) => ({ ...current, [roomID]: nextMessages }));
+      if (visibleRoomIDRef.current !== roomID) return;
+      const known = new Set(previousMessages.map((message) => message.id));
+      if (known.size > 0) {
+        for (const message of nextMessages) {
+          if (message.author_type !== "agent" || known.has(message.id)) continue;
+          const agentID = message.author_id;
+          const previousTimer = sendingTimersRef.current.get(agentID);
+          if (previousTimer) window.clearTimeout(previousTimer);
+          setSendingAgentIDs((current) => new Set(current).add(agentID));
+          const timer = window.setTimeout(() => {
+            setSendingAgentIDs((current) => {
+              const next = new Set(current);
+              next.delete(agentID);
+              return next;
+            });
+            sendingTimersRef.current.delete(agentID);
+          }, 1_800);
+          sendingTimersRef.current.set(agentID, timer);
+        }
+      }
+      const latestMessageSeq = nextMessages.reduce(
+        (latest, message) => Math.max(latest, message.seq),
+        0,
+      );
+      if (latestMessageSeq > 0) markRoomRead(roomID, latestMessageSeq);
+    } finally {
+      messageRefreshInFlightByRoomRef.current.delete(roomID);
+    }
   }, [markRoomRead]);
 
   const refreshTrackedTasks = useCallback(async (): Promise<void> => {
-    if (!window.wuu || rooms.length === 0) {
-      setTrackedTasks([]);
-      return;
-    }
-    const results = await Promise.all(
-      rooms.map((room) => window.wuu!.listChannelMessages({ room_id: room.id, limit: 500 })),
-    );
-    setTrackedTasks(
-      results
+    if (trackedTasksRefreshInFlightRef.current) return;
+    trackedTasksRefreshInFlightRef.current = true;
+    try {
+      if (!window.wuu || rooms.length === 0) {
+        setTrackedTasks((current) => current.length === 0 ? current : []);
+        return;
+      }
+      const results = await Promise.all(
+        rooms.map((room) => window.wuu!.listChannelMessages({ room_id: room.id, limit: 500 })),
+      );
+      const nextTasks = results
         .flatMap((result) => result.messages ?? [])
         .filter((message) => message.kind === "task")
-        .sort((left, right) => right.created_at.localeCompare(left.created_at)),
-    );
+        .sort((left, right) => right.created_at.localeCompare(left.created_at));
+      setTrackedTasks((current) =>
+        sameChannelMessages(current, nextTasks) ? current : nextTasks,
+      );
+    } finally {
+      trackedTasksRefreshInFlightRef.current = false;
+    }
   }, [rooms]);
 
   useEffect(() => {
+    if (directoryIsControlled) {
+      setLoading(false);
+      return;
+    }
     let active = true;
     void refreshRoomsAndAgents()
       .catch((reason: unknown) => {
@@ -993,22 +1055,33 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
     return () => {
       active = false;
     };
-  }, [refreshRoomsAndAgents]);
+  }, [directoryIsControlled, refreshRoomsAndAgents]);
 
   useEffect(() => {
+    if (directoryIsControlled) return;
     if (!window.wuu) return;
     let active = true;
     const refresh = (): void => {
+      if (directoryRefreshInFlightRef.current) return;
+      directoryRefreshInFlightRef.current = true;
       void Promise.all([
         window.wuu!.listNamedAgents(),
         window.wuu!.listChannelRooms(),
       ]).then(([agentResult, roomResult]) => {
         if (!active) return;
         setLoadError("");
-        setAgents(agentResult.agents ?? []);
-        setRooms(roomResult.rooms ?? []);
+        const nextAgents = agentResult.agents ?? [];
+        const nextRooms = roomResult.rooms ?? [];
+        setAgents((current) =>
+          sameNamedAgents(current, nextAgents) ? current : nextAgents,
+        );
+        setRooms((current) =>
+          sameChannelRooms(current, nextRooms) ? current : nextRooms,
+        );
       }).catch((reason: unknown) => {
         if (active) setLoadError(toastErrorMessage(reason));
+      }).finally(() => {
+        directoryRefreshInFlightRef.current = false;
       });
     };
     refresh();
@@ -1017,7 +1090,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [directoryIsControlled, setAgents, setRooms]);
 
   useEffect(() => {
     if (!window.wuu || typeof window.wuu.getNamedAgentInsights !== "function" || section !== "agents") return;
@@ -1152,7 +1225,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
       setBody("");
       setComposerImages([]);
       setComposerFiles([]);
-      await refreshMessages(selectedRoomID);
+      await refreshMessages(selectedRoomID, true);
     } catch (reason) {
       showErrorToast(reason);
     } finally {
@@ -1187,7 +1260,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
       setTaskRoomID("");
       setTaskOwnerID("");
       setSetupPanel(null);
-      await refreshMessages(selectedRoomID);
+      await refreshMessages(selectedRoomID, true);
       if (section === "tasks") await refreshTrackedTasks();
     } catch (reason) {
       showErrorToast(reason);
@@ -1206,7 +1279,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
         provider: approve ? provider : undefined,
         model: approve ? model : undefined,
       });
-      await Promise.all([refreshMessages(selectedRoomID), refreshRoomsAndAgents()]);
+      await Promise.all([refreshMessages(selectedRoomID, true), refreshRoomsAndAgents()]);
     } catch (reason) {
       showErrorToast(reason);
     } finally {

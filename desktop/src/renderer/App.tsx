@@ -161,7 +161,7 @@ import {
   writeChannelRoomPreferences,
   type ChannelRoomPreferences,
 } from "./ChannelRoomPreferences";
-import { sameChannelRooms } from "./ChannelRoomState";
+import { sameChannelRooms, sameNamedAgents } from "./ChannelRoomState";
 import {
   RIGHT_PANEL_MOTION_MS,
   SIDEBAR_DRAWER_EXIT_MS,
@@ -607,6 +607,7 @@ export function App(): JSX.Element {
   const [collaborationSection, setCollaborationSection] = useState<ChannelSection>("rooms");
   const [newRoomRequest, setNewRoomRequest] = useState(0);
   const [namedAgents, setNamedAgents] = useState<NamedAgent[]>([]);
+  const directoryRefreshInFlightRef = useRef(false);
   const [selectedCollaborationAgentID, setSelectedCollaborationAgentID] = useState("");
   const selectedCollaborationAgentRequestRef = useRef("");
   const [selectedChannelRoomIDState, setSelectedChannelRoomIDState] = useState("");
@@ -653,6 +654,8 @@ export function App(): JSX.Element {
     }
     let active = true;
     const refresh = async (): Promise<void> => {
+      if (directoryRefreshInFlightRef.current) return;
+      directoryRefreshInFlightRef.current = true;
       try {
         const result = await window.wuu!.listChannelRooms();
         if (active) {
@@ -663,10 +666,17 @@ export function App(): JSX.Element {
         }
         if (typeof window.wuu!.listNamedAgents === "function") {
           const agentResult = await window.wuu!.listNamedAgents();
-          if (active) setNamedAgents(agentResult.agents ?? []);
+          if (active) {
+            const agents = agentResult.agents ?? [];
+            setNamedAgents((current) =>
+              sameNamedAgents(current, agents) ? current : agents,
+            );
+          }
         }
       } catch (reason) {
         console.warn("collaboration directory refresh failed", reason);
+      } finally {
+        directoryRefreshInFlightRef.current = false;
       }
     };
     void refresh();
@@ -1031,6 +1041,10 @@ export function App(): JSX.Element {
         (room) => !channelRoomIsPinned(channelRoomPreferences, room.id),
       ),
     [activeChannelRooms, channelRoomPreferences],
+  );
+  const collaborationSidebarRooms = useMemo(
+    () => [...pinnedChannelRooms, ...sidebarChannelRooms],
+    [pinnedChannelRooms, sidebarChannelRooms],
   );
   const archivedChannelRooms = useMemo(
     () => channelRooms.filter((room) => room.kind === "channel" && channelRoomPreferences.archivedRoomIDs.includes(room.id)),
@@ -4838,7 +4852,7 @@ export function App(): JSX.Element {
             <CollaborationSidebar
               initialized={Boolean(state.initialized)}
               agents={namedAgents}
-              rooms={[...pinnedChannelRooms, ...sidebarChannelRooms]}
+              rooms={collaborationSidebarRooms}
               selectedAgentID={collaborationSection === "rooms" ? selectedCollaborationAgent?.id : undefined}
               selectedRoomID={collaborationSection === "rooms" ? selectedChannelRoomID : undefined}
               onSelectAgent={(agent) => {
@@ -5097,6 +5111,10 @@ export function App(): JSX.Element {
               onOpenSession={handleOpenThreadInSplit}
               composerDraft={activeChannelComposerDraft}
               onComposerDraftChange={updateSelectedChannelRoomDraft}
+              directoryAgents={namedAgents}
+              directoryRooms={channelRooms}
+              onDirectoryAgentsChange={setNamedAgents}
+              onDirectoryRoomsChange={setChannelRooms}
               newRoomRequest={newRoomRequest}
               onNewRoomRequestHandled={() => setNewRoomRequest(0)}
             />

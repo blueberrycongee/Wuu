@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ChannelRoom } from "../shared/protocol";
-import { sameChannelRooms } from "./ChannelRoomState";
+import type { ChannelMessage, ChannelRoom, NamedAgent } from "../shared/protocol";
+import {
+  sameChannelMessages,
+  sameChannelRooms,
+  sameNamedAgents,
+} from "./ChannelRoomState";
 
 function room(overrides: Partial<ChannelRoom> = {}): ChannelRoom {
   return {
@@ -18,6 +22,32 @@ function room(overrides: Partial<ChannelRoom> = {}): ChannelRoom {
         joined_at: "2026-08-06T00:00:00.000Z",
       },
     ],
+    ...overrides,
+  };
+}
+
+function agent(overrides: Partial<NamedAgent> = {}): NamedAgent {
+  return {
+    id: "agent-1",
+    name: "Alpha",
+    memory_dir: "/agents/agent-1/memory",
+    avatar_key: "abstract-3",
+    autostart: true,
+    created_at: "2026-08-06T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function message(overrides: Partial<ChannelMessage> = {}): ChannelMessage {
+  return {
+    id: "message-1",
+    room_id: "room-1",
+    seq: 1,
+    author_type: "human",
+    author_id: "human-1",
+    kind: "text",
+    body: "Hello",
+    created_at: "2026-08-06T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -66,5 +96,45 @@ describe("sameChannelRooms", () => {
     const second = room({ id: "room-2", name: "Design" });
 
     expect(sameChannelRooms([first, second], [second, first])).toBe(false);
+  });
+});
+
+describe("sameNamedAgents", () => {
+  it("treats equivalent activity snapshots as unchanged", () => {
+    expect(
+      sameNamedAgents(
+        [agent()],
+        [agent({ activity_status: "idle", activity_room_ids: [] })],
+      ),
+    ).toBe(true);
+  });
+
+  it("detects user-visible and activity changes", () => {
+    const current = [agent({ activity_status: "idle" })];
+
+    expect(sameNamedAgents(current, [agent({ name: "Beta" })])).toBe(false);
+    expect(
+      sameNamedAgents(current, [agent({ activity_status: "thinking", activity_room_ids: ["room-1"] })]),
+    ).toBe(false);
+  });
+});
+
+describe("sameChannelMessages", () => {
+  it("treats equivalent message snapshots as unchanged", () => {
+    const current = [message()];
+    expect(sameChannelMessages(current, [message()])).toBe(true);
+  });
+
+  it("detects body, task, and attachment changes", () => {
+    const current = [message({
+      kind: "task",
+      task_state: "doing",
+      work: { state: "working" } as ChannelMessage["work"],
+      images: [{ media_type: "image/png", data: "aW1hZ2U=" }],
+    })];
+
+    expect(sameChannelMessages(current, [message({ ...current[0], body: "Changed" })])).toBe(false);
+    expect(sameChannelMessages(current, [message({ ...current[0], task_state: "done" })])).toBe(false);
+    expect(sameChannelMessages(current, [message({ ...current[0], images: [] })])).toBe(false);
   });
 });
