@@ -29,7 +29,17 @@
   --diff-delete-color: var(--wuu-color-danger, #cf2e2e);
   --rich-link-color: var(--wuu-color-link, #0969da);
   --rich-link-hover-color: var(--wuu-color-link-hover, #0550ae);
-  --rich-code-surface-bg: var(--wuu-color-surface-muted, #F4F4F4);
+  /* Cards embedded in assistant prose share one material recipe. Code blocks
+   * and turn-output summaries differ in content, not visual hierarchy. The
+   * system's first surface step gives them a quiet warm-gray boundary without
+   * making them read like separate elevated overlays. */
+  --message-flow-card-bg: var(--surface-1);
+  --message-flow-card-border: var(--wuu-color-border-subtle, var(--hairline));
+  --message-flow-card-divider: var(--wuu-color-border-subtle, var(--hairline));
+  --message-flow-card-header-bg: var(--message-flow-card-bg);
+  --message-flow-card-hover-bg: var(--wuu-color-surface, var(--surface-1));
+  --message-flow-card-shadow: var(--shadow-soft);
+  --message-flow-card-radius: var(--radius-md);
   --surface-chip: #E9EAEA;
   --fork-worktree-copy-bg: rgba(255, 255, 255, 0.84);
   --fork-worktree-focus-ring: var(--focus-ring);
@@ -62,11 +72,6 @@
   --artifact-preview-shell-border: rgba(255, 255, 255, 0.14);
   --artifact-preview-shell-shadow: rgba(0, 0, 0, 0.36);
   --artifact-preview-frame-bg: #fff;
-  --turn-output-summary-bg: var(--paper);
-  --turn-output-summary-border: var(--surface-3);
-  --turn-output-summary-header-bg: var(--surface-1);
-  --turn-output-summary-divider: var(--surface-2);
-  --turn-output-summary-shadow: var(--wuu-elevation-panel, 0 2px 10px var(--shadow-color-subtle));
 }
 
 .turn {
@@ -3056,15 +3061,7 @@
                                                                     
                                   
   border: 0;
-  /*
-   * Code surface color. Neutral cool gray (#F4F4F4), shared with
-   * `.rich-code-block` below. Aligned with the user-message bubble
-   * (#F3F3F4) so block-level surfaces read as a single tier and only
-   * inline code (--surface-chip: #E9EAEA) and borders drop into a
-   * distinct shade. Replaces the previous #e9eaea, which was darker
-   * than the bubble and made code blocks feel like a second card.
-   */
-  background: var(--rich-code-surface-bg);
+  background: var(--message-flow-card-bg);
   border-radius: var(--radius-sm);
 }
 
@@ -3074,9 +3071,10 @@
 
 .rich-code-block {
   margin: 8px 0;
-  background: var(--rich-code-surface-bg);
-  border: 1px solid var(--wuu-color-border-subtle, var(--ink-overlay-6));
-  border-radius: var(--radius-sm);
+  background: var(--message-flow-card-bg);
+  border: 1px solid var(--message-flow-card-border);
+  border-radius: var(--message-flow-card-radius);
+  box-shadow: var(--message-flow-card-shadow);
   overflow: hidden;
 }
 
@@ -3115,6 +3113,8 @@
   display: flex;
   align-items: center;
   padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--message-flow-card-divider);
+  background: var(--message-flow-card-header-bg);
 }
 
 .rich-code-language {
@@ -4569,10 +4569,10 @@ pre {
   min-width: 0;
   box-sizing: border-box;
   overflow: hidden;
-  border: 1px solid var(--turn-output-summary-border);
-  border-radius: var(--radius-md);
-  background: var(--turn-output-summary-bg);
-  box-shadow: var(--turn-output-summary-shadow);
+  border: 1px solid var(--message-flow-card-border);
+  border-radius: var(--message-flow-card-radius);
+  background: var(--message-flow-card-bg);
+  box-shadow: var(--message-flow-card-shadow);
 }
 
 .turn-output-summary-header {
@@ -4581,8 +4581,8 @@ pre {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--turn-output-summary-divider);
-  background: var(--turn-output-summary-header-bg);
+  border-bottom: 1px solid var(--message-flow-card-divider);
+  background: var(--message-flow-card-header-bg);
 }
 
 .turn-output-summary-title {
@@ -4614,7 +4614,7 @@ pre {
 }
 
 .turn-output-summary-row:hover {
-  background: var(--surface-1);
+  background: var(--message-flow-card-hover-bg);
 }
 
 .turn-output-summary-row:focus-visible {
@@ -4894,14 +4894,22 @@ pre {
 }
 
 /*
- * Turn output summary card
- * Shown at the bottom of the latest turn when file artifacts were created or
- * edited. The stable right-side artifact panel owns the full preview.
+ * Turn file-change object
+ * A compact receipt for files created or edited during the turn. The stable
+ * right-side artifact panel owns the full diff and current-file preview.
  */
 .turn-edit-summary-card {
   margin: 14px 0 0;
+  width: 100%;
+  min-width: 0;
   max-width: none;
+  box-sizing: border-box;
   align-self: stretch;
+  overflow: hidden;
+  border: 1px solid var(--message-flow-card-border);
+  border-radius: var(--message-flow-card-radius);
+  background: var(--paper);
+  box-shadow: none;
 }
 
 /* The card is turn-owned output: when it cannot attach to an actionable
@@ -4912,11 +4920,116 @@ pre {
   margin-top: 0;
 }
 
-.turn-edit-summary-header {
-  justify-content: flex-start;
+.turn-edit-summary-card > .tool-diff-preview-trigger {
+  display: block;
+}
+
+.turn-edit-summary-overview {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 68px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.turn-edit-summary-overview {
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+
+button.turn-edit-summary-overview:hover {
+  background: var(--surface-1);
+}
+
+button.turn-edit-summary-overview:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
+.turn-edit-summary-icon {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-soft);
+}
+
+.turn-edit-summary-icon .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.turn-edit-summary-overview-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.turn-edit-summary-overview-title {
+  overflow: hidden;
+  color: var(--ink-strong);
+  font-size: var(--font-ui);
+  font-weight: var(--weight-semibold);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-edit-summary-overview-path {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-family: var(--font-mono, "SFMono-Regular", Consolas, monospace);
+  font-size: var(--font-xs);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-edit-summary-overview-meta {
+  color: var(--ink-muted);
+  font-size: var(--font-xs);
+  line-height: 1.35;
+}
+
+.turn-edit-summary-overview-trailing {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.turn-edit-summary-overview-trailing > .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--ink-muted);
+}
+
+.turn-edit-summary-list {
+  padding: 0 8px 8px;
 }
 
 .turn-edit-summary-row {
+  min-height: 36px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
   cursor: default;
 }
 
@@ -4939,6 +5052,10 @@ pre {
   flex-shrink: 0;
   font-size: var(--font-sm);
   font-variant-numeric: tabular-nums;
+}
+
+.turn-edit-summary-overview-meta .turn-edit-summary-stats {
+  font-size: inherit;
 }
 
 .turn-edit-summary-add {

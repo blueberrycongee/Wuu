@@ -273,7 +273,7 @@ describe("TurnView", () => {
       ]),
     );
 
-    expect(view.textContent).toContain("本轮产出 1 项");
+    expect(view.textContent).toContain("本轮修改 1 个文件");
     expect(view.textContent).toContain("brief.md");
   });
 

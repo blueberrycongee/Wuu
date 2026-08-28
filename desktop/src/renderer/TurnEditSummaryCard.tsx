@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronRight, FileDiff } from "lucide-react";
 import type { ThreadItem, Turn } from "../shared/protocol";
 import {
   extractToolDiffPreview,
@@ -337,6 +338,16 @@ export function turnHasFileEdits(turn: Turn): boolean {
 
 const FILE_BATCH_SIZE = 3;
 
+function EditStats({ additions, deletions }: { additions: number; deletions: number }): JSX.Element | null {
+  if (additions === 0 && deletions === 0) return null;
+  return (
+    <span className="turn-edit-summary-stats">
+      {additions > 0 ? <span className="turn-edit-summary-add">+{additions}</span> : null}
+      {deletions > 0 ? <span className="turn-edit-summary-delete">-{deletions}</span> : null}
+    </span>
+  );
+}
+
 export function TurnEditSummaryCard({
   turn,
   cwd,
@@ -361,15 +372,85 @@ export function TurnEditSummaryCard({
   const visibleEdits = edits.slice(0, visibleCount);
   const hiddenCount = Math.max(0, edits.length - visibleCount);
   const nextCount = Math.min(FILE_BATCH_SIZE, hiddenCount);
+  const additions = edits.reduce((total, edit) => total + edit.additions, 0);
+  const deletions = edits.reduce((total, edit) => total + edit.deletions, 0);
+  const title = t(
+    edits.length === 1 ? "turnEdits.countOne" : "turnEdits.count",
+    { count: formatNumber(edits.length) },
+  );
+
+  const openEdit = (edit: FileEdit): void => {
+    if (onOpenFile) {
+      onOpenFile(edit.path);
+      return;
+    }
+    onOpenFileDiff?.({
+      artifactID: edit.item.id,
+      path: edit.path,
+      cwd,
+      action: edit.action,
+      diff: edit.diff,
+      snapshotText: edit.snapshotText,
+      afterSha: edit.afterSha,
+      additions: edit.additions,
+      deletions: edit.deletions,
+      newFile: edit.newFile,
+    });
+  };
+
+  const singleEdit = edits.length === 1 ? edits[0] : undefined;
+  if (singleEdit) {
+    const canOpenFile = Boolean(onOpenFile || onOpenFileDiff);
+    const overviewContent = (
+      <>
+        <span className="turn-edit-summary-icon" aria-hidden="true">
+          <FileDiff className="icon" />
+        </span>
+        <span className="turn-edit-summary-overview-copy">
+          <strong className="turn-edit-summary-overview-title">{title}</strong>
+          <Tooltip content={singleEdit.path}>
+            <span className="turn-edit-summary-overview-path">
+              {fileDisplayName(singleEdit.path)}
+            </span>
+          </Tooltip>
+        </span>
+        <span className="turn-edit-summary-overview-trailing">
+          <EditStats additions={singleEdit.additions} deletions={singleEdit.deletions} />
+          {canOpenFile ? <ChevronRight className="icon" aria-hidden="true" /> : null}
+        </span>
+      </>
+    );
+    return (
+      <div className="turn-edit-summary-card is-single">
+        <ToolDiffPreview diff={singleEdit.diff} item={singleEdit.item}>
+          {canOpenFile ? (
+            <button
+              className="turn-edit-summary-overview is-clickable"
+              type="button"
+              aria-label={t("turnEdits.openFile", { path: singleEdit.path })}
+              onClick={() => openEdit(singleEdit)}
+            >
+              {overviewContent}
+            </button>
+          ) : (
+            <div className="turn-edit-summary-overview">{overviewContent}</div>
+          )}
+        </ToolDiffPreview>
+      </div>
+    );
+  }
 
   return (
-    <div className="turn-output-summary-card turn-edit-summary-card">
-      <div className="turn-output-summary-header turn-edit-summary-header">
-        <span className="turn-output-summary-title turn-edit-summary-title">
-          {t(
-            edits.length === 1 ? "turnEdits.countOne" : "turnEdits.count",
-            { count: formatNumber(edits.length) },
-          )}
+    <div className="turn-edit-summary-card is-multiple">
+      <div className="turn-edit-summary-overview">
+        <span className="turn-edit-summary-icon" aria-hidden="true">
+          <FileDiff className="icon" />
+        </span>
+        <span className="turn-edit-summary-overview-copy">
+          <strong className="turn-edit-summary-overview-title">{title}</strong>
+          <span className="turn-edit-summary-overview-meta">
+            <EditStats additions={additions} deletions={deletions} />
+          </span>
         </span>
       </div>
       <div className="turn-output-summary-list turn-edit-summary-list">
@@ -384,14 +465,7 @@ export function TurnEditSummaryCard({
                   </span>
                 </Tooltip>
               </span>
-              <span className="turn-edit-summary-stats">
-                {edit.additions > 0 ? (
-                  <span className="turn-edit-summary-add">+{edit.additions}</span>
-                ) : null}
-                {edit.deletions > 0 ? (
-                  <span className="turn-edit-summary-delete">-{edit.deletions}</span>
-                ) : null}
-              </span>
+              <EditStats additions={edit.additions} deletions={edit.deletions} />
             </>
           );
           return (
@@ -405,24 +479,7 @@ export function TurnEditSummaryCard({
                   className="turn-output-summary-row turn-edit-summary-row is-clickable"
                   type="button"
                   aria-label={t("turnEdits.openFile", { path: edit.path })}
-                  onClick={() => {
-                    if (onOpenFile) {
-                      onOpenFile(edit.path);
-                      return;
-                    }
-                    onOpenFileDiff?.({
-                      artifactID: edit.item.id,
-                      path: edit.path,
-                      cwd,
-                      action: edit.action,
-                      diff: edit.diff,
-                      snapshotText: edit.snapshotText,
-                      afterSha: edit.afterSha,
-                      additions: edit.additions,
-                      deletions: edit.deletions,
-                      newFile: edit.newFile,
-                    });
-                  }}
+                  onClick={() => openEdit(edit)}
                 >
                   {rowContent}
                 </button>

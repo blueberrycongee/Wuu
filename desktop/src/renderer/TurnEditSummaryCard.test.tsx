@@ -144,10 +144,14 @@ describe("TurnEditSummaryCard", () => {
       items: [buildEditItem("/tmp/.zshrc", 4, 1)],
     };
     mount(<TurnEditSummaryCard turn={turn} />);
-    expect(container?.textContent).toContain("本轮产出 1 项");
+    expect(container?.textContent).toContain("本轮修改 1 个文件");
     expect(container?.textContent).toContain(".zshrc");
     expect(container?.textContent).toContain("+4");
     expect(container?.textContent).toContain("-1");
+    expect(container?.querySelector(".turn-edit-summary-icon")).toBeTruthy();
+    expect(container?.querySelector(".turn-edit-summary-overview")).toBeTruthy();
+    expect(container?.querySelector(".turn-edit-summary-header")).toBeFalsy();
+    expect(container?.querySelector(".turn-edit-summary-row")).toBeFalsy();
   });
 
   it("shows the complete file path instead of dropping leading directories", () => {
@@ -162,7 +166,7 @@ describe("TurnEditSummaryCard", () => {
     mount(<TurnEditSummaryCard turn={turn} />);
 
     expect(
-      container?.querySelector(".turn-edit-summary-name")?.textContent,
+      container?.querySelector(".turn-edit-summary-overview-path")?.textContent,
     ).toBe(path);
   });
 
@@ -190,7 +194,7 @@ describe("TurnEditSummaryCard", () => {
       ],
     };
     mount(<TurnEditSummaryCard turn={turn} />);
-    expect(container?.textContent).toContain("本轮产出 2 项");
+    expect(container?.textContent).toContain("本轮修改 2 个文件");
     expect(container?.textContent).toContain("a.txt");
     expect(container?.textContent).toContain("b.txt");
   });
@@ -205,7 +209,7 @@ describe("TurnEditSummaryCard", () => {
 
     mount(<TurnEditSummaryCard turn={turn} />);
 
-    expect(container?.textContent).toContain("本轮产出 2 项");
+    expect(container?.textContent).toContain("本轮修改 2 个文件");
     expect(container?.textContent).toContain("a.ts");
     expect(container?.textContent).toContain("b.ts");
     expect(container?.textContent).toContain("+1");
@@ -252,7 +256,7 @@ describe("TurnEditSummaryCard", () => {
     );
 
     const row = container?.querySelector<HTMLButtonElement>(
-      ".turn-edit-summary-row",
+      ".turn-edit-summary-overview",
     );
     expect(row).toBeTruthy();
 
@@ -291,7 +295,7 @@ describe("TurnEditSummaryCard", () => {
       />,
     );
     act(() => {
-      container?.querySelector<HTMLButtonElement>(".turn-edit-summary-row")?.click();
+      container?.querySelector<HTMLButtonElement>(".turn-edit-summary-overview")?.click();
     });
 
     expect(onOpenFile).toHaveBeenCalledWith("docs/brief.md");
@@ -351,12 +355,12 @@ describe("TurnEditSummaryCard", () => {
         onOpenFileDiff={onOpenFileDiff}
       />,
     );
-    expect(container?.textContent).toContain("本轮产出 1 项");
+    expect(container?.textContent).toContain("本轮修改 1 个文件");
     expect(container?.textContent).toContain("new.txt");
     expect(container?.querySelector(".turn-edit-summary-action")).toBeFalsy();
     expect(container?.textContent).toContain("+7");
     act(() => {
-      container?.querySelector<HTMLButtonElement>(".turn-edit-summary-row")?.click();
+      container?.querySelector<HTMLButtonElement>(".turn-edit-summary-overview")?.click();
     });
     expect(onOpenFileDiff).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -393,7 +397,7 @@ describe("TurnEditSummaryCard", () => {
     };
     mount(<TurnEditSummaryCard turn={turn} />);
 
-    const row = container?.querySelector<HTMLElement>(".turn-edit-summary-row");
+    const row = container?.querySelector<HTMLElement>(".turn-edit-summary-overview");
     act(() => {
       row!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       vi.advanceTimersByTime(300);
@@ -415,7 +419,7 @@ describe("TurnEditSummaryCard", () => {
       ),
     };
     mount(<TurnEditSummaryCard turn={turn} />);
-    expect(container?.textContent).toContain("本轮产出 7 项");
+    expect(container?.textContent).toContain("本轮修改 7 个文件");
     expect(container?.querySelectorAll(".turn-edit-summary-row")).toHaveLength(3);
     expect(container?.textContent).toContain("还有 4 个文件");
     expect(container?.textContent).toContain("再显示 3 个");

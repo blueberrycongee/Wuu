@@ -407,7 +407,10 @@
   --diff-delete-color: var(--wuu-color-danger, #ef6a5e);
   --rich-link-color: var(--wuu-color-link, #60a5fa);
   --rich-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
-  --rich-code-surface-bg: var(--wuu-color-surface-muted, #26292d);
+  --message-flow-card-bg: var(--wuu-color-surface-elevated, var(--surface-3));
+  --message-flow-card-border: var(--wuu-color-border-strong, var(--hairline-strong));
+  --message-flow-card-divider: var(--wuu-color-border-subtle, var(--hairline));
+  --message-flow-card-hover-bg: var(--wuu-color-surface, var(--surface-1));
   --surface-chip: var(--surface-4);
   --fork-worktree-copy-bg: rgba(38, 42, 46, 0.9);
   --fork-worktree-focus-ring: var(--focus-ring);
@@ -429,11 +432,6 @@
   --diff-delete-text-color: var(--wuu-color-danger, #f0857a);
   --turn-source-icon-color-fallback: rgba(255, 255, 255, 0.85);
   --turn-source-icon-hover-shadow: rgba(0, 0, 0, 0.45);
-  --turn-output-summary-bg: var(--wuu-color-surface-elevated, var(--surface-3));
-  --turn-output-summary-border: var(--wuu-color-border-strong, var(--hairline-strong));
-  --turn-output-summary-header-bg: var(--wuu-color-surface, var(--surface-1));
-  --turn-output-summary-divider: var(--wuu-color-border-subtle, var(--hairline));
-
   /* conversation-shell.css */
   --shell-process-control-color: var(--wuu-color-text-muted, var(--gray-400));
   --shell-session-tab-hover-border: rgba(228, 232, 235, 0.16);
