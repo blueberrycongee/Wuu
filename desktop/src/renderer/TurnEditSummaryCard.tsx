@@ -297,13 +297,7 @@ function extractFileEdits(item: ThreadItem): FileEdit[] {
 }
 
 function fileDisplayName(path: string): string {
-  // Show the last two segments so files in deep directories remain
-  // distinguishable without taking up the full path.
-  const parts = path.split(/[\\/]/);
-  if (parts.length <= 2) {
-    return parts.join("/");
-  }
-  return `...${parts.slice(-2).join("/")}`;
+  return path.replaceAll("\\", "/");
 }
 
 function collectTurnFileEdits(turn: Turn): FileEdit[] {

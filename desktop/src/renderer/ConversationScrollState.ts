@@ -28,6 +28,7 @@ import {
   isWindowResizing,
 } from "./WindowResizeState";
 import { markSessionSwitch } from "./SessionSwitchPerformance";
+import { prefersReducedMotion } from "./motion";
 
 // Tight threshold so the conversation only re-engages auto-follow when the
 // user is effectively parked at the bottom. The previous 48px band let one
@@ -100,6 +101,8 @@ export function useConversationScrollState({
   scheduleStreamScroll: () => void;
   handleConversationScroll: (scrolledNode?: HTMLElement) => void;
   enableConversationAutoFollow: () => void;
+  /** Smoothly move the current conversation to its new bottom on submit. */
+  requestSubmittedQueryScroll: () => void;
   /**
    * Pause auto-follow so a programmatic scroll (e.g. query-history
    * jump) doesn't get pulled back to the bottom by the next stream
@@ -134,6 +137,7 @@ export function useConversationScrollState({
   const lastConversationScrollTopRef = useRef(0);
   const programmaticScrollTopRef = useRef<number | undefined>(undefined);
   const suppressAutoFollowRearmRef = useRef(false);
+  const smoothAutoFollowRef = useRef(false);
   const selectionPausedAutoFollowRef = useRef(false);
   const pointerScrollGestureRef = useRef<
     { node: HTMLElement; scrollTop: number; scrollHeight: number } | undefined
@@ -219,6 +223,7 @@ export function useConversationScrollState({
   }, []);
 
   const markUserScrollAwayIntent = useCallback((startTop?: number): void => {
+    smoothAutoFollowRef.current = false;
     userScrollAwayIntentRef.current = true;
     if (startTop !== undefined) {
       userScrollAwayStartTopRef.current = startTop;
@@ -239,6 +244,7 @@ export function useConversationScrollState({
     autoFollow: boolean,
     options: { revealScrollbar?: boolean } = {}
   ): void {
+    smoothAutoFollowRef.current = false;
     clearUserScrollAwayIntent();
     suppressAutoFollowRearmRef.current = false;
     selectionPausedAutoFollowRef.current = false;
@@ -264,12 +270,56 @@ export function useConversationScrollState({
     if (!node || !conversationAutoFollowRef.current) {
       return;
     }
+    if (smoothAutoFollowRef.current && !prefersReducedMotion()) {
+      clearUserScrollAwayIntent();
+      selectionPausedAutoFollowRef.current = false;
+      suppressAutoFollowRearmRef.current = true;
+      setAutoFollow(true);
+      setAutoFollowOverflowAnchor(node, true);
+      rememberActiveThreadScrollSnapshot(node, true);
+      showConversationScrollbar(node);
+      if (typeof node.scrollTo === "function") {
+        node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+        return;
+      }
+      smoothAutoFollowRef.current = false;
+    }
     applyProgrammaticScroll(node, node.scrollHeight, true, {
       revealScrollbar: true,
     });
-    },
-    [activePane, activeThreadID, setAutoFollow, splitConversation]
-  );
+  }, [
+    activePane,
+    activeThreadID,
+    clearUserScrollAwayIntent,
+    setAutoFollow,
+    splitConversation,
+  ]);
+
+  const requestSubmittedQueryScroll = useCallback((): void => {
+    clearUserScrollAwayIntent();
+    selectionPausedAutoFollowRef.current = false;
+    const smooth = !prefersReducedMotion();
+    smoothAutoFollowRef.current = smooth;
+    suppressAutoFollowRearmRef.current = smooth;
+    setAutoFollow(true);
+    const node = conversationViewport();
+    if (!node) {
+      return;
+    }
+    setAutoFollowOverflowAnchor(node, true);
+    rememberActiveThreadScrollSnapshot(node, true);
+    // Start from the current bottom immediately. The optimistic turn's layout
+    // and subsequent resize/stream signals retarget this same smooth scroll to
+    // the newly-grown bottom instead of snapping the viewport between frames.
+    scrollConversationToBottom();
+  }, [
+    activePane,
+    activeThreadID,
+    clearUserScrollAwayIntent,
+    scrollConversationToBottom,
+    setAutoFollow,
+    splitConversation,
+  ]);
 
   const scheduleLiveResizeScroll = useCallback((): void => {
     if (
@@ -330,6 +380,7 @@ export function useConversationScrollState({
   }, [scrollConversationToBottom]);
 
   const enableConversationAutoFollow = useCallback((): void => {
+    smoothAutoFollowRef.current = false;
     suppressAutoFollowRearmRef.current = false;
     selectionPausedAutoFollowRef.current = false;
     setAutoFollow(true);
@@ -341,6 +392,7 @@ export function useConversationScrollState({
   }, [activePane, activeThreadID, setAutoFollow, splitConversation]);
 
   const disableConversationAutoFollow = useCallback((): void => {
+    smoothAutoFollowRef.current = false;
     suppressAutoFollowRearmRef.current = true;
     setAutoFollow(false);
     const node = conversationViewport();
@@ -504,7 +556,19 @@ export function useConversationScrollState({
       // auto-follow, the next scroll/layout signal yanks the viewport back to
       // the bottom before the jump reaches its target. Only an actual downward
       // move back to the latest content should clear this jump guard.
-      if (scrolledDown && !selectionPausedAutoFollowRef.current) {
+      if (smoothAutoFollowRef.current) {
+        // A submit request starts while the viewport is usually already at the
+        // old bottom. Chromium may report that unchanged first frame before the
+        // optimistic turn grows the document. Keep auto-follow armed and retain
+        // the smooth mode until a later frame actually moves to the new bottom.
+        if (scrolledDown && !selectionPausedAutoFollowRef.current) {
+          smoothAutoFollowRef.current = false;
+          suppressAutoFollowRearmRef.current = false;
+        }
+        nextAutoFollow = true;
+        setAutoFollow(true);
+        setAutoFollowOverflowAnchor(node, true);
+      } else if (scrolledDown && !selectionPausedAutoFollowRef.current) {
         suppressAutoFollowRearmRef.current = false;
         nextAutoFollow = true;
         setAutoFollow(true);
@@ -868,5 +932,6 @@ export function useConversationScrollState({
     disableConversationAutoFollow,
     captureConversationScrollPosition,
     restoreConversationScrollPosition,
+    requestSubmittedQueryScroll,
   };
 }

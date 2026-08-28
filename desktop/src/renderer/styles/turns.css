@@ -1510,6 +1510,35 @@
   padding-top: var(--conversation-answer-hover-action-gap);
 }
 
+/* The persistent row consumes the space that already separates turns rather
+ * than increasing the turn's total height when it mounts. This keeps the
+ * completed answer and composer stationary while retaining a real in-flow hit
+ * target for the always-visible actions. */
+.turn:has(.agent-actions-persistent) {
+  margin-bottom: max(
+    0px,
+    calc(
+      var(--conversation-turn-boundary-gap) -
+        var(--conversation-answer-action-gap) -
+        var(--conversation-message-action-size)
+    )
+  );
+}
+
+/* CSS transitions do not run on initial mount. The live completion marker
+ * supplies one paint-only rise and fade for the pair; historical turns never
+ * receive it, and the zeroed motion tokens honor reduced-motion preferences. */
+.agent-actions-enter .agent-message-actions {
+  animation: agent-actions-reveal var(--motion-base) var(--ease-out) both;
+}
+
+@keyframes agent-actions-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 .message-actions {
   display: flex;
   min-height: var(--conversation-message-action-size);

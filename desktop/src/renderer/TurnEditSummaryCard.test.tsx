@@ -150,6 +150,22 @@ describe("TurnEditSummaryCard", () => {
     expect(container?.textContent).toContain("-1");
   });
 
+  it("shows the complete file path instead of dropping leading directories", () => {
+    const path = "desktop/src/main/rendererServerEventBatcher.ts";
+    const turn: Turn = {
+      id: "turn-1",
+      status: "completed",
+      items_view: "full",
+      items: [buildEditItem(path, 10, 0)],
+    };
+
+    mount(<TurnEditSummaryCard turn={turn} />);
+
+    expect(
+      container?.querySelector(".turn-edit-summary-name")?.textContent,
+    ).toBe(path);
+  });
+
   it("waits until the turn reaches a terminal status", () => {
     const turn: Turn = {
       id: "turn-1",

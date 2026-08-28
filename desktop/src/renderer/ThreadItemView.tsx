@@ -5,6 +5,7 @@ import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState
 } from "react";
@@ -203,6 +204,18 @@ function BuiltInThreadItemView({
   editSummaryCard,
 }: ThreadItemViewProps): JSX.Element | null {
   const { t } = useI18n();
+  // Only a live in_progress -> completed handoff should animate. Historical
+  // completed messages mount without this marker, so virtualized content does
+  // not replay the entrance while the user scrolls.
+  const [settleEntered, setSettleEntered] = useState(false);
+  const previousTurnStatusRef = useRef(turnStatus);
+  useLayoutEffect(() => {
+    const previous = previousTurnStatusRef.current;
+    previousTurnStatusRef.current = turnStatus;
+    if (previous === "in_progress" && turnStatus === "completed") {
+      setSettleEntered(true);
+    }
+  }, [turnStatus]);
   switch (item.type) {
     case "user_message": {
       const text = item.text ?? "";
@@ -326,18 +339,11 @@ function BuiltInThreadItemView({
         item.id === actionableAgentMessageID &&
         copyable &&
         !isProcessText;
-      // The final message item is already a stable copy boundary even while the
-      // enclosing turn waits for provider settlement. Fork remains gated on the
-      // durable completed turn because it needs settled history.
-      const finalizingCopyVisible =
-        turnStatus === "in_progress" &&
-        item.status === "completed" &&
-        copyable &&
-        !isProcessText;
-      const actionsVisible = forkVisible || finalizingCopyVisible;
+      // Copy and fork form one completion affordance. Mount the pair at the
+      // durable turn boundary instead of exposing copy one render earlier.
+      const actionsVisible = forkVisible;
       const actionsPersistent =
-        actionsVisible &&
-        (item.id === latestAgentMessageID || finalizingCopyVisible);
+        actionsVisible && item.id === latestAgentMessageID;
       // Only the persistent bar (latest answer, always visible) takes
       // in-flow space; historical answers get a hover overlay so no
       // invisible slot pads the turn boundary.
@@ -347,7 +353,7 @@ function BuiltInThreadItemView({
           data-wuu-variant="agent"
           className={`agent-block${
             actionsVisible
-              ? ` agent-block-with-action-slot agent-actions-available${actionsPersistent ? " agent-actions-persistent" : " agent-actions-overlay"}`
+              ? ` agent-block-with-action-slot agent-actions-available${settleEntered ? " agent-actions-enter" : ""}${actionsPersistent ? " agent-actions-persistent" : " agent-actions-overlay"}`
               : ""
           }`}
         >

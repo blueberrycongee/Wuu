@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useConversationScrollState } from "./ConversationScrollState";
 import type { Turn } from "../shared/protocol";
 
@@ -57,18 +57,27 @@ function Probe({ activeThreadID }: { activeThreadID?: string }): ReactNode {
     previewingLaunch: false,
     initialized: true,
   });
-  return createElement("div", {
-    ref: (node: HTMLDivElement | null) => {
-      h.conversationScrollRef.current = node;
+  return createElement(
+    "div",
+    {
+      ref: (node: HTMLDivElement | null) => {
+        h.conversationScrollRef.current = node;
+      },
+      onScroll: () => h.handleConversationScroll(),
+      "data-testid": "scroll-container",
     },
-    onScroll: () => h.handleConversationScroll(),
-    "data-testid": "scroll-container",
-  }, createElement("div", {
-    ref: (node: HTMLDivElement | null) => {
-      h.scrollContentRef.current = node;
-    },
-    "data-testid": "scroll-content",
-  }));
+    createElement("button", {
+      type: "button",
+      onClick: h.requestSubmittedQueryScroll,
+      "data-testid": "request-submitted-query-scroll",
+    }),
+    createElement("div", {
+      ref: (node: HTMLDivElement | null) => {
+        h.scrollContentRef.current = node;
+      },
+      "data-testid": "scroll-content",
+    }),
+  );
 }
 
 describe("useConversationScrollState — thread scroll snapshots", () => {
@@ -212,6 +221,43 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
     switchThread("thread-a");
     expect(layout.scrollTop).toBe(480);
     fireScroll();
+  });
+
+  it("smoothly follows the bottom when a query is submitted", () => {
+    const node = mount({
+      activeThreadID: "thread-a",
+      scrollHeight: 1600,
+      clientHeight: 600,
+      initialScrollTop: 1000,
+    });
+    const scrollTo = vi.fn();
+    node.scrollTo = scrollTo;
+    fireScroll();
+
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>(
+          "[data-testid='request-submitted-query-scroll']",
+        )
+        ?.click();
+    });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1600, behavior: "smooth" });
+
+    // The first native smooth-scroll frame can report the unchanged old bottom
+    // before React lays out the optimistic turn. It must not disarm the pending
+    // smooth follow, or the subsequent growth will snap or remain off-screen.
+    fireScroll();
+    if (!layout || !root) throw new Error("not mounted");
+    layout.scrollHeight = 1900;
+    act(() => {
+      root!.render(createElement(Probe, { activeThreadID: "thread-a" }));
+    });
+
+    expect(scrollTo).toHaveBeenLastCalledWith({
+      top: 1900,
+      behavior: "smooth",
+    });
   });
 });
 

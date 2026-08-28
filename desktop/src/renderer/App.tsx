@@ -2181,6 +2181,7 @@ export function App(): JSX.Element {
     disableConversationAutoFollow,
     captureConversationScrollPosition,
     restoreConversationScrollPosition,
+    requestSubmittedQueryScroll,
   } = useConversationScrollState({
     activeThreadID,
     activePane: state.activePane,
@@ -4062,7 +4063,7 @@ export function App(): JSX.Element {
       model: draftEngineRuntime.model || defaultExternalRuntime.model,
       effort: draftEngineRuntime.effort || defaultExternalRuntime.effort,
     };
-    enableConversationAutoFollow();
+    requestSubmittedQueryScroll();
     resetRunDebugEvents({
       source: "client",
       method: "client/send",

@@ -444,7 +444,7 @@ describe("ThreadItemView", () => {
     expect(secondToggle?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("waits for the final item before offering copy, then adds fork when the turn completes", () => {
+  it("reveals copy and fork together when the turn completes", () => {
     render({
       item: makeFinalAnswer("in_progress"),
       turnStatus: "in_progress",
@@ -460,10 +460,7 @@ describe("ThreadItemView", () => {
       streaming: false,
     });
 
-    const finalizingActions = actionBar();
-    expect(finalizingActions.dataset.wuuPlacement).toBe("persistent");
-    expect(finalizingActions.querySelectorAll("button")).toHaveLength(1);
-    expect(finalizingActions.querySelector("button")?.getAttribute("aria-label")).toBe("复制消息");
+    expect(container?.querySelector(".agent-message-actions")).toBeNull();
 
     render({
       item: makeFinalAnswer("completed"),
@@ -481,7 +478,7 @@ describe("ThreadItemView", () => {
     const block = container?.querySelector(".agent-block");
     expect(block?.classList.contains("agent-actions-persistent")).toBe(true);
     expect(block?.classList.contains("agent-actions-overlay")).toBe(false);
-    expect(block?.classList.contains("agent-actions-enter")).toBe(false);
+    expect(block?.classList.contains("agent-actions-enter")).toBe(true);
   });
 
   it("renders historical answers with a hover overlay bar instead of an in-flow slot", () => {
