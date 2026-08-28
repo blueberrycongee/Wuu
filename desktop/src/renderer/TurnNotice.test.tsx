@@ -137,6 +137,19 @@ describe("ContextCompactionNotice", () => {
     expect(host.querySelector(".context-compaction-mascot")).toBeNull();
   });
 
+  it("shows both the old and replacement context token estimates", () => {
+    const host = mount(
+      <ContextCompactionNotice
+        status="completed"
+        text="✦ Compacted history: 119 → 1 messages (~239k → ~49k tokens)"
+      />,
+    );
+
+    expect(host.querySelector(".context-compaction-detail")?.textContent).toBe(
+      "已压缩较早上下文：119 条消息整理为 1 条，token 约从 239k 降至 49k",
+    );
+  });
+
   it("labels manual compact completion as success", () => {
     const host = mount(
       <ContextCompactionNotice

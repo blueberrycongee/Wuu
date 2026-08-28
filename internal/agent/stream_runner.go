@@ -1539,8 +1539,13 @@ func formatCompactNotice(info CompactInfo) string {
 	case CompactReasonManual:
 		verb = "Manually compacted"
 	}
+	if info.TokensBefore > 0 && info.TokensAfter > 0 {
+		return fmt.Sprintf("✦ %s history: %d → %d messages (~%s → ~%s tokens)",
+			verb, info.MessagesBefore, info.MessagesAfter,
+			formatTokenCount(info.TokensBefore), formatTokenCount(info.TokensAfter))
+	}
 	if info.TokensBefore > 0 {
-		return fmt.Sprintf("✦ %s history: %d → %d messages (was ~%s)",
+		return fmt.Sprintf("✦ %s history: %d → %d messages (was ~%s tokens)",
 			verb, info.MessagesBefore, info.MessagesAfter,
 			formatTokenCount(info.TokensBefore))
 	}
@@ -1573,13 +1578,13 @@ func formatCompactAttemptNotice(info CompactAttemptInfo) (string, bool) {
 func formatTokenCount(n int) string {
 	switch {
 	case n < 1000:
-		return fmt.Sprintf("%d tokens", n)
+		return fmt.Sprintf("%d", n)
 	case n < 10_000:
-		return fmt.Sprintf("%.1fk tokens", float64(n)/1000)
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
 	case n < 1_000_000:
-		return fmt.Sprintf("%dk tokens", n/1000)
+		return fmt.Sprintf("%dk", n/1000)
 	default:
-		return fmt.Sprintf("%.1fM tokens", float64(n)/1_000_000)
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
 	}
 }
 

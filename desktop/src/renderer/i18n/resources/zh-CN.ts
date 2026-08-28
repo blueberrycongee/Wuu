@@ -917,6 +917,7 @@ export const zhCN = {
   "compaction.notNeededDetail": "当前对话还没有足够的历史需要整理，原上下文保持不变。",
   "compaction.summary": "已压缩较早上下文：{before} 条消息整理为 {after} 条",
   "compaction.summaryWithTokens": "已压缩较早上下文：{before} 条消息整理为 {after} 条，原约 {tokens}",
+  "compaction.summaryWithTokenRange": "已压缩较早上下文：{before} 条消息整理为 {after} 条，token 约从 {beforeTokens} 降至 {afterTokens}",
   "envelope.namedSource": "「{title}」",
   "envelope.multipleConversations": "多个会话",
   "envelope.otherConversation": "其他会话",

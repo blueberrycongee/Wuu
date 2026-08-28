@@ -270,6 +270,8 @@ func RunToolLoop(
 				OutputLimit:    compact.IsSummaryOutputLimit(cerr),
 			}, usageBefore))
 		case compactChanged(messages, compacted):
+			noticeMessagesBefore := compactNoticeMessageCount(messages)
+			noticeMessagesAfter := compactNoticeMessageCount(compacted)
 			if compactOperationID := lineage.LastOperationID(); compactOperationID != "" && compactOperationID != lastAgentOperationID {
 				nextOperationParentID = compactOperationID
 			}
@@ -285,8 +287,9 @@ func RunToolLoop(
 				cfg.OnCompact(CompactInfo{
 					Reason:         reason,
 					TokensBefore:   before,
-					MessagesBefore: msgsBefore,
-					MessagesAfter:  len(messages),
+					TokensAfter:    usage.EstimateCurrent(),
+					MessagesBefore: noticeMessagesBefore,
+					MessagesAfter:  noticeMessagesAfter,
 					Summary:        compactSummaryFromMessages(messages),
 				})
 			}
@@ -565,6 +568,8 @@ func RunToolLoop(
 				}
 				if cerr == nil {
 					if compactChanged(messages, compacted) {
+						noticeMessagesBefore := compactNoticeMessageCount(messages)
+						noticeMessagesAfter := compactNoticeMessageCount(compacted)
 						if compactOperationID := lineage.LastOperationID(); compactOperationID != "" && compactOperationID != req.Operation.ID {
 							nextOperationParentID = compactOperationID
 						}
@@ -584,8 +589,9 @@ func RunToolLoop(
 							cfg.OnCompact(CompactInfo{
 								Reason:         CompactReasonOverflow,
 								TokensBefore:   before,
-								MessagesBefore: msgsBefore,
-								MessagesAfter:  len(messages),
+								TokensAfter:    usage.EstimateCurrent(),
+								MessagesBefore: noticeMessagesBefore,
+								MessagesAfter:  noticeMessagesAfter,
 								Summary:        compactSummaryFromMessages(messages),
 							})
 						}
@@ -1012,6 +1018,26 @@ func compactChanged(before, after []providers.ChatMessage) bool {
 		return true
 	}
 	return !reflect.DeepEqual(before, after)
+}
+
+// compactNoticeMessageCount reports the model-visible conversation units a
+// user would understand as history. System scaffolding and hidden bookkeeping
+// are excluded, while the hidden replacement summary counts as one message.
+// This keeps note-backed compaction from reporting preserved system prompts as
+// dozens of remaining conversation messages.
+func compactNoticeMessageCount(messages []providers.ChatMessage) int {
+	count := 0
+	for _, message := range messages {
+		if compact.IsConversationSummaryContent(message.Content) {
+			count++
+			continue
+		}
+		if message.Hidden || strings.EqualFold(strings.TrimSpace(message.Role), "system") || compact.IsInternalContextMessage(message) {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 // compactSummaryFromMessages extracts the replacement-context summary body

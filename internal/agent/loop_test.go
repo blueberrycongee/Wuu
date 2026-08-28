@@ -1337,6 +1337,12 @@ func TestRunToolLoop_ProactiveCompactTriggers(t *testing.T) {
 	if compactInfos[0].MessagesAfter >= compactInfos[0].MessagesBefore {
 		t.Fatalf("expected MessagesAfter < MessagesBefore, got %+v", compactInfos[0])
 	}
+	if compactInfos[0].MessagesBefore != 3 || compactInfos[0].MessagesAfter != 1 {
+		t.Fatalf("notice message counts = %d → %d, want 3 → 1", compactInfos[0].MessagesBefore, compactInfos[0].MessagesAfter)
+	}
+	if compactInfos[0].TokensAfter <= 0 || compactInfos[0].TokensAfter >= compactInfos[0].TokensBefore {
+		t.Fatalf("notice token counts should report a smaller non-zero replacement, got %+v", compactInfos[0])
+	}
 	wantOrder := []string{"start:proactive", "compact", "completed:proactive"}
 	if strings.Join(callbackOrder, ",") != strings.Join(wantOrder, ",") {
 		t.Fatalf("compact callback order = %v, want %v", callbackOrder, wantOrder)
@@ -1356,6 +1362,28 @@ func TestRunToolLoop_ProactiveCompactTriggers(t *testing.T) {
 	}
 	if visible[1].Role != "assistant" || visible[1].Content != "compacted answer" {
 		t.Fatalf("expected compacted answer in snapshot, got %+v", visible[1])
+	}
+}
+
+func TestCompactNoticeMessageCountExcludesPreservedSystemScaffolding(t *testing.T) {
+	messages := []providers.ChatMessage{
+		{Role: "system", Content: "base system prompt"},
+		{Role: "system", Content: "discovered tool context"},
+		{Role: "user", Content: "request"},
+		{Role: "assistant", Content: "response"},
+		{Role: "user", Content: "hidden bookkeeping", Hidden: true},
+	}
+	replacement := []providers.ChatMessage{
+		messages[0],
+		messages[1],
+		{Role: "system", Content: compact.BuildSummaryContent("continuation note"), Hidden: true},
+	}
+
+	if got := compactNoticeMessageCount(messages); got != 2 {
+		t.Fatalf("pre-compaction notice count = %d, want 2", got)
+	}
+	if got := compactNoticeMessageCount(replacement); got != 1 {
+		t.Fatalf("note replacement notice count = %d, want 1", got)
 	}
 }
 

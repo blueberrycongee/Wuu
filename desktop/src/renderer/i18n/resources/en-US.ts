@@ -919,6 +919,7 @@ export const enUS = {
   "compaction.notNeededDetail": "This conversation does not have enough history to compact yet. Its context is unchanged.",
   "compaction.summary": "Older context compacted: {before} messages became {after}.",
   "compaction.summaryWithTokens": "Older context compacted: {before} messages became {after}; previously about {tokens}.",
+  "compaction.summaryWithTokenRange": "Older context compacted: {before} messages became {after}; about {beforeTokens} → {afterTokens} tokens.",
   "envelope.namedSource": "“{title}”",
   "envelope.multipleConversations": "multiple conversations",
   "envelope.otherConversation": "another conversation",

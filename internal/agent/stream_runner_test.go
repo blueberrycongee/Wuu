@@ -1539,6 +1539,20 @@ func TestFormatCompactAttemptNoticeClosesVisibleProgress(t *testing.T) {
 	}
 }
 
+func TestFormatCompactNoticeIncludesReplacementTokenEstimate(t *testing.T) {
+	notice := formatCompactNotice(CompactInfo{
+		Reason:         CompactReasonProactive,
+		TokensBefore:   239_000,
+		TokensAfter:    49_300,
+		MessagesBefore: 119,
+		MessagesAfter:  1,
+	})
+	const want = "✦ Compacted history: 119 → 1 messages (~239k → ~49k tokens)"
+	if notice != want {
+		t.Fatalf("notice = %q, want %q", notice, want)
+	}
+}
+
 func TestFormatCompactAttemptNoticeExplainsOutputLimitRecovery(t *testing.T) {
 	notice, ok := formatCompactAttemptNotice(CompactAttemptInfo{
 		Reason:      CompactReasonManual,

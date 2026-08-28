@@ -104,8 +104,12 @@ const (
 // LoopConfig.OnCompact so interactive clients can let the user know
 // what just happened.
 type CompactInfo struct {
-	Reason         CompactReason
-	TokensBefore   int
+	Reason       CompactReason
+	TokensBefore int
+	TokensAfter  int
+	// Message counts use user-facing conversation units: preserved system
+	// scaffolding and hidden bookkeeping are excluded, and the replacement
+	// continuation summary counts as one message.
 	MessagesBefore int
 	MessagesAfter  int
 	// Summary is the body of the replacement context produced by this pass
