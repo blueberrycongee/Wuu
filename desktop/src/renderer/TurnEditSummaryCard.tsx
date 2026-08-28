@@ -7,6 +7,7 @@ import {
   type ToolDiffPreviewFileDiff,
 } from "./ToolDiffPreview";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
+import { turnIsAnswerReady } from "./AppState";
 import { useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 
@@ -362,7 +363,7 @@ export function TurnEditSummaryCard({
   const { t, formatNumber } = useI18n();
   const [visibleCount, setVisibleCount] = useState(FILE_BATCH_SIZE);
 
-  if (turn.status === "in_progress") return null;
+  if (turn.status === "in_progress" && !turnIsAnswerReady(turn)) return null;
 
   const rawEdits = collectTurnFileEdits(turn);
   const edits = aggregateFileEdits(rawEdits);

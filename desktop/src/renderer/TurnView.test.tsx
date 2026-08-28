@@ -277,6 +277,30 @@ describe("TurnView", () => {
     expect(view.textContent).toContain("brief.md");
   });
 
+  it("attaches the edit summary to an answer before turn settlement", () => {
+    const turn = makeTurn("in_progress", [
+      {
+        id: "write-1",
+        type: "tool_call",
+        name: "write_file",
+        status: "completed",
+        result: JSON.stringify({
+          path: "notes/brief.md",
+          diff: { new_file: true, lines: 1 },
+        }),
+      },
+      makeFinalAnswer("done"),
+    ]);
+    turn.answer_ready_at = "2026-08-29T04:00:10.000Z";
+
+    const view = render(turn, true);
+    const agentBlock = view.querySelector(".agent-block");
+
+    expect(agentBlock?.textContent).toContain("done");
+    expect(agentBlock?.textContent).toContain("本轮修改 1 个文件");
+    expect(agentBlock?.querySelector(".turn-edit-summary-card")).toBeTruthy();
+  });
+
   it("buffers structural process changes briefly while keeping the current text visible", () => {
     vi.useFakeTimers();
     const view = render(

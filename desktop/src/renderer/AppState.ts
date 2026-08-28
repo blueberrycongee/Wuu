@@ -1615,11 +1615,13 @@ function summarizeAgentForSidebar(agent: Agent): Agent {
 }
 
 function summarizeTurnForSidebar(turn: Turn): ThreadTurnSummary {
+  const answerReady = turn.status === "in_progress" && turnIsAnswerReady(turn);
   return {
     id: turn.id,
-    status: turn.status,
+    status: answerReady ? "completed" : turn.status,
     started_at: turn.started_at,
-    completed_at: turn.completed_at,
+    completed_at:
+      turn.completed_at ?? (answerReady ? turn.answer_ready_at : undefined),
     duration_ms: turn.duration_ms,
   };
 }
@@ -1628,6 +1630,9 @@ function summarizeThreadForSidebar(
   thread: Thread,
   runningThreadIDs?: ReadonlySet<string>,
 ): ThreadSummary {
+  const answerReady = activeTurnIsAnswerReady(thread);
+  const status =
+    answerReady && thread.status === "in_progress" ? "idle" : thread.status;
   return {
     id: thread.id,
     parent_id: thread.parent_id,
@@ -1639,7 +1644,7 @@ function summarizeThreadForSidebar(
     cwd: thread.cwd,
     workspace_id: thread.workspace_id,
     workspace_kind: thread.workspace_kind,
-    status: runningThreadIDs?.has(thread.id) ? "in_progress" : thread.status,
+    status: runningThreadIDs?.has(thread.id) && !answerReady ? "in_progress" : status,
     read_only: thread.read_only,
     pinned: thread.pinned,
     folder_id: thread.folder_id,
@@ -2992,17 +2997,33 @@ function activeTurnAcceptsSteering(thread: Thread | undefined): boolean {
   );
 }
 
-function activeTurnIsAnswerReady(thread: Thread | undefined): boolean {
-  const turn = activeTurnForThread(thread);
+function turnIsAnswerReady(turn: Turn | undefined): boolean {
   return Boolean(
     turn?.answer_ready_at ||
-      turn?.items.some(
+      turn?.items?.some(
         (item) =>
           item.type === "agent_message" &&
           item.status === "completed" &&
           item.terminal === true,
       ),
   );
+}
+
+function activeTurnIsAnswerReady(thread: Thread | undefined): boolean {
+  return turnIsAnswerReady(activeTurnForThread(thread));
+}
+
+function presentationRunningThreadIDs(
+  threads: readonly (Thread | undefined)[],
+  runningThreadIDs: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const visible = new Set(runningThreadIDs);
+  for (const thread of threads) {
+    if (thread && activeTurnIsAnswerReady(thread)) {
+      visible.delete(thread.id);
+    }
+  }
+  return visible;
 }
 
 function activeTurnForThread(thread: Thread | undefined): Turn | undefined {
@@ -3761,6 +3782,7 @@ export {
   persistActiveSessionTabDraft,
   pinnedThreads,
   pinnedThreadSummaries,
+  presentationRunningThreadIDs,
   projectThreads,
   projectThreadSummaries,
   queryTextForUserItem,
@@ -3770,6 +3792,7 @@ export {
   reduceServerEvent,
   activeTurnAcceptsSteering,
   activeTurnIsAnswerReady,
+  turnIsAnswerReady,
   resolveComposerRunningAction,
   removeSessionTab,
   replaceStreamText,

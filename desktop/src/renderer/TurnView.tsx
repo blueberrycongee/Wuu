@@ -17,7 +17,7 @@ import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { TurnEventNotice, StreamReconnectNotice } from "./TurnNotice";
 import { turnEventForTurn } from "./TurnEvents";
 import { isInternalUserNotificationItem } from "./InternalUserNotification";
-import type { TurnStreamStatus } from "./AppState";
+import { turnIsAnswerReady, type TurnStreamStatus } from "./AppState";
 import {
   latestAgentMessageItemID,
   messageFlowAgentMessageItemID,
@@ -121,7 +121,7 @@ function TurnContent({
     ),
   );
   const actionableAgentMessageID =
-    turn.status === "completed"
+    turn.status === "completed" || turnIsAnswerReady(turn)
       ? messageFlowAgentMessageItemID(turn)
       : undefined;
   // The edit summary card should sit inside the actionable answer message

@@ -122,6 +122,7 @@ import {
   markThreadSummariesViewed,
   markThreadTurnsViewed,
   pinnedThreadSummaries,
+  presentationRunningThreadIDs,
   queryTextForUserItem,
   SCRATCH_PSEUDO_PROJECT_ID,
   scratchThreadSummaries,
@@ -2446,21 +2447,28 @@ export function App(): JSX.Element {
     sidebarProjectThreadsByProjectID,
     state.threads,
   ]);
+  const visibleRunningThreadIDs = useMemo(
+    () => presentationRunningThreadIDs(
+      [state.thread, state.secondaryThread, ...sidebarThreads],
+      crossWorkdirRunningThreadIDs,
+    ),
+    [crossWorkdirRunningThreadIDs, sidebarThreads, state.secondaryThread, state.thread],
+  );
   const sidebarProjectThreadSummariesByProjectID = useMemo(
     () => summarizeProjectThreadsForSidebar(
       sidebarProjectThreadsByProjectID,
       state.threads,
-      crossWorkdirRunningThreadIDs,
+      visibleRunningThreadIDs,
     ),
     [
-      crossWorkdirRunningThreadIDs,
       sidebarProjectThreadsByProjectID,
       state.threads,
+      visibleRunningThreadIDs,
     ],
   );
   const sidebarThreadSummaries = useMemo(
-    () => summarizeThreadsForSidebar(sidebarThreads, crossWorkdirRunningThreadIDs),
-    [crossWorkdirRunningThreadIDs, sidebarThreads],
+    () => summarizeThreadsForSidebar(sidebarThreads, visibleRunningThreadIDs),
+    [sidebarThreads, visibleRunningThreadIDs],
   );
   const sidebarPinnedThreads = useMemo(
     () => pinnedThreadSummaries(sidebarThreadSummaries),
@@ -5167,7 +5175,7 @@ export function App(): JSX.Element {
             <ConversationTitleContent
               state={state}
               crossWorkspaceThreads={sidebarThreads}
-              runningThreadIDs={crossWorkdirRunningThreadIDs}
+              runningThreadIDs={visibleRunningThreadIDs}
               sessionTabsVisible={sessionTabsVisible}
               pendingSwitchThreadID={visiblePendingThreadID}
               pendingComposerMessagesByThread={pendingComposerMessagesByThread}

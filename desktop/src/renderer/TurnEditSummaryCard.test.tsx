@@ -170,7 +170,7 @@ describe("TurnEditSummaryCard", () => {
     ).toBe(path);
   });
 
-  it("waits until the turn reaches a terminal status", () => {
+  it("waits until the final answer is ready", () => {
     const turn: Turn = {
       id: "turn-1",
       status: "in_progress",
@@ -181,6 +181,29 @@ describe("TurnEditSummaryCard", () => {
     mount(<TurnEditSummaryCard turn={turn} />);
 
     expect(container?.querySelector(".turn-edit-summary-card")).toBeFalsy();
+  });
+
+  it("renders when the final answer is ready before turn settlement", () => {
+    const turn: Turn = {
+      id: "turn-1",
+      status: "in_progress",
+      answer_ready_at: "2026-08-29T04:00:10.000Z",
+      items_view: "full",
+      items: [
+        buildEditItem("/tmp/.zshrc", 4, 1),
+        {
+          id: "answer-ready",
+          type: "agent_message",
+          status: "completed",
+          terminal: true,
+          text: "done",
+        },
+      ],
+    };
+
+    mount(<TurnEditSummaryCard turn={turn} />);
+
+    expect(container?.textContent).toContain("本轮修改 1 个文件");
   });
 
   it("aggregates multiple edits and shows the file count", () => {

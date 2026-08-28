@@ -48,6 +48,7 @@ import {
   openForkThreadAsPrimary,
   pinnedThreads,
   pinnedThreadSummaries,
+  presentationRunningThreadIDs,
   projectThreads,
   queryTextsForThread,
   reconcileChannelRoomSessionTabs,
@@ -715,6 +716,43 @@ describe("summarizeThreadsForSidebar", () => {
 
     expect(summary.status).toBe("in_progress");
     expect(isThreadRunning(summary)).toBe(true);
+  });
+
+  it("presents an answer-ready thread as settled while execution cleanup continues", () => {
+    const thread: Thread = {
+      ...threadWithUserTexts(["background project task"]),
+      id: "answer-ready-project-thread",
+      cwd: "/repo/project",
+      status: "in_progress",
+      turns: [{
+        id: "turn-ready",
+        status: "in_progress",
+        items_view: "full",
+        answer_ready_at: "2026-08-29T04:00:10.000Z",
+        items: [{
+          id: "answer-ready",
+          type: "agent_message",
+          status: "completed",
+          terminal: true,
+          text: "done",
+        }],
+      }],
+    };
+    const runningIDs = new Set([thread.id]);
+
+    const [summary] = summarizeThreadsForSidebar(
+      [thread],
+      presentationRunningThreadIDs([thread], runningIDs),
+    );
+
+    expect(summary.status).toBe("idle");
+    expect(summary.turns[0]).toMatchObject({
+      status: "completed",
+      completed_at: "2026-08-29T04:00:10.000Z",
+    });
+    expect(isThreadRunning(summary)).toBe(false);
+    expect(presentationRunningThreadIDs([thread], runningIDs).has(thread.id)).toBe(false);
+    expect(runningIDs.has(thread.id)).toBe(true);
   });
 
   it("keeps project sidebar summaries limited to root sessions", () => {
