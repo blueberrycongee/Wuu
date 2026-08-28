@@ -54,7 +54,7 @@ import {
   ConversationMessageSurface,
   type ConversationMessageSurfaceContext,
 } from "./plugins/ConversationMessageSurface";
-import { desktopPluginHost, desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
 import { PluginSlot } from "./plugins/PluginSlot";
 
@@ -239,33 +239,21 @@ function BuiltInThreadItemView({
           (copyable || (item.images?.length ?? 0) > 0 || (item.files?.length ?? 0) > 0),
       );
       const editActionVisible = editable;
-      // Plugin wake messages can hide the real delivered prompt behind a
-      // generic query bubble. A durable related session opens in the
-      // conversation split; other deliveries use the delivery inspector.
+      // Some plugin messages point to a durable related session. Keep that
+      // navigation on the message itself rather than coupling it to a
+      // separate inspector plugin.
       const deliveryText = item.input_text?.trim() ?? "";
-      const deliverySessionID = item.related_session_id?.trim() || undefined;
+      const relatedSessionID = item.related_session_id?.trim() || undefined;
       // input_text equals the bubble for ordinary messages (or would, if a
-      // stale server projection ever leaks it); only hidden deliveries get
-      // a details action.
-      const deliveryViewAvailable = deliveryText !== ""
+      // stale server projection ever leaks it); only hidden messages with a
+      // related session get a navigation action.
+      const relatedSessionAvailable = deliveryText !== ""
         && deliveryText !== displayText.trim()
-        && (deliverySessionID !== undefined
-          || desktopPluginHost.getViewTypes().some((view) => view.id === "delivery.inspector"));
-      const openDeliveryDetails = (): void => {
-        if (!deliveryViewAvailable) return;
-        if (deliverySessionID !== undefined) {
-          requestOpenThreadInSplit(deliverySessionID);
-          return;
+        && relatedSessionID !== undefined;
+      const openRelatedSession = (): void => {
+        if (relatedSessionID !== undefined && relatedSessionAvailable) {
+          requestOpenThreadInSplit(relatedSessionID);
         }
-        void desktopWorkbenchController.openPluginView("delivery", "delivery.inspector", {
-          region: "auxiliary",
-          persistence: "session",
-          context: {
-            messageId: item.id,
-            displayText,
-            inputText: deliveryText,
-          },
-        }).catch(() => {});
       };
       return (
         <div
@@ -296,7 +284,7 @@ function BuiltInThreadItemView({
               onOpenFile={onOpenFile}
             />
           )}
-          {!editing && (copyable || editActionVisible || deliveryViewAvailable) ? (
+          {!editing && (copyable || editActionVisible || relatedSessionAvailable) ? (
             <div
               className="message-actions user-message-actions"
               data-wuu-component="message-actions"
@@ -310,13 +298,13 @@ function BuiltInThreadItemView({
                   iconSize={15}
                 />
               ) : null}
-              {deliveryViewAvailable ? (
+              {relatedSessionAvailable ? (
                 <button
                   type="button"
                   className="message-action-button"
-                  aria-label={t("message.deliveryDetails")}
-                  title={t("message.deliveryDetails")}
-                  onClick={openDeliveryDetails}
+                  aria-label={t("message.openRelatedSession")}
+                  title={t("message.openRelatedSession")}
+                  onClick={openRelatedSession}
                 >
                   <Info size={15} />
                 </button>
@@ -340,21 +328,22 @@ function BuiltInThreadItemView({
         : (item.text ?? "");
       const copyable = agentText.trim() !== "";
       const isProcessText = !item.terminal;
-      const forkVisible =
-        turnStatus === "completed" &&
-        item.id === actionableAgentMessageID &&
-        copyable &&
-        !isProcessText;
-      // The completed final item is already a stable copy boundary, and it
-      // arrives before the enclosing turn's provider cleanup finishes. Mount
-      // the complete affordance immediately; fork stays disabled until the
-      // durable turn boundary confirms that its history is settled.
       const finalItemCompletedBeforeTurn =
         turnStatus === "in_progress" &&
         item.status === "completed" &&
+        item.id === latestAgentMessageID &&
         copyable &&
         !isProcessText;
-      const actionsVisible = forkVisible || finalItemCompletedBeforeTurn;
+      const forkVisible =
+        finalItemCompletedBeforeTurn ||
+        (turnStatus === "completed" &&
+          item.id === actionableAgentMessageID &&
+          copyable &&
+          !isProcessText);
+      // A completed final item is the user-visible completion boundary. The
+      // backend can materialize a fork from the live turn snapshot while
+      // provider cleanup and durable turn settlement continue independently.
+      const actionsVisible = forkVisible;
       const actionsPersistent =
         actionsVisible &&
         (item.id === latestAgentMessageID || finalItemCompletedBeforeTurn);

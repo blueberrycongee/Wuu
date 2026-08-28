@@ -5,7 +5,7 @@ import type { ThreadItem, Turn } from "../shared/protocol";
 import { streamTextKey, streamTextStore } from "./StreamText";
 import { ThreadItemView } from "./ThreadItemView";
 import { clearToasts, ToastViewport } from "./Toast";
-import { desktopPluginHost, desktopWorkbenchController } from "./plugins/DesktopPluginRuntime";
+import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import { setOpenThreadInSplitHandler } from "./ConversationSplitBridge";
 import { WuuUIRoot } from "./ui/layers/UILayerHost";
 
@@ -444,7 +444,7 @@ describe("ThreadItemView", () => {
     expect(secondToggle?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("reveals copy and fork when the final item completes, then enables fork with the turn", () => {
+  it("enables copy and fork as soon as the final item completes", () => {
     const onForkMessage = vi.fn();
     render({
       item: makeFinalAnswer("in_progress"),
@@ -468,7 +468,9 @@ describe("ThreadItemView", () => {
     expect(finalizingActions.querySelectorAll("button")).toHaveLength(2);
     const finalizingButtons = finalizingActions.querySelectorAll<HTMLButtonElement>("button");
     expect(finalizingButtons[0]?.disabled).toBe(false);
-    expect(finalizingButtons[1]?.disabled).toBe(true);
+    expect(finalizingButtons[1]?.disabled).toBe(false);
+    finalizingButtons[1]?.click();
+    expect(onForkMessage).toHaveBeenCalledWith("turn-1", "final-1");
 
     render({
       item: makeFinalAnswer("completed"),
@@ -551,15 +553,13 @@ describe("ThreadItemView", () => {
     expect(onEditMessage).not.toHaveBeenCalled();
   });
 
-  it("does not show a details action when input_text equals the bubble text", () => {
+  it("does not show a related-session action without a related session", () => {
     render({
       item: {
         id: "user-own-1",
         type: "user_message",
         text: "这是我的普通消息",
-        // Stale server projections used to leak the content back as
-        // input_text for ordinary messages; the action must stay hidden.
-        input_text: "这是我的普通消息",
+        input_text: "这是发给 Agent 的隐藏消息",
         status: "completed",
       },
       turnStatus: "completed",
@@ -568,61 +568,11 @@ describe("ThreadItemView", () => {
 
     const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
     expect(actions).toHaveLength(1);
-    expect([...(actions ?? [])].some((button) => button.getAttribute("aria-label") === "投递详情")).toBe(false);
+    expect([...(actions ?? [])].some((button) => button.getAttribute("aria-label") === "打开关联会话")).toBe(false);
   });
 
-  it("opens the delivery inspector from the details action on hidden wake prompts", async () => {
-    const openPluginView = vi
-      .spyOn(desktopWorkbenchController, "openPluginView")
-      .mockResolvedValue("delivery:delivery.inspector:1");
-    await desktopPluginHost.activateGeneration({
-      pluginId: "delivery",
-      generation: "one",
-      register(api) {
-        api.registerViewType({ id: "delivery.inspector", title: "Delivery details", render: () => null });
-      },
-    });
-    render({
-      item: {
-        id: "plugin-query-1",
-        type: "user_message",
-        text: "子任务 太阳 已更新",
-        input_text: "这是实际投递给子任务 太阳 的完整提示词",
-        read_only: true,
-        origin: "plugin",
-        origin_id: "subagent",
-        cause: "subagent.completion",
-        presentation_kind: "query_bubble",
-      },
-      turnStatus: "completed",
-      streaming: false,
-    });
-
-    const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
-    expect(actions).toHaveLength(2);
-    const details = [...(actions ?? [])].find((button) => button.getAttribute("aria-label") === "投递详情");
-    expect(details).toBeDefined();
-    // The details action matches the copy/edit action buttons: same box and
-    // same 15px icon so the row stays visually uniform.
-    expect(details?.querySelector("svg")?.getAttribute("width")).toBe("15");
-    expect(details?.className).toContain("message-action-button");
-
-    act(() => details!.click());
-    expect(openPluginView).toHaveBeenCalledWith("delivery", "delivery.inspector", expect.objectContaining({
-      region: "auxiliary",
-      context: expect.objectContaining({
-        messageId: "plugin-query-1",
-        displayText: "子任务 太阳 已更新",
-        inputText: "这是实际投递给子任务 太阳 的完整提示词",
-      }),
-    }));
-
-    act(() => desktopPluginHost.unload("delivery"));
-  });
-
-  it("splits the conversation and opens the child session from the details action", () => {
+  it("splits the conversation and opens the related session", () => {
     const openInSplit = vi.fn();
-    const openPluginView = vi.spyOn(desktopWorkbenchController, "openPluginView");
     setOpenThreadInSplitHandler(openInSplit);
     render({
       item: {
@@ -643,12 +593,11 @@ describe("ThreadItemView", () => {
 
     const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
     expect(actions).toHaveLength(2);
-    const details = [...(actions ?? [])].find((button) => button.getAttribute("aria-label") === "投递详情");
-    expect(details).toBeDefined();
+    const openRelated = [...(actions ?? [])].find((button) => button.getAttribute("aria-label") === "打开关联会话");
+    expect(openRelated).toBeDefined();
 
-    act(() => details!.click());
+    act(() => openRelated!.click());
     expect(openInSplit).toHaveBeenCalledWith("20260817-171746-edd1069c0780f11a");
-    expect(openPluginView).not.toHaveBeenCalled();
 
     act(() => setOpenThreadInSplitHandler(undefined));
   });

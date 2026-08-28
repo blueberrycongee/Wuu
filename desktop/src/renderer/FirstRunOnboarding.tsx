@@ -21,7 +21,6 @@ const BUNDLED_PLUGIN_ORDER = [
   "todo",
   "automation",
   "subagent",
-  "delivery",
   "memory",
   "dream",
   "note-compaction",
@@ -31,7 +30,6 @@ const RECOMMENDED_PLUGIN_IDS = new Set<string>([
   "todo",
   "automation",
   "subagent",
-  "delivery",
 ]);
 
 const PLUGIN_DESCRIPTION_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -39,7 +37,6 @@ const PLUGIN_DESCRIPTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   todo: "onboarding.plugin.todo",
   automation: "onboarding.plugin.automation",
   subagent: "onboarding.plugin.subagent",
-  delivery: "onboarding.plugin.delivery",
   memory: "onboarding.plugin.memory",
   dream: "onboarding.plugin.dream",
   "note-compaction": "onboarding.plugin.noteCompaction",
