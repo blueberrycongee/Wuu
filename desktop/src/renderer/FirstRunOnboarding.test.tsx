@@ -110,6 +110,37 @@ describe("FirstRunOnboarding", () => {
     expect(container.querySelector(".onboarding-presets .is-selected")?.textContent).toBe("推荐");
   });
 
+  it("loads manifest icon assets with the plugin subject ID", async () => {
+    const todo = plugin("todo", true);
+    todo.icon = { path: "assets/icon.svg" };
+    const loadPluginIcon = vi.fn(async (params) => ({
+      ...params,
+      url: "data:image/svg+xml;base64,PHN2Zy8+",
+    }));
+    window.wuu.loadPluginIcon = loadPluginIcon;
+
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={[todo]}
+            providers={[]}
+            onUpdateExtensionPackage={vi.fn(async () => undefined)}
+            onSaveProvider={vi.fn(async () => undefined)}
+            onComplete={vi.fn(async () => undefined)}
+          />
+        </I18nProvider>,
+      );
+    });
+    await clickButton("开始设置");
+
+    expect(loadPluginIcon).toHaveBeenCalledWith({
+      id: "plugin:bundled:todo",
+      fingerprint: "todo-fingerprint",
+      path: "assets/icon.svg",
+    });
+  });
+
   it("gates entry until explicit plugin choices are applied and completion is persisted", async () => {
     const update = vi.fn(async () => undefined);
     const complete = vi.fn(async () => undefined);

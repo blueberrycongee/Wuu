@@ -289,7 +289,7 @@ export function FirstRunOnboarding({
                       <span className="onboarding-plugin-icon">
                         <PluginIcon
                           icon={plugin.icon}
-                          pluginId={pluginID}
+                          pluginId={plugin.id}
                           fingerprint={plugin.fingerprint ?? ""}
                         />
                       </span>
