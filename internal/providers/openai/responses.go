@@ -17,6 +17,8 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
+const responsesFinalAnswerTailGrace = 2 * time.Second
+
 func (c *Client) responsesChat(ctx context.Context, req providers.ChatRequest) (providers.ChatResponse, error) {
 	payload, err := c.buildResponsesRequest(req, false)
 	if err != nil {
@@ -839,6 +841,27 @@ func (c *Client) readResponsesSSE(ctx context.Context, resp *http.Response, leas
 	})
 	defer idleTimer.Stop()
 	resetIdle := func() { idleTimer.Reset(idleTimeout) }
+	var finalAnswerTailFired atomic.Bool
+	var finalAnswerTailTimer *time.Timer
+	defer func() {
+		if finalAnswerTailTimer != nil {
+			finalAnswerTailTimer.Stop()
+		}
+	}()
+	armFinalAnswerTail := func() {
+		if finalAnswerTailTimer != nil {
+			return
+		}
+		finalAnswerTailTimer = time.AfterFunc(responsesFinalAnswerTailTimeout(idleTimeout), func() {
+			finalAnswerTailFired.Store(true)
+			_ = resp.Body.Close()
+		})
+	}
+	disarmFinalAnswerTail := func() {
+		if finalAnswerTailTimer != nil {
+			finalAnswerTailTimer.Stop()
+		}
+	}
 
 	pending := newResponsesPendingTools()
 	pendingReasoning := newResponsesPendingReasoning()
@@ -904,6 +927,7 @@ func (c *Client) readResponsesSSE(ctx context.Context, resp *http.Response, leas
 				}
 			case "function_call", "tool_search_call":
 				sawToolCall = true
+				disarmFinalAnswerTail()
 				pending.start(event.Item, event.outputIndex(), emit)
 			}
 
@@ -927,8 +951,12 @@ func (c *Client) readResponsesSSE(ctx context.Context, resp *http.Response, leas
 					currentTextPhase = phase
 					emit.Send(providers.StreamEvent{Type: providers.EventContentDelta, Phase: currentTextPhase, ProviderItemID: currentTextItemID})
 				}
+				if responsesFinalAnswerItemDone(event, sawToolCall) {
+					armFinalAnswerTail()
+				}
 			case "function_call", "tool_search_call":
 				sawToolCall = true
+				disarmFinalAnswerTail()
 				pt := pending.start(event.Item, event.outputIndex(), emit)
 				pending.emitEnd(pt, event.Item.argumentsString(), emit)
 			case "compaction":
@@ -978,6 +1006,12 @@ func (c *Client) readResponsesSSE(ctx context.Context, resp *http.Response, leas
 			return
 		}
 	}
+	if finalAnswerTailFired.Load() && !sawToolCall && ctx.Err() == nil {
+		providers.DebugLogf("Responses SSE inferred completion after final-answer tail grace")
+		lease.Succeed()
+		emit.Send(responsesInferredFinalAnswerDoneEvent())
+		return
+	}
 
 	if err := scanner.Err(); err != nil {
 		if idleFired.Load() {
@@ -1009,6 +1043,33 @@ func (c *Client) readResponsesSSE(ctx context.Context, resp *http.Response, leas
 		Type:  providers.EventError,
 		Error: err,
 	})
+}
+
+func responsesFinalAnswerTailTimeout(idleTimeout time.Duration) time.Duration {
+	if idleTimeout > 0 && idleTimeout <= responsesFinalAnswerTailGrace {
+		if shortened := idleTimeout / 2; shortened > 0 {
+			return shortened
+		}
+		return idleTimeout
+	}
+	return responsesFinalAnswerTailGrace
+}
+
+func responsesFinalAnswerItemDone(event responsesStreamEvent, sawToolCall bool) bool {
+	return !sawToolCall &&
+		event.Type == "response.output_item.done" &&
+		event.Item.Type == "message" &&
+		providers.NormalizeMessagePhase(event.Item.Phase) == providers.MessagePhaseFinalAnswer &&
+		strings.EqualFold(strings.TrimSpace(event.Item.Status), "completed")
+}
+
+func responsesInferredFinalAnswerDoneEvent() providers.StreamEvent {
+	return providers.StreamEvent{
+		Type:              providers.EventDone,
+		StopReason:        "completed",
+		FinishReason:      providers.FinishReasonStop,
+		ProviderEventType: "response.output_item.done",
+	}
 }
 
 func responsesDoneMetadata(resp *responsesResponse, sawToolCall bool) (*providers.TokenUsage, string, providers.FinishReason, bool) {

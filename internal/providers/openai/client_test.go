@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -2988,6 +2989,96 @@ func TestResponsesStreamChat_SSE(t *testing.T) {
 	}
 	if done.Usage == nil || done.Usage.InputTokens != 5 || done.Usage.OutputTokens != 2 {
 		t.Fatalf("unexpected usage: %+v", done.Usage)
+	}
+}
+
+func TestResponsesStreamChat_SSEBoundsTailAfterCompletedFinalAnswer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w,
+			"event: response.output_item.added\n"+
+				"data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"phase\":\"final_answer\",\"status\":\"in_progress\"},\"output_index\":0}\n\n"+
+				"event: response.output_text.delta\n"+
+				"data: {\"type\":\"response.output_text.delta\",\"delta\":\"done\",\"item_id\":\"msg_1\",\"output_index\":0}\n\n"+
+				"event: response.output_item.done\n"+
+				"data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"phase\":\"final_answer\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\"}]},\"output_index\":0}\n\n")
+		w.(http.Flusher).Flush()
+		// Reproduce a provider that completed the final output item but leaves the
+		// response open without response.completed.
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{
+		BaseURL:            server.URL,
+		WireAPI:            "responses",
+		APIKey:             "test-key",
+		ResponsesTransport: providers.StreamTransportSSE,
+		StreamConfig:       &providers.StreamTransportConfig{IdleTimeout: 100 * time.Millisecond},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	ch, err := client.StreamChat(ctx, providers.ChatRequest{
+		Model:    "gpt-test",
+		Messages: []providers.ChatMessage{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	started := time.Now()
+	var events []providers.StreamEvent
+	for event := range ch {
+		events = append(events, event)
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("final-answer tail took %s, want less than 1s", elapsed)
+	}
+	if len(events) == 0 {
+		t.Fatal("no events received")
+	}
+	final := events[len(events)-1]
+	if final.Type != providers.EventDone || final.FinishReason != providers.FinishReasonStop || final.StopReason != "completed" || final.ProviderEventType != "response.output_item.done" {
+		t.Fatalf("final event = %+v, want inferred completed EventDone", final)
+	}
+}
+
+func TestResponsesFinalAnswerItemDone(t *testing.T) {
+	completedFinalAnswer := responsesStreamEvent{
+		Type: "response.output_item.done",
+		Item: responsesOutputItem{Type: "message", Phase: "final_answer", Status: "completed"},
+	}
+	tests := []struct {
+		name        string
+		event       responsesStreamEvent
+		sawToolCall bool
+		want        bool
+	}{
+		{name: "completed final answer", event: completedFinalAnswer, want: true},
+		{name: "tool call observed", event: completedFinalAnswer, sawToolCall: true},
+		{name: "commentary", event: responsesStreamEvent{Type: "response.output_item.done", Item: responsesOutputItem{Type: "message", Phase: "commentary", Status: "completed"}}},
+		{name: "incomplete item", event: responsesStreamEvent{Type: "response.output_item.done", Item: responsesOutputItem{Type: "message", Phase: "final_answer", Status: "in_progress"}}},
+		{name: "tool item", event: responsesStreamEvent{Type: "response.output_item.done", Item: responsesOutputItem{Type: "function_call", Phase: "final_answer", Status: "completed"}}},
+		{name: "item not done", event: responsesStreamEvent{Type: "response.output_item.added", Item: responsesOutputItem{Type: "message", Phase: "final_answer", Status: "completed"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := responsesFinalAnswerItemDone(tt.event, tt.sawToolCall); got != tt.want {
+				t.Fatalf("responsesFinalAnswerItemDone() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResponsesFinalAnswerTailTimeout(t *testing.T) {
+	if got := responsesFinalAnswerTailTimeout(300 * time.Second); got != 2*time.Second {
+		t.Fatalf("production tail timeout = %s, want 2s", got)
+	}
+	if got := responsesFinalAnswerTailTimeout(100 * time.Millisecond); got != 50*time.Millisecond {
+		t.Fatalf("short-test tail timeout = %s, want 50ms", got)
 	}
 }
 

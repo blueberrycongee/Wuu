@@ -521,6 +521,26 @@ func (c *Client) readResponsesWebSocket(ctx context.Context, session, fallbackSe
 		defer idleTimer.Stop()
 		idleC = idleTimer.C
 	}
+	var finalAnswerTailC <-chan time.Time
+	var finalAnswerTailTimer *time.Timer
+	defer func() {
+		if finalAnswerTailTimer != nil {
+			finalAnswerTailTimer.Stop()
+		}
+	}()
+	armFinalAnswerTail := func() {
+		if finalAnswerTailTimer != nil {
+			return
+		}
+		finalAnswerTailTimer = time.NewTimer(responsesFinalAnswerTailTimeout(idleTimeout))
+		finalAnswerTailC = finalAnswerTailTimer.C
+	}
+	disarmFinalAnswerTail := func() {
+		if finalAnswerTailTimer != nil {
+			finalAnswerTailTimer.Stop()
+			finalAnswerTailC = nil
+		}
+	}
 
 	for {
 		var frame responsesWebSocketReadEvent
@@ -547,6 +567,19 @@ func (c *Client) readResponsesWebSocket(ctx context.Context, session, fallbackSe
 		case <-idleC:
 			frame.err = fmt.Errorf("websocket stream idle timeout after %s: %w", idleTimeout, context.DeadlineExceeded)
 			ok = true
+		case <-finalAnswerTailC:
+			finalAnswerTailC = nil
+			if sawToolCall {
+				continue
+			}
+			session.mu.Lock()
+			c.responsesWebSocketReleaseLocked(session, readCh)
+			c.responsesWebSocketInvalidateConnectionLocked(session, websocket.StatusNormalClosure, "final_answer_tail_timeout")
+			session.mu.Unlock()
+			providers.DebugLogf("Responses WebSocket inferred completion after final-answer tail grace")
+			lease.Succeed()
+			emit.Send(responsesInferredFinalAnswerDoneEvent())
+			return
 		}
 		if !ok && frame.err == nil {
 			session.mu.Lock()
@@ -709,6 +742,7 @@ func (c *Client) readResponsesWebSocket(ctx context.Context, session, fallbackSe
 				}
 			case "function_call", "tool_search_call":
 				sawToolCall = true
+				disarmFinalAnswerTail()
 				pending.start(event.Item, event.outputIndex(), emit)
 			}
 
@@ -735,8 +769,12 @@ func (c *Client) readResponsesWebSocket(ctx context.Context, session, fallbackSe
 					currentTextPhase = phase
 					emit.Send(providers.StreamEvent{Type: providers.EventContentDelta, Phase: currentTextPhase, ProviderItemID: currentTextItemID})
 				}
+				if responsesFinalAnswerItemDone(event, sawToolCall) {
+					armFinalAnswerTail()
+				}
 			case "function_call", "tool_search_call":
 				sawToolCall = true
+				disarmFinalAnswerTail()
 				pt := pending.start(event.Item, event.outputIndex(), emit)
 				pending.emitEnd(pt, event.Item.argumentsString(), emit)
 			}
@@ -762,11 +800,12 @@ func (c *Client) readResponsesWebSocket(ctx context.Context, session, fallbackSe
 			session.mu.Unlock()
 			lease.SucceedWithUsage(usage)
 			emit.Send(providers.StreamEvent{
-				Type:         providers.EventDone,
-				Usage:        usage,
-				StopReason:   stopReason,
-				FinishReason: finishReason,
-				Truncated:    truncated,
+				Type:              providers.EventDone,
+				Usage:             usage,
+				StopReason:        stopReason,
+				FinishReason:      finishReason,
+				Truncated:         truncated,
+				ProviderEventType: event.Type,
 			})
 			return
 

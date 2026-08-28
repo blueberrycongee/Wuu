@@ -2244,6 +2244,72 @@ func TestResponsesStreamChatWebSocket_IdleWatchdogAbortsSilentStream(t *testing.
 	}
 }
 
+func TestResponsesStreamChatWebSocket_BoundsTailAfterCompletedFinalAnswer(t *testing.T) {
+	connClosed := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			t.Errorf("accept websocket: %v", err)
+			return
+		}
+		defer close(connClosed)
+		defer conn.CloseNow()
+
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		readWSRequest(t, ctx, conn, make(chan map[string]any, 1))
+		writeWSEvent(t, ctx, conn, `{"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}`)
+		writeWSEvent(t, ctx, conn, `{"type":"response.output_item.added","item":{"id":"msg_1","type":"message","role":"assistant","phase":"final_answer","status":"in_progress"},"output_index":0}`)
+		writeWSEvent(t, ctx, conn, `{"type":"response.output_text.delta","delta":"done","item_id":"msg_1","output_index":0}`)
+		writeWSEvent(t, ctx, conn, `{"type":"response.output_item.done","item":{"id":"msg_1","type":"message","role":"assistant","phase":"final_answer","status":"completed","content":[{"type":"output_text","text":"done"}]},"output_index":0}`)
+		// Reproduce a provider that never sends response.completed after the final
+		// answer item itself is explicitly complete.
+		_, _, _ = conn.Read(ctx)
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{
+		BaseURL:            server.URL,
+		WireAPI:            "responses",
+		APIKey:             "test-key",
+		ResponsesTransport: providers.StreamTransportWebSocket,
+		StreamConfig:       &providers.StreamTransportConfig{IdleTimeout: 100 * time.Millisecond},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	ch, err := client.StreamChat(ctx, providers.ChatRequest{
+		Model:     "gpt-test",
+		Messages:  []providers.ChatMessage{{Role: "user", Content: "hello"}},
+		CacheHint: &providers.CacheHint{PromptCacheKey: "thread-final-answer-tail"},
+	})
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	started := time.Now()
+	var events []providers.StreamEvent
+	for event := range ch {
+		events = append(events, event)
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("final-answer tail took %s, want less than 1s", elapsed)
+	}
+	if len(events) == 0 {
+		t.Fatal("no events received")
+	}
+	final := events[len(events)-1]
+	if final.Type != providers.EventDone || final.FinishReason != providers.FinishReasonStop || final.StopReason != "completed" || final.ProviderEventType != "response.output_item.done" {
+		t.Fatalf("final event = %+v, want inferred completed EventDone", final)
+	}
+	select {
+	case <-connClosed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("websocket connection was not closed after final-answer tail grace")
+	}
+}
+
 func TestResponsesWebSocketFallbackPinExpires(t *testing.T) {
 	client, err := New(ClientConfig{
 		BaseURL:            "https://example.test/v1",
