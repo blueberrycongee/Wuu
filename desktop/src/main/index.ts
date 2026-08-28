@@ -1828,9 +1828,11 @@ app.whenReady().then(async () => {
       appServerRequest<{ thread: Thread }>(event, "thread/start", params ?? {}),
   );
   ipcMain.handle("wuu:thread-resume", (event, sessionId?: string) =>
-    appServerRequest<ThreadResumeResult>(event, "thread/resume", {
-      session_id: sessionId ?? "",
-    }),
+    rendererServerEventBatcher.resolveSnapshot(
+      appServerRequest<ThreadResumeResult>(event, "thread/resume", {
+        session_id: sessionId ?? "",
+      }),
+    ),
   );
   ipcMain.handle(
     "wuu:thread-fork",

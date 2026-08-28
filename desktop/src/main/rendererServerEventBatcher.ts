@@ -52,6 +52,16 @@ export class RendererServerEventBatcher {
     }
   }
 
+  async resolveSnapshot<T>(request: Promise<T>): Promise<T> {
+    const snapshot = await request;
+    // The app-server snapshot already includes every delta processed before
+    // this response, while Electron may still be holding those same deltas in
+    // the renderer batch. Publish them first so a renderer never seeds the
+    // snapshot and then appends its already-included prefix a second time.
+    this.flush();
+    return snapshot;
+  }
+
   flush(): void {
     if (this.pendingFlush) {
       clearTimeout(this.pendingFlush);
