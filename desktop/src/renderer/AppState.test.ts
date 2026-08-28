@@ -12,6 +12,7 @@ import type {
 import {
   activeTodoUpdateForThread,
   activeThreadForState,
+  activeTurnIsAnswerReady,
   activeTurnTokenSpeed,
   activeTurnTokenSpeedSnapshot,
   applyLoadedRuntimeWithDraftCarry,
@@ -243,6 +244,7 @@ describe("isStateActiveThreadRunning with a background agent", () => {
     };
 
     expect(resolveComposerRunningAction("steer", thread)).toBe("queue");
+    expect(activeTurnIsAnswerReady(thread)).toBe(true);
   });
 });
 
@@ -510,6 +512,52 @@ describe("AppState protocol normalization", () => {
       items: [],
     });
     expect(next.running).toBe(true);
+  });
+
+  it("records the answer-ready boundary when a terminal assistant item completes", () => {
+    const current = threadWithUserTexts(["continue"]);
+    const thread: Thread = {
+      ...current,
+      status: "in_progress",
+      turns: [{
+        ...current.turns[0],
+        id: "turn-ready",
+        status: "in_progress",
+      }],
+    };
+    const next = reduceServerEvent(
+      {
+        ...initialState,
+        activeContext: { kind: "no_project", cwd: "/repo" },
+        thread,
+        threads: [thread],
+      },
+      {
+        kind: "notification",
+        workdir: "/repo",
+        message: {
+          method: "item/completed",
+          params: {
+            thread_id: thread.id,
+            turn_id: "turn-ready",
+            completed_at_ms: 1_785_560_400_000,
+            item: {
+              id: "answer-ready",
+              type: "agent_message",
+              status: "completed",
+              terminal: true,
+              text: "done",
+            },
+          },
+        },
+      },
+    );
+
+    expect(next.thread?.turns[0].status).toBe("in_progress");
+    expect(next.thread?.turns[0].answer_ready_at).toBe(
+      new Date(1_785_560_400_000).toISOString(),
+    );
+    expect(activeTurnIsAnswerReady(next.thread)).toBe(true);
   });
 
   it("normalizes null turn items inside a thread snapshot", () => {

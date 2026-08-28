@@ -741,9 +741,22 @@ function reduceNotification(
       if (!item || !turnID) {
         return state;
       }
-      const next = updateThreadByID(state, threadID, (thread) =>
-        upsertTurnItem(thread, turnID, item),
-      );
+      const completedAtMS = params?.completed_at_ms as number | undefined;
+      const answerReadyAt =
+        notification.method === "item/completed" &&
+        item.type === "agent_message" &&
+        item.status === "completed" &&
+        item.terminal === true &&
+        typeof completedAtMS === "number" &&
+        Number.isFinite(completedAtMS)
+          ? new Date(completedAtMS).toISOString()
+          : undefined;
+      const next = updateThreadByID(state, threadID, (thread) => {
+        const updated = upsertTurnItem(thread, turnID, item);
+        return answerReadyAt
+          ? markTurnAnswerReady(updated, turnID, answerReadyAt)
+          : updated;
+      });
       return next;
     }
     case "item/removed": {
@@ -2979,6 +2992,19 @@ function activeTurnAcceptsSteering(thread: Thread | undefined): boolean {
   );
 }
 
+function activeTurnIsAnswerReady(thread: Thread | undefined): boolean {
+  const turn = activeTurnForThread(thread);
+  return Boolean(
+    turn?.answer_ready_at ||
+      turn?.items.some(
+        (item) =>
+          item.type === "agent_message" &&
+          item.status === "completed" &&
+          item.terminal === true,
+      ),
+  );
+}
+
 function activeTurnForThread(thread: Thread | undefined): Turn | undefined {
   if (!thread) {
     return undefined;
@@ -3153,6 +3179,21 @@ function upsertTurnItem(
     return { ...turn, items: upsertTurnItemInOrder(turn, item) };
   });
   return { ...thread, turns };
+}
+
+function markTurnAnswerReady(
+  thread: Thread,
+  turnID: string,
+  answerReadyAt: string,
+): Thread {
+  return {
+    ...thread,
+    turns: thread.turns.map((turn) =>
+      turn.id === turnID && !turn.answer_ready_at
+        ? { ...turn, answer_ready_at: answerReadyAt }
+        : turn,
+    ),
+  };
 }
 
 function removeTurnItem(thread: Thread, turnID: string, itemID: string): Thread {
@@ -3728,6 +3769,7 @@ export {
   reduceNotification,
   reduceServerEvent,
   activeTurnAcceptsSteering,
+  activeTurnIsAnswerReady,
   resolveComposerRunningAction,
   removeSessionTab,
   replaceStreamText,

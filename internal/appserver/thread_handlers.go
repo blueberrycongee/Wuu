@@ -439,6 +439,11 @@ func (s *Server) handleThreadFork(req Request) error {
 		target.SourceID = strings.TrimSpace(params.Target.SourceID)
 	}
 	history, err := forkHistoryAtTargetWithIdentity(source.history, source.thread.ID, source.thread.Turns, params.TurnID, params.ItemID, target)
+	if errors.Is(err, errForkTargetNotFound) {
+		if liveTurn, ok := turnByID(source.thread.Turns, strings.TrimSpace(params.TurnID)); ok {
+			history, err = forkLiveAnswerHistory(source.history, liveTurn, params.ItemID)
+		}
+	}
 	if errors.Is(err, errForkTargetNotFound) && len(source.rawHistory) > 0 {
 		history, err = forkPersistedHistoryAtTarget(source.rawHistory, source.thread.ID, source.thread.Turns, params.TurnID, params.ItemID, target)
 	}

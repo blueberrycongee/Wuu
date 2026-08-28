@@ -214,6 +214,50 @@ func TestEditHistorySkipsRetiredContextArtifactsWithoutSequenceIDs(t *testing.T)
 	}
 }
 
+func TestForkLiveAnswerHistoryIncludesCompletedToolsAndFinalAnswer(t *testing.T) {
+	base := []providers.ChatMessage{{Role: "user", Content: "inspect it"}}
+	turn := Turn{
+		ID:     "turn-live",
+		Status: TurnStatusInProgress,
+		Items: []ThreadItem{
+			{ID: "user", Type: ThreadItemUserMessage, Status: ThreadItemStatusCompleted, Text: "inspect it"},
+			{ID: "tool", SourceID: "call-1", Type: ThreadItemToolCall, Status: ThreadItemStatusCompleted, Name: "read_file", Arguments: `{"path":"a.txt"}`, Result: "contents"},
+			{ID: "answer", SourceID: "msg-1", Type: ThreadItemAgentMessage, Status: ThreadItemStatusCompleted, Terminal: true, Text: "done"},
+		},
+	}
+
+	forked, err := forkLiveAnswerHistory(base, turn, "answer")
+	if err != nil {
+		t.Fatalf("forkLiveAnswerHistory: %v", err)
+	}
+	if len(forked) != 4 {
+		t.Fatalf("forked history = %+v", forked)
+	}
+	if len(forked[1].ToolCalls) != 1 || forked[1].ToolCalls[0].ID != "call-1" {
+		t.Fatalf("tool call = %+v", forked[1])
+	}
+	if forked[2].Role != "tool" || forked[2].ToolCallID != "call-1" || forked[2].Content != "contents" {
+		t.Fatalf("tool result = %+v", forked[2])
+	}
+	if forked[3].Role != "assistant" || forked[3].Content != "done" || forked[3].Phase != providers.MessagePhaseFinalAnswer || forked[3].ProviderItemID != "msg-1" {
+		t.Fatalf("final answer = %+v", forked[3])
+	}
+}
+
+func TestForkLiveAnswerHistoryRejectsIncompleteTool(t *testing.T) {
+	turn := Turn{
+		ID:     "turn-live",
+		Status: TurnStatusInProgress,
+		Items: []ThreadItem{
+			{ID: "tool", SourceID: "call-1", Type: ThreadItemToolCall, Status: ThreadItemStatusInProgress},
+			{ID: "answer", Type: ThreadItemAgentMessage, Status: ThreadItemStatusCompleted, Terminal: true, Text: "done"},
+		},
+	}
+	if _, err := forkLiveAnswerHistory(nil, turn, "answer"); !errors.Is(err, errForkToolResultsNotFound) {
+		t.Fatalf("error = %v, want %v", err, errForkToolResultsNotFound)
+	}
+}
+
 func finalAnswerItemForForkTest(t *testing.T, turns []Turn, text string) (Turn, ThreadItem) {
 	t.Helper()
 	for _, turn := range turns {

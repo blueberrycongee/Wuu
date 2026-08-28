@@ -27,6 +27,7 @@ import type {
   PluginPackageInstallResult,
   PluginPackageRemoveResult,
   RuntimeContext,
+  RunningThreadSnapshot,
   ServerEvent,
   SkillSummary,
   Thread,
@@ -98,6 +99,7 @@ import {
   activeThreadForState,
   activeThreadIDForState,
   activeTurnAcceptsSteering,
+  activeTurnIsAnswerReady,
   activeTurnForThread,
   latestContextUsageForThread,
   activeTurnIDForThread,
@@ -819,17 +821,38 @@ export function App(): JSX.Element {
     // Defensive optional calls: renderer tests stub window.wuu with partial
     // mocks that predate this API; the real preload always provides both.
     let disposed = false;
-    void window.wuu.getRunningThreadsSnapshot?.().then((snapshot) => {
+    const applyRunningSnapshot = (snapshot: RunningThreadSnapshot[]): void => {
       if (disposed) return;
+      const runningIDs = new Set(snapshot.map((item) => item.thread_id));
       setCrossWorkdirRunningThreadIDs(
-        new Set(snapshot.map((item) => item.thread_id)),
+        runningIDs,
       );
-    });
+      const current = appStateRef.current;
+      const hasStaleRunningTurn = [
+        current.thread,
+        current.secondaryThread,
+        ...current.threads,
+      ].some(
+        (thread) =>
+          thread && isThreadRunning(thread) && !runningIDs.has(thread.id),
+      );
+      if (!hasStaleRunningTurn) {
+        return;
+      }
+      // The main process is authoritative for execution ownership. If its
+      // snapshot says a loaded thread is idle while the renderer still has an
+      // in-progress turn, repair immediately instead of waiting for the
+      // throttled cross-process discovery refresh.
+      void window.wuu.listThreads().then((listed) => {
+        if (disposed) return;
+        setState((state) => reconcileListedThreadState(state, listed.threads));
+      }).catch(() => {
+        // A later running snapshot or ordinary refresh retries.
+      });
+    };
+    void window.wuu.getRunningThreadsSnapshot?.().then(applyRunningSnapshot);
     const unsubscribe = window.wuu.onRunningThreadsChanged?.((snapshot) => {
-      if (disposed) return;
-      setCrossWorkdirRunningThreadIDs(
-        new Set(snapshot.map((item) => item.thread_id)),
-      );
+      applyRunningSnapshot(snapshot);
     });
     return () => {
       disposed = true;
@@ -2476,7 +2499,11 @@ export function App(): JSX.Element {
   const activeThreadReadOnly = Boolean(activeThread?.read_only);
   const activeThreadIsRunning = isStateActiveThreadRunning(state);
   const activeThreadCanSteer = activeTurnAcceptsSteering(activeThread);
-  const activeThreadStreamStatus = turnStreamStatusForThread(state, activeThread);
+  const activeThreadAnswerReady = activeTurnIsAnswerReady(activeThread);
+  const composerTurnRunning = activeThreadIsRunning && !activeThreadAnswerReady;
+  const activeThreadStreamStatus = activeThreadAnswerReady
+    ? undefined
+    : turnStreamStatusForThread(state, activeThread);
   const anyThreadIsRunning = isAnyThreadRunning(state) || viewContextSwitchPending;
   const runningThreadKey = useMemo(() => {
     const running = new Set<string>();
@@ -2815,7 +2842,7 @@ export function App(): JSX.Element {
         guideMessages={guideMessages}
         sendDisabled={viewSwitchPending}
         running={
-          (!activeThreadReadOnly && activeThreadIsRunning) ||
+          (!activeThreadReadOnly && composerTurnRunning) ||
           viewContextSwitchPending
         }
         runtimeControlsDisabled={

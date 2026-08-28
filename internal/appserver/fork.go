@@ -55,6 +55,66 @@ func forkPersistedHistoryAtTarget(history []persistedMessage, sourceThreadID str
 	return cloneForkHistory(chatMessagesFromPersistedMessages(history[:origin.EndIndex+1])), nil
 }
 
+// forkLiveAnswerHistory materializes a branch from a completed final answer
+// while provider-level turn settlement is still in progress. The admitted user
+// message is already present in baseHistory. Completed tool items are projected
+// as portable call/result pairs before the answer, without retaining execution
+// ledger ownership from the source thread.
+func forkLiveAnswerHistory(baseHistory []providers.ChatMessage, turn Turn, targetItemID string) ([]providers.ChatMessage, error) {
+	targetItemID = strings.TrimSpace(targetItemID)
+	if targetItemID == "" || turn.Status != TurnStatusInProgress {
+		return nil, errForkTargetNotFound
+	}
+	history := cloneHistory(baseHistory)
+	found := false
+	for _, item := range turn.Items {
+		if item.ID == targetItemID {
+			if item.Type != ThreadItemAgentMessage || item.Status != ThreadItemStatusCompleted || !item.Terminal || strings.TrimSpace(item.Text) == "" {
+				return nil, errForkTargetNotFound
+			}
+			history = append(history, providers.ChatMessage{
+				Role:           "assistant",
+				Content:        item.Text,
+				Phase:          providers.MessagePhaseFinalAnswer,
+				ProviderItemID: item.SourceID,
+				FinishReason:   providers.FinishReason(item.FinishReason),
+				StopReason:     item.StopReason,
+				Truncated:      item.Truncated,
+			})
+			found = true
+			break
+		}
+		if item.Type != ThreadItemToolCall {
+			continue
+		}
+		if item.Status != ThreadItemStatusCompleted || strings.TrimSpace(item.SourceID) == "" {
+			return nil, errForkToolResultsNotFound
+		}
+		history = append(history,
+			providers.ChatMessage{
+				Role: "assistant",
+				ToolCalls: []providers.ToolCall{{
+					ID:        item.SourceID,
+					Name:      item.Name,
+					Arguments: item.Arguments,
+					Display:   cloneToolCallDisplay(item.Display),
+				}},
+			},
+			providers.ChatMessage{
+				Role:       "tool",
+				Name:       item.Name,
+				ToolCallID: item.SourceID,
+				Content:    item.Result,
+				ToolResult: cloneToolResult(item.ResultDetail),
+			},
+		)
+	}
+	if !found {
+		return nil, errForkTargetNotFound
+	}
+	return cloneForkHistory(history), nil
+}
+
 func forkOriginAtTarget(projection historyProjection, turns []Turn, targetTurnID, targetItemID string, target ThreadItem) (historyItemOrigin, error) {
 	var origin historyItemOrigin
 	var ok bool

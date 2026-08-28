@@ -360,6 +360,10 @@ func (th *threadState) finishTurnLocked(turnID string, status TurnStatus, err er
 	turn.StopReason = stopReason
 	turn.Truncated = truncated
 	turn.CompletedAt = &now
+	if turn.AnswerReadyAt == nil && status == TurnStatusCompleted {
+		answerReadyAt := now
+		turn.AnswerReadyAt = &answerReadyAt
+	}
 	if turn.StartedAt != nil {
 		duration := now.Sub(*turn.StartedAt).Milliseconds()
 		turn.DurationMS = &duration
@@ -816,6 +820,14 @@ func (th *threadState) applyMessageItemLocked(turnID string, msg providers.ChatM
 		item.StopReason = msg.StopReason
 		item.Truncated = msg.Truncated
 		th.upsertItemLocked(turnID, item, now)
+		if terminal {
+			turn := th.ensureTurnLocked(turnID, now)
+			if turn.AnswerReadyAt == nil {
+				answerReadyAt := now
+				turn.AnswerReadyAt = &answerReadyAt
+				th.replaceTurnLocked(turn)
+			}
+		}
 		th.activeAgentItemID = ""
 		out = append(out, itemCompleted(th.ID, turnID, item, now))
 		return out

@@ -2051,6 +2051,8 @@ export type Turn = {
   // concise read-only system event. Mirrors internal/appserver/protocol.go::TurnError.
   error?: TurnError;
   started_at?: string | null;
+  /** User-visible answer completion; provider turn settlement may follow later. */
+  answer_ready_at?: string | null;
   completed_at?: string | null;
   duration_ms?: number;
   input_tokens?: number;

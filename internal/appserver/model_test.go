@@ -92,6 +92,32 @@ func TestThreadStateRetainsExecutionLeaseUntilRelease(t *testing.T) {
 	}
 }
 
+func TestThreadStateMarksAnswerReadyBeforeTurnSettlement(t *testing.T) {
+	now := time.Unix(100, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "inspect"}, now)
+
+	th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type: providers.EventMessage,
+		Message: &providers.ChatMessage{
+			Role:    "assistant",
+			Content: "done",
+			Phase:   providers.MessagePhaseFinalAnswer,
+		},
+	}, now.Add(time.Second))
+
+	turn := th.ensureTurnLocked("turn", now)
+	if turn.Status != TurnStatusInProgress {
+		t.Fatalf("turn status = %q, want in_progress", turn.Status)
+	}
+	if turn.AnswerReadyAt == nil || !turn.AnswerReadyAt.Equal(now.Add(time.Second)) {
+		t.Fatalf("answer_ready_at = %v", turn.AnswerReadyAt)
+	}
+	if !th.running || th.currentTurn != "turn" {
+		t.Fatalf("answer readiness released execution: running=%v current=%q", th.running, th.currentTurn)
+	}
+}
+
 func TestThreadStateMarksStreamedFinalAnswerTerminalOnTurnCompletion(t *testing.T) {
 	now := time.Unix(0, 0).UTC()
 	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)

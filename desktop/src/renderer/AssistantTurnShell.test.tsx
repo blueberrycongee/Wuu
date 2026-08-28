@@ -499,6 +499,21 @@ describe("AssistantTurnShell — process fold default state (rule 2 + rule 8)", 
     expect(container.querySelector(".turn-process-meta")?.textContent).toBe("2s");
   });
 
+  it("stops the visible timer and reports completion at answer readiness", () => {
+    const turn = {
+      ...makeTurn("in_progress", [makeFinalAnswer("done")]),
+      started_at: "2026-08-04T10:00:00.000Z",
+      answer_ready_at: "2026-08-04T10:00:02.000Z",
+    };
+    const { container } = renderShell(turn);
+
+    expect(container.querySelector(".turn-process-title")?.textContent).toBe(
+      "用时 2 秒",
+    );
+    expect(container.querySelector(".turn-process-meta")).toBeNull();
+    expect(container.textContent).not.toContain("正在收尾");
+  });
+
   it("keeps a recovered live timer across a session-tab unmount and remount", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-04T10:00:00Z"));

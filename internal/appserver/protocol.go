@@ -2060,24 +2060,27 @@ type Turn struct {
 	Kind TurnKind `json:"kind,omitempty"`
 	// ModelProvider and Model are captured when the turn begins. They stay
 	// stable while a config update prepares the thread for its next turn.
-	ModelProvider       string        `json:"model_provider,omitempty"`
-	Model               string        `json:"model,omitempty"`
-	Items               []ThreadItem  `json:"items"`
-	ItemsView           TurnItemsView `json:"items_view"`
-	Status              TurnStatus    `json:"status"`
-	Error               *TurnError    `json:"error,omitempty"`
-	FinishReason        string        `json:"finish_reason,omitempty"`
-	StopReason          string        `json:"stop_reason,omitempty"`
-	Truncated           bool          `json:"truncated,omitempty"`
-	StartedAt           *time.Time    `json:"started_at,omitempty"`
-	CompletedAt         *time.Time    `json:"completed_at,omitempty"`
-	DurationMS          *int64        `json:"duration_ms,omitempty"`
-	InputTokens         int           `json:"input_tokens,omitempty"`
-	OutputTokens        int           `json:"output_tokens,omitempty"`
-	ContextTokens       int           `json:"context_tokens,omitempty"`
-	CacheCreationTokens int           `json:"cache_creation_tokens,omitempty"`
-	CacheReadTokens     int           `json:"cache_read_tokens,omitempty"`
-	UsageModel          string        `json:"usage_model,omitempty"`
+	ModelProvider string        `json:"model_provider,omitempty"`
+	Model         string        `json:"model,omitempty"`
+	Items         []ThreadItem  `json:"items"`
+	ItemsView     TurnItemsView `json:"items_view"`
+	Status        TurnStatus    `json:"status"`
+	Error         *TurnError    `json:"error,omitempty"`
+	FinishReason  string        `json:"finish_reason,omitempty"`
+	StopReason    string        `json:"stop_reason,omitempty"`
+	Truncated     bool          `json:"truncated,omitempty"`
+	StartedAt     *time.Time    `json:"started_at,omitempty"`
+	// AnswerReadyAt is the user-visible completion boundary. Provider cleanup,
+	// durable turn settlement, and execution-lease release may finish later.
+	AnswerReadyAt       *time.Time `json:"answer_ready_at,omitempty"`
+	CompletedAt         *time.Time `json:"completed_at,omitempty"`
+	DurationMS          *int64     `json:"duration_ms,omitempty"`
+	InputTokens         int        `json:"input_tokens,omitempty"`
+	OutputTokens        int        `json:"output_tokens,omitempty"`
+	ContextTokens       int        `json:"context_tokens,omitempty"`
+	CacheCreationTokens int        `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens     int        `json:"cache_read_tokens,omitempty"`
+	UsageModel          string     `json:"usage_model,omitempty"`
 }
 
 // MarshalJSON keeps the app-server contract stable: items is a required

@@ -269,13 +269,19 @@ function TurnProcessFold({
   const detailsID = `${turn.id}-process-fold`;
 
   const parsedStartedAt = parseTurnTimestampMs(turn.started_at);
+  const parsedAnswerReadyAt = parseTurnTimestampMs(turn.answer_ready_at);
   const parsedCompletedAt = parseTurnTimestampMs(turn.completed_at);
+  const answerReady = Number.isFinite(parsedAnswerReadyAt);
   // Recovered/provider-backed turns do not always carry duration_ms even
   // though their boundary timestamps are present. Treating that omission as
   // zero makes any such completed turn read "under 1 second".
-  const timestampDuration =
+  const settledTimestampDuration =
     Number.isFinite(parsedStartedAt) && Number.isFinite(parsedCompletedAt)
       ? Math.max(0, parsedCompletedAt - parsedStartedAt)
+      : undefined;
+  const answerReadyDuration =
+    Number.isFinite(parsedStartedAt) && answerReady
+      ? Math.max(0, parsedAnswerReadyAt - parsedStartedAt)
       : undefined;
   const reportedDuration =
     typeof turn.duration_ms === "number" && Number.isFinite(turn.duration_ms)
@@ -283,10 +289,13 @@ function TurnProcessFold({
       : undefined;
   // Both values describe the same boundary, so prefer the larger valid value.
   // This also prevents a stale explicit 0 from masking usable timestamps.
-  const completedDuration =
-    reportedDuration !== undefined && timestampDuration !== undefined
-      ? Math.max(reportedDuration, timestampDuration)
-      : reportedDuration ?? timestampDuration;
+  const settledDuration =
+    reportedDuration !== undefined && settledTimestampDuration !== undefined
+      ? Math.max(reportedDuration, settledTimestampDuration)
+      : reportedDuration ?? settledTimestampDuration;
+  // The visible timer stops at answer readiness. Provider cleanup can continue
+  // internally, but must not make a completed-looking answer keep aging.
+  const completedDuration = answerReadyDuration ?? settledDuration;
   const liveDuration =
     completedDuration === undefined &&
     turn.status === "in_progress";
@@ -329,11 +338,13 @@ function TurnProcessFold({
     elapsedMs,
     completedDuration !== undefined,
     collapseRequested,
+    answerReady,
   );
   const metaParts = turnProcessMetaParts(
     turn,
     elapsedMs,
     pausedElapsedMs !== undefined,
+    answerReady,
   );
 
   // A confirmed non-empty final answer is the handoff edge: process work
@@ -747,7 +758,13 @@ function turnProcessTitle(
   elapsedMs: number,
   hasKnownDuration: boolean,
   hasFinalText: boolean,
+  answerReady: boolean,
 ): string {
+  if (answerReady) {
+    return hasKnownDuration
+      ? taskFinishedLabel(elapsedMs)
+      : translate("task.status.completed");
+  }
   if (turn.status === "completed" || turn.status === "interrupted") {
     if (!hasKnownDuration) {
       return turn.status === "interrupted"
@@ -768,9 +785,10 @@ function turnProcessMetaParts(
   turn: Turn,
   elapsedMs: number,
   showPausedElapsed: boolean,
+  answerReady: boolean,
 ): string[] {
   const parts: string[] = [];
-  if (turn.status === "in_progress") {
+  if (turn.status === "in_progress" && !answerReady) {
     parts.push(formatDuration(elapsedMs));
   } else if (turn.status === "interrupted" && showPausedElapsed) {
     parts.push(formatDuration(elapsedMs));
