@@ -145,6 +145,15 @@
   line-height: 1.75;
 }
 
+.onboarding-stage-welcome h1 {
+  /* Compensate for the weak visual weight of the trailing Chinese punctuation. */
+  transform: translateX(0.08em);
+}
+
+.onboarding-stage-welcome .onboarding-primary {
+  margin-top: 32px;
+}
+
 .onboarding-primary,
 .onboarding-secondary,
 .onboarding-back,

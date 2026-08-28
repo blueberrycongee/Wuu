@@ -229,9 +229,7 @@ export function FirstRunOnboarding({
               followPointer
               aria-hidden="true"
             />
-            <p className="onboarding-eyebrow">{t("onboarding.eyebrow")}</p>
             <h1>{t("onboarding.welcomeTitle")}</h1>
-            <p className="onboarding-lede">{t("onboarding.welcomeDescription")}</p>
             <button className="onboarding-primary" type="button" onClick={() => setStep("plugins")}>
               {t("onboarding.begin")}
             </button>

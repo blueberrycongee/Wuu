@@ -161,6 +161,8 @@ describe("FirstRunOnboarding", () => {
 
     expect(container.querySelector('[data-testid="first-run-onboarding"]')).not.toBeNull();
     expect(container.textContent).toContain("保持简单，按需生长");
+    expect(container.textContent).not.toContain("欢迎来到 Wuu");
+    expect(container.textContent).not.toContain("Wuu 的核心负责可靠地运行 Agent");
     expect(document.documentElement.dataset.theme).toBe("light");
 
     await clickButton("开始设置");
