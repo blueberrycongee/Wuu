@@ -321,13 +321,23 @@ function BuiltInThreadItemView({
         : (item.text ?? "");
       const copyable = agentText.trim() !== "";
       const isProcessText = !item.terminal;
-      const actionsVisible =
+      const forkVisible =
         turnStatus === "completed" &&
         item.id === actionableAgentMessageID &&
         copyable &&
         !isProcessText;
+      // The final message item is already a stable copy boundary even while the
+      // enclosing turn waits for provider settlement. Fork remains gated on the
+      // durable completed turn because it needs settled history.
+      const finalizingCopyVisible =
+        turnStatus === "in_progress" &&
+        item.status === "completed" &&
+        copyable &&
+        !isProcessText;
+      const actionsVisible = forkVisible || finalizingCopyVisible;
       const actionsPersistent =
-        actionsVisible && item.id === latestAgentMessageID;
+        actionsVisible &&
+        (item.id === latestAgentMessageID || finalizingCopyVisible);
       // Only the persistent bar (latest answer, always visible) takes
       // in-flow space; historical answers get a hover overlay so no
       // invisible slot pads the turn boundary.
@@ -356,7 +366,12 @@ function BuiltInThreadItemView({
             <AgentMessageActions
               getText={() => streamFieldValue(turnID, item, "text")}
               placement={actionsPersistent ? "persistent" : "overlay"}
-              onFork={onForkMessage ? () => onForkMessage(turnID, item.id) : undefined}
+              showFork={forkVisible}
+              onFork={
+                forkVisible && onForkMessage
+                  ? () => onForkMessage(turnID, item.id)
+                  : undefined
+              }
             />
           ) : null}
         </article>
