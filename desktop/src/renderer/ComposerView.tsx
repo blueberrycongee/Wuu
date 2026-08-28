@@ -328,10 +328,15 @@ export function Composer({
   const [lastCommittedPrompt, setLastCommittedPrompt] = useState(committedPrompt);
   const [lastPromptRevision, setLastPromptRevision] = useState(promptRevision);
   const optimisticPromptQueueRef = useRef<string[]>([]);
+  // Parent draft clearing crosses an async/transition boundary. Close the
+  // interval where two gestures can still read the same rendered draft, while
+  // allowing a real input change (even to the same eventual text) to re-arm it.
+  const submittedDraftSignatureRef = useRef<string | null>(null);
   if (promptRevision !== lastPromptRevision) {
     setLastPromptRevision(promptRevision);
     setLastCommittedPrompt(committedPrompt);
     optimisticPromptQueueRef.current.length = 0;
+    submittedDraftSignatureRef.current = null;
     setLocalPrompt(committedPrompt);
   } else if (committedPrompt !== lastCommittedPrompt) {
     setLastCommittedPrompt(committedPrompt);
@@ -345,11 +350,13 @@ export function Composer({
       optimisticPromptQueueRef.current.splice(0, optimisticPromptIndex + 1);
     } else {
       optimisticPromptQueueRef.current.length = 0;
+      submittedDraftSignatureRef.current = null;
       setLocalPrompt(committedPrompt);
     }
   }
   function setPrompt(value: string): void {
     optimisticPromptQueueRef.current.length = 0;
+    submittedDraftSignatureRef.current = null;
     setLocalPrompt(value);
     commitPrompt(value);
   }
@@ -660,6 +667,17 @@ export function Composer({
       applySlashCommand(actionCommand, submitSlashDraft);
       return;
     }
+    const draftSignature = JSON.stringify([
+      promptOverride,
+      images.map((image) => image.id),
+      files.map((file) => file.id),
+    ]);
+    if (submittedDraftSignatureRef.current === draftSignature) {
+      return;
+    }
+    submittedDraftSignatureRef.current = draftSignature;
+    optimisticPromptQueueRef.current.length = 0;
+    setLocalPrompt("");
     const contentParts = collapsedContentPartsForPrompt(promptOverride);
     if (contentParts) {
       onSubmit(promptOverride, contentParts);
@@ -704,6 +722,7 @@ export function Composer({
   function updateVisiblePrompt(value: string): void {
     resetQueryHistoryNavigation();
     setSlashDismissedValue("");
+    submittedDraftSignatureRef.current = null;
     const nextPrompt = hasCollapsedPromptBlocks ? `${collapsedPromptPrefix}${value}` : value;
     setLocalPrompt(nextPrompt);
     optimisticPromptQueueRef.current.push(nextPrompt);

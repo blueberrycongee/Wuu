@@ -724,6 +724,43 @@ describe("Composer send control", () => {
     expect(textarea.value).toBe("");
   });
 
+  it("submits one copy when duplicate gestures race the draft clear", () => {
+    const onSteer = vi.fn();
+    renderComposer({
+      prompt: "send this once",
+      running: true,
+      onSteer,
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    if (!textarea) throw new Error("composer textarea not rendered");
+
+    act(() => {
+      for (let index = 0; index < 2; index += 1) {
+        textarea.dispatchEvent(new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }));
+      }
+    });
+
+    expect(onSteer).toHaveBeenCalledTimes(1);
+    expect(onSteer).toHaveBeenCalledWith("send this once");
+    expect(textarea.value).toBe("");
+
+    act(() => {
+      setTextareaValue(textarea, "a genuinely new draft");
+      textarea.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+
+    expect(onSteer).toHaveBeenCalledTimes(2);
+    expect(onSteer).toHaveBeenLastCalledWith("a genuinely new draft");
+  });
+
   it("does not replace active IME text with a delayed parent draft echo", () => {
     const pendingCommits: Array<() => void> = [];
     renderStatefulComposer({
