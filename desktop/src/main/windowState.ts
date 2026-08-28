@@ -10,6 +10,8 @@ export const MAIN_WINDOW_DEFAULT_WIDTH_RATIO = 0.40;
 export const MAIN_WINDOW_DEFAULT_HEIGHT_RATIO = 0.60;
 export const MAIN_WINDOW_MAX_WIDTH = 1600;
 export const MAIN_WINDOW_MAX_HEIGHT = 1100;
+export const ONBOARDING_WINDOW_WIDTH = 1080;
+export const ONBOARDING_WINDOW_HEIGHT = 760;
 
 export type WorkArea = {
   width: number;
@@ -34,6 +36,13 @@ export function computeDefaultMainWindowBounds(workArea: WorkArea): MainWindowSi
   const width = Math.min(MAIN_WINDOW_MAX_WIDTH, Math.round(targetWidth));
   const height = Math.min(MAIN_WINDOW_MAX_HEIGHT, Math.round(targetHeight));
   return { width, height };
+}
+
+export function computeOnboardingWindowBounds(workArea: WorkArea): MainWindowSize {
+  return {
+    width: Math.min(ONBOARDING_WINDOW_WIDTH, workArea.width),
+    height: Math.min(ONBOARDING_WINDOW_HEIGHT, workArea.height),
+  };
 }
 
 export type WindowBounds = {

@@ -235,6 +235,7 @@ import {
 } from "./browserHostWindows";
 import {
   computeDefaultMainWindowBounds,
+  computeOnboardingWindowBounds,
   loadMainWindowBounds,
   saveMainWindowBounds,
 } from "./windowState";
@@ -922,14 +923,20 @@ function createPopOutWindow(params: PopOutWindowParams): BrowserWindow {
 
 function createWindow(): void {
   const primaryDisplay = screen.getPrimaryDisplay();
-  const restoredBounds = loadMainWindowBounds(screen.getAllDisplays());
-  const defaultSize = computeDefaultMainWindowBounds(primaryDisplay.workArea);
+  const onboardingComplete = isOnboardingComplete();
+  const restoredBounds = onboardingComplete
+    ? loadMainWindowBounds(screen.getAllDisplays())
+    : null;
+  const defaultSize = onboardingComplete
+    ? computeDefaultMainWindowBounds(primaryDisplay.workArea)
+    : computeOnboardingWindowBounds(primaryDisplay.workArea);
   const width = restoredBounds?.width ?? defaultSize.width;
   const height = restoredBounds?.height ?? defaultSize.height;
 
   const windowOptions: BrowserWindowConstructorOptions = {
     width,
     height,
+    resizable: onboardingComplete,
     ...windowFrameOptions(),
     ...mainWindowMaterialOptions(),
     webPreferences: {
@@ -1907,6 +1914,9 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("wuu:onboarding-complete", () => {
     completeOnboarding();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setResizable(true);
+    }
     return { ok: true as const };
   });
   ipcMain.handle("wuu:language-preference-get", () => getLanguagePreference());

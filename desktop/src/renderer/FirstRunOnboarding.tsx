@@ -1,5 +1,5 @@
 import { Check, ChevronLeft, LoaderCircle, Plug, Sparkles } from "lucide-react";
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   ExtensionInventoryRecord,
   ExtensionPackageUpdateParams,
@@ -58,9 +58,13 @@ export function bundledOnboardingPlugins(
         record.kind === "plugin" &&
         record.package_source === "bundled" &&
         record.provenance.official === true &&
-        order.has(record.id),
+        order.has(record.provenance.plugin_id ?? ""),
     )
-    .sort((left, right) => (order.get(left.id) ?? 99) - (order.get(right.id) ?? 99));
+    .sort(
+      (left, right) =>
+        (order.get(left.provenance.plugin_id ?? "") ?? 99) -
+        (order.get(right.provenance.plugin_id ?? "") ?? 99),
+    );
 }
 
 export function hasOnboardingProvider(
@@ -89,10 +93,12 @@ export function FirstRunOnboarding({
   onComplete: () => Promise<void>;
 }): JSX.Element {
   const { t } = useI18n();
+  const bundledPlugins = useMemo(() => bundledOnboardingPlugins(inventory), [inventory]);
   const [step, setStep] = useState<OnboardingStep>("welcome");
   const [selectedPluginIDs, setSelectedPluginIDs] = useState<Set<string>>(
-    () => new Set(RECOMMENDED_PLUGIN_IDS),
+    () => recommendedPluginSubjectIDs(bundledPlugins),
   );
+  const initializedPluginSelection = useRef(bundledPlugins.length > 0);
   const [applyingPlugins, setApplyingPlugins] = useState(false);
   const [providerName, setProviderName] = useState("");
   const [providerType, setProviderType] = useState("openai-compatible");
@@ -101,7 +107,6 @@ export function FirstRunOnboarding({
   const [savingProvider, setSavingProvider] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState("");
-  const bundledPlugins = useMemo(() => bundledOnboardingPlugins(inventory), [inventory]);
   const providerReady = hasOnboardingProvider(providers);
   const preset = selectedPreset(selectedPluginIDs, bundledPlugins);
   const currentStepIndex = STEP_ORDER.indexOf(step);
@@ -114,6 +119,12 @@ export function FirstRunOnboarding({
     };
   }, []);
 
+  useEffect(() => {
+    if (initializedPluginSelection.current || bundledPlugins.length === 0) return;
+    initializedPluginSelection.current = true;
+    setSelectedPluginIDs(recommendedPluginSubjectIDs(bundledPlugins));
+  }, [bundledPlugins]);
+
   function choosePreset(next: Exclude<PluginPreset, "custom">): void {
     if (next === "minimal") {
       setSelectedPluginIDs(new Set());
@@ -124,7 +135,7 @@ export function FirstRunOnboarding({
       return;
     }
     setSelectedPluginIDs(
-      new Set(bundledPlugins.filter((plugin) => RECOMMENDED_PLUGIN_IDS.has(plugin.id)).map((plugin) => plugin.id)),
+      recommendedPluginSubjectIDs(bundledPlugins),
     );
   }
 
@@ -252,16 +263,21 @@ export function FirstRunOnboarding({
               ))}
             </div>
 
-            {bundledPlugins.length === 0 ? (
+            {inventory === undefined ? (
               <div className="onboarding-loading" role="status">
                 <LoaderCircle className="is-spinning" />
                 {t("onboarding.loadingPlugins")}
+              </div>
+            ) : bundledPlugins.length === 0 ? (
+              <div className="onboarding-loading" role="alert">
+                {t("onboarding.pluginsUnavailable")}
               </div>
             ) : (
               <div className="onboarding-plugin-grid">
                 {bundledPlugins.map((plugin) => {
                   const selected = selectedPluginIDs.has(plugin.id);
-                  const descriptionKey = PLUGIN_DESCRIPTION_KEYS[plugin.id];
+                  const pluginID = plugin.provenance.plugin_id ?? "";
+                  const descriptionKey = PLUGIN_DESCRIPTION_KEYS[pluginID];
                   return (
                     <button
                       key={plugin.id}
@@ -273,7 +289,7 @@ export function FirstRunOnboarding({
                       <span className="onboarding-plugin-icon">
                         <PluginIcon
                           icon={plugin.icon}
-                          pluginId={plugin.id}
+                          pluginId={pluginID}
                           fingerprint={plugin.fingerprint ?? ""}
                         />
                       </span>
@@ -396,11 +412,21 @@ function selectedPreset(
   if (available.size > 0 && selected.size === available.size && [...available].every((id) => selected.has(id))) {
     return "all";
   }
-  const recommended = [...available].filter((id) => RECOMMENDED_PLUGIN_IDS.has(id));
+  const recommended = [...recommendedPluginSubjectIDs(plugins)];
   if (selected.size === recommended.length && recommended.every((id) => selected.has(id))) {
     return "recommended";
   }
   return "custom";
+}
+
+function recommendedPluginSubjectIDs(
+  plugins: readonly ExtensionInventoryRecord[],
+): Set<string> {
+  return new Set(
+    plugins
+      .filter((plugin) => RECOMMENDED_PLUGIN_IDS.has(plugin.provenance.plugin_id ?? ""))
+      .map((plugin) => plugin.id),
+  );
 }
 
 function OnboardingError({ message }: { message: string }): JSX.Element | null {

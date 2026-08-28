@@ -1940,6 +1940,7 @@ export const enUS = {
   "onboarding.preset.recommended": "Recommended",
   "onboarding.preset.all": "Everything",
   "onboarding.loadingPlugins": "Preparing included plugins…",
+  "onboarding.pluginsUnavailable": "Included plugins could not be loaded. Restart Wuu and try again.",
   "onboarding.plugin.askUser": "Pause and ask you when an important detail is missing.",
   "onboarding.plugin.todo": "Turn complex work into clear, visible progress.",
   "onboarding.plugin.automation": "Schedule prompts and recurring work.",

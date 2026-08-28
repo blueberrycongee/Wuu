@@ -1938,6 +1938,7 @@ export const zhCN = {
   "onboarding.preset.recommended": "推荐",
   "onboarding.preset.all": "全部",
   "onboarding.loadingPlugins": "正在准备随包插件…",
+  "onboarding.pluginsUnavailable": "未能读取随包插件，请重新启动 Wuu 后再试。",
   "onboarding.plugin.askUser": "需要关键信息时暂停并向你提问。",
   "onboarding.plugin.todo": "把复杂任务整理成清晰可见的进度。",
   "onboarding.plugin.automation": "按时间安排提示词与重复工作。",

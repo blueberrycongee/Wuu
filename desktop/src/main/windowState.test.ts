@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   computeDefaultMainWindowBounds,
+  computeOnboardingWindowBounds,
   loadMainWindowBounds,
   MAIN_WINDOW_MAX_HEIGHT,
   MAIN_WINDOW_MAX_WIDTH,
@@ -54,6 +55,26 @@ describe("computeDefaultMainWindowBounds", () => {
     const result = computeDefaultMainWindowBounds({ width: 1441, height: 901 });
     expect(Number.isInteger(result.width)).toBe(true);
     expect(Number.isInteger(result.height)).toBe(true);
+  });
+});
+
+describe("computeOnboardingWindowBounds", () => {
+  it("uses a stable first-run size on normal displays", () => {
+    expect(computeOnboardingWindowBounds({ width: 2560, height: 1400 })).toEqual({
+      width: 1080,
+      height: 760,
+    });
+    expect(computeOnboardingWindowBounds({ width: 1440, height: 900 })).toEqual({
+      width: 1080,
+      height: 760,
+    });
+  });
+
+  it("fits the first-run window onto a smaller work area", () => {
+    expect(computeOnboardingWindowBounds({ width: 1024, height: 700 })).toEqual({
+      width: 1024,
+      height: 700,
+    });
   });
 });
 

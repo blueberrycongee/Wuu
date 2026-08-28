@@ -15,7 +15,7 @@ function plugin(
   source: "bundled" | "user" = "bundled",
 ): ExtensionInventoryRecord {
   return {
-    id,
+    id: `plugin:${source}:${id}`,
     name: id,
     description: `${id} description`,
     kind: "plugin",
@@ -65,8 +65,8 @@ describe("FirstRunOnboarding", () => {
     ];
 
     expect(bundledOnboardingPlugins(inventory).map((item) => item.id)).toEqual([
-      "ask-user",
-      "todo",
+      "plugin:bundled:ask-user",
+      "plugin:bundled:todo",
     ]);
   });
 
@@ -74,6 +74,40 @@ describe("FirstRunOnboarding", () => {
     expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m" }])).toBe(false);
     expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m", api_key_configured: true }])).toBe(true);
     expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m", connection_locked: true }])).toBe(true);
+  });
+
+  it("selects the recommended subject IDs when inventory arrives after mount", async () => {
+    const props = {
+      providers: [],
+      onUpdateExtensionPackage: vi.fn(async () => undefined),
+      onSaveProvider: vi.fn(async () => undefined),
+      onComplete: vi.fn(async () => undefined),
+    };
+
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding {...props} />
+        </I18nProvider>,
+      );
+    });
+    await clickButton("开始设置");
+    expect(container.textContent).toContain("正在准备随包插件");
+
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            {...props}
+            inventory={[plugin("ask-user", true), plugin("memory", false)]}
+          />
+        </I18nProvider>,
+      );
+    });
+
+    expect(container.textContent).not.toContain("正在准备随包插件");
+    expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
+    expect(container.querySelector(".onboarding-presets .is-selected")?.textContent).toBe("推荐");
   });
 
   it("gates entry until explicit plugin choices are applied and completion is persisted", async () => {
@@ -103,7 +137,7 @@ describe("FirstRunOnboarding", () => {
     await clickButton("继续");
 
     expect(update).toHaveBeenCalledTimes(1);
-    expect(update).toHaveBeenCalledWith({ id: "ask-user", action: "disable" });
+    expect(update).toHaveBeenCalledWith({ id: "plugin:bundled:ask-user", action: "disable" });
     expect(complete).not.toHaveBeenCalled();
 
     await clickButton("稍后配置");
