@@ -11,6 +11,7 @@ import {
   getMessageFlowFontSize,
   getPluginConflictPreferences,
   getThemePreference,
+  isOnboardingComplete,
   getVoiceInputSettings,
   getLanguagePreference,
   readDesktopSettings,
@@ -22,6 +23,7 @@ import {
   setThemePreference,
   setVoiceInputSettings,
   setLanguagePreference,
+  completeOnboarding,
   writeDesktopSettings,
 } from "./desktopSettings";
 
@@ -64,6 +66,26 @@ describe("desktopSettings", () => {
 
   it("defaults the theme preference to system", () => {
     expect(getThemePreference(file)).toBe("system");
+  });
+
+  it("persists completion of the mandatory first-run flow without losing other settings", () => {
+    setThemePreference("dark", file);
+
+    expect(isOnboardingComplete(file)).toBe(false);
+    completeOnboarding(file);
+
+    expect(isOnboardingComplete(file)).toBe(true);
+    expect(readDesktopSettings(file)).toMatchObject({
+      theme: "dark",
+      onboarding_version: 1,
+    });
+  });
+
+  it("rejects malformed onboarding versions", async () => {
+    await writeFile(file, JSON.stringify({ onboarding_version: -1 }));
+    expect(isOnboardingComplete(file)).toBe(false);
+    await writeFile(file, JSON.stringify({ onboarding_version: 1.5 }));
+    expect(isOnboardingComplete(file)).toBe(false);
   });
 
   it("round-trips normalized channel room preferences", () => {

@@ -59,6 +59,16 @@ const initialLanguagePreference = ((): LanguagePreference => {
   }
 })();
 
+const initialOnboardingComplete = (() => {
+  try {
+    return ipcRenderer.sendSync("wuu:onboarding-complete-get-sync") === true;
+  } catch {
+    // A missing handler means an older main process. Do not trap the renderer
+    // behind a flow it cannot persist.
+    return true;
+  }
+})();
+
 const initialVoiceInputSettings = ((): VoiceInputSettings => {
   try {
     const value = ipcRenderer.sendSync(
@@ -122,7 +132,9 @@ function resolveTheme(preference: ThemePreference): "light" | "dark" {
 }
 
 try {
-  document.documentElement.dataset.theme = resolveTheme(initialThemePreference);
+  document.documentElement.dataset.theme = initialOnboardingComplete
+    ? resolveTheme(initialThemePreference)
+    : "light";
 } catch {
   // The renderer's theme controller re-applies on boot; losing the
   // preload stamp only costs a one-frame flash.
@@ -159,6 +171,8 @@ try {
 }
 
 const api: WuuDesktopApi = {
+  initialOnboardingComplete,
+  completeOnboarding: () => ipcRenderer.invoke("wuu:onboarding-complete"),
   platform: desktopPlatform,
   listProjects: () => ipcRenderer.invoke("wuu:project-list"),
   createBlankProject: () => ipcRenderer.invoke("wuu:project-create-blank"),

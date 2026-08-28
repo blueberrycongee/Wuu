@@ -184,11 +184,9 @@ import {
   writeDraftEngineMemory,
 } from "./DraftEngineMemory";
 import {
-  hasReadyProvider,
-  ProviderSetupDialog,
-  PROVIDER_SETUP_DISMISSED_KEY,
-  type ProviderSetupConnection,
-} from "./ProviderSetupDialog";
+  FirstRunOnboarding,
+  hasOnboardingProvider as hasReadyProvider,
+} from "./FirstRunOnboarding";
 import {
   EmptyConversationHome,
   RuntimeLoading,
@@ -599,11 +597,9 @@ export function App(): JSX.Element {
   });
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [providerSetupOpen, setProviderSetupOpen] = useState(false);
-  // Guards the startup evaluation so the setup dialog is offered at most
-  // once per session: after the first initialized snapshot we never re-open
-  // it on later provider changes (configured, skipped, or dismissed).
-  const providerSetupEvaluatedRef = useRef(false);
+  const [onboardingComplete, setOnboardingComplete] = useState(
+    () => window.wuu?.initialOnboardingComplete ?? true,
+  );
   const [appMode, setAppMode] = useState<AppMode>("harness");
   const [collaborationSection, setCollaborationSection] = useState<ChannelSection>("rooms");
   const [newRoomRequest, setNewRoomRequest] = useState(0);
@@ -687,35 +683,6 @@ export function App(): JSX.Element {
       window.clearInterval(timer);
     };
   }, [state.initialized]);
-  useEffect(() => {
-    // Offer the provider setup dialog once per session on first load:
-    // when the runtime has no usable provider and the user has not
-    // previously skipped it. Later provider changes never re-open it.
-    if (providerSetupEvaluatedRef.current) {
-      return;
-    }
-    const initialized = state.initialized;
-    if (!initialized) {
-      return;
-    }
-    providerSetupEvaluatedRef.current = true;
-    let dismissed = false;
-    try {
-      dismissed = window.localStorage.getItem(PROVIDER_SETUP_DISMISSED_KEY) === "1";
-    } catch {
-      dismissed = false;
-    }
-    if (!hasReadyProvider(initialized.providers) && !dismissed) {
-      setProviderSetupOpen(true);
-    }
-  }, [state.initialized]);
-  useEffect(() => {
-    // Opening settings supersedes the dialog: the user can configure the
-    // provider there instead. The dialog is not re-shown afterwards.
-    if (settingsOpen) {
-      setProviderSetupOpen(false);
-    }
-  }, [settingsOpen]);
   const [projectFilter, setProjectFilter] = useState("");
   const [launchPreviewPinned, setLaunchPreviewPinned] = useState(false);
   const {
@@ -4802,6 +4769,28 @@ export function App(): JSX.Element {
     );
   }
 
+  if (!onboardingComplete) {
+    return (
+      <WuuMascotRuntimeProvider>
+        <FirstRunOnboarding
+          inventory={state.initialized?.extension_inventory}
+          providers={state.initialized?.providers}
+          onUpdateExtensionPackage={updateExtensionPackage}
+          onSaveProvider={async (provider, model, connection) => {
+            await updateRuntimeSettings(provider, model, undefined, connection, undefined);
+          }}
+          onComplete={async () => {
+            if (!window.wuu?.completeOnboarding) {
+              throw new Error(t("onboarding.finishFailed"));
+            }
+            await window.wuu.completeOnboarding();
+            setOnboardingComplete(true);
+          }}
+        />
+      </WuuMascotRuntimeProvider>
+    );
+  }
+
   return (
     <WuuMascotRuntimeProvider
       provider={mascotRuntimePreview?.provider ?? sessionRuntime?.provider}
@@ -5657,14 +5646,6 @@ export function App(): JSX.Element {
             if (region === "auxiliary") setRightPanelOpenWithMotion(true);
           },
         }}
-      />
-      <ProviderSetupDialog
-        open={providerSetupOpen}
-        providers={state.initialized?.providers}
-        onSave={async (provider, model, connection) => {
-          await updateRuntimeSettings(provider, model, undefined, connection, undefined);
-        }}
-        onClose={() => setProviderSetupOpen(false)}
       />
       </div>
     </ImagePreviewProvider>

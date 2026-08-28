@@ -99,7 +99,6 @@ environment.css .fork-dialog-option.is-busy border-color --ink-overlay-18
 environment.css .new-participant-avatar border --ink-overlay-12
 environment.css .new-participant-field input:focus border-color --ink-overlay-12
 environment.css .new-participant-field input:focus box-shadow --ink-overlay-12
-environment.css .provider-setup-error color --danger-soft
 environment.css .query-history-popover box-shadow --env-shadow-dark-005
 environment.css .query-history-popover box-shadow --env-shadow-dark-007
 environment.css .query-history-popover border --ink-overlay-12
@@ -272,7 +271,6 @@ turns.css .plugin-conversation-card-shell border --ink-overlay-8
 turns.css .process-surface-fold > .process-surface-row:hover, .process-surface-fold > .process-surface-row:focus-visible text-decoration-color --ink-overlay-18
 turns.css .project-empty-actions button:hover background --project-empty-actions-hover-bg
 turns.css .rich-blockquote border-left --ink-overlay-18
-turns.css .rich-code-block border --ink-overlay-6
 turns.css .rich-image border --ink-overlay-6
 turns.css .rich-mermaid-error border-color --danger-border
 turns.css .rich-mermaid-error background --danger-soft

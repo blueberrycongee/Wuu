@@ -1,0 +1,130 @@
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExtensionInventoryRecord, WuuDesktopApi } from "../shared/protocol";
+import {
+  FirstRunOnboarding,
+  bundledOnboardingPlugins,
+  hasOnboardingProvider,
+} from "./FirstRunOnboarding";
+import { I18nProvider } from "./i18n";
+
+function plugin(
+  id: string,
+  enabled: boolean,
+  source: "bundled" | "user" = "bundled",
+): ExtensionInventoryRecord {
+  return {
+    id,
+    name: id,
+    description: `${id} description`,
+    kind: "plugin",
+    state: "active",
+    enabled,
+    fingerprint: `${id}-fingerprint`,
+    icon: { name: "plug" },
+    package_source: source,
+    provenance: {
+      kind: "plugin",
+      source,
+      scope: source,
+      official: source === "bundled",
+      plugin_id: id,
+    },
+  };
+}
+
+describe("FirstRunOnboarding", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    window.wuu = {
+      initialLanguagePreference: "zh-CN",
+      initialSystemLocale: "zh-CN",
+      initialThemePreference: "dark",
+    } as unknown as WuuDesktopApi;
+    document.documentElement.dataset.theme = "dark";
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    vi.restoreAllMocks();
+  });
+
+  it("offers only known official plugins distributed with Wuu", () => {
+    const inventory = [
+      plugin("todo", true),
+      plugin("ask-user", false),
+      plugin("herbarium", true, "user"),
+      plugin("peers", false),
+    ];
+
+    expect(bundledOnboardingPlugins(inventory).map((item) => item.id)).toEqual([
+      "ask-user",
+      "todo",
+    ]);
+  });
+
+  it("recognizes configured and locked model providers", () => {
+    expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m" }])).toBe(false);
+    expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m", api_key_configured: true }])).toBe(true);
+    expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m", connection_locked: true }])).toBe(true);
+  });
+
+  it("gates entry until explicit plugin choices are applied and completion is persisted", async () => {
+    const update = vi.fn(async () => undefined);
+    const complete = vi.fn(async () => undefined);
+
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={[plugin("ask-user", true), plugin("memory", false)]}
+            providers={[]}
+            onUpdateExtensionPackage={update}
+            onSaveProvider={vi.fn(async () => undefined)}
+            onComplete={complete}
+          />
+        </I18nProvider>,
+      );
+    });
+
+    expect(container.querySelector('[data-testid="first-run-onboarding"]')).not.toBeNull();
+    expect(container.textContent).toContain("保持简单，按需生长");
+    expect(document.documentElement.dataset.theme).toBe("light");
+
+    await clickButton("开始设置");
+    await clickButton("极简");
+    await clickButton("继续");
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({ id: "ask-user", action: "disable" });
+    expect(complete).not.toHaveBeenCalled();
+
+    await clickButton("稍后配置");
+    expect(container.textContent).toContain("你的 Wuu 已经准备好了");
+    expect(complete).not.toHaveBeenCalled();
+
+    await clickButton("开始使用 Wuu");
+    expect(complete).toHaveBeenCalledTimes(1);
+
+    act(() => root.unmount());
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    root = createRoot(container);
+  });
+
+  async function clickButton(label: string): Promise<void> {
+    const button = [...container.querySelectorAll("button")].find(
+      (candidate) => candidate.textContent?.trim() === label,
+    );
+    expect(button, `missing button ${label}`).toBeDefined();
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+  }
+});

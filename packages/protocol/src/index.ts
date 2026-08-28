@@ -2618,6 +2618,11 @@ export type SpeechRecognitionStartResult =
   | { ok: false; error: string };
 
 export type WuuDesktopApi = {
+  // Pre-paint first-run gate. Optional so browser fixtures and older preload
+  // mocks continue to enter the normal shell unless they explicitly exercise
+  // onboarding.
+  initialOnboardingComplete?: boolean;
+  completeOnboarding?: () => Promise<{ ok: true }>;
   listProjects: () => Promise<ProjectListResult>;
   createBlankProject: () => Promise<ProjectListResult>;
   chooseProjectFolder: () => Promise<ProjectListResult>;

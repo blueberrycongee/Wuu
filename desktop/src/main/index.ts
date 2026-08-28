@@ -180,6 +180,8 @@ import {
   getPluginConflictPreferences,
   getVoiceInputSettings,
   getChannelRoomPreferences,
+  isOnboardingComplete,
+  completeOnboarding,
   setCodexPetSettings,
   setMessageFlowFontSize,
   setThemePreference,
@@ -1900,6 +1902,13 @@ app.whenReady().then(async () => {
     return remoteControlSnapshot(workdir);
   });
   ipcMain.handle("wuu:theme-preference-get", () => getThemePreference());
+  ipcMain.on("wuu:onboarding-complete-get-sync", (event) => {
+    event.returnValue = isOnboardingComplete();
+  });
+  ipcMain.handle("wuu:onboarding-complete", () => {
+    completeOnboarding();
+    return { ok: true as const };
+  });
   ipcMain.handle("wuu:language-preference-get", () => getLanguagePreference());
   ipcMain.handle("wuu:plugin-conflict-preferences-get", () => getPluginConflictPreferences());
   ipcMain.handle("wuu:plugin-conflict-preference-set", (_event, key: string, pluginId: string) =>

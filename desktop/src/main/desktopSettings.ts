@@ -67,7 +67,13 @@ export type DesktopSettings = {
   // "no saved bounds" rather than "open off-screen".
   main_window_bounds?: WindowBounds;
   plugin_conflict_preferences?: PluginConflictPreferences;
+  // Set only after the mandatory first-run flow has applied the user's
+  // extension choices. A version keeps future onboarding changes explicit
+  // without making normal upgrades repeat the current flow.
+  onboarding_version?: number;
 };
+
+export const CURRENT_ONBOARDING_VERSION = 1;
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ["system", "light", "dark"];
 export function desktopSettingsPath(): string {
@@ -176,6 +182,13 @@ export function readDesktopSettings(filePath: string = desktopSettingsPath()): D
       }
       settings.plugin_conflict_preferences = preferences;
     }
+    if (
+      typeof record.onboarding_version === "number" &&
+      Number.isInteger(record.onboarding_version) &&
+      record.onboarding_version > 0
+    ) {
+      settings.onboarding_version = record.onboarding_version;
+    }
     return settings;
   } catch {
     // Missing or corrupted file → defaults.
@@ -195,6 +208,18 @@ export function writeDesktopSettings(
 
 export function getThemePreference(filePath?: string): ThemePreference {
   return readDesktopSettings(filePath).theme ?? "system";
+}
+
+export function isOnboardingComplete(filePath?: string): boolean {
+  return (readDesktopSettings(filePath).onboarding_version ?? 0) >= CURRENT_ONBOARDING_VERSION;
+}
+
+export function completeOnboarding(filePath?: string): void {
+  const settings = readDesktopSettings(filePath);
+  writeDesktopSettings(
+    { ...settings, onboarding_version: CURRENT_ONBOARDING_VERSION },
+    filePath,
+  );
 }
 
 export function setThemePreference(theme: ThemePreference, filePath?: string): void {
