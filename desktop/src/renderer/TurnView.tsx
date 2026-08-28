@@ -1,5 +1,6 @@
 /// <reference path="../shared/jsx-compat.d.ts" />
 
+import { useRef } from "react";
 import type {
   InputFile,
   InputImage,
@@ -108,6 +109,17 @@ function TurnContent({
   streamStatus,
   isLatestTurn,
 }: TurnViewProps): JSX.Element {
+  // A turn that starts as the latest live submission keeps its viewport-sized
+  // focus area through completion. Without this sticky marker, a short answer
+  // would collapse the space as soon as the terminal snapshot arrived and the
+  // query would jump back down toward the composer.
+  const submissionFocusedRef = useRef(
+    Boolean(
+      isLatestTurn &&
+        turn.status === "in_progress" &&
+        turn.items.some((item) => item.type === "user_message"),
+    ),
+  );
   const actionableAgentMessageID =
     turn.status === "completed"
       ? messageFlowAgentMessageItemID(turn)
@@ -184,6 +196,9 @@ function TurnContent({
       id={turnAnchorID(turn.id)}
       data-turn-id={turn.id}
       data-turn-status={turn.status}
+      data-submission-focus={
+        isLatestTurn && submissionFocusedRef.current ? "true" : undefined
+      }
     >
       {userItems.map((item) => renderThreadItem(item, false))}
       {assistantDisplay ? (

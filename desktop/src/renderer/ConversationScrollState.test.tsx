@@ -243,6 +243,9 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
     });
 
     expect(scrollTo).toHaveBeenCalledWith({ top: 1600, behavior: "smooth" });
+    expect(node.style.getPropertyValue("--conversation-viewport-height")).toBe(
+      "600px",
+    );
 
     // The first native smooth-scroll frame can report the unchanged old bottom
     // before React lays out the optimistic turn. It must not disarm the pending

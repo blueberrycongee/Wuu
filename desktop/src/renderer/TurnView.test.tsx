@@ -67,7 +67,7 @@ function makeReasoning(text: string, id = "reasoning-1"): ThreadItem {
   };
 }
 
-function render(turn: Turn): HTMLDivElement {
+function render(turn: Turn, isLatestTurn = false): HTMLDivElement {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -76,18 +76,20 @@ function render(turn: Turn): HTMLDivElement {
       <TurnView
         turn={turn}
         onStreamFrame={() => {}}
+        isLatestTurn={isLatestTurn}
       />,
     );
   });
   return container;
 }
 
-function rerender(turn: Turn): void {
+function rerender(turn: Turn, isLatestTurn = false): void {
   act(() => {
     root!.render(
       <TurnView
         turn={turn}
         onStreamFrame={() => {}}
+        isLatestTurn={isLatestTurn}
       />,
     );
   });
@@ -160,6 +162,47 @@ describe("TurnView", () => {
 
     const turn = view.querySelector<HTMLElement>(".turn");
     expect(turn?.dataset.turnStatus).toBe("in_progress");
+  });
+
+  it("keeps a newly submitted latest turn focused after a short answer completes", () => {
+    const userItem: ThreadItem = {
+      id: "user-1",
+      type: "user_message",
+      status: "completed",
+      text: "Move this query toward the top.",
+    };
+    const view = render(makeTurn("in_progress", [userItem]), true);
+
+    expect(
+      view.querySelector<HTMLElement>(".turn")?.dataset.submissionFocus,
+    ).toBe("true");
+
+    rerender(
+      makeTurn("completed", [userItem, makeFinalAnswer("Short answer.")]),
+      true,
+    );
+
+    expect(
+      view.querySelector<HTMLElement>(".turn")?.dataset.submissionFocus,
+    ).toBe("true");
+  });
+
+  it("does not focus a historical completed turn on initial mount", () => {
+    const view = render(
+      makeTurn("completed", [
+        {
+          id: "user-1",
+          type: "user_message",
+          status: "completed",
+          text: "Historical query.",
+        },
+      ]),
+      true,
+    );
+
+    expect(
+      view.querySelector<HTMLElement>(".turn")?.dataset.submissionFocus,
+    ).toBeUndefined();
   });
 
   it("hides named and legacy process notifications from the direct turn renderer", () => {

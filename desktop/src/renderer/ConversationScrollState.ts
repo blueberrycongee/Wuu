@@ -67,6 +67,13 @@ export type ConversationScrollSnapshot = {
   autoFollow: boolean;
 };
 
+function syncConversationViewportHeight(node: HTMLElement): void {
+  node.style.setProperty(
+    "--conversation-viewport-height",
+    `${Math.max(0, Math.round(node.clientHeight))}px`,
+  );
+}
+
 export function useConversationScrollState({
   activeThreadID,
   activePane,
@@ -306,6 +313,7 @@ export function useConversationScrollState({
     if (!node) {
       return;
     }
+    syncConversationViewportHeight(node);
     setAutoFollowOverflowAnchor(node, true);
     rememberActiveThreadScrollSnapshot(node, true);
     // Start from the current bottom immediately. The optimistic turn's layout
@@ -645,6 +653,7 @@ export function useConversationScrollState({
     }
 
     markSessionSwitch(activeThreadID, "scroll-restore-start");
+    syncConversationViewportHeight(node);
     const snapshot = threadScrollSnapshotsRef.current.get(activeThreadID);
     if (snapshot && !snapshot.autoFollow) {
       applyProgrammaticScroll(node, snapshot.scrollTop, false);
@@ -807,6 +816,7 @@ export function useConversationScrollState({
       scrollConversationToBottom();
     });
     const resizeObserver = new ResizeObserver(() => {
+      syncConversationViewportHeight(node);
       refreshPointerScrollGestureLayout(node);
       if (isWindowResizing()) {
         scheduleLiveResizeScroll();
@@ -816,6 +826,7 @@ export function useConversationScrollState({
       scrollContentRef.current?.style.removeProperty("transform");
       scrollConversationToBottom();
     });
+    syncConversationViewportHeight(node);
     observeAutoFollowResizeTargets(node, resizeObserver);
     window.addEventListener("resize", scheduleLiveResizeScroll);
     return () => {
