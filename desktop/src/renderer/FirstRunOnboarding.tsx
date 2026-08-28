@@ -322,7 +322,7 @@ export function FirstRunOnboarding({
         ) : null}
 
         {step === "provider" ? (
-          <div className="onboarding-panel onboarding-provider-panel">
+          <div className={`onboarding-panel onboarding-provider-panel${providerReady ? " is-ready" : ""}`}>
             <div className="onboarding-provider-mark">
               <WuuMascot className="onboarding-mascot" size={104} activity="thinking" accessory="none" aria-hidden="true" />
               <span className="onboarding-provider-plug"><Plug /></span>

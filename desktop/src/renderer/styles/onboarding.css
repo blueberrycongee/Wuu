@@ -95,6 +95,11 @@
   align-items: center;
 }
 
+.onboarding-stage-provider {
+  display: grid;
+  align-items: center;
+}
+
 .onboarding-stage-welcome,
 .onboarding-stage-ready {
   display: grid;
@@ -402,6 +407,12 @@
   padding-top: 8px;
 }
 
+.onboarding-provider-panel.is-ready {
+  width: min(560px, 100%);
+  padding-top: 0;
+  text-align: center;
+}
+
 .onboarding-provider-panel h1 {
   font-size: clamp(30px, 3.4vw, 42px);
 }
@@ -410,6 +421,25 @@
   position: relative;
   width: fit-content;
   margin-bottom: 22px;
+}
+
+.onboarding-provider-panel.is-ready .onboarding-provider-mark {
+  margin: 0 auto 24px;
+  /* The plug and thinking marks both extend right of the mascot's layout box. */
+  transform: translateX(-12px);
+}
+
+.onboarding-provider-panel.is-ready h1 {
+  transform: translateX(0.08em);
+}
+
+.onboarding-provider-panel.is-ready .onboarding-provider-description {
+  margin-inline: auto;
+}
+
+.onboarding-provider-panel.is-ready .onboarding-actions {
+  width: min(360px, 100%);
+  margin: 32px auto 0;
 }
 
 .onboarding-provider-plug {

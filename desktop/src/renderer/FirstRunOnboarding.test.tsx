@@ -76,6 +76,28 @@ describe("FirstRunOnboarding", () => {
     expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m", connection_locked: true }])).toBe(true);
   });
 
+  it("uses the centered ready layout when a model provider is already configured", async () => {
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={[plugin("todo", true)]}
+            providers={[{ name: "openai", type: "openai-compatible", model: "gpt-5", api_key_configured: true }]}
+            onUpdateExtensionPackage={vi.fn(async () => undefined)}
+            onSaveProvider={vi.fn(async () => undefined)}
+            onComplete={vi.fn(async () => undefined)}
+          />
+        </I18nProvider>,
+      );
+    });
+
+    await clickButton("开始设置");
+    await clickButton("继续");
+
+    expect(container.querySelector(".onboarding-stage-provider")).not.toBeNull();
+    expect(container.querySelector(".onboarding-provider-panel.is-ready")).not.toBeNull();
+  });
+
   it("selects the recommended subject IDs when inventory arrives after mount", async () => {
     const props = {
       providers: [],
