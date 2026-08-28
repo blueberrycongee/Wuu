@@ -91,8 +91,14 @@ describe("globalized right panel chrome", () => {
     expect(sidebarCSS).toMatch(
       /\[data-sheet="arming"\],\s*\n\.app-shell \.workspace-right-panel\[data-sheet="docking"\]\s*\{\s*\n\s*transition:\s*none;/,
     );
-    expect(sidebarCSS).toMatch(
-      /\[data-sheet="parked"\]\s*\{\s*\n\s*position:\s*fixed;\s*\n\s*inset:\s*0;/,
+    const sheetLayout = cssRule(
+      '.app-shell .workspace-right-panel[data-sheet="arming"],\n' +
+        '.app-shell .workspace-right-panel[data-sheet="open"],\n' +
+        '.app-shell .workspace-right-panel[data-sheet="parked"]',
+    );
+    expect(sheetLayout).toMatch(/position:\s*fixed;/);
+    expect(sheetLayout).toMatch(
+      /inset:\s*0 0 0 var\(--workspace-sheet-left, 0px\);/,
     );
   });
 
@@ -125,7 +131,7 @@ describe("globalized right panel chrome", () => {
     );
 
     const tabbar = cssRule(
-      ".app-shell.right-panel-globalized .workspace-panel-tabbar",
+      ".app-shell.right-panel-globalized.sidebar-collapsed .workspace-panel-tabbar",
     );
     expect(tabbar).toMatch(
       /padding-left:\s*max\(8px, calc\(var\(--window-controls-inset-left\) \+ 10px\)\);/,

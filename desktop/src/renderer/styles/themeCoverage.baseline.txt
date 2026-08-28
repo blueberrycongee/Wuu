@@ -12,9 +12,6 @@ channels.css .channel-agent-graph-controls button:hover background --ink-overlay
 channels.css .channel-agent-graph-node.room circle fill --ink-overlay-18
 channels.css .channel-agent-preview-loading i background --ink-overlay-6
 channels.css .channel-agent-reset-status background --success-soft
-channels.css .channel-assignment-bubble background --ink-overlay-4
-channels.css .channel-assignment-item[data-state="done"] .channel-assignment-bubble, .channel-assignment-item[data-state="completed"] .channel-assignment-bubble background --ink-overlay-4
-channels.css .channel-assignment-item[data-state="done"] .channel-assignment-bubble, .channel-assignment-item[data-state="completed"] .channel-assignment-bubble background --success-soft
 channels.css .channel-avatar-picker button:hover background --ink-overlay-4
 channels.css .channel-form-danger-row button.danger:hover:not(:disabled), .channel-form-danger-row button.danger:focus-visible:not(:disabled) background --danger-soft
 channels.css .channel-management-primary:hover:not(:disabled) background --ink-overlay-4
@@ -22,7 +19,6 @@ channels.css .channel-management-row:hover background --ink-overlay-4
 channels.css .channel-member-picker-option:hover, .channel-member-picker-option:focus-visible background --ink-overlay-4
 channels.css .channel-message-bubble background --ink-overlay-4
 channels.css .channel-orchestration-message[data-complete="true"] .channel-coordinator-badge background --success-soft
-channels.css .channel-orchestration-summary > button:hover, .channel-orchestration-summary > button:focus-visible background --ink-overlay-4
 channels.css .channel-room-danger-zone button:hover, .channel-room-danger-zone button:focus-visible background --danger-soft
 channels.css .channel-room-member-remove:hover:not(:disabled), .channel-room-member-remove:focus-visible:not(:disabled) background --danger-soft
 channels.css .channel-split-resizer:hover::before, .channel-split-resizer:focus-visible::before, .resizing-channel-split .channel-split-resizer::before background --ink-overlay-18
@@ -30,11 +26,6 @@ channels.css .channel-split-resizer:hover::before, .channel-split-resizer:focus-
 channels.css .channel-split-resizer:hover::before, .channel-split-resizer:focus-visible::before, .resizing-channel-split .channel-split-resizer::before background --sidebar-resizer-hover-bg
 channels.css .channel-split-resizer:hover::before, .channel-split-resizer:focus-visible::before, .resizing-channel-split .channel-split-resizer::before box-shadow --sidebar-resizer-hover-ring
 channels.css .channel-task-card:hover background --ink-overlay-4
-channels.css .channel-thread-replying button:hover background --ink-overlay-4
-channels.css .channel-thread-resizer:hover::before, .channel-thread-resizer:focus-visible::before, .resizing-thread-split .channel-thread-resizer::before background --ink-overlay-18
-channels.css .channel-thread-resizer:hover::before, .channel-thread-resizer:focus-visible::before, .resizing-thread-split .channel-thread-resizer::before box-shadow --ink-overlay-8
-channels.css .channel-thread-resizer:hover::before, .channel-thread-resizer:focus-visible::before, .resizing-thread-split .channel-thread-resizer::before background --sidebar-resizer-hover-bg
-channels.css .channel-thread-resizer:hover::before, .channel-thread-resizer:focus-visible::before, .resizing-thread-split .channel-thread-resizer::before box-shadow --sidebar-resizer-hover-ring
 channels.css .channel-work-evidence-body background --ink-overlay-4
 chat.css .chat-bubble background --ink-overlay-4
 composer-context-meter.css .composer-context-meter-track stroke --context-meter-track
@@ -43,9 +34,6 @@ composer.css .composer-collapsed-prompt-remove:hover background --composer-file-
 composer.css .composer-context-menu .permission-mode-option.danger:hover:not(:disabled) background --danger-soft
 composer.css .composer-context-menu .permission-mode-option.danger[aria-checked="true"] background --composer-permission-mode-danger-bg
 composer.css .composer-context-menu .permission-mode-option.danger[aria-checked="true"] border-color --composer-permission-mode-danger-border
-composer.css .composer-context-menu .permission-mode-option.safe:hover:not(:disabled), .composer-context-menu .permission-mode-option.safe[aria-checked="true"] background --success-soft
-composer.css .composer-context-menu .permission-mode-option.warning:hover:not(:disabled), .composer-context-menu .permission-mode-option.warning[aria-checked="true"] background --warning-soft
-composer.css .composer-context-menu .permission-mode-option.warning[aria-checked="true"] border-color --warning-border
 composer.css .composer-expand-button:hover:not(:disabled), .composer-expand-button[aria-pressed="true"] background-color --ink-overlay-8
 composer.css .composer-file-attachment button:hover background --composer-file-attachment-button-hover-bg
 composer.css .composer-frame.composer-frame-drop-active::after box-shadow --ink-overlay-18
@@ -58,10 +46,6 @@ composer.css .composer-voice-button:hover:not(:disabled) background --ink-overla
 composer.css .group-members-capsule:hover, .group-members-capsule:focus-visible background --ink-overlay-6
 composer.css .permission-chip.tone-danger:hover, .permission-chip.tone-danger[aria-expanded="true"] background --danger-soft
 composer.css .permission-chip.tone-danger:hover::before, .permission-chip.tone-danger[aria-expanded="true"]::before background --danger-soft
-composer.css .permission-chip.tone-safe:hover, .permission-chip.tone-safe[aria-expanded="true"] background --success-soft
-composer.css .permission-chip.tone-safe:hover::before, .permission-chip.tone-safe[aria-expanded="true"]::before background --success-soft
-composer.css .permission-chip.tone-warning:hover, .permission-chip.tone-warning[aria-expanded="true"] background --warning-soft
-composer.css .permission-chip.tone-warning:hover::before, .permission-chip.tone-warning[aria-expanded="true"]::before background --warning-soft
 composer.css .user-question-actions .user-question-cancel:hover:not(:disabled) background --ink-overlay-6
 composer.css .user-question-card border --ink-overlay-8
 composer.css .user-question-custom border --ink-overlay-8
