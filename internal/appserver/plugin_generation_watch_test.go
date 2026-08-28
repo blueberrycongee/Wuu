@@ -42,7 +42,7 @@ func TestRunningServerObservesPluginGenerationAndRetriesFailedRefresh(t *testing
 	failRefresh.Store(true)
 	failedEpoch := advancePluginGenerationWatchTestEpoch(t, rt.WuuHome)
 	waitPluginGenerationWatchTest(t, func() bool { return refreshCalls.Load() >= 2 })
-	time.Sleep(2 * pluginGenerationWatchInterval)
+	time.Sleep(2 * pluginGenerationRetryInterval)
 	if got := srv.pluginGenerationEpoch.Load(); got != firstEpoch {
 		t.Fatalf("failed refresh advanced active epoch to %d, want %d", got, firstEpoch)
 	}

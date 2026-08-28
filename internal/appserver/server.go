@@ -260,6 +260,7 @@ type Server struct {
 	configFingerprint            string
 	pluginLifecycleReplayPending atomic.Bool
 	refreshExtensionsForTest     func(config.Config) error
+	refreshConfigForTest         func() error
 	presenceLease                *session.AppServerPresenceLease
 	bootOwner                    bool
 	storageMaintenanceCancel     context.CancelFunc
