@@ -204,18 +204,24 @@ function BuiltInThreadItemView({
   editSummaryCard,
 }: ThreadItemViewProps): JSX.Element | null {
   const { t } = useI18n();
-  // Only a live in_progress -> completed handoff should animate. Historical
+  // Only a live item/turn completion handoff should animate. Historical
   // completed messages mount without this marker, so virtualized content does
   // not replay the entrance while the user scrolls.
   const [settleEntered, setSettleEntered] = useState(false);
   const previousTurnStatusRef = useRef(turnStatus);
+  const previousItemStatusRef = useRef(item.status);
   useLayoutEffect(() => {
-    const previous = previousTurnStatusRef.current;
+    const previousTurnStatus = previousTurnStatusRef.current;
+    const previousItemStatus = previousItemStatusRef.current;
     previousTurnStatusRef.current = turnStatus;
-    if (previous === "in_progress" && turnStatus === "completed") {
+    previousItemStatusRef.current = item.status;
+    if (
+      (previousTurnStatus === "in_progress" && turnStatus === "completed") ||
+      (previousItemStatus === "in_progress" && item.status === "completed")
+    ) {
       setSettleEntered(true);
     }
-  }, [turnStatus]);
+  }, [item.status, turnStatus]);
   switch (item.type) {
     case "user_message": {
       const text = item.text ?? "";
@@ -339,11 +345,19 @@ function BuiltInThreadItemView({
         item.id === actionableAgentMessageID &&
         copyable &&
         !isProcessText;
-      // Copy and fork form one completion affordance. Mount the pair at the
-      // durable turn boundary instead of exposing copy one render earlier.
-      const actionsVisible = forkVisible;
+      // The completed final item is already a stable copy boundary, and it
+      // arrives before the enclosing turn's provider cleanup finishes. Mount
+      // the complete affordance immediately; fork stays disabled until the
+      // durable turn boundary confirms that its history is settled.
+      const finalItemCompletedBeforeTurn =
+        turnStatus === "in_progress" &&
+        item.status === "completed" &&
+        copyable &&
+        !isProcessText;
+      const actionsVisible = forkVisible || finalItemCompletedBeforeTurn;
       const actionsPersistent =
-        actionsVisible && item.id === latestAgentMessageID;
+        actionsVisible &&
+        (item.id === latestAgentMessageID || finalItemCompletedBeforeTurn);
       // Only the persistent bar (latest answer, always visible) takes
       // in-flow space; historical answers get a hover overlay so no
       // invisible slot pads the turn boundary.
@@ -372,7 +386,7 @@ function BuiltInThreadItemView({
             <AgentMessageActions
               getText={() => streamFieldValue(turnID, item, "text")}
               placement={actionsPersistent ? "persistent" : "overlay"}
-              showFork={forkVisible}
+              showFork
               onFork={
                 forkVisible && onForkMessage
                   ? () => onForkMessage(turnID, item.id)

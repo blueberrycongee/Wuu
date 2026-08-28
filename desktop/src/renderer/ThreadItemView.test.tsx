@@ -444,11 +444,13 @@ describe("ThreadItemView", () => {
     expect(secondToggle?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("reveals copy and fork together when the turn completes", () => {
+  it("reveals copy and fork when the final item completes, then enables fork with the turn", () => {
+    const onForkMessage = vi.fn();
     render({
       item: makeFinalAnswer("in_progress"),
       turnStatus: "in_progress",
       streaming: true,
+      onForkMessage,
     });
 
     expect(container?.querySelector(".agent-message-actions")).toBeNull();
@@ -458,9 +460,15 @@ describe("ThreadItemView", () => {
       turnStatus: "in_progress",
       latestAgentMessageID: "final-1",
       streaming: false,
+      onForkMessage,
     });
 
-    expect(container?.querySelector(".agent-message-actions")).toBeNull();
+    const finalizingActions = actionBar();
+    expect(finalizingActions.dataset.wuuPlacement).toBe("persistent");
+    expect(finalizingActions.querySelectorAll("button")).toHaveLength(2);
+    const finalizingButtons = finalizingActions.querySelectorAll<HTMLButtonElement>("button");
+    expect(finalizingButtons[0]?.disabled).toBe(false);
+    expect(finalizingButtons[1]?.disabled).toBe(true);
 
     render({
       item: makeFinalAnswer("completed"),
@@ -468,6 +476,7 @@ describe("ThreadItemView", () => {
       actionableAgentMessageID: "final-1",
       latestAgentMessageID: "final-1",
       streaming: false,
+      onForkMessage,
     });
 
     const visibleActions = actionBar();
@@ -475,6 +484,7 @@ describe("ThreadItemView", () => {
     expect(visibleActions.dataset.wuuComponent).toBe("message-actions");
     expect(visibleActions.dataset.wuuPlacement).toBe("persistent");
     expect(visibleActions.querySelectorAll("button")).toHaveLength(2);
+    expect(visibleActions.querySelectorAll<HTMLButtonElement>("button")[1]?.disabled).toBe(false);
     const block = container?.querySelector(".agent-block");
     expect(block?.classList.contains("agent-actions-persistent")).toBe(true);
     expect(block?.classList.contains("agent-actions-overlay")).toBe(false);
