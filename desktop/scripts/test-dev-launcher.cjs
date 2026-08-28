@@ -33,7 +33,11 @@ assert.deepEqual(
 );
 
 const environment = launchEnvironment(
-  { ELECTRON_RENDERER_URL: "http://localhost:5173", WUU_ENABLE_CUA_MAC: "1" },
+  {
+    ELECTRON_RENDERER_URL: "http://localhost:5173",
+    WUU_ENABLE_CUA_MAC: "1",
+    WUU_DESKTOP_CORE: "/repo/desktop/build/bin/wuu-core",
+  },
   "token-1",
   "/repo",
   "/repo/desktop/build/bin/wuu-cua-mac",
@@ -41,7 +45,8 @@ const environment = launchEnvironment(
 );
 assert.ok(environment.includes("ELECTRON_RENDERER_URL=http://localhost:5173"));
 assert.ok(environment.includes("WUU_DEV_LAUNCH_TOKEN=token-1"));
-assert.ok(environment.includes("WUU_DESKTOP_USE_GO_RUN=1"));
+assert.ok(environment.includes("WUU_DESKTOP_CORE=/repo/desktop/build/bin/wuu-core"));
+assert.ok(!environment.includes("WUU_DESKTOP_USE_GO_RUN=1"));
 assert.ok(environment.includes("WUU_SOURCE_ROOT=/repo"));
 assert.ok(environment.includes("WUU_ENABLE_CUA_MAC=1"));
 assert.ok(environment.includes("WUU_CUA_MAC_HELPER=/repo/desktop/build/bin/wuu-cua-mac"));
@@ -55,6 +60,7 @@ const disabledEnvironment = launchEnvironment(
   "/repo/desktop/build/bin/wuu-cua-mac-pip",
 );
 assert.ok(!disabledEnvironment.some((entry) => entry.startsWith("WUU_ENABLE_CUA_MAC=")));
+assert.ok(disabledEnvironment.includes("WUU_DESKTOP_USE_GO_RUN=1"));
 
 const processList = [
   "  41 /path/Electron Helper WUU_DEV_LAUNCH_TOKEN=token-1",
@@ -100,7 +106,8 @@ assert.equal(
 const devLauncherSource = readFileSync(resolve(__dirname, "dev.cjs"), "utf8");
 assert.doesNotMatch(devLauncherSource, /env\.WUU_ENABLE_CUA_MAC\s*=\s*["']1["']/);
 assert.match(devLauncherSource, /build-core\.cjs/);
-assert.match(devLauncherSource, /--plugins-only/);
+assert.doesNotMatch(devLauncherSource, /--plugins-only/);
+assert.match(devLauncherSource, /env\.WUU_DESKTOP_CORE\s*=/);
 assert.equal(packageJSON.scripts["build:core"], "node scripts/build-core.cjs");
 assert.equal(
   packageJSON.scripts["build:core:win"],

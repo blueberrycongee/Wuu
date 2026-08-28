@@ -36,6 +36,7 @@ function launchEnvironment(
   helperPath = helper,
   pipHelperPath = pipHelper,
 ) {
+  const desktopCore = env.WUU_DESKTOP_CORE;
   const values = {
     ELECTRON_RENDERER_URL: env.ELECTRON_RENDERER_URL,
     NODE_ENV: env.NODE_ENV ?? "development",
@@ -44,7 +45,8 @@ function launchEnvironment(
     WUU_CUA_MAC_HELPER: helperPath,
     WUU_CUA_MAC_PIP_HELPER: pipHelperPath,
     WUU_DEV_LAUNCH_TOKEN: token,
-    WUU_DESKTOP_USE_GO_RUN: "1",
+    WUU_DESKTOP_CORE: desktopCore,
+    WUU_DESKTOP_USE_GO_RUN: desktopCore ? undefined : "1",
     WUU_SOURCE_ROOT: root,
   };
   return Object.entries(values)

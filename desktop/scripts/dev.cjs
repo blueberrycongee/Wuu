@@ -12,7 +12,7 @@ const { ensureDevSigningIdentity } = require("./dev-signing.cjs");
 const desktopRoot = resolve(__dirname, "..");
 const buildHelper = join(__dirname, "build-cua-mac.cjs");
 const buildSpeechHelper = join(__dirname, "build-speech-mac.cjs");
-const buildPluginHelpers = join(__dirname, "build-core.cjs");
+const buildCoreAndPluginHelpers = join(__dirname, "build-core.cjs");
 const electronVitePackage = require.resolve("electron-vite/package.json", { paths: [desktopRoot] });
 const electronViteManifest = JSON.parse(readFileSync(electronVitePackage, "utf8"));
 const electronVite = join(dirname(electronVitePackage), electronViteManifest.bin["electron-vite"]);
@@ -40,16 +40,22 @@ const speechBuild = spawnSync(process.execPath, [buildSpeechHelper], {
 if (speechBuild.status !== 0) {
   process.exit(speechBuild.status ?? 1);
 }
-const pluginHelperBuild = spawnSync(process.execPath, [buildPluginHelpers, "--plugins-only"], {
+const coreBuild = spawnSync(process.execPath, [buildCoreAndPluginHelpers], {
   cwd: desktopRoot,
   env: process.env,
   stdio: "inherit",
 });
-if (pluginHelperBuild.status !== 0) {
-  process.exit(pluginHelperBuild.status ?? 1);
+if (coreBuild.status !== 0) {
+  process.exit(coreBuild.status ?? 1);
 }
 
 const env = { ...process.env };
+env.WUU_DESKTOP_CORE = join(
+  desktopRoot,
+  "build",
+  "bin",
+  process.platform === "win32" ? "wuu-core.exe" : "wuu-core",
+);
 if (env.WUU_ENABLE_BROWSER === "1") {
   env.VITE_ENABLE_BROWSER = "true";
 }
