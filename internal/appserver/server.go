@@ -223,11 +223,12 @@ type Server struct {
 	userQuestionStop   chan struct{}
 	userQuestionDone   chan struct{}
 
-	rewriteChatHistoryForTest           func(string, string, []providers.ChatMessage) error
-	afterLifecycleHistoryAppendForTest  func(threadID string)
-	deleteSessionForTest                func(string) (session.Session, error)
-	afterWorkerShutdownStopWavesForTest func()
-	beforeQueuedTurnBackgroundForTest   func()
+	rewriteChatHistoryForTest            func(string, string, []providers.ChatMessage) error
+	afterLifecycleHistoryAppendForTest   func(threadID string)
+	deleteSessionForTest                 func(string) (session.Session, error)
+	afterWorkerShutdownStopWavesForTest  func()
+	beforeQueuedTurnBackgroundForTest    func()
+	afterNamedAgentWakeCompletionForTest func(agentID string)
 
 	codexModelsMu   sync.Mutex
 	codexModelCache map[string]map[string]config.ProviderModelConfig

@@ -170,7 +170,7 @@ function runningThreadA(): Thread {
       status: "in_progress",
       items: turn.items.map((item) =>
         item.type === "agent_message"
-          ? { ...item, status: "completed", terminal: true }
+          ? { ...item, status: "in_progress", terminal: false }
           : item,
       ),
     })),

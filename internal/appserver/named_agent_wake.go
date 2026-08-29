@@ -573,6 +573,9 @@ func (s *Server) completeNamedAgentSessionTurn(agentID, sessionRef, workID, runI
 			providers.DebugLogf("inject pending named agent wake %q: %v", agentID, dispatchErr)
 		}
 	}
+	if hook := s.afterNamedAgentWakeCompletionForTest; hook != nil {
+		hook(agentID)
+	}
 }
 
 func (s *Server) holdNamedAgentWake(threadID, agentID string) error {

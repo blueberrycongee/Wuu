@@ -1173,6 +1173,10 @@ func TestNamedAgentSequentialWakesPersistDistinctUserTurns(t *testing.T) {
 	attachNamedAgentTestToolkit(t, rt)
 	server := NewWithCredentialStore(rt, &lockedBuffer{}, nil, nil)
 	t.Cleanup(server.Close)
+	wakeCompleted := make(chan string, 2)
+	server.afterNamedAgentWakeCompletionForTest = func(agentID string) {
+		wakeCompleted <- agentID
+	}
 	credential, err := server.channelService.CreateNamedAgent(context.Background(), channels.CreateNamedAgentParams{
 		Name: "Alpha", Autostart: true,
 	})
@@ -1197,6 +1201,14 @@ func TestNamedAgentSequentialWakesPersistDistinctUserTurns(t *testing.T) {
 		}
 		if threadIsRunning(server.thread(namedAgentSessionID(credential.Agent))) {
 			t.Fatalf("named agent wake %d did not complete", index)
+		}
+		select {
+		case completedAgentID := <-wakeCompleted:
+			if completedAgentID != credential.Agent.ID {
+				t.Fatalf("completed wake agent = %q, want %q", completedAgentID, credential.Agent.ID)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("named agent wake %d did not finish its completion callback", index)
 		}
 		completionDeadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(completionDeadline) {
