@@ -142,3 +142,9 @@ landing/.redesign-ref/
 
 # reset-first-run.sh has a live MiniMax API key baked in — never commit it.
 scripts/reset-first-run.sh
+
+# wuu app runtime state in repo root (sessions, logs, plans, scratch) — local only.
+.wuu/
+
+# Local e2e/probe scratch output.
+.tmp/
