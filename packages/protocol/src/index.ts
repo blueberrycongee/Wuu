@@ -1198,11 +1198,27 @@ export type RuntimeConnectionUpdate = {
   auth_token?: string;
   // Optional provider protocol type used when creating a new provider.
   // Supported values: "openai", "openai-compatible", "anthropic", "claude",
-  // "anthropic-official". Omitted or empty keeps the default of
-  // "openai-compatible". OAuth-managed Codex types are intentionally not
-  // listed because they require a separate connection flow.
+  // "anthropic-official", "xai-subscription". Omitted or empty keeps the
+  // default of "openai-compatible". OAuth-managed Codex types are
+  // intentionally not listed because they require a separate connection flow.
   type?: string;
   create_provider?: boolean;
+};
+
+export type AuthXAILoginStartResult = {
+  login_id: string;
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete?: string;
+  expires_in: number;
+  interval_ms: number;
+};
+
+export type AuthXAILoginPollResult = {
+  status: "pending" | "success" | "denied" | "expired" | "failed" | string;
+  interval_ms?: number;
+  error?: string;
+  providers?: ProviderSummary[];
 };
 
 export type RuntimeAdvancedSettingsUpdate = {
@@ -2747,6 +2763,9 @@ export type WuuDesktopApi = {
   getMCPAuthStatus: (name: string) => Promise<MCPAuthStatusResult>;
   finishMCPAuth: (name: string, state: string, code: string) => Promise<MCPAuthFinishResult>;
   removeMCPAuth: (name: string) => Promise<MCPAuthRemoveResult>;
+  startXAILogin: () => Promise<AuthXAILoginStartResult>;
+  pollXAILogin: (loginId: string) => Promise<AuthXAILoginPollResult>;
+  cancelXAILogin: (loginId: string) => Promise<{ ok: boolean }>;
   listActivities: (threadId: string) => Promise<ActivityListResult>;
   takeoverActivity: (threadId: string, activityId: string) => Promise<ActivityActionResult>;
   releaseActivity: (threadId: string, activityId: string) => Promise<ActivityReleaseResult>;

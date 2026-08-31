@@ -100,6 +100,7 @@ export function FirstRunOnboarding({
   const [providerType, setProviderType] = useState("openai-compatible");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [xaiLogin, setXAILogin] = useState<{ userCode: string } | null>(null);
   const [savingProvider, setSavingProvider] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState("");
@@ -167,23 +168,54 @@ export function FirstRunOnboarding({
     }
   }
 
+  const xaiSubscription = providerType === "xai-subscription";
+
   async function saveProvider(): Promise<void> {
     const name = providerName.trim();
     const providerModel = model.trim();
     const key = apiKey.trim();
-    if (!name || !providerModel || !key || savingProvider) return;
+    if (!name || !providerModel || savingProvider) return;
+    if (!xaiSubscription && !key) return;
     setSavingProvider(true);
     setError("");
     try {
+      if (xaiSubscription) {
+        const start = await window.wuu.startXAILogin();
+        const url = start.verification_uri_complete || start.verification_uri;
+        setXAILogin({ userCode: start.user_code });
+        if (url) {
+          await window.wuu.openExternal(url);
+        }
+        const deadline = Date.now() + Math.max(30, start.expires_in || 300) * 1000;
+        let interval = Math.max(1000, start.interval_ms || 5000);
+        let signedIn = false;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, interval));
+          const poll = await window.wuu.pollXAILogin(start.login_id);
+          if (poll.status === "pending") {
+            interval = Math.max(1000, poll.interval_ms || interval);
+            continue;
+          }
+          if (poll.status !== "success") {
+            throw new Error(poll.error || t("error.oauthFailed"));
+          }
+          signedIn = true;
+          break;
+        }
+        if (!signedIn) {
+          throw new Error(t("error.oauthFailed"));
+        }
+      }
       await onSaveProvider(name, providerModel, {
         type: providerType,
         create_provider: true,
-        api_key: key,
+        ...(xaiSubscription ? { base_url: "https://api.x.ai/v1" } : { api_key: key }),
       });
       setStep("ready");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("provider.saveFailed"));
     } finally {
+      setXAILogin(null);
       setSavingProvider(false);
     }
   }
@@ -337,19 +369,36 @@ export function FirstRunOnboarding({
                 </label>
                 <label>
                   <span>{t("provider.type")}</span>
-                  <select value={providerType} onChange={(event) => setProviderType(event.currentTarget.value)}>
+                  <select
+                    value={providerType}
+                    onChange={(event) => {
+                      const next = event.currentTarget.value;
+                      setProviderType(next);
+                      if (next === "xai-subscription") {
+                        if (!providerName.trim()) setProviderName("xai-subscription");
+                        if (!model.trim()) setModel("grok-4.6");
+                      }
+                    }}
+                  >
                     <option value="openai-compatible">{t("provider.openaiCompatible")}</option>
                     <option value="anthropic">{t("provider.anthropicCompatible")}</option>
+                    <option value="xai-subscription">{t("provider.xaiSubscription")}</option>
                   </select>
                 </label>
                 <label>
                   <span>{t("provider.modelName")}</span>
                   <input value={model} onChange={(event) => setModel(event.currentTarget.value)} placeholder="gpt-4o" />
                 </label>
+                {providerType === "xai-subscription" ? (
+                  <p className="onboarding-provider-description">
+                    {xaiLogin ? t("provider.xaiLoginCode", { code: xaiLogin.userCode }) : t("provider.xaiLoginHint")}
+                  </p>
+                ) : (
                 <label>
                   <span>{t("provider.apiKey")}</span>
                   <input type="password" value={apiKey} onChange={(event) => setApiKey(event.currentTarget.value)} />
                 </label>
+                )}
               </div>
             ) : null}
 
@@ -367,7 +416,7 @@ export function FirstRunOnboarding({
                 <button
                   className="onboarding-primary"
                   type="button"
-                  disabled={savingProvider || (!providerReady && (!providerName.trim() || !model.trim() || !apiKey.trim()))}
+                  disabled={savingProvider || (!providerReady && (!providerName.trim() || !model.trim() || (providerType !== "xai-subscription" && !apiKey.trim())))}
                   onClick={() => providerReady ? setStep("ready") : void saveProvider()}
                 >
                   {savingProvider ? t("onboarding.savingProvider") : t("onboarding.continue")}

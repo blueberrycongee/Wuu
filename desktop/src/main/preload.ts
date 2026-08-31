@@ -354,6 +354,9 @@ const api: WuuDesktopApi = {
   finishMCPAuth: (name: string, state: string, code: string) =>
     ipcRenderer.invoke("wuu:mcp-auth-finish", name, state, code),
   removeMCPAuth: (name: string) => ipcRenderer.invoke("wuu:mcp-auth-remove", name),
+  startXAILogin: () => ipcRenderer.invoke("wuu:auth-xai-login-start"),
+  pollXAILogin: (loginId: string) => ipcRenderer.invoke("wuu:auth-xai-login-poll", loginId),
+  cancelXAILogin: (loginId: string) => ipcRenderer.invoke("wuu:auth-xai-login-cancel", loginId),
   listActivities: (threadId: string) => ipcRenderer.invoke("wuu:activity-list", threadId),
   takeoverActivity: (threadId: string, activityId: string) =>
     ipcRenderer.invoke("wuu:activity-takeover", threadId, activityId),

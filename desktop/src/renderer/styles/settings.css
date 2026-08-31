@@ -789,6 +789,13 @@
   text-overflow: ellipsis;
 }
 
+.settings-xai-login {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .settings-engine-advanced-toggle {
   align-self: flex-start;
   gap: 4px;

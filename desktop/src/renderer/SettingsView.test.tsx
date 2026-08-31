@@ -60,6 +60,9 @@ function installBuildInfoStub(info: BuildInfoResult): void {
     getMCPAuthStatus: vi.fn(),
     finishMCPAuth: vi.fn(),
     removeMCPAuth: vi.fn(),
+    startXAILogin: vi.fn(),
+    pollXAILogin: vi.fn(),
+    cancelXAILogin: vi.fn(),
     openExternal: vi.fn(),
     listCodexPets: vi.fn().mockResolvedValue(emptyCodexPetsSnapshot()),
     updateCodexPetSettings: vi.fn().mockResolvedValue(emptyCodexPetsSnapshot()),
@@ -515,6 +518,32 @@ describe("SettingsView provider configuration", () => {
       },
       "",
     );
+  });
+
+  it("shows SuperGrok login instead of an API key field", async () => {
+    installBuildInfoStub({
+      core: undefined,
+      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
+    });
+    renderSettings({
+      initialPage: "providers",
+      initialized: baseInitialized({
+        provider: "xai-subscription",
+        model: "grok-4.6",
+        providers: [
+          {
+            name: "xai-subscription",
+            type: "xai-subscription",
+            model: "grok-4.6",
+            base_url: "https://api.x.ai/v1",
+            api_key_configured: false,
+            connection_locked: true,
+          },
+        ],
+      }),
+    });
+    expect(container.textContent).toContain("使用 SuperGrok 登录");
+    expect(container.querySelector("input[type='password']")).toBeNull();
   });
 
   it("shows an alert instead of removing a provider used by a running turn", async () => {

@@ -94,6 +94,8 @@ import type {
   MCPAuthRemoveResult,
   MCPAuthStartResult,
   MCPAuthStatusResult,
+  AuthXAILoginStartResult,
+  AuthXAILoginPollResult,
   MCPServerActionResult,
   ManagedProcessActionResult,
   ManagedProcessListResult,
@@ -1798,6 +1800,19 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle("wuu:mcp-auth-finish", (event, name: string, state: string, code: string) =>
     appServerRequest<MCPAuthFinishResult>(event, "mcp/auth/finish", { name, state, code }),
+  );
+  ipcMain.handle("wuu:auth-xai-login-start", (event) =>
+    appServerRequest<AuthXAILoginStartResult>(event, "auth/xai/login/start"),
+  );
+  ipcMain.handle("wuu:auth-xai-login-poll", (event, loginId: string) =>
+    appServerRequest<AuthXAILoginPollResult>(event, "auth/xai/login/poll", {
+      login_id: loginId,
+    }),
+  );
+  ipcMain.handle("wuu:auth-xai-login-cancel", (event, loginId: string) =>
+    appServerRequest<{ ok: boolean }>(event, "auth/xai/login/cancel", {
+      login_id: loginId,
+    }),
   );
   ipcMain.handle("wuu:mcp-auth-remove", (event, name: string) =>
     appServerRequest<MCPAuthRemoveResult>(event, "mcp/auth/remove", { name }),

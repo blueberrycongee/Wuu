@@ -217,6 +217,12 @@ export function SettingsView({
   const [providerTypeDraft, setProviderTypeDraft] = useState("openai-compatible");
   const [addingProvider, setAddingProvider] = useState(false);
   const [error, setError] = useState("");
+  const [xaiLogin, setXAILogin] = useState<{
+    loginId: string;
+    userCode: string;
+    url: string;
+  } | null>(null);
+  const [xaiLoginBusy, setXAILoginBusy] = useState(false);
   const [desktopBuild, setDesktopBuild] = useState<DesktopBuildInfo | undefined>();
   const [activePage, setActivePage] = useState<SettingsPage>(() =>
     availableSettingsPage(initialPage),
@@ -410,11 +416,76 @@ export function SettingsView({
     setVariantDraft("");
     setBaseURLDraft("");
     setAPIKeyDraft("");
+    setXAILogin(null);
     setError("");
+  }
+
+  function changeProviderTypeDraft(type: string): void {
+    setProviderTypeDraft(type);
+    if (!isXAISubscriptionType(type)) {
+      return;
+    }
+    if (!providerDraft.trim() || providerDraft.startsWith("custom-")) {
+      setProviderDraft(providers.some((item) => item.name === "xai-subscription") ? nextCustomProviderName(providers) : "xai-subscription");
+    }
+    if (!modelDraft.trim()) {
+      setModelDraft("grok-4.6");
+    }
+    setBaseURLDraft("https://api.x.ai/v1");
+    setAPIKeyDraft("");
+  }
+
+  async function startXAILogin(): Promise<void> {
+    if (xaiLoginBusy || typeof window.wuu.startXAILogin !== "function") {
+      return;
+    }
+    setError("");
+    setXAILoginBusy(true);
+    try {
+      const start = await window.wuu.startXAILogin();
+      const url = start.verification_uri_complete || start.verification_uri;
+      setXAILogin({ loginId: start.login_id, userCode: start.user_code, url });
+      if (url) {
+        await window.wuu.openExternal(url);
+      }
+      const deadline = Date.now() + Math.max(30, start.expires_in || 300) * 1000;
+      let interval = Math.max(1000, start.interval_ms || 5000);
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, interval));
+        const poll = await window.wuu.pollXAILogin(start.login_id);
+        if (poll.status === "pending") {
+          interval = Math.max(1000, poll.interval_ms || interval);
+          continue;
+        }
+        if (poll.status !== "success") {
+          throw new Error(poll.error || t("error.oauthFailed"));
+        }
+        setXAILogin(null);
+        if (addingProvider) {
+          const connection: RuntimeConnectionUpdate = {
+            base_url: baseURLDraft.trim() || "https://api.x.ai/v1",
+            type: "xai-subscription",
+            create_provider: true
+          };
+          await onSave(providerDraft.trim() || "xai-subscription", modelDraft.trim() || "grok-4.6", undefined, connection, variantDraft);
+          setAddingProvider(false);
+        } else {
+          await onSave(providerDraft, modelDraft, undefined, undefined, variantDraft);
+        }
+        return;
+      }
+      throw new Error(t("error.oauthFailed"));
+    } catch (loginError) {
+      setXAILogin(null);
+      setError(loginError instanceof Error ? loginError.message : t("error.oauthFailed"));
+    } finally {
+      setXAILoginBusy(false);
+    }
   }
 
   function cancelAddingProvider(): void {
     setAddingProvider(false);
+    setXAILogin(null);
     setProviderDraft(initialized?.provider ?? "");
     setProviderTypeDraft("openai-compatible");
     setModelDraft(initialized?.model ?? "");
@@ -520,10 +591,13 @@ export function SettingsView({
         type: providerTypeDraft,
         create_provider: true
       };
-      connection.api_key = apiKeyDraft.trim();
+      if (!isXAISubscriptionType(providerTypeDraft)) {
+        connection.api_key = apiKeyDraft.trim();
+      }
       await onSave(providerDraft, modelDraft, undefined, connection, variantDraft);
       setAddingProvider(false);
       setAPIKeyDraft("");
+      setXAILogin(null);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
     }
@@ -731,13 +805,14 @@ export function SettingsView({
 
   // The create-transaction submit is the only explicit action left: every
   // other field on the page applies instantly on commit.
+  const addingXAISubscription = addingProvider && isXAISubscriptionType(providerTypeDraft);
   const addSubmitDisabled =
     running ||
     !providerDraft.trim() ||
     providerNameTaken ||
     !modelDraft.trim() ||
     !baseURLDraft.trim() ||
-    !apiKeyDraft.trim();
+    (!addingXAISubscription && !apiKeyDraft.trim());
   const shellStyle = {
     // Same variables as the main app shell (`--sidebar-width` collapses to 0,
     // `--sidebar-open-width` remembers the open width for the hover drawer)
@@ -993,7 +1068,7 @@ export function SettingsView({
                   onStartAddingProvider={startAddingProvider}
                   onCancelAddingProvider={cancelAddingProvider}
                   onProviderDraftChange={setProviderDraft}
-                  onProviderTypeDraftChange={setProviderTypeDraft}
+                  onProviderTypeDraftChange={changeProviderTypeDraft}
                   onModelDraftChange={(value) => {
                     setModelDraft(value);
                     setVariantDraft("");
@@ -1009,6 +1084,9 @@ export function SettingsView({
                   onRefreshModelCatalog={onRefreshModelCatalog}
                   runningProviderNames={runningProviderNameSet}
                   disabled={addSubmitDisabled}
+                  xaiLogin={xaiLogin}
+                  xaiLoginBusy={xaiLoginBusy}
+                  onStartXAILogin={() => void startXAILogin()}
                 />
               </>
             ) : activePage === "collaboration" ? (
@@ -1236,7 +1314,10 @@ function SettingsProvidersPage({
   onRemoveProvider,
   onRefreshModelCatalog,
   runningProviderNames,
-  disabled
+  disabled,
+  xaiLogin,
+  xaiLoginBusy,
+  onStartXAILogin
 }: {
   providers: ProviderSummary[];
   providerLabels: Map<string, string>;
@@ -1270,11 +1351,18 @@ function SettingsProvidersPage({
   onRefreshModelCatalog: () => Promise<void>;
   runningProviderNames: ReadonlySet<string>;
   disabled: boolean;
+  xaiLogin: { loginId: string; userCode: string; url: string } | null;
+  xaiLoginBusy: boolean;
+  onStartXAILogin: () => void;
 }): JSX.Element {
   const { t } = useI18n();
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const reasoningMode = providerModelReasoningMode(selectedProvider, modelDraft);
   const authFieldLabel = t("provider.apiKey");
+  const xaiType = addingProvider
+    ? isXAISubscriptionType(providerTypeDraft)
+    : isXAISubscriptionType(selectedProvider?.type);
+  const oauthLocked = connectionLocked || xaiType;
   // Text fields commit on blur, or on Enter — except while creating a
   // provider, where Enter submits the create transaction instead.
   const commitOnEnter =
@@ -1326,7 +1414,7 @@ function SettingsProvidersPage({
                 <small>{provider.model || t("provider.noModel")}</small>
                 <small>{providerConnectionStatus(provider, t)}</small>
               </button>
-              {onRemoveProvider && !provider.connection_locked ? (
+              {onRemoveProvider && (!provider.connection_locked || isXAISubscriptionType(provider.type)) ? (
                 <button
                   className="settings-provider-remove"
                   type="button"
@@ -1414,7 +1502,8 @@ function SettingsProvidersPage({
               disabled={running}
               options={[
                 { value: "openai-compatible", label: t("provider.openaiCompatible") },
-                { value: "anthropic", label: t("provider.anthropicCompatible") }
+                { value: "anthropic", label: t("provider.anthropicCompatible") },
+                { value: "xai-subscription", label: t("provider.xaiSubscription") }
               ]}
             />
           </SettingsRow>
@@ -1465,19 +1554,44 @@ function SettingsProvidersPage({
         </SettingsRow>
         <SettingsRow
           title={t("settings.baseURL")}
-          description={connectionLocked ? t("provider.oauthManaged") : undefined}
+          description={
+            oauthLocked
+              ? xaiType
+                ? t("provider.xaiOAuthManaged")
+                : t("provider.oauthManaged")
+              : undefined
+          }
           block
         >
           <input
             className="settings-input"
             value={baseURLDraft}
-            placeholder={connectionLocked ? t("provider.oauthManaged") : "https://api.openai.com/v1"}
+            placeholder={oauthLocked ? (xaiType ? t("provider.xaiOAuthManaged") : t("provider.oauthManaged")) : "https://api.openai.com/v1"}
             onChange={(event) => onBaseURLDraftChange(event.target.value)}
             onBlur={() => onCommitBaseURL()}
             onKeyDown={commitOnEnter(onCommitBaseURL)}
-            disabled={running || connectionLocked}
+            disabled={running || oauthLocked}
           />
         </SettingsRow>
+        {xaiType ? (
+          <SettingsRow title={t("provider.xaiLogin")} description={t("provider.xaiLoginHint")} block>
+            <div className="settings-xai-login">
+              <button
+                className="settings-button settings-button-primary"
+                type="button"
+                onClick={onStartXAILogin}
+                disabled={running || xaiLoginBusy}
+              >
+                {xaiLoginBusy ? t("provider.xaiLoggingIn") : selectedProvider?.api_key_configured ? t("provider.xaiLoggedIn") : t("provider.xaiLogin")}
+              </button>
+              {xaiLogin ? (
+                <p className="settings-hint">
+                  {t("provider.xaiLoginCode", { code: xaiLogin.userCode })}
+                </p>
+              ) : null}
+            </div>
+          </SettingsRow>
+        ) : (
         <SettingsRow title={authFieldLabel} block>
           <input
             className="settings-input"
@@ -1499,6 +1613,7 @@ function SettingsProvidersPage({
             disabled={running || connectionLocked}
           />
         </SettingsRow>
+        )}
         {addingProvider ? (
           <div className="settings-row settings-row-footer">
             {error ? <div className="settings-error">{error}</div> : null}
@@ -3073,6 +3188,9 @@ function advancedContextSourceLabel(source: string | undefined, t: Translate): s
 }
 
 function providerConnectionStatus(provider: ProviderSummary, t: Translate): string {
+  if (isXAISubscriptionType(provider.type)) {
+    return provider.api_key_configured ? t("provider.xaiLoggedIn") : t("provider.xaiLogin");
+  }
   if (provider.connection_locked) {
     return "OAuth";
   }
@@ -3092,6 +3210,16 @@ function providerTypeLabel(provider: ProviderSummary, t: Translate): string {
 function isAnthropicProviderType(type: string | undefined): boolean {
   const normalized = (type ?? "").trim().toLowerCase().replaceAll("_", "-");
   return normalized === "anthropic" || normalized === "claude" || normalized === "anthropic-official";
+}
+
+function isXAISubscriptionType(type: string | undefined): boolean {
+  const normalized = (type ?? "").trim().toLowerCase().replaceAll("_", "-");
+  return (
+    normalized === "xai-subscription" ||
+    normalized === "xai-oauth" ||
+    normalized === "grok-subscription" ||
+    normalized === "supergrok"
+  );
 }
 
 type UsageHeatmapCell = SettingsUsageDay & {
@@ -3429,6 +3557,9 @@ function providerBaseLabel(provider: ProviderSummary, t: Translate): string {
 
 function providerServiceLabel(provider: ProviderSummary, t: Translate): string {
   const type = provider.type.trim().toLowerCase().replaceAll("_", "-");
+  if (isXAISubscriptionType(type)) {
+    return t("provider.xaiSubscription");
+  }
   if (provider.connection_locked || type === "openai-codex" || type === "codex-subscription" || type === "chatgpt-codex") {
     return "OpenAI OAuth";
   }
