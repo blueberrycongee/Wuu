@@ -1993,7 +1993,7 @@ export const enUS = {
   "fixture.rich.patchSummary": "constrain readable width",
   "fixture.rich.patchApplied": "Patch applied.",
   "fixture.rich.checklist": "## Visual inspection checklist\n\n| Area | Expected |\n| --- | --- |\n| Body paragraphs | Stable line length; wider windows add margins |\n| User bubbles | Right-aligned without spanning the full column |\n| Tool cards | Stay inside the reading column without crowding copy controls |\n| Code blocks | Wrap or scroll without breaking the page width |\n\n> This quote checks alignment between the left edge, indentation, and body width.\n\n```ts\nconst readableWidth = \"760px\";\nconst goal = \"keep conversation text comfortable on wide screens\";\n```\n\nThis sample is not real history and is never written to the backend. It exists only for visual checks in development mode.",
-  "userQuestion.kicker": "Question from Wuu",
+  "userQuestion.kicker": "Your input is needed",
   "userQuestion.continue": "Continue",
   "userQuestion.sending": "Sending…",
   "userQuestion.cancel": "Cancel",

@@ -1991,7 +1991,7 @@ export const zhCN = {
   "fixture.rich.patchSummary": "约束阅读宽度",
   "fixture.rich.patchApplied": "补丁已应用。",
   "fixture.rich.checklist": "## 视觉检查清单\n\n| 区域 | 预期 |\n| --- | --- |\n| 正文段落 | 行长稳定，窗口变宽只增加留白 |\n| 用户气泡 | 靠右显示，不能横跨整列 |\n| 工具卡片 | 保持在阅读列内，不挤压复制按钮 |\n| 代码块 | 可以横向或换行展示，不能撑破页面 |\n\n> 这个引用块用来检查左边界、缩进和正文宽度是否协调。\n\n```ts\nconst readableWidth = \"760px\";\nconst goal = \"keep conversation text comfortable on wide screens\";\n```\n\n这个样例不代表真实历史，也不会写入后端。它只在开发模式下用于看界面效果。",
-  "userQuestion.kicker": "Wuu 提问",
+  "userQuestion.kicker": "需要你的回答",
   "userQuestion.continue": "继续",
   "userQuestion.sending": "发送中…",
   "userQuestion.cancel": "取消",
