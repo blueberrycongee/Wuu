@@ -214,9 +214,13 @@ describe("SettingsView shell", () => {
     expect(brand).not.toBeNull();
     expect(brand?.querySelector(".sidebar-brand-wordmark")?.textContent).toBe("wuu");
     expect(brand?.querySelector(".sidebar-brand-descriptor")?.textContent).toBe("harness");
+    expect(brand?.textContent).toContain("collaboration");
+    expect(brand?.querySelector(".sidebar-mode-switch")).not.toBeNull();
+    expect(brand?.querySelector("button")).toBeNull();
+    expect(brand?.querySelectorAll(".sidebar-mode-option-static")).toHaveLength(2);
     expect(brand?.previousElementSibling).toBe(trafficSpacer);
     expect(brand?.nextElementSibling).toBe(backButton);
-    expect(brand?.textContent?.trim()).toBe("wuuharness");
+    expect(brand?.textContent?.trim()).toBe("wuucollaborationharness");
   });
 
   it("uses the same transparent-until-hover sidebar toggle as the conversation titlebar", () => {

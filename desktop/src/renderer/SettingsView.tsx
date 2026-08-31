@@ -36,6 +36,7 @@ import {
   useSyncExternalStore
 } from "react";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
+import { AppModeSwitch } from "./AppModeSwitch";
 import { useSidebarDrawerState } from "./SidebarDrawerState";
 import { SIDEBAR_DRAWER_EXIT_MS, SIDEBAR_MOTION_MS } from "./AppLayoutState";
 import { SelectMenu } from "./SelectMenu";
@@ -829,10 +830,7 @@ export function SettingsView({
           */}
         <div className="sidebar-content">
           <div className="traffic-spacer" />
-          <div className="sidebar-brand" aria-label="wuu harness">
-            <span className="sidebar-brand-wordmark">wuu</span>
-            <span className="sidebar-brand-descriptor">harness</span>
-          </div>
+          <AppModeSwitch mode="harness" collaborationEnabled readOnly />
           <button className="settings-back-button" type="button" onClick={onBack}>
             <ArrowLeft className="icon" />
             <span>{t("settings.backToApp")}</span>

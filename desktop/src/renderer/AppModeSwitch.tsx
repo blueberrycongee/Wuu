@@ -15,6 +15,7 @@ export function AppModeSwitch({
   mode,
   collaborationEnabled,
   onChange,
+  readOnly = false,
   unreadViewOpen = false,
   unreadCount = 0,
   onToggleUnreadView,
@@ -22,7 +23,8 @@ export function AppModeSwitch({
 }: {
   mode: AppMode;
   collaborationEnabled: boolean;
-  onChange: (mode: AppMode) => void;
+  onChange?: (mode: AppMode) => void;
+  readOnly?: boolean;
   unreadViewOpen?: boolean;
   unreadCount?: number;
   onToggleUnreadView?: () => void;
@@ -92,25 +94,37 @@ export function AppModeSwitch({
       <span className="sidebar-brand-wordmark">wuu</span>
       <div className="sidebar-mode-switch" role="group" aria-label={t("sidebar.productMode")}>
         {collaborationEnabled ? (
-          <button
-            className="sidebar-mode-option"
-            type="button"
-            aria-pressed={mode === "collaboration"}
-            onClick={() => onChange("collaboration")}
-          >
-            {t("sidebar.collaboration")}
-          </button>
+          readOnly ? (
+            <span className="sidebar-mode-option sidebar-mode-option-static">
+              {t("sidebar.collaboration")}
+            </span>
+          ) : (
+            <button
+              className="sidebar-mode-option"
+              type="button"
+              aria-pressed={mode === "collaboration"}
+              onClick={() => onChange?.("collaboration")}
+            >
+              {t("sidebar.collaboration")}
+            </button>
+          )
         ) : null}
-        <button
-          className="sidebar-mode-option sidebar-brand-descriptor"
-          type="button"
-          aria-pressed={mode === "harness"}
-          onClick={() => onChange("harness")}
-        >
-          {t("sidebar.harness")}
-        </button>
+        {readOnly ? (
+          <span className="sidebar-mode-option sidebar-mode-option-static sidebar-brand-descriptor">
+            {t("sidebar.harness")}
+          </span>
+        ) : (
+          <button
+            className="sidebar-mode-option sidebar-brand-descriptor"
+            type="button"
+            aria-pressed={mode === "harness"}
+            onClick={() => onChange?.("harness")}
+          >
+            {t("sidebar.harness")}
+          </button>
+        )}
       </div>
-      {mode === "harness" ? (
+      {!readOnly && mode === "harness" ? (
         <button
           className="sidebar-notifications-button"
           type="button"
