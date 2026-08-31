@@ -80,14 +80,14 @@ export function EngineSettingsSection(): JSX.Element {
 
   const statusFlag = (
     engine: EngineInfo | undefined,
-  ): { text: string; className: string } => {
+  ): { text: string; tone: "success" | "muted" } => {
     if (engine?.enabled && engine?.binary_ok) {
-      return { text: t("settings.engineReady"), className: "settings-inline-flag success" };
+      return { text: t("settings.engineReady"), tone: "success" };
     }
     if (!engine?.enabled) {
-      return { text: t("settings.engineDisabled"), className: "settings-inline-flag" };
+      return { text: t("settings.engineDisabled"), tone: "muted" };
     }
-    return { text: t("settings.engineNotInstalled"), className: "settings-inline-flag" };
+    return { text: t("settings.engineNotInstalled"), tone: "muted" };
   };
 
   return (
@@ -139,43 +139,43 @@ export function EngineSettingsSection(): JSX.Element {
                 />
               </div>
             </div>
-            {EXTERNAL_ENGINES.map((id) => {
-              const engine = engineById(id);
-              const flag = statusFlag(engine);
-              return (
-                <div
-                  key={id}
-                  className="settings-row"
-                  data-testid={`settings-engine-${id}-status`}
-                >
-                  <div className="settings-row-label">
-                    <span className="settings-row-label-title">{ENGINE_LABELS[id]}</span>
-                    <span className="settings-row-label-description settings-engine-path">
-                      {statusLine(engine)}
-                    </span>
-                  </div>
-                  <div className="settings-row-control">
-                    <span className={flag.className}>{flag.text}</span>
-                  </div>
-                </div>
-              );
-            })}
           </>
         )}
       </div>
-      <button
-        className="settings-button settings-button-ghost settings-engine-advanced-toggle"
-        type="button"
-        aria-expanded={advancedOpen}
-        data-testid="settings-engine-advanced-toggle"
-        onClick={() => setAdvancedOpen((open) => !open)}
-      >
-        <ChevronRight
-          className={`icon settings-engine-advanced-chevron${advancedOpen ? " open" : ""}`}
-          aria-hidden="true"
-        />
-        <span>{t("settings.engineAdvanced")}</span>
-      </button>
+      {result !== undefined ? (
+        <div className="settings-engine-overview">
+          <div className="settings-engine-statuses">
+            {EXTERNAL_ENGINES.map((id) => {
+              const flag = statusFlag(engineById(id));
+              return (
+                <div
+                  key={id}
+                  className="settings-engine-status"
+                  data-tone={flag.tone}
+                  data-testid={`settings-engine-${id}-status`}
+                >
+                  <span className="settings-engine-status-dot" aria-hidden="true" />
+                  <span className="settings-engine-status-name">{ENGINE_LABELS[id]}</span>
+                  <span className="settings-engine-status-label">{flag.text}</span>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            className="settings-button settings-button-ghost settings-engine-advanced-toggle"
+            type="button"
+            aria-expanded={advancedOpen}
+            data-testid="settings-engine-advanced-toggle"
+            onClick={() => setAdvancedOpen((open) => !open)}
+          >
+            <ChevronRight
+              className={`icon settings-engine-advanced-chevron${advancedOpen ? " open" : ""}`}
+              aria-hidden="true"
+            />
+            <span>{t("settings.engineAdvanced")}</span>
+          </button>
+        </div>
+      ) : null}
       {advancedOpen ? (
         <div className="settings-group" data-wuu-component="settings-group">
           {EXTERNAL_ENGINES.map((id) => {
@@ -196,7 +196,7 @@ export function EngineSettingsSection(): JSX.Element {
                     type="text"
                     aria-label={`${ENGINE_LABELS[id]} ${t("settings.engineBinaryPath")}`}
                     data-testid={`settings-engine-${id}-path`}
-                    placeholder={t("settings.engineBinaryPathPlaceholder")}
+                    placeholder={statusLine(engineById(id)) || t("settings.engineBinaryPathPlaceholder")}
                     defaultValue={engineSettings?.binary_path ?? ""}
                     disabled={busy}
                     onBlur={(event) => {

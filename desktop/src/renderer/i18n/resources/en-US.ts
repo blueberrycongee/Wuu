@@ -6,7 +6,7 @@ export const enUS = {
   "common.english": "English",
   "settings.appearance": "Appearance",
   "settings.agentEngines": "Agent",
-  "settings.agentEnginesDescription": "Auto-detected coding agents (Codex, Claude Code) you can use in new conversations, just like models.",
+  "settings.agentEnginesDescription": "Use installed Codex and Claude Code agents in new conversations, just like models.",
   "settings.defaultEngine": "Default agent",
   "settings.defaultEngineDescription": "Used for new conversations when none is specified.",
   "settings.engineReady": "Ready",

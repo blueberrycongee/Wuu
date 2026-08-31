@@ -4,7 +4,7 @@ export const zhCN = {
   "common.english": "English",
   "settings.appearance": "外观",
   "settings.agentEngines": "Agent",
-  "settings.agentEnginesDescription": "自动检测已安装的编码代理（Codex、Claude Code），可直接像模型一样用于新会话。",
+  "settings.agentEnginesDescription": "自动检测已安装的 Codex、Claude Code，可像模型一样用于新会话。",
   "settings.defaultEngine": "默认 Agent",
   "settings.defaultEngineDescription": "新建会话未指定时默认使用。",
   "settings.engineReady": "已就绪",
