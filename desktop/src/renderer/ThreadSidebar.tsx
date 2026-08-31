@@ -411,7 +411,7 @@ export function ProjectGroup({
         emptyNote={
           loadingProjectThreads
             ? t("threadSidebar.loadingConversations")
-            : t("threadSidebar.noConversations")
+            : undefined
         }
       >
         {projectThreads.length === 0 ? null : (

@@ -871,6 +871,23 @@ describe("ProjectGroup remove workspace", () => {
     expect(container.querySelector(".project-row-loading")).not.toBeNull();
   });
 
+  it("shows no body content when an expanded project has no sessions", () => {
+    const project = makeProject("project-1", "wuu", "/repo/wuu");
+    act(() => {
+      root = createRoot(container);
+      root.render(
+        <ProjectGroup
+          {...baseProps}
+          project={project}
+          expandedSidebarSectionIDs={new Set([project.id])}
+        />,
+      );
+    });
+
+    expect(container.textContent).not.toContain("还没有会话");
+    expect(container.querySelector(".thread-list-collapse")).toBeNull();
+  });
+
   it("opens a 移除工作区 menu on a real project row and reports the id", () => {
     const removed: string[] = [];
     act(() => {
