@@ -121,7 +121,11 @@ describe("FirstRunOnboarding", () => {
         <I18nProvider>
           <FirstRunOnboarding
             {...props}
-            inventory={[plugin("ask-user", true), plugin("memory", false)]}
+            inventory={[
+              plugin("ask-user", true),
+              plugin("todo", false),
+              plugin("memory", false),
+            ]}
           />
         </I18nProvider>,
       );
@@ -129,6 +133,9 @@ describe("FirstRunOnboarding", () => {
 
     expect(container.textContent).not.toContain("正在准备随包插件");
     expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
+    expect(
+      container.querySelector('[aria-pressed="true"] .onboarding-plugin-copy strong')?.textContent,
+    ).toBe("todo");
     expect(container.querySelector(".onboarding-presets .is-selected")?.textContent).toBe("推荐");
   });
 

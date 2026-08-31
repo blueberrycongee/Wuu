@@ -26,7 +26,6 @@ const BUNDLED_PLUGIN_ORDER = [
   "note-compaction",
 ] as const;
 const RECOMMENDED_PLUGIN_IDS = new Set<string>([
-  "ask-user",
   "todo",
   "automation",
   "subagent",
