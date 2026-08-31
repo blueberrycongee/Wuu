@@ -7,7 +7,7 @@ wuu 使用 BYOK（自带密钥）模式。你选择模型服务并提供凭据�
 
 1. 打开**设置 → 模型服务**。
 2. 选择**新增服务**。
-3. 选择服务类型：**OpenAI 兼容**或**Anthropic 兼容**。
+3. 选择服务类型：**OpenAI 兼容**、**Anthropic 兼容**或 **xAI SuperGrok**。
 4. 填写服务标识和模型名称。
 5. 按服务要求填写 API 端点和 API Key。
 6. 选择**添加服务**，并确认它显示为当前服务。
@@ -22,6 +22,10 @@ wuu 使用 BYOK（自带密钥）模式。你选择模型服务并提供凭据�
   `openai-codex` provider 配置中启用 `reuse_codex_credentials`。Codex 原生上下文压缩
   默认开启；如需继续使用 Wuu 的可移植文本摘要压缩，可将 `native_compaction` 设为
   `false`。
+- **xAI SuperGrok：**选择 xAI SuperGrok 类型，然后使用 SuperGrok 或已绑定的 X
+  Premium+ 账号登录。Wuu 走自己的 agent loop，把订阅 OAuth token 打到
+  `https://api.x.ai/v1`。这不会读取 `~/.grok/auth.json`，也不会使用
+  `XAI_API_KEY`。CLI 可用 `wuu login xai`。
 - **Anthropic：**选择 Anthropic 兼容类型，填写 Anthropic API Key 和模型 ID。
 - **OpenRouter、one-api 或其他网关：**选择 OpenAI 兼容类型，并填写网关端点、Key
   和它提供的模型 ID。
@@ -39,13 +43,20 @@ wuu init
 ```
 
 配置默认写入 `~/.wuu/config.json`；设置 `WUU_HOME` 后写入
-`$WUU_HOME/config.json`。初始配置包含 OpenAI、Anthropic 和 OpenRouter 示例。
+`$WUU_HOME/config.json`。初始配置包含 OpenAI、Anthropic、OpenRouter 和 xAI SuperGrok 示例。
 
 按照所选服务的 `api_key_env` 设置环境变量：
 
 ```bash
 export OPENAI_API_KEY="..."
 wuu exec "描述一下这个工作区"
+```
+
+SuperGrok 订阅不走 API key。先登录，再指定 provider：
+
+```bash
+wuu login xai
+wuu exec --provider xai-subscription "描述一下这个工作区"
 ```
 
 单次运行可以切换到另一个已经配置的服务：

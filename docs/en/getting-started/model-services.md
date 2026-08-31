@@ -8,7 +8,7 @@ determined by the service you choose.
 
 1. Open **Settings → Model providers**.
 2. Choose **Add provider**.
-3. Choose the provider type: **OpenAI-compatible** or **Anthropic-compatible**.
+3. Choose the provider type: **OpenAI-compatible**, **Anthropic-compatible**, or **xAI SuperGrok**.
 4. Enter a provider identifier and the model name.
 5. Enter the API endpoint and API key as the provider requires.
 6. Choose **Add provider**, and confirm it is shown as the current provider.
@@ -25,6 +25,10 @@ the API prefix the service requires; follow that service's own documentation.
   in the `openai-codex` provider configuration. Native Codex context compaction is
   enabled by default; set `native_compaction` to `false` to keep Wuu's portable
   text-summary compaction.
+- **xAI SuperGrok:** choose the xAI SuperGrok type and sign in with SuperGrok or a
+  linked X Premium+ account. Wuu keeps its own agent loop and sends the subscription
+  OAuth token to `https://api.x.ai/v1`. This does not read `~/.grok/auth.json` and
+  does not use `XAI_API_KEY`. From the CLI, run `wuu login xai`.
 - **Anthropic:** choose the Anthropic-compatible type and enter the Anthropic API key
   and model ID.
 - **OpenRouter, one-api, or another gateway:** choose the OpenAI-compatible type and
@@ -46,13 +50,20 @@ wuu init
 
 The configuration is written to `~/.wuu/config.json` by default, or to
 `$WUU_HOME/config.json` when `WUU_HOME` is set. The initial configuration includes
-OpenAI, Anthropic, and OpenRouter examples.
+OpenAI, Anthropic, OpenRouter, and xAI SuperGrok examples.
 
 Set the environment variable named by your chosen provider's `api_key_env`:
 
 ```bash
 export OPENAI_API_KEY="..."
 wuu exec "describe this workspace"
+```
+
+SuperGrok subscriptions do not use an API key. Sign in first, then select the provider:
+
+```bash
+wuu login xai
+wuu exec --provider xai-subscription "describe this workspace"
 ```
 
 For a single run you can switch to another configured provider:
