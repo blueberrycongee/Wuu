@@ -19,8 +19,7 @@ import { Plus, X } from "lucide-react";
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, useRef, useState } from "react";
 import type { Thread } from "../shared/protocol";
 import {
-  isThreadExecuting,
-  isThreadRunning,
+  isThreadPresentationRunning,
   isThreadUnread,
   sessionTabLabel,
   threadForTab,
@@ -160,8 +159,10 @@ export function SessionTabStrip({
   for (const tab of state.sessionTabs) {
     if (
       tab.kind === "thread" &&
-      (isThreadExecuting(threadForTab(tabState, tab.threadID)) ||
-        crossWorkdirRunning(tab))
+      isThreadPresentationRunning(
+        threadForTab(tabState, tab.threadID),
+        crossWorkdirRunning(tab),
+      )
     ) {
       runningTabIDs.add(tab.id);
     }
@@ -221,8 +222,10 @@ export function SessionTabStrip({
                 // agents settle, even when the parent turn has completed.
                 // The aggregate running set covers non-active workspaces,
                 // whose cached thread snapshots do not track live turns.
-                const running =
-                  isThreadExecuting(tabThread) || crossWorkdirRunning(tab);
+                const running = isThreadPresentationRunning(
+                  tabThread,
+                  crossWorkdirRunning(tab),
+                );
                 const pendingSwitch =
                   pendingSwitchThreadID !== undefined &&
                   tab.kind === "thread" &&
@@ -334,19 +337,20 @@ export function SessionTabStrip({
                 }
                 running={
                   draggingTab.kind === "thread"
-                    ? isThreadExecuting(
+                    ? isThreadPresentationRunning(
                         threadForTab(tabState, draggingTab.threadID),
-                      ) || crossWorkdirRunning(draggingTab)
+                        crossWorkdirRunning(draggingTab),
+                      )
                     : false
                 }
                 unread={
                   draggingTab.kind === "channel-room"
                     ? (channelUnreadByRoomID[draggingTab.roomID] ?? 0) > 0
                     : draggingTab.kind === "thread" &&
-                      !isThreadExecuting(
+                      !isThreadPresentationRunning(
                         threadForTab(tabState, draggingTab.threadID),
+                        crossWorkdirRunning(draggingTab),
                       ) &&
-                      !crossWorkdirRunning(draggingTab) &&
                       isThreadUnread(
                         threadForTab(tabState, draggingTab.threadID),
                         state.lastViewedTurnByThreadID[draggingTab.threadID],

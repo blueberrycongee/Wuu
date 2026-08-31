@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Thread } from "../shared/protocol";
 import type { HeaderSnapshotV1 } from "../shared/workbench";
 import {
+  createThreadSessionTab,
   emptyComposerDraft,
   initialState,
+  threadSessionTabID,
 } from "./AppState";
 
 vi.mock("./ConversationSplitPane", () => ({
@@ -144,6 +146,72 @@ describe("ConversationTitleContent presentation boundary", () => {
     expect(container.firstElementChild?.hasAttribute("data-conversation-header")).toBe(true);
     expect(container.querySelector("h1")).toBeNull();
     expect(snapshot).toEqual({ contractVersion: 1, scope: "conversation", title: "Conversation" });
+  });
+
+  it("stops presenting a tab as busy when its terminal answer is ready", async () => {
+    const pluginHost = new PluginHost({ react: React });
+    const workbenchController = new WorkbenchController(pluginHost);
+    let snapshot: HeaderSnapshotV1 | undefined;
+    await pluginHost.activateGeneration({ pluginId: "conversation-header", generation: "one", register(api) {
+      api.registerPresenter({ id: "conversation", target: "header.conversation", render: (props) => {
+        snapshot = props.snapshot as HeaderSnapshotV1;
+        return <div data-conversation-header />;
+      } });
+    } });
+    const context = {
+      kind: "project" as const,
+      project_id: "project-1",
+      cwd: "/repo/project",
+    };
+    const answerReadyThread: Thread = {
+      ...thread("answer-ready", context.cwd),
+      status: "in_progress",
+      turns: [{
+        id: "turn-ready",
+        status: "in_progress",
+        items_view: "full",
+        answer_ready_at: "2026-08-31T12:00:00Z",
+        items: [{
+          id: "terminal-answer",
+          type: "agent_message",
+          status: "completed",
+          terminal: true,
+          text: "done",
+        }],
+      }],
+    };
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => root?.render(
+      <ConversationTitleContent
+        state={{
+          ...initialState,
+          activeContext: context,
+          thread: answerReadyThread,
+          threads: [answerReadyThread],
+          sessionTabs: [createThreadSessionTab(answerReadyThread, context)],
+          activeSessionTabID: threadSessionTabID(answerReadyThread.id),
+        }}
+        crossWorkspaceThreads={[answerReadyThread]}
+        runningThreadIDs={new Set([answerReadyThread.id])}
+        sessionTabsVisible
+        pendingComposerMessagesByThread={{}}
+        activeTitle="Answer ready"
+        onSelectSessionTab={() => {}}
+        onCloseSessionTab={() => {}}
+        onCloseSessionTabs={() => {}}
+        onPopOutSessionTab={() => {}}
+        onStartNewThread={() => {}}
+        onReorderSessionTabs={() => {}}
+        pluginHost={pluginHost}
+        workbenchController={workbenchController}
+      />,
+    ));
+
+    expect(snapshot?.tabs?.[0]?.busy).toBe(false);
+    expect(snapshot?.busy).toBeUndefined();
   });
 });
 

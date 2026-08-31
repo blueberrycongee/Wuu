@@ -3737,7 +3737,10 @@ export function App(): JSX.Element {
     setPrompt("");
     setComposerImages([]);
     setComposerFiles([]);
-    if (isStateActiveThreadRunning(currentState)) {
+    if (
+      isStateActiveThreadRunning(currentState) &&
+      !activeTurnIsAnswerReady(targetThread)
+    ) {
       const resolvedAction = resolveComposerRunningAction(runningAction, targetThread);
       const sent = resolvedAction === "steer"
         ? await steerComposerMessage(message, targetThread)
@@ -4045,7 +4048,8 @@ export function App(): JSX.Element {
       !currentState.initialized ||
       targetThread?.read_only ||
       viewSwitchPending ||
-      isStateActiveThreadRunning(currentState)
+      (isStateActiveThreadRunning(currentState) &&
+        !activeTurnIsAnswerReady(targetThread))
     ) {
       return false;
     }

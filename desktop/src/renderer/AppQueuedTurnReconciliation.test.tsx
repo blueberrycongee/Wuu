@@ -146,6 +146,27 @@ function runningThread(materializedQueueID?: string): Thread {
   };
 }
 
+function answerReadyThread(): Thread {
+  const current = runningThread();
+  return {
+    ...current,
+    turns: current.turns.map((turn) => ({
+      ...turn,
+      answer_ready_at: "2026-08-31T04:49:41.463Z",
+      items: [
+        ...turn.items,
+        {
+          id: "item-terminal-answer",
+          type: "agent_message" as const,
+          status: "completed" as const,
+          terminal: true,
+          text: "done",
+        },
+      ],
+    })),
+  };
+}
+
 function installWindowStubs(): void {
   class MockResizeObserver {
     observe(): void {}
@@ -170,6 +191,8 @@ function installWindowStubs(): void {
 }
 
 function installWuuApi(options: {
+  thread?: Thread;
+  startTurn?: WuuDesktopApi["startTurn"];
   queueTurn?: WuuDesktopApi["queueTurn"];
   steerTurn?: WuuDesktopApi["steerTurn"];
   resumeThread?: WuuDesktopApi["resumeThread"];
@@ -179,6 +202,7 @@ function installWuuApi(options: {
 } {
   const queuedClientIDs: string[] = [];
   const dequeuedClientIDs: string[] = [];
+  const initialThread = options.thread ?? runningThread();
   const api = {
     listProjects: vi.fn().mockResolvedValue({
       projects: [],
@@ -189,12 +213,20 @@ function installWuuApi(options: {
       active_context: { kind: "no_project", cwd: workspace },
     }),
     initialize: vi.fn().mockResolvedValue(initialized()),
-    listThreads: vi.fn().mockResolvedValue({ threads: [runningThread()] }),
+    listThreads: vi.fn().mockResolvedValue({ threads: [initialThread] }),
     listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
     listChannelRooms: vi.fn().mockResolvedValue({ rooms: [] }),
     resumeThread:
       options.resumeThread ??
-      vi.fn().mockResolvedValue({ thread: runningThread() }),
+      vi.fn().mockResolvedValue({ thread: initialThread }),
+    startTurn: options.startTurn ?? vi.fn().mockResolvedValue({
+      turn: {
+        id: "turn-follow-up",
+        status: "in_progress",
+        items_view: "full",
+        items: [],
+      },
+    }),
     queueTurn: options.queueTurn ?? vi
       .fn()
       .mockImplementation(
@@ -318,6 +350,49 @@ describe("queued turn reconciliation", () => {
     expect(composerProbe().querySelector("textarea")?.value).toBe(
       "queued follow-up",
     );
+  });
+
+  it("starts a normal turn after the final answer is ready", async () => {
+    const startTurn = vi.fn().mockResolvedValue({
+      turn: {
+        id: "turn-follow-up",
+        status: "in_progress",
+        items_view: "full",
+        items: [],
+      },
+    });
+    const queueTurn = vi.fn();
+    installWuuApi({ thread: answerReadyThread(), startTurn, queueTurn });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<App />);
+    });
+    await flushAsync();
+
+    const textarea = composerProbe().querySelector("textarea");
+    const send = composerProbe().querySelector("button");
+    await act(async () => {
+      if (!textarea || !send) throw new Error("composer controls not rendered");
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      valueSetter?.call(textarea, "start the next turn");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      send.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushAsync();
+
+    expect(startTurn).toHaveBeenCalledWith(
+      threadID,
+      "start the next turn",
+      [],
+      [],
+      "standard",
+      undefined,
+    );
+    expect(queueTurn).not.toHaveBeenCalled();
+    expect(composerProbe().dataset.queuedIds).toBe("");
   });
 
   it("removes an already materialized queue entry after a missed start notification", async () => {

@@ -24,7 +24,7 @@ import type {
 } from "../shared/protocol";
 import {
   emptyComposerDraft,
-  isThreadRunning,
+  isThreadPresentationRunning,
   queryTextsForThread,
   sessionTabLabel,
   threadForTab,
@@ -344,8 +344,9 @@ export function ConversationTitleContent({
           id: tab.id,
           title: sessionTabLabel(tab, tabState),
           kind: tab.kind,
-          busy: isThreadRunning(tabThread) || (
-            tab.kind === "thread" && runningThreadIDs?.has(tab.threadID)
+          busy: isThreadPresentationRunning(
+            tabThread,
+            tab.kind === "thread" && runningThreadIDs?.has(tab.threadID),
           ) || (
             pendingSwitchThreadID !== undefined &&
             tab.kind === "thread" &&

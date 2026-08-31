@@ -3013,6 +3013,16 @@ function activeTurnIsAnswerReady(thread: Thread | undefined): boolean {
   return turnIsAnswerReady(activeTurnForThread(thread));
 }
 
+function isThreadPresentationRunning(
+  thread: Thread | undefined,
+  aggregateRunning = false,
+): boolean {
+  // The terminal answer is the user-visible completion boundary. Runtime
+  // cleanup can briefly leave the turn or child agents marked as executing,
+  // but presentation surfaces must stop showing activity at this point.
+  return !activeTurnIsAnswerReady(thread) && (isThreadExecuting(thread) || aggregateRunning);
+}
+
 function presentationRunningThreadIDs(
   threads: readonly (Thread | undefined)[],
   runningThreadIDs: ReadonlySet<string>,
@@ -3768,6 +3778,7 @@ export {
   isAnyThreadRunning,
   isStateActiveThreadRunning,
   isThreadExecuting,
+  isThreadPresentationRunning,
   isThreadRunning,
   isThreadUnread,
   latestCompletedTurnID,
