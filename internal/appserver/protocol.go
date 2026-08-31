@@ -50,6 +50,9 @@ const (
 	MethodUserQuestionRespond             = "user-question/respond"
 	MethodUserQuestionCancel              = "user-question/cancel"
 	MethodConfigCodexModels               = "config/codex/models"
+	MethodAuthXAILoginStart               = "auth/xai/login/start"
+	MethodAuthXAILoginPoll                = "auth/xai/login/poll"
+	MethodAuthXAILoginCancel              = "auth/xai/login/cancel"
 	MethodConfigCatalogRefresh            = "config/model-catalog/refresh"
 	MethodConfigProviderRemove            = "config/provider/remove"
 	MethodSkillList                       = "skill/list"
@@ -923,10 +926,34 @@ type ConfigModelUpdateParams struct {
 	AuthToken      *string `json:"auth_token,omitempty"`
 	// Type is the provider protocol type used when CreateProvider is true.
 	// Accepted values: "openai", "openai-compatible", "anthropic", "claude",
-	// "anthropic-official". Codex OAuth types are intentionally excluded here
-	// because they require a separate OAuth-managed connection flow.
+	// "anthropic-official", "xai-subscription". Codex OAuth types remain
+	// excluded because they require a separate connection flow.
 	Type           *string `json:"type,omitempty"`
 	CreateProvider bool    `json:"create_provider,omitempty"`
+}
+
+type AuthXAILoginStartResult struct {
+	LoginID                 string `json:"login_id"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete,omitempty"`
+	ExpiresInSeconds        int    `json:"expires_in"`
+	IntervalMS              int    `json:"interval_ms"`
+}
+
+type AuthXAILoginPollParams struct {
+	LoginID string `json:"login_id"`
+}
+
+type AuthXAILoginPollResult struct {
+	Status     string            `json:"status"`
+	IntervalMS int               `json:"interval_ms,omitempty"`
+	Error      string            `json:"error,omitempty"`
+	Providers  []ProviderSummary `json:"providers,omitempty"`
+}
+
+type AuthXAILoginCancelParams struct {
+	LoginID string `json:"login_id"`
 }
 
 type ConfigModelUpdateResult struct {

@@ -642,6 +642,10 @@ func providerIDCandidates(providerName string, provider config.ProviderConfig, i
 		"gemini":              "google",
 		"zhipuai":             "zai",
 		"zhipuai-coding-plan": "zai-coding-plan",
+		"xai-subscription":    "xai",
+		"xai-oauth":           "xai",
+		"grok-subscription":   "xai",
+		"supergrok":           "xai",
 	}
 	var out []string
 	seen := map[string]bool{}
@@ -700,6 +704,8 @@ func isOfficialEndpointForType(providerType, endpoint string) bool {
 	switch providerType {
 	case "openai", "codex":
 		return host == "api.openai.com"
+	case "xai", "xai-subscription", "xai-oauth", "grok-subscription", "supergrok":
+		return host == "api.x.ai"
 	case "openai-compatible":
 		return host == "api.z.ai" && path == "/api/v1"
 	case "anthropic", "claude", "anthropic-official":

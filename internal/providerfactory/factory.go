@@ -13,6 +13,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers/anthropic"
 	"github.com/blueberrycongee/wuu/internal/providers/codex"
 	"github.com/blueberrycongee/wuu/internal/providers/openai"
+	"github.com/blueberrycongee/wuu/internal/providers/xaisub"
 )
 
 // sharedProviderCoordinator coordinates every inference client built by this
@@ -57,7 +58,9 @@ func IsCredentialError(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "no api key found") ||
 		strings.Contains(message, "no codex oauth credentials") ||
-		strings.Contains(message, "no wuu codex oauth credentials")
+		strings.Contains(message, "no wuu codex oauth credentials") ||
+		strings.Contains(message, "no wuu xai supergrok oauth credentials") ||
+		strings.Contains(message, "no xai supergrok oauth credentials")
 }
 
 // SupportsNativeToolDiscoveryByDefault reports whether auto mode should use
@@ -195,6 +198,19 @@ func buildClient(provider config.ProviderConfig, providerName string) (providers
 				Coordinator:           sharedProviderCoordinator,
 				ReuseCodexCredentials: provider.ReuseCodexCredentials,
 				NativeCompaction:      provider.NativeCompaction,
+			})
+			if newErr != nil {
+				return nil, newErr
+			}
+			return client, nil
+		}
+		if profile.Auth == authXAISubscription {
+			client, newErr := xaisub.New(xaisub.ClientConfig{
+				BaseURL:         provider.BaseURL,
+				Headers:         provider.Headers,
+				StreamConfig:    providerStreamTransportConfig(provider),
+				StreamTransport: providerStreamTransportMode(provider),
+				Coordinator:     sharedProviderCoordinator,
 			})
 			if newErr != nil {
 				return nil, newErr

@@ -18,9 +18,10 @@ const (
 type authMode string
 
 const (
-	authAPIKey         authMode = "api_key"
-	authAnthropicToken authMode = "anthropic_token"
-	authCodexOAuth     authMode = "codex_oauth"
+	authAPIKey          authMode = "api_key"
+	authAnthropicToken  authMode = "anthropic_token"
+	authCodexOAuth      authMode = "codex_oauth"
+	authXAISubscription authMode = "xai_subscription"
 )
 
 type providerProfile struct {
@@ -50,6 +51,15 @@ func resolveProviderProfile(provider config.ProviderConfig) (providerProfile, er
 			TypeName: typeName,
 			Wire:     wireOpenAIResponses,
 			Auth:     authCodexOAuth,
+		}, nil
+	case "xai-subscription", "xai-oauth", "grok-subscription", "supergrok":
+		if wire := strings.ToLower(strings.TrimSpace(provider.WireAPI)); wire != "" && wire != "responses" {
+			return providerProfile{}, fmt.Errorf("provider type %q supports only responses wire_api", provider.Type)
+		}
+		return providerProfile{
+			TypeName: typeName,
+			Wire:     wireOpenAIResponses,
+			Auth:     authXAISubscription,
 		}, nil
 	case "anthropic", "claude", "anthropic-official":
 		return providerProfile{

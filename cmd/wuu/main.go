@@ -73,6 +73,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "init":
 		return runInit(args[1:])
+	case "login":
+		return runLogin(args[1:])
 	case "models":
 		return runModels(args[1:])
 	case "run":
@@ -2331,6 +2333,7 @@ func printUsage() {
 
 Usage:
   wuu init [--force]
+  wuu login xai [--no-open]
   wuu models [flags]
   wuu exec [flags] "your coding task"
   wuu exec -c|--continue [flags] [prompt...]     alias: resume --last

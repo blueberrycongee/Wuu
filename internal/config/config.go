@@ -932,6 +932,12 @@ func Default() Config {
 				ReuseCodexCredentials: true,
 				NativeCompaction:      &nativeCompaction,
 			},
+			"xai-subscription": {
+				Type:    "xai-subscription",
+				BaseURL: "https://api.x.ai/v1",
+				WireAPI: "responses",
+				Model:   "grok-4.6",
+			},
 			"anthropic": {
 				Type:      "anthropic",
 				BaseURL:   "https://api.anthropic.com",
@@ -1050,6 +1056,19 @@ func isCodexSubscriptionProvider(providerType string) bool {
 	s = strings.ReplaceAll(s, "_", "-")
 	switch s {
 	case "openai-codex", "codex-subscription", "chatgpt-codex":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsXAISubscriptionProvider reports whether this provider type uses SuperGrok
+// OAuth against api.x.ai rather than an API key.
+func IsXAISubscriptionProvider(providerType string) bool {
+	s := strings.ToLower(strings.TrimSpace(providerType))
+	s = strings.ReplaceAll(s, "_", "-")
+	switch s {
+	case "xai-subscription", "xai-oauth", "grok-subscription", "supergrok":
 		return true
 	default:
 		return false
@@ -1577,6 +1596,9 @@ func updateProviderSelection(configPath, providerName, newModel string, baseURL,
 		provider = map[string]any{
 			"type":     providerTypeValue,
 			"base_url": strings.TrimSpace(*baseURL),
+		}
+		if IsXAISubscriptionProvider(providerTypeValue) {
+			provider["wire_api"] = "responses"
 		}
 		if apiKey != nil && strings.TrimSpace(*apiKey) != "" {
 			provider["api_key"] = strings.TrimSpace(*apiKey)

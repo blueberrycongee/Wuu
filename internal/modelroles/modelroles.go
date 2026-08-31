@@ -518,6 +518,8 @@ func protocolFamily(providerName string, provider config.ProviderConfig) string 
 		return "anthropic_messages"
 	case "openai-codex", "codex-subscription", "chatgpt-codex", "codex-cli", "codex":
 		return "openai_responses"
+	case "xai-subscription", "xai-oauth", "grok-subscription", "supergrok":
+		return "openai_responses"
 	}
 	name := strings.ToLower(strings.TrimSpace(providerName))
 	if strings.Contains(name, "anthropic") || strings.Contains(name, "claude") {

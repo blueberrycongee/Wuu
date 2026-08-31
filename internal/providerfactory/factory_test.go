@@ -149,6 +149,74 @@ func TestBuildClient_AnthropicUsesConfiguredModelOutputLimit(t *testing.T) {
 	}
 }
 
+func TestResolveProviderProfile_XAISubscription(t *testing.T) {
+	profile, err := resolveProviderProfile(config.ProviderConfig{Type: "xai-subscription"})
+	if err != nil {
+		t.Fatalf("resolveProviderProfile returned error: %v", err)
+	}
+	if profile.Wire != wireOpenAIResponses {
+		t.Fatalf("Wire = %q, want %q", profile.Wire, wireOpenAIResponses)
+	}
+	if profile.Auth != authXAISubscription {
+		t.Fatalf("Auth = %q, want %q", profile.Auth, authXAISubscription)
+	}
+}
+
+func TestBuildClient_XAISubscriptionUsesStoredOAuth(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WUU_HOME", "")
+	token := "supergrok-factory"
+	if err := os.MkdirAll(filepath.Join(home, ".wuu"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := authstorage.ForHome(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Set("xai-subscription", authstorage.Credentials{
+		Type:         "oauth",
+		AccessToken:  token,
+		RefreshToken: "rt",
+		ExpiresAt:    time.Now().Add(time.Hour),
+		AuthMode:     "xai",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Fatalf("path = %q, want /responses", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer "+token {
+			t.Fatalf("Authorization = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`))
+	}))
+	defer server.Close()
+
+	client, err := BuildClient(config.ProviderConfig{
+		Type:    "xai-subscription",
+		BaseURL: server.URL,
+		WireAPI: "responses",
+		Model:   "grok-4.6",
+	}, "xai-subscription")
+	if err != nil {
+		t.Fatalf("BuildClient returned error: %v", err)
+	}
+	resp, err := client.Chat(context.Background(), providers.ChatRequest{
+		Model:    "grok-4.6",
+		Messages: []providers.ChatMessage{{Role: "user", Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat returned error: %v", err)
+	}
+	if resp.Content != "ok" {
+		t.Fatalf("content = %q, want ok", resp.Content)
+	}
+}
+
 func TestResolveProviderProfile_OpenAICodex(t *testing.T) {
 	profile, err := resolveProviderProfile(config.ProviderConfig{Type: "openai-codex"})
 	if err != nil {

@@ -27,6 +27,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/providers/codex"
+	"github.com/blueberrycongee/wuu/internal/providers/xaisub"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/skills"
@@ -1168,6 +1169,7 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	// it is hoisted out of the if-block so the later CreateProviderRuntime
 	// call can pass it as the new optional provider-type argument.
 	providerTypeValue := ""
+	var createBaseURL *string
 	creatingProvider := params.CreateProvider
 	if creatingProvider {
 		if providerName == "" {
@@ -1179,12 +1181,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		baseURL := strings.TrimSpace(stringValue(params.BaseURL))
 		apiKey := strings.TrimSpace(stringValue(params.APIKey))
 		authToken := strings.TrimSpace(stringValue(params.AuthToken))
-		if baseURL == "" {
-			return s.writeResponse(req.ID, nil, errors.New("base_url is required"))
-		}
-		if apiKey == "" && authToken == "" {
-			return s.writeResponse(req.ID, nil, errors.New("api_key or auth_token is required"))
-		}
 		// Resolve the requested provider type. Empty / missing falls back to
 		// "openai-compatible" (preserves the historical default). Unknown
 		// values are rejected so the UI cannot accidentally create a
@@ -1199,9 +1195,20 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 				}
 			case "anthropic", "claude", "anthropic-official":
 				providerTypeValue = requested
+			case "xai-subscription", "xai-oauth", "grok-subscription", "supergrok":
+				providerTypeValue = requested
 			default:
 				return s.writeResponse(req.ID, nil, fmt.Errorf("unsupported provider type %q", requested))
 			}
+		}
+		if baseURL == "" && config.IsXAISubscriptionProvider(providerTypeValue) {
+			baseURL = xaisub.DefaultBaseURL
+		}
+		if baseURL == "" {
+			return s.writeResponse(req.ID, nil, errors.New("base_url is required"))
+		}
+		if apiKey == "" && authToken == "" && !config.IsXAISubscriptionProvider(providerTypeValue) {
+			return s.writeResponse(req.ID, nil, errors.New("api_key or auth_token is required"))
 		}
 		providerCfg = config.ProviderConfig{
 			Type:      providerTypeValue,
@@ -1210,6 +1217,14 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 			AuthToken: authToken,
 			Model:     model,
 		}
+		if config.IsXAISubscriptionProvider(providerTypeValue) {
+			providerCfg.WireAPI = "responses"
+			if strings.TrimSpace(providerCfg.Model) == "" {
+				providerCfg.Model = xaisub.DefaultModel
+				model = providerCfg.Model
+			}
+		}
+		createBaseURL = &baseURL
 		resolvedName = providerName
 	} else {
 		providerCfg, resolvedName, err = cfg.ResolveProvider(providerName)
@@ -1408,7 +1423,11 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	s.configRefreshMu.Lock()
 	defer s.configRefreshMu.Unlock()
 	if creatingProvider {
-		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
+		baseURLForCreate := params.BaseURL
+		if createBaseURL != nil {
+			baseURLForCreate = createBaseURL
+		}
+		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, baseURLForCreate, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
 	} else {
 		err = config.UpdateProviderRuntime(s.rt.ConfigPath, resolvedName, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
 	}
@@ -1737,6 +1756,11 @@ func (s *Server) handleConfigProviderRemove(req Request) error {
 	}
 	if authErr := authStore.DeleteProvider(resolvedName); authErr != nil {
 		return s.writeResponse(req.ID, nil, fmt.Errorf("remove provider credential: %w", authErr))
+	}
+	if config.IsXAISubscriptionProvider(existing.Type) {
+		if err := xaisub.DeleteTokens(os.Getenv("HOME")); err != nil {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("remove SuperGrok credential: %w", err))
+		}
 	}
 	newDefault, removeErr := config.RemoveProvider(s.rt.ConfigPath, providerName, params.FallbackProvider, params.FallbackModel)
 	if removeErr != nil {
@@ -2227,7 +2251,7 @@ func providerSummariesFromConfig(cfg config.Config, home string) []ProviderSumma
 			Model:            provider.Model,
 			BaseURL:          provider.BaseURL,
 			APIKeyConfigured: providerHasAuth(name, provider, home),
-			ConnectionLocked: isCodexProviderType(provider.Type),
+			ConnectionLocked: isCodexProviderType(provider.Type) || config.IsXAISubscriptionProvider(provider.Type),
 			Models:           providerModelSummaries(name, provider),
 		})
 	}
@@ -2241,6 +2265,10 @@ func providerHasAuth(name string, provider config.ProviderConfig, home string) b
 		}
 		source, err := codex.LocalOAuthStatus(home)
 		return err == nil && (source == "wuu-auth-store" || provider.ReuseCodexCredentials)
+	}
+	if config.IsXAISubscriptionProvider(provider.Type) {
+		_, err := xaisub.LocalOAuthStatus(home)
+		return err == nil
 	}
 
 	if _, err := providerfactory.ResolveAPIKeyWithHome(provider, name, home); err == nil {

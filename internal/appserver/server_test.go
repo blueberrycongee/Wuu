@@ -324,6 +324,12 @@ type lockedBuffer struct {
 	buf bytes.Buffer
 }
 
+func (b *lockedBuffer) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf.Reset()
+}
+
 type noopToolExecutor struct{}
 
 func (noopToolExecutor) Definitions() []providers.ToolDefinition { return nil }
@@ -2751,6 +2757,115 @@ func TestServerConfigModelUpdateCreatesAnthropicProviderWithAuthToken(t *testing
 	credentials, err := store.Get("anthropic-gateway")
 	if err != nil || credentials.AuthToken != "sk-token" {
 		t.Fatalf("provider auth token was not saved to auth store: credentials=%+v err=%v", credentials, err)
+	}
+}
+
+func TestServerConfigModelUpdateCreatesXAISubscriptionWithoutAPIKey(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	if err := os.WriteFile(rt.ConfigPath, []byte(`{
+  "default_provider": "fake-provider",
+  "providers": {
+    "fake-provider": {
+      "type": "openai-compatible",
+      "base_url": "https://example.test/v1",
+      "api_key": "old-key",
+      "model": "fake-model"
+    }
+  }
+}
+`), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	req := `{"id":"1","method":"config/model/update","params":{"provider":"xai-subscription","model":"grok-4.6","type":"xai-subscription","create_provider":true}}`
+	if err := srv.handleLine(context.Background(), []byte(req)); err != nil {
+		t.Fatalf("config/model/update: %v", err)
+	}
+
+	result := remarshal[ConfigModelUpdateResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
+	if result.Provider != "xai-subscription" || result.Model != "grok-4.6" {
+		t.Fatalf("unexpected update result: %+v", result)
+	}
+	var summary ProviderSummary
+	for _, item := range result.Providers {
+		if item.Name == "xai-subscription" {
+			summary = item
+			break
+		}
+	}
+	if summary.Type != "xai-subscription" || summary.BaseURL != "https://api.x.ai/v1" || summary.APIKeyConfigured || !summary.ConnectionLocked {
+		t.Fatalf("unexpected xAI provider summary: %+v", result.Providers)
+	}
+	data, err := os.ReadFile(rt.ConfigPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(data), `"type": "xai-subscription"`) ||
+		!strings.Contains(string(data), `"https://api.x.ai/v1"`) ||
+		!strings.Contains(string(data), `"wire_api": "responses"`) {
+		t.Fatalf("xAI subscription provider was not persisted: %s", data)
+	}
+}
+
+func TestServerXAILoginStartAndPoll(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	pending := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth2/device/code":
+			_, _ = w.Write([]byte(`{"device_code":"dev","user_code":"WXYZ-9999","verification_uri":"https://auth.x.ai/device","expires_in":600,"interval":1}`))
+		case "/oauth2/token":
+			if pending {
+				pending = false
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"access_token":"live","refresh_token":"rt","expires_in":3600}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("WUU_XAI_DEVICE_CODE_URL", server.URL+"/oauth2/device/code")
+	t.Setenv("WUU_XAI_TOKEN_URL", server.URL+"/oauth2/token")
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"start","method":"auth/xai/login/start"}`)); err != nil {
+		t.Fatalf("login start: %v", err)
+	}
+	start := remarshal[AuthXAILoginStartResult](t, responseByID(t, parseOutput(t, out.String()), "start")["result"])
+	if start.UserCode != "WXYZ-9999" || start.LoginID == "" {
+		t.Fatalf("start = %+v", start)
+	}
+
+	out.Reset()
+	pollReq, err := json.Marshal(Request{ID: json.RawMessage(`"poll1"`), Method: MethodAuthXAILoginPoll, Params: mustJSON(AuthXAILoginPollParams{LoginID: start.LoginID})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.handleLine(context.Background(), pollReq); err != nil {
+		t.Fatalf("poll1: %v", err)
+	}
+	first := remarshal[AuthXAILoginPollResult](t, responseByID(t, parseOutput(t, out.String()), "poll1")["result"])
+	if first.Status != "pending" {
+		t.Fatalf("first poll = %+v", first)
+	}
+
+	out.Reset()
+	pollReq, err = json.Marshal(Request{ID: json.RawMessage(`"poll2"`), Method: MethodAuthXAILoginPoll, Params: mustJSON(AuthXAILoginPollParams{LoginID: start.LoginID})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.handleLine(context.Background(), pollReq); err != nil {
+		t.Fatalf("poll2: %v", err)
+	}
+	second := remarshal[AuthXAILoginPollResult](t, responseByID(t, parseOutput(t, out.String()), "poll2")["result"])
+	if second.Status != "success" {
+		t.Fatalf("second poll = %+v", second)
 	}
 }
 

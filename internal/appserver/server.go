@@ -26,6 +26,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/participant"
 	"github.com/blueberrycongee/wuu/internal/process"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/providers/xaisub"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/sidethread"
@@ -232,6 +233,9 @@ type Server struct {
 
 	codexModelsMu   sync.Mutex
 	codexModelCache map[string]map[string]config.ProviderModelConfig
+
+	xaiLoginMu sync.Mutex
+	xaiLogins  *xaisub.LoginHub
 
 	modelCatalogHTTPClient *http.Client
 	modelCatalogCachePath  string
@@ -1098,6 +1102,12 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 			return s.writeResponse(req.ID, nil, errServerClosed)
 		}
 		return nil
+	case MethodAuthXAILoginStart:
+		return s.handleAuthXAILoginStart(ctx, req)
+	case MethodAuthXAILoginPoll:
+		return s.handleAuthXAILoginPoll(ctx, req)
+	case MethodAuthXAILoginCancel:
+		return s.handleAuthXAILoginCancel(req)
 	case MethodConfigCatalogRefresh:
 		if !s.startBackground(func() {
 			if err := s.handleConfigModelCatalogRefresh(ctx, req); err != nil {
