@@ -61,6 +61,7 @@ import { PluginSlot } from "./plugins/PluginSlot";
 interface ThreadItemViewProps {
   turnID: string;
   turnStatus: Turn["status"];
+  turnStartedAt?: string | null;
   item: ThreadItem;
   cwd?: string;
   onOpenFile?: (path: string) => void;
@@ -186,6 +187,7 @@ function PluginMessageSlots({
 function BuiltInThreadItemView({
   turnID,
   turnStatus,
+  turnStartedAt,
   item,
   cwd,
   onOpenFile,
@@ -203,7 +205,7 @@ function BuiltInThreadItemView({
   onOpenAgent,
   editSummaryCard,
 }: ThreadItemViewProps): JSX.Element | null {
-  const { t } = useI18n();
+  const { t, formatDate } = useI18n();
   // Only a live item/turn completion handoff should animate. Historical
   // completed messages mount without this marker, so virtualized content does
   // not replay the entrance while the user scrolls.
@@ -291,6 +293,15 @@ function BuiltInThreadItemView({
               data-wuu-placement="overlay"
               aria-label={t("message.userActions")}
             >
+              {turnStartedAt ? (
+                <time className="user-message-time" dateTime={turnStartedAt}>
+                  {formatDate(turnStartedAt, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hourCycle: "h23",
+                  })}
+                </time>
+              ) : null}
               {copyable ? (
                 <MessageCopyButton
                   getText={() => displayText}

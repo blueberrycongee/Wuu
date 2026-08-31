@@ -34,6 +34,7 @@ function makeUserMessage(text: string, id = "user-1"): ThreadItem {
 function render({
   item,
   turnStatus,
+  turnStartedAt,
   actionableAgentMessageID,
   latestAgentMessageID,
   streaming,
@@ -42,6 +43,7 @@ function render({
 }: {
   item: ThreadItem;
   turnStatus: Turn["status"];
+  turnStartedAt?: string;
   actionableAgentMessageID?: string;
   latestAgentMessageID?: string;
   streaming: boolean;
@@ -59,6 +61,7 @@ function render({
         <ThreadItemView
           turnID="turn-1"
           turnStatus={turnStatus}
+          turnStartedAt={turnStartedAt}
           item={item}
           streaming={streaming}
           actionableAgentMessageID={actionableAgentMessageID}
@@ -569,6 +572,23 @@ describe("ThreadItemView", () => {
     const actions = container?.querySelectorAll<HTMLButtonElement>(".user-message-actions button");
     expect(actions).toHaveLength(1);
     expect([...(actions ?? [])].some((button) => button.getAttribute("aria-label") === "打开关联会话")).toBe(false);
+  });
+
+  it("shows the user message time before its copy action", () => {
+    const sentAt = new Date(2026, 7, 31, 9, 7).toISOString();
+    render({
+      item: makeUserMessage("带发送时间的消息"),
+      turnStatus: "completed",
+      turnStartedAt: sentAt,
+      streaming: false,
+    });
+
+    const actions = container?.querySelector(".user-message-actions");
+    const time = actions?.querySelector<HTMLTimeElement>(".user-message-time");
+    const copy = actions?.querySelector<HTMLButtonElement>("button");
+    expect(time?.dateTime).toBe(sentAt);
+    expect(time?.textContent).toBe("09:07");
+    expect(time?.nextElementSibling).toBe(copy);
   });
 
   it("splits the conversation and opens the related session", () => {

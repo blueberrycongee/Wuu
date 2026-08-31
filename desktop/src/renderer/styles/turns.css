@@ -818,6 +818,15 @@
   height: 20px;
 }
 
+.user-message-time {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* Two user queries can land back-to-back in the same turn (steer/queue).
  * The first query's hover action row hangs 22px below its bubble
  * (20px controls + 2px hover bridge), but the turn item gap is only 8px,

@@ -149,6 +149,7 @@ function TurnContent({
         key={item.id}
         turnID={turn.id}
         turnStatus={turn.status}
+        turnStartedAt={turn.started_at}
         item={item}
         cwd={cwd}
         onOpenFile={onOpenFile}
