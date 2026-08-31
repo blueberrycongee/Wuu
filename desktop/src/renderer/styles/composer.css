@@ -342,7 +342,7 @@
   position: absolute;
   inset: 0;
   z-index: 2;
-  border: 1px solid var(--surface-4);
+  border: 1px solid transparent;
   border-radius: inherit;
   pointer-events: none;
 }
