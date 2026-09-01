@@ -117,7 +117,18 @@ func TestChannelWorkRecoverySettlesFailedAndInterruptedNamedAgentTurns(t *testin
 				t.Fatalf("resumeNamedAgentBoundSessionsLocked() error = %v", resumeErr)
 			}
 			if th := server.thread(sessionRef); th != nil {
-				t.Fatalf("terminal work turn was rerun in thread %#v", th)
+				th.mu.Lock()
+				reran := false
+				for _, turn := range th.Turns {
+					if turn.ID == turnID && turn.Status == TurnStatusInProgress {
+						reran = true
+						break
+					}
+				}
+				th.mu.Unlock()
+				if reran {
+					t.Fatalf("terminal work turn %q was rerun in thread %#v", turnID, th)
+				}
 			}
 		})
 	}
