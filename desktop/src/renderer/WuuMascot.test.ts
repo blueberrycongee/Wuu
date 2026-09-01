@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { AVATAR_HUES } from "./DefaultAvatar";
 import { providerMascotHue } from "./WuuMascot";
 import {
+  WUU_MASCOT_ACTIVITY_LOOK,
   WUU_MASCOT_ACTIVITY_PERSPECTIVES,
+  WUU_MASCOT_IDENTITY_PERSPECTIVE,
   WUU_MASCOT_NAME,
   WUU_MASCOT_TRAITS,
   type WuuMascotActivity,
@@ -39,7 +41,6 @@ describe("vendored mascot geometry", () => {
 
     for (const [activity, perspective] of Object.entries(WUU_MASCOT_ACTIVITY_PERSPECTIVES)) {
       const layout = forActivity(activity as WuuMascotActivity);
-      if (!perspective) continue;
       expect(layout.eyes.map((e) => [e.rx, e.ry, e.rot]), activity).not.toEqual(
         flat.eyes.map((e) => [e.rx, e.ry, e.rot]),
       );
@@ -56,7 +57,28 @@ describe("vendored mascot geometry", () => {
   it("aims the read pose at the open book on the lower right", () => {
     expect(WUU_MASCOT_ACTIVITY_PERSPECTIVES.read).toEqual({ yaw: 12, pitch: -8, strength: 1 });
     // And idle greets by looking down toward the composer rather than staring ahead.
-    expect(WUU_MASCOT_ACTIVITY_PERSPECTIVES.idle?.pitch).toBeLessThan(0);
+    expect(WUU_MASCOT_ACTIVITY_PERSPECTIVES.idle.pitch).toBeLessThan(0);
+  });
+
+  it("keeps idle as the baked identity pose and looks with CSS offsets", () => {
+    expect(WUU_MASCOT_IDENTITY_PERSPECTIVE).toEqual(WUU_MASCOT_ACTIVITY_PERSPECTIVES.idle);
+    expect(WUU_MASCOT_ACTIVITY_LOOK.idle).toEqual({ x: 0, y: 0 });
+
+    const idle = forActivity("idle");
+    const idlePair = {
+      x: (idle.eyes[0]!.cx + idle.eyes[1]!.cx) / 2,
+      y: (idle.eyes[0]!.cy + idle.eyes[1]!.cy) / 2,
+    };
+    for (const activity of Object.keys(WUU_MASCOT_ACTIVITY_LOOK) as WuuMascotActivity[]) {
+      const layout = forActivity(activity);
+      const pair = {
+        x: (layout.eyes[0]!.cx + layout.eyes[1]!.cx) / 2,
+        y: (layout.eyes[0]!.cy + layout.eyes[1]!.cy) / 2,
+      };
+      const look = WUU_MASCOT_ACTIVITY_LOOK[activity];
+      expect(look.x, activity).toBeCloseTo(pair.x - idlePair.x, 10);
+      expect(look.y, activity).toBeCloseTo(pair.y - idlePair.y, 10);
+    }
   });
 
   it("lifts the mascot's head from the composer when a draft exists", () => {

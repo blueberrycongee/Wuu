@@ -627,6 +627,49 @@ describe("ProcessSurface", () => {
     expect(summary?.textContent).toBe("正在思考");
   });
 
+  it("morphs the process-row blobatar across activity switches instead of replacing it", () => {
+    const { container } = render({
+      processItems: [makeReasoning("reason-1", "thinking", "in_progress")],
+      streaming: true,
+    });
+    const svg = container.querySelector<SVGSVGElement>(
+      "svg.process-surface-blobatar",
+    );
+    expect(svg).not.toBeNull();
+    expect(svg?.getAttribute("data-wuu-mascot-activity")).toBe("thinking");
+    const face = [...svg!.querySelectorAll(".mo-eye path")]
+      .map((path) => path.getAttribute("d"))
+      .join("|");
+    expect(container.querySelector(".wuu-mascot-activity-prop-thinking")).not.toBeNull();
+
+    rerender({
+      processItems: [
+        makeReasoning("reason-1", "thinking", "completed"),
+        {
+          id: "edit-1",
+          type: "tool_call",
+          name: "edit_file",
+          status: "in_progress",
+          arguments: JSON.stringify({ path: "a.ts" }),
+        },
+      ],
+      streaming: true,
+    });
+
+    const next = container.querySelector<SVGSVGElement>(
+      "svg.process-surface-blobatar",
+    );
+    expect(next).toBe(svg);
+    expect(next?.getAttribute("data-wuu-mascot-activity")).toBe("edit");
+    expect(
+      [...next!.querySelectorAll(".mo-eye path")]
+        .map((path) => path.getAttribute("d"))
+        .join("|"),
+    ).toBe(face);
+    expect(container.querySelector(".wuu-mascot-activity-prop-thinking")).toBeNull();
+    expect(container.querySelector(".wuu-mascot-activity-prop-edit")).not.toBeNull();
+  });
+
   it("marks the count is-changing for ~180ms when the value changes", async () => {
     const { container } = render({
       processItems: [

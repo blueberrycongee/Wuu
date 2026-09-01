@@ -25,8 +25,9 @@ import { AVATAR_HUES } from "./DefaultAvatar";
 import "./styles/wuu-mascot.css";
 
 import {
-  WUU_MASCOT_ACTIVITY_PERSPECTIVES,
+  WUU_MASCOT_ACTIVITY_LOOK,
   WUU_MASCOT_DEFAULT_HUE,
+  WUU_MASCOT_IDENTITY_PERSPECTIVE,
   WUU_MASCOT_NAME,
   WUU_MASCOT_TRAITS,
 } from "./wuu-mascot-spec";
@@ -310,10 +311,11 @@ export function WuuMascot({
       rear.remove();
       front.remove();
     };
-  // Blobatar replaces its inner SVG markup when identity traits, expressions,
-  // or perspectives change. Rebuild our portal targets in that same layout
-  // pass so accessories never remain mounted to the detached previous body.
-  }, [activity, identityName, identityTraitsSignature, svg]);
+  // Blobatar replaces its inner SVG markup when identity traits or the
+  // identity perspective change. Activity is a CSS pose on that stable tree
+  // (expression vars, look offsets, a remounted status prop), so it must not
+  // rebuild these portal targets or the face flashes on every stage change.
+  }, [identityName, identityTraitsSignature, svg]);
 
   useEffect(() => {
     if (!svg || !followPointer) return;
@@ -386,9 +388,15 @@ export function WuuMascot({
   // Keep Blobatar's own hue fixed so provider changes only update inherited
   // colour variables. The SVG subtree and its seeded animation phases survive;
   // the existing fill transitions carry the mascot into the new palette.
+  // Activity glance is the same idea: a pair of interpolating look offsets
+  // instead of a new path, so thinking → edit morphs the face instead of
+  // replacing the ball.
+  const look = WUU_MASCOT_ACTIVITY_LOOK[activity];
   const mascotStyle = {
     "--mo-head": colors.head ?? WUU_MASCOT_LAYOUT.palette.head,
     "--mo-eye": colors.eye ?? WUU_MASCOT_LAYOUT.palette.eye,
+    "--wuu-mascot-look-x": `${look.x}px`,
+    "--wuu-mascot-look-y": `${look.y}px`,
     ...style,
   } as CSSProperties;
 
@@ -401,7 +409,7 @@ export function WuuMascot({
         hue={identityHue ?? WUU_MASCOT_DEFAULT_HUE}
         background={false}
         traits={identityTraits}
-        perspective={WUU_MASCOT_ACTIVITY_PERSPECTIVES[activity]}
+        perspective={WUU_MASCOT_IDENTITY_PERSPECTIVE}
         animate={animate}
         expression={WUU_MASCOT_ACTIVITY_EXPRESSIONS[activity]}
         focusable={false}

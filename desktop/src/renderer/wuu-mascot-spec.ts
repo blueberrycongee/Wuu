@@ -1,3 +1,5 @@
+import { _layout } from "blobatar";
+
 /**
  * The mascot's blobatar identity, shared between the component and its test so
  * the render contract can never drift from what the UI actually draws.
@@ -32,9 +34,11 @@ export type WuuMascotActivity =
 
 /**
  * Where the mascot looks in each activity, layered on top of the expression.
- * The turn is carried by the eye pair's position plus natural spherical
- * foreshortening, so even the 28px process-row ball reads the glance. Yaw looks
- * left/right, pitch up/down; undefined is straight ahead.
+ * Yaw looks left/right, pitch up/down. These angles still describe the intended
+ * 3D glance, but the live mascot does not rebake them into path data: doing that
+ * replaces the SVG subtree and the 28px process-row ball flashes on every
+ * thinking → edit (and similar) switch. The identity pose is idle; every other
+ * activity applies the pair-center delta as a CSS look so the face morphs.
  *
  * - idle greets with its gaze lowered toward the composer (or the status text
  *   under the launch view): an invitation, not a stare.
@@ -44,7 +48,7 @@ export type WuuMascotActivity =
  * - read follows the open book carried at the lower-right edge of the body.
  */
 export const WUU_MASCOT_ACTIVITY_PERSPECTIVES: Readonly<
-  Record<WuuMascotActivity, { yaw: number; pitch: number; strength: number } | undefined>
+  Record<WuuMascotActivity, { yaw: number; pitch: number; strength: number }>
 > = {
   idle: { yaw: 8, pitch: -16, strength: 1 },
   compose: { yaw: 0, pitch: 2, strength: 1 },
@@ -55,4 +59,44 @@ export const WUU_MASCOT_ACTIVITY_PERSPECTIVES: Readonly<
   command: { yaw: -10, pitch: -12, strength: 1 },
   read: { yaw: 12, pitch: -8, strength: 1 },
   tool: { yaw: 12, pitch: -10, strength: 1 },
+};
+
+export const WUU_MASCOT_IDENTITY_PERSPECTIVE =
+  WUU_MASCOT_ACTIVITY_PERSPECTIVES.idle;
+
+function mascotPairCenter(
+  perspective: (typeof WUU_MASCOT_ACTIVITY_PERSPECTIVES)[WuuMascotActivity],
+): { x: number; y: number } {
+  const layout = _layout(WUU_MASCOT_NAME, {
+    traits: WUU_MASCOT_TRAITS,
+    perspective,
+  });
+  return {
+    x: (layout.eyes[0]!.cx + layout.eyes[1]!.cx) / 2,
+    y: (layout.eyes[0]!.cy + layout.eyes[1]!.cy) / 2,
+  };
+}
+
+const identityPair = mascotPairCenter(WUU_MASCOT_IDENTITY_PERSPECTIVE);
+
+function lookFrom(
+  perspective: (typeof WUU_MASCOT_ACTIVITY_PERSPECTIVES)[WuuMascotActivity],
+): { x: number; y: number } {
+  const pair = mascotPairCenter(perspective);
+  return { x: pair.x - identityPair.x, y: pair.y - identityPair.y };
+}
+
+/** Pair-center delta from the idle identity pose, in viewBox units. */
+export const WUU_MASCOT_ACTIVITY_LOOK: Readonly<
+  Record<WuuMascotActivity, { x: number; y: number }>
+> = {
+  idle: { x: 0, y: 0 },
+  compose: lookFrom(WUU_MASCOT_ACTIVITY_PERSPECTIVES.compose),
+  thinking: lookFrom(WUU_MASCOT_ACTIVITY_PERSPECTIVES.thinking),
+  compact: lookFrom(WUU_MASCOT_ACTIVITY_PERSPECTIVES.compact),
+  search: lookFrom(WUU_MASCOT_ACTIVITY_PERSPECTIVES.search),
+  edit: lookFrom(WUU_MASCOT_ACTIVITY_PERSPECTIVES.edit),
+  command: lookFrom(WUU_MASCOT_ACTIVITY_PERSPECTIVES.command),
+  read: lookFrom(WUU_MASCOT_ACTIVITY_PERSPECTIVES.read),
+  tool: lookFrom(WUU_MASCOT_ACTIVITY_PERSPECTIVES.tool),
 };
