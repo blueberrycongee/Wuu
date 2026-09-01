@@ -47,10 +47,8 @@ composer.css .group-members-capsule:hover, .group-members-capsule:focus-visible 
 composer.css .permission-chip.tone-danger:hover, .permission-chip.tone-danger[aria-expanded="true"] background --danger-soft
 composer.css .permission-chip.tone-danger:hover::before, .permission-chip.tone-danger[aria-expanded="true"]::before background --danger-soft
 composer.css .user-question-actions .user-question-cancel:hover:not(:disabled) background --ink-overlay-6
-composer.css .user-question-card border --ink-overlay-8
-composer.css .user-question-custom border --ink-overlay-8
+composer.css .user-question-custom border --ink-overlay-12
 composer.css .user-question-field + .user-question-field border-top --ink-overlay-6
-composer.css .user-question-option:hover background --ink-overlay-6
 conversation-shell.css .conversation-status-todo-card box-shadow --shell-todo-card-shadow
 conversation-shell.css .conversation-turn-rail-bar background --shell-turn-rail-bar-bg
 conversation-shell.css .jump-to-latest-pill, .jump-to-latest-progress, .conversation-status-capsule box-shadow --shell-jump-pill-contact-shadow
