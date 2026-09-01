@@ -1,7 +1,12 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useConversationScrollState } from "./ConversationScrollState";
+import {
+  conversationBottomOverscrollMax,
+  rubberBandOffset,
+  useConversationScrollState,
+  wheelDeltaPixels,
+} from "./ConversationScrollState";
 import type { Turn } from "../shared/protocol";
 
 function makeLongTurns(): Turn[] {
@@ -261,6 +266,137 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
       top: 1900,
       behavior: "smooth",
     });
+  });
+
+  it("rubber-bands leftover downward inertia after scrolling back to latest", () => {
+    vi.useFakeTimers();
+    try {
+      const node = mount({
+        activeThreadID: "thread-a",
+        scrollHeight: 2400,
+        clientHeight: 600,
+        initialScrollTop: 2400 - 600,
+      });
+      fireScroll();
+      setScrollTop(520);
+      fireUserScroll();
+
+      const content = container.querySelector(
+        "[data-testid='scroll-content']",
+      ) as HTMLDivElement | null;
+      if (!content || !layout) throw new Error("not mounted");
+
+      const max = layout.scrollHeight - layout.clientHeight;
+      act(() => {
+        layout!.scrollTop = max - 40;
+        node.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: 120, deltaMode: 0 }),
+        );
+        layout!.scrollTop = max;
+        node.dispatchEvent(new Event("scroll", { bubbles: false }));
+      });
+
+      const visual = conversationBottomOverscrollMax(600);
+      expect(content.style.transform).toBe(`translate3d(0, ${-visual}px, 0)`);
+
+      act(() => {
+        node.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: 160, deltaMode: 0 }),
+        );
+      });
+      expect(content.style.transform).toBe(`translate3d(0, ${-visual}px, 0)`);
+
+      act(() => {
+        vi.advanceTimersByTime(32);
+      });
+      expect(content.style.transform).toBe("translate3d(0, 0, 0)");
+
+      act(() => {
+        vi.advanceTimersByTime(440);
+      });
+      expect(content.style.transform).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rubber-bands when a downward gesture lands on latest without leftover delta", () => {
+    vi.useFakeTimers();
+    try {
+      const node = mount({
+        activeThreadID: "thread-a",
+        scrollHeight: 2400,
+        clientHeight: 600,
+        initialScrollTop: 2400 - 600,
+      });
+      fireScroll();
+      setScrollTop(520);
+      fireUserScroll();
+
+      const content = container.querySelector(
+        "[data-testid='scroll-content']",
+      ) as HTMLDivElement | null;
+      if (!content || !layout) throw new Error("not mounted");
+
+      const max = layout.scrollHeight - layout.clientHeight;
+      act(() => {
+        layout!.scrollTop = max - 40;
+        node.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: 40, deltaMode: 0 }),
+        );
+        layout!.scrollTop = max;
+        node.dispatchEvent(new Event("scroll", { bubbles: false }));
+      });
+
+      expect(content.style.transform).toBe(
+        `translate3d(0, ${-conversationBottomOverscrollMax(600)}px, 0)`,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not rubber-band a downward wheel that is already following latest", () => {
+    const node = mount({
+      activeThreadID: "thread-a",
+      scrollHeight: 2400,
+      clientHeight: 600,
+      initialScrollTop: 2400 - 600,
+    });
+    fireScroll();
+
+    const content = container.querySelector(
+      "[data-testid='scroll-content']",
+    ) as HTMLDivElement | null;
+    if (!content) throw new Error("not mounted");
+
+    act(() => {
+      node.dispatchEvent(
+        new WheelEvent("wheel", { bubbles: true, deltaY: 120, deltaMode: 0 }),
+      );
+    });
+    expect(content.style.transform).toBe("");
+  });
+});
+
+describe("conversation bottom overscroll helpers", () => {
+  it("applies a rubber-band curve that stays below the raw offset", () => {
+    expect(rubberBandOffset(80, 600)).toBeGreaterThan(0);
+    expect(rubberBandOffset(80, 600)).toBeLessThan(80);
+    expect(rubberBandOffset(0, 600)).toBe(0);
+    expect(rubberBandOffset(-20, 600)).toBe(0);
+  });
+
+  it("normalizes wheel deltas from line and page modes", () => {
+    expect(
+      wheelDeltaPixels({ deltaY: 80, deltaMode: 0 } as WheelEvent, 600),
+    ).toBe(80);
+    expect(
+      wheelDeltaPixels({ deltaY: 3, deltaMode: 1 } as WheelEvent, 600),
+    ).toBe(48);
+    expect(
+      wheelDeltaPixels({ deltaY: 1, deltaMode: 2 } as WheelEvent, 600),
+    ).toBe(600);
   });
 });
 

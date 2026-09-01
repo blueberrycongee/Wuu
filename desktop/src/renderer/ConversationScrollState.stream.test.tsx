@@ -20,7 +20,10 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { useConversationScrollState } from "./ConversationScrollState";
+import {
+  conversationBottomOverscrollMax,
+  useConversationScrollState,
+} from "./ConversationScrollState";
 import type { Turn } from "../shared/protocol";
 import { AUTO_FOLLOW_NESTED_SCROLL_ATTR } from "./AutoFollowScroll";
 import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
@@ -1102,5 +1105,41 @@ describe("useConversationScrollState — high-frequency stream", () => {
     });
     expect(contentNode.style.transform).toBe("");
     expect(layout.scrollTop).toBe(2200 - 350);
+  });
+
+  it("keeps following after leftover downward inertia rubber-bands at latest", () => {
+    mount({ scrollHeight: 2000, clientHeight: 600 });
+    if (!layout || !handle || !node) throw new Error("not mounted");
+    flushScheduledScroll();
+
+    act(() => {
+      layout!.scrollTop = 900;
+    });
+    fireUserScroll();
+
+    const contentNode = container.querySelector(
+      "[data-testid='scroll-content']",
+    ) as HTMLDivElement | null;
+    if (!contentNode) throw new Error("scroll-content not rendered");
+
+    act(() => {
+      layout!.scrollTop = layout!.scrollHeight - layout!.clientHeight;
+      node!.dispatchEvent(
+        new WheelEvent("wheel", { bubbles: true, deltaY: 64, deltaMode: 0 }),
+      );
+      node!.dispatchEvent(new Event("scroll", { bubbles: false }));
+    });
+
+    expect(contentNode.style.transform).toBe(
+      `translate3d(0, ${-conversationBottomOverscrollMax(600)}px, 0)`,
+    );
+
+    act(() => {
+      layout!.scrollHeight += 80;
+      handle!.scheduleStreamScroll();
+    });
+    flushScheduledScroll();
+
+    expect(layout.scrollTop).toBe(layout.scrollHeight - layout.clientHeight);
   });
 });
