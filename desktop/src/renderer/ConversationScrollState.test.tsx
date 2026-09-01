@@ -6,6 +6,7 @@ import {
   rubberBandOffset,
   useConversationScrollState,
   wheelDeltaPixels,
+  wheelEventHasMomentum,
 } from "./ConversationScrollState";
 import type { Turn } from "../shared/protocol";
 
@@ -316,7 +317,13 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
       );
 
       act(() => {
-        window.dispatchEvent(new Event("wuu-scroll-gesture-end"));
+        const momentumEvent = new WheelEvent("wheel", {
+          bubbles: true,
+          deltaY: 100,
+          deltaMode: 0,
+        });
+        Object.defineProperty(momentumEvent, "momentum", { value: true });
+        node.dispatchEvent(momentumEvent);
       });
       expect(content.style.transform).toBe(
         `translate3d(0, ${-stretchedVisual}px, 0)`,
@@ -432,6 +439,13 @@ describe("conversation bottom overscroll helpers", () => {
     expect(
       wheelDeltaPixels({ deltaY: 1, deltaMode: 2 } as WheelEvent, 600),
     ).toBe(600);
+  });
+
+  it("detects native momentum wheel events after a trackpad lift", () => {
+    const event = new WheelEvent("wheel");
+    expect(wheelEventHasMomentum(event)).toBe(false);
+    Object.defineProperty(event, "momentum", { value: true });
+    expect(wheelEventHasMomentum(event)).toBe(true);
   });
 });
 

@@ -96,10 +96,6 @@ const initialChannelRoomPreferences = ((): ChannelRoomPreferences | undefined =>
   }
 })();
 
-ipcRenderer.on("wuu:scroll-gesture-end", () => {
-  window.dispatchEvent(new Event("wuu-scroll-gesture-end"));
-});
-
 // Same FOUC-free story for the message-stream reading size: ask the
 // main process synchronously and stamp --conversation-message-font-size
 // on <html> before React mounts, so even the first render of the

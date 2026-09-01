@@ -958,20 +958,6 @@ function createWindow(): void {
 
   mainWindow = new BrowserWindow(windowOptions);
   registerThemedChromeWindow(mainWindow);
-  const mainWebContents = mainWindow.webContents;
-
-  // DOM wheel events do not expose when fingers leave a trackpad. Chromium's
-  // native gesture stream does, so forward that boundary to the renderer. A
-  // fling starts at finger release and must lock out the remaining momentum;
-  // a non-fling gesture ends with gestureScrollEnd instead.
-  mainWebContents.on("input-event", (_event, inputEvent) => {
-    if (
-      inputEvent.type === "gestureScrollEnd" ||
-      inputEvent.type === "gestureFlingStart"
-    ) {
-      mainWebContents.send("wuu:scroll-gesture-end");
-    }
-  });
 
   windowRegistry.registerWindow(mainWindow, "main");
   const win = mainWindow;

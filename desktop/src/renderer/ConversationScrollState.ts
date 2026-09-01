@@ -40,10 +40,10 @@ const CONVERSATION_USER_SCROLL_AWAY_INTENT_WINDOW_MS =
   USER_SCROLL_AWAY_INTENT_WINDOW_MS;
 // One-shot arrival feedback after the user returns from older content to the
 // latest turn. Keep following the gesture while it is active. Touch has an
-// explicit touchend; on desktop the main process forwards the trackpad's
-// native gesture end. The long wheel timeout is only a fallback for platforms
-// that do not expose that native signal.
-export const CONVERSATION_BOTTOM_OVERSCROLL_WHEEL_SETTLE_MS = 1500;
+// explicit touchend; WheelEvent.momentum identifies the first inertial event
+// after a trackpad lift. The short settle delay covers mouse wheels and
+// platforms without momentum events.
+export const CONVERSATION_BOTTOM_OVERSCROLL_WHEEL_SETTLE_MS = 120;
 
 export function conversationBottomOverscrollMax(dimension: number): number {
   return Math.min(140, Math.max(96, dimension * 0.2));
@@ -66,6 +66,10 @@ export function wheelDeltaPixels(
     return event.deltaY * Math.max(1, viewportHeight);
   }
   return event.deltaY;
+}
+
+export function wheelEventHasMomentum(event: WheelEvent): boolean {
+  return (event as WheelEvent & { momentum?: boolean }).momentum === true;
 }
 
 function cssPixelValue(value: string): number {
@@ -942,6 +946,15 @@ export function useConversationScrollState({
         return;
       }
       const deltaPx = wheelDeltaPixels(event, node.clientHeight);
+      if (
+        wheelEventHasMomentum(event) &&
+        bottomOverscrollRawRef.current > 0 &&
+        !bottomOverscrollReturningRef.current
+      ) {
+        event.preventDefault();
+        beginLockedBottomOverscrollReturn(node);
+        return;
+      }
       if (deltaPx < 0 && bottomOverscrollReturningRef.current) {
         event.preventDefault();
         cancelBottomOverscroll(node);
@@ -971,14 +984,6 @@ export function useConversationScrollState({
       } else if (deltaPx > 0) {
         selectionPausedAutoFollowRef.current = false;
         absorbTowardLatestOverscroll(node, deltaPx);
-      }
-    };
-    const handleNativeScrollGestureEnd = (): void => {
-      if (
-        bottomOverscrollRawRef.current > 0 &&
-        !bottomOverscrollReturningRef.current
-      ) {
-        beginLockedBottomOverscrollReturn(node);
       }
     };
     const handlePointerDown = (event: PointerEvent): void => {
@@ -1062,10 +1067,6 @@ export function useConversationScrollState({
       }
     };
     node.addEventListener("wheel", handleWheel, { passive: false });
-    window.addEventListener(
-      "wuu-scroll-gesture-end",
-      handleNativeScrollGestureEnd,
-    );
     node.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("pointerup", handlePointerEnd);
     window.addEventListener("pointercancel", handlePointerEnd);
@@ -1077,10 +1078,6 @@ export function useConversationScrollState({
     node.addEventListener("keydown", handleKeyDown);
     return () => {
       node.removeEventListener("wheel", handleWheel);
-      window.removeEventListener(
-        "wuu-scroll-gesture-end",
-        handleNativeScrollGestureEnd,
-      );
       node.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointerup", handlePointerEnd);
       window.removeEventListener("pointercancel", handlePointerEnd);
