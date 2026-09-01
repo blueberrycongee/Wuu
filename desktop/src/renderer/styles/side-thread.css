@@ -79,6 +79,21 @@
   gap: 12px;
   padding: 0 12px;
   border-bottom: 1px solid var(--surface-3, var(--hairline-soft));
+  /* The panel spans the titlebar row, so this header is the only drag
+   * strip on the right of the conversation pane. Match .titlebar and
+   * .workspace-panel-tabbar; interactive children opt out below. */
+  -webkit-app-region: drag;
+}
+
+.side-thread-panel__header button,
+.side-thread-panel__header button * {
+  -webkit-app-region: no-drag;
+}
+
+/* When the workspace right panel is closed, this header sits on the
+ * window's right edge and must clear the Windows controls overlay. */
+.app-shell:not(.right-panel-open) .side-thread-panel__header {
+  padding-right: max(12px, var(--window-controls-inset-right));
 }
 
 .side-thread-panel__heading {
