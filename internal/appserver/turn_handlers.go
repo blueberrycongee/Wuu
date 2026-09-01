@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"reflect"
 	"sort"
 	"strings"
@@ -122,6 +123,10 @@ type activeDocumentOverride struct {
 }
 
 func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
+	return s.handleTurnStartAdmission(ctx, req, true)
+}
+
+func (s *Server) handleTurnStartAdmission(ctx context.Context, req Request, allowBackgroundWait bool) error {
 	var params TurnStartParams
 	if err := decodeParams(req.Params, &params); err != nil {
 		return s.writeResponse(req.ID, nil, err)
@@ -161,6 +166,17 @@ func (s *Server) handleTurnStart(ctx context.Context, req Request) error {
 			return s.writeResponse(req.ID, nil, errors.New("compact does not accept attachments"))
 		}
 		return s.startThreadCompactTurn(ctx, req, th, params.Prompt)
+	}
+	if allowBackgroundWait && threadIsRunning(th) && threadCurrentTurnIsAnswerReady(th) {
+		// Waiting for leftover settlement must not stall the serial stdio loop.
+		if !s.startBackground(func() {
+			if err := s.handleTurnStartAdmission(ctx, req, false); err != nil {
+				log.Printf("wuu: turn/start: %v", err)
+			}
+		}) {
+			return s.writeResponse(req.ID, nil, errServerClosed)
+		}
+		return nil
 	}
 	userMsg, err := userMessageFromPrompt(params.Prompt, images, files, params.ContentParts)
 	if err != nil {
@@ -2256,6 +2272,15 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	// turn; the deferred call remains as panic-safe cleanup.
 	restoreRunner()
 
+	if errors.Is(err, context.Canceled) {
+		th.mu.Lock()
+		handoff := th.completeAfterAnswerReadyCancel && !th.interrupting && currentTurnIsAnswerReadyLocked(th)
+		th.mu.Unlock()
+		if handoff {
+			err = nil
+		}
+	}
+
 	now := time.Now().UTC()
 	completionAnswerReady := false
 	if err == nil && len(turnRuntime.AgentCompletionResultIDs) > 0 {
@@ -2972,6 +2997,11 @@ func (s *Server) startThreadUserTurnWithAdmission(ctx context.Context, th *threa
 	if !chatMessageHasUserPayload(userMsg) {
 		return startedThreadTurn{}, false, nil
 	}
+	if failIfRunning {
+		if err := s.waitAndHandoffAnswerReadyTurn(ctx, th); err != nil {
+			return startedThreadTurn{}, false, err
+		}
+	}
 	turnID := session.NewID()
 	turnCtx, cancel := context.WithCancel(ctx)
 	now := time.Now().UTC()
@@ -3668,6 +3698,46 @@ func threadIsRunning(th *threadState) bool {
 	th.mu.Lock()
 	defer th.mu.Unlock()
 	return th.running
+}
+
+// waitAndHandoffAnswerReadyTurn lets a user follow-up take the execution slot
+// once the current turn's final answer is visible. Leftover provider cleanup
+// is cancelled and completed, not treated as a busy rejection.
+func (s *Server) waitAndHandoffAnswerReadyTurn(ctx context.Context, th *threadState) error {
+	if s == nil || th == nil {
+		return errors.New("thread is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for {
+		if s.closed.Load() {
+			return errServerClosed
+		}
+		th.mu.Lock()
+		if !th.running {
+			th.mu.Unlock()
+			return nil
+		}
+		if !currentTurnIsAnswerReadyLocked(th) {
+			th.mu.Unlock()
+			return nil
+		}
+		if !th.interrupting {
+			th.completeAfterAnswerReadyCancel = true
+		}
+		cancel := th.cancel
+		waiter := th.addIdleWaiterLocked()
+		th.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-waiter:
+		}
+	}
 }
 
 func (s *Server) takePendingAgentCompletionTurns(threadID string) []agentCompletionTurn {

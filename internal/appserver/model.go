@@ -385,12 +385,59 @@ func (th *threadState) releaseTurnExecutionLocked(turnID string) {
 	th.runningProviderName = ""
 	th.runningModel = ""
 	th.cancel = nil
+	th.completeAfterAnswerReadyCancel = false
 	th.steerWake = nil
 	th.steerWakeClosed = false
 	th.activeSteerDocument = nil
 	th.activeSteerContextSet = false
 	th.steerDocumentOverrides = nil
 	th.maybeReleasePluginGenerationExecutionLeaseLocked()
+	th.notifyIdleLocked()
+}
+
+func (th *threadState) addIdleWaiterLocked() <-chan struct{} {
+	ch := make(chan struct{})
+	th.idleWaiters = append(th.idleWaiters, ch)
+	return ch
+}
+
+func (th *threadState) notifyIdleLocked() {
+	for _, ch := range th.idleWaiters {
+		close(ch)
+	}
+	th.idleWaiters = nil
+}
+
+func threadCurrentTurnIsAnswerReady(th *threadState) bool {
+	if th == nil {
+		return false
+	}
+	th.mu.Lock()
+	defer th.mu.Unlock()
+	return currentTurnIsAnswerReadyLocked(th)
+}
+
+func currentTurnIsAnswerReadyLocked(th *threadState) bool {
+	if th == nil || strings.TrimSpace(th.currentTurn) == "" {
+		return false
+	}
+	turn, ok := turnByID(th.Turns, th.currentTurn)
+	if !ok {
+		return false
+	}
+	return turnIsAnswerReady(turn)
+}
+
+func turnIsAnswerReady(turn Turn) bool {
+	if turn.AnswerReadyAt != nil {
+		return true
+	}
+	for _, item := range turn.Items {
+		if item.Type == ThreadItemAgentMessage && item.Status == ThreadItemStatusCompleted && item.Terminal {
+			return true
+		}
+	}
+	return false
 }
 
 func applyTokenUsageToTurn(turn *Turn, usage providers.TokenUsage, contextTokens int, model string) {
@@ -721,6 +768,9 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 			out = append(out, itemStarted(th.ID, turnID, item, now), itemCompleted(th.ID, turnID, item, now))
 		}
 	case providers.EventError:
+		if th.completeAfterAnswerReadyCancel && !th.interrupting && currentTurnIsAnswerReadyLocked(th) {
+			return nil
+		}
 		msg := "stream error"
 		if ev.Error != nil {
 			msg = ev.Error.Error()

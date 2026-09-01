@@ -94,29 +94,36 @@ type threadState struct {
 	runtimeSelectionMutation bool
 	runtimeSubscription      *threadRuntimeSubscription
 
-	mu                     sync.Mutex
-	running                bool
-	currentTurn            string
-	currentTurnKind        TurnKind
-	currentExecutionRunID  string
-	currentTurnResumed     bool
-	runningProviderName    string
-	runningModel           string
-	cancel                 context.CancelFunc
-	executionLease         *session.ThreadExecutionLease
-	pluginExecutionLease   *session.PluginGenerationLease
-	pluginLeaseReleaseLoop bool
-	runtimePluginEpoch     uint64
-	runtimePluginRevision  uint64
-	admissionReserved      bool
-	pendingSteers          []providers.ChatMessage
-	steerWake              chan struct{}
-	steerWakeClosed        bool
-	activeSteerDocument    *ActiveDocument
-	activeSteerContextSet  bool
-	steerDocumentOverrides []activeDocumentOverride
-	interrupting           bool
-	namedAgentRoomIDs      []string
+	mu                    sync.Mutex
+	running               bool
+	currentTurn           string
+	currentTurnKind       TurnKind
+	currentExecutionRunID string
+	currentTurnResumed    bool
+	runningProviderName   string
+	runningModel          string
+	cancel                context.CancelFunc
+	// idleWaiters are closed when this thread releases execution. Follow-up
+	// turn/start after a visible final answer waits here instead of failing busy.
+	idleWaiters []chan struct{}
+	// completeAfterAnswerReadyCancel is set when a successor user turn arrives
+	// after the current turn's answer is already visible. Cancelling leftover
+	// provider work must complete that turn, not mark it interrupted.
+	completeAfterAnswerReadyCancel bool
+	executionLease                 *session.ThreadExecutionLease
+	pluginExecutionLease           *session.PluginGenerationLease
+	pluginLeaseReleaseLoop         bool
+	runtimePluginEpoch             uint64
+	runtimePluginRevision          uint64
+	admissionReserved              bool
+	pendingSteers                  []providers.ChatMessage
+	steerWake                      chan struct{}
+	steerWakeClosed                bool
+	activeSteerDocument            *ActiveDocument
+	activeSteerContextSet          bool
+	steerDocumentOverrides         []activeDocumentOverride
+	interrupting                   bool
+	namedAgentRoomIDs              []string
 	// Worker-tree freeze (turn/interrupt): while set, agent-completion drains
 	// hold their pending synthetic turns. The next user-initiated turn folds
 	// the whole-tree snapshot into its request (frozenTreeContext) and marks

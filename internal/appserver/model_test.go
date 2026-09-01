@@ -92,6 +92,22 @@ func TestThreadStateRetainsExecutionLeaseUntilRelease(t *testing.T) {
 	}
 }
 
+func TestCurrentTurnIsAnswerReadyFromCompletedTerminalItem(t *testing.T) {
+	now := time.Unix(100, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "inspect"}, now)
+	th.Turns[0].Items = append(th.Turns[0].Items, ThreadItem{
+		ID:       "answer",
+		Type:     ThreadItemAgentMessage,
+		Status:   ThreadItemStatusCompleted,
+		Terminal: true,
+		Text:     "done",
+	})
+	if !currentTurnIsAnswerReadyLocked(th) {
+		t.Fatal("completed terminal agent message should make the current turn answer-ready")
+	}
+}
+
 func TestThreadStateMarksAnswerReadyBeforeTurnSettlement(t *testing.T) {
 	now := time.Unix(100, 0).UTC()
 	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)

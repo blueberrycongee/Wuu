@@ -395,6 +395,60 @@ describe("queued turn reconciliation", () => {
     expect(composerProbe().dataset.queuedIds).toBe("");
   });
 
+  it("does not restore the follow-up draft while turn/start is still settling", async () => {
+    let resolveStart: ((value: {
+      turn: { id: string; status: string; items_view: string; items: unknown[] };
+    }) => void) | undefined;
+    const startTurn = vi.fn(
+      () =>
+        new Promise<{
+          turn: { id: string; status: string; items_view: string; items: unknown[] };
+        }>((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+    const queueTurn = vi.fn();
+    installWuuApi({ thread: answerReadyThread(), startTurn, queueTurn });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<App />);
+    });
+    await flushAsync();
+
+    const textarea = composerProbe().querySelector("textarea");
+    const send = composerProbe().querySelector("button");
+    await act(async () => {
+      if (!textarea || !send) throw new Error("composer controls not rendered");
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      valueSetter?.call(textarea, "keep this sent");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      send.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushAsync();
+
+    expect(startTurn).toHaveBeenCalledTimes(1);
+    expect(queueTurn).not.toHaveBeenCalled();
+    expect(composerProbe().querySelector("textarea")?.value).toBe("");
+    expect(composerProbe().dataset.queuedIds).toBe("");
+
+    await act(async () => {
+      resolveStart?.({
+        turn: {
+          id: "turn-follow-up",
+          status: "in_progress",
+          items_view: "full",
+          items: [],
+        },
+      });
+      await Promise.resolve();
+    });
+    await flushAsync();
+    expect(composerProbe().querySelector("textarea")?.value).toBe("");
+  });
+
   it("removes an already materialized queue entry after a missed start notification", async () => {
     const { queuedClientIDs } = installWuuApi();
     await act(async () => {

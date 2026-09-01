@@ -1514,7 +1514,9 @@ export function reconcileResumedThreadTurns(
 
 // A history edit first rewinds the server thread, then immediately starts a
 // replacement turn. Preserve that local placeholder when the rewind's
-// thread/updated notification arrives after the optimistic render.
+// thread/updated notification arrives after the optimistic render. A follow-up
+// started after the previous answer is ready is the same shape: keep an
+// in-progress tail when a stale snapshot still omits it.
 function mergeThreadUpdatedTurns(incoming: Turn[], current: Turn[]): Turn[] {
   if (incoming.length === 0) {
     return current;
@@ -1528,7 +1530,11 @@ function mergeThreadUpdatedTurns(incoming: Turn[], current: Turn[]): Turn[] {
     }
   }
   const localTail = current.slice(incoming.length);
-  return localTail.every((turn) => turn.id.startsWith(OPTIMISTIC_TURN_ID_PREFIX))
+  return localTail.every(
+    (turn) =>
+      turn.status === "in_progress" ||
+      turn.id.startsWith(OPTIMISTIC_TURN_ID_PREFIX),
+  )
     ? [...incoming, ...localTail]
     : incoming;
 }

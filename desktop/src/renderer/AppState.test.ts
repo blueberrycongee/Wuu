@@ -597,6 +597,56 @@ describe("AppState protocol normalization", () => {
     ]);
   });
 
+  it("keeps a live follow-up turn when a stale thread/updated snapshot omits it", () => {
+    const current = threadWithUserTexts(["first query"]);
+    current.status = "in_progress";
+    current.turns = [
+      {
+        ...current.turns[0],
+        status: "completed",
+      },
+      {
+        id: "turn-follow-up",
+        items_view: "full",
+        status: "in_progress",
+        items: [
+          {
+            id: "follow-up-user",
+            type: "user_message",
+            status: "completed",
+            text: "next question",
+          },
+        ],
+      },
+    ];
+    const next = reduceServerEvent(
+      {
+        ...initialState,
+        activeContext: { kind: "no_project", cwd: "/repo" },
+        thread: current,
+        threads: [current],
+      },
+      {
+        kind: "notification",
+        workdir: "/repo",
+        message: {
+          method: "thread/updated",
+          params: {
+            thread: {
+              ...current,
+              turns: [current.turns[0]],
+            },
+          },
+        },
+      },
+    );
+
+    expect(next.thread?.turns.map((turn) => turn.id)).toEqual([
+      "turn-1",
+      "turn-follow-up",
+    ]);
+  });
+
   it("keeps an optimistic first turn when thread/started carries an empty snapshot", () => {
     const current = threadWithUserTexts(["first query"]);
     const next = reduceServerEvent(
