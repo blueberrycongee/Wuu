@@ -265,7 +265,8 @@ export function Composer({
   onOpenProject: () => void;
   onStartNewThread: () => void;
   // Open or focus the side thread attached to the active main conversation.
-  onOpenSideThread?: () => void;
+  // When prompt is non-empty, also send it as the side-thread query.
+  onOpenSideThread?: (prompt?: string) => void;
   onOpenWorkspaceTool: (view: WorkspacePanelView) => void;
   onOpenContextComposition?: () => void;
   onCompactContext?: () => void;
@@ -812,7 +813,7 @@ export function Composer({
         onStartNewThread();
         break;
       case "open-side-thread":
-        onOpenSideThread?.();
+        onOpenSideThread?.(draft?.args.trim() || undefined);
         break;
       case "reset-side-thread":
         onResetSideThread?.();

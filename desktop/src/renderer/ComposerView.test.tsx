@@ -85,7 +85,7 @@ function renderComposer(props: {
   onQueue?: (promptOverride?: string) => void;
   onStartNewThread?: () => void;
   onOpenContextComposition?: () => void;
-  onOpenSideThread?: () => void;
+  onOpenSideThread?: (prompt?: string) => void;
   sideThreadDisabledReason?: string;
   onRemoveQueuedMessage?: (id: string) => void;
   onRemoveGuideMessage?: (id: string) => void;
@@ -1641,6 +1641,27 @@ describe("Composer send control", () => {
     act(() => sendButton?.click());
 
     expect(onOpenSideThread).toHaveBeenCalledTimes(1);
+    expect(onOpenSideThread).toHaveBeenCalledWith(undefined);
+    expect(setPrompt).toHaveBeenCalledWith("");
+  });
+
+  it("passes /side args through as the side-thread prompt", () => {
+    const setPrompt = vi.fn();
+    const onOpenSideThread = vi.fn();
+    renderComposer({
+      prompt: "/side 现在进度怎么样",
+      setPrompt,
+      onOpenSideThread,
+      activeContext: { kind: "project", project_id: "repo", cwd: "/repo" },
+    });
+
+    const sendButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="发送"]',
+    );
+    act(() => sendButton?.click());
+
+    expect(onOpenSideThread).toHaveBeenCalledTimes(1);
+    expect(onOpenSideThread).toHaveBeenCalledWith("现在进度怎么样");
     expect(setPrompt).toHaveBeenCalledWith("");
   });
 });

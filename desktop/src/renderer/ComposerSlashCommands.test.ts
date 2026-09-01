@@ -249,6 +249,7 @@ describe("composer slash commands", () => {
 
     const side = filterComposerSlashCommands(commands, "side")[0];
     expect(side?.action).toBe("open-side-thread");
+    expect(side?.argumentHint).toBe("提示词");
     expect(side?.disabledReason).toBe("先发送一条消息");
   });
 

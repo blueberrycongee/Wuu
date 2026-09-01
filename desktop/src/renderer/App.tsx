@@ -2740,7 +2740,7 @@ export function App(): JSX.Element {
     });
   }, [state.activeSessionTabID, state.thread, state.threads]);
 
-  function openSideThreadPanel(): void {
+  function openSideThreadPanel(prompt?: string): void {
     if (!activeThreadID) {
       return;
     }
@@ -2749,6 +2749,10 @@ export function App(): JSX.Element {
       setEnvironmentPanelDismissed(true);
       setEnvironmentPanelMenu(null);
       sideThread.open();
+    }
+    const trimmed = prompt?.trim();
+    if (trimmed) {
+      sideThread.sendMessage(trimmed);
     }
   }
 

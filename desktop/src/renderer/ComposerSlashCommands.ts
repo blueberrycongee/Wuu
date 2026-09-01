@@ -244,6 +244,7 @@ export function buildComposerSlashCommands({
     },
     {
       // Side-thread messages remain outside the main conversation history.
+      // Optional args after `/side ` are sent as the side-thread prompt.
       id: "side",
       name: "side",
       title: t("slash.side.title"),
@@ -251,6 +252,8 @@ export function buildComposerSlashCommands({
       tag: t("slash.tag.conversation"),
       kind: "action",
       action: "open-side-thread",
+      argumentHint: t("slash.side.argumentHint"),
+      keywords: ["side", "侧聊", "旁路", "进度"],
       // Side chat remains available while the main turn is running.
       disabledReason: needsWorkspace ?? sideThreadDisabledReason
     },
