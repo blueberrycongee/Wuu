@@ -118,6 +118,21 @@ func waitForWorkerStatus(t *testing.T, c *AgentControl, id string, want subagent
 	}
 }
 
+func waitForThreadStatus(t *testing.T, c *AgentControl, id string, want agentthread.Status) agentthread.Metadata {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if meta, ok := c.threads.Resolve(id); ok && meta.Status == want {
+			return meta
+		}
+		if time.Now().After(deadline) {
+			meta, ok := c.threads.Resolve(id)
+			t.Fatalf("thread %s status = %+v (ok=%v), want %s", id, meta, ok, want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // A parent that finishes its final message while a direct child is still
 // running parks as waiting_children (result held, no delivery), resumes when
 // the child's result arrives, and only its integrated completion delivers —
@@ -164,9 +179,7 @@ func TestCompletedParentParksUntilChildDelivers(t *testing.T) {
 	// its result, and its thread record must mirror the parked state.
 	close(parentTurn.gate)
 	waitForWorkerStatus(t, c, parent.AgentID, subagent.StatusWaitingChildren)
-	if meta, ok := c.threads.Resolve(parent.AgentID); !ok || meta.Status != agentthread.StatusWaitingChildren {
-		t.Fatalf("parent thread status = %+v (ok=%v), want waiting_children", meta, ok)
-	}
+	waitForThreadStatus(t, c, parent.AgentID, agentthread.StatusWaitingChildren)
 
 	// The child's delivery wakes the parent for integration; the integrated
 	// completion has no live children left and becomes the one terminal.
@@ -176,9 +189,7 @@ func TestCompletedParentParksUntilChildDelivers(t *testing.T) {
 	if final.Result != "integrated result" {
 		t.Fatalf("parent final result = %q, want the integrated turn's output", final.Result)
 	}
-	if meta, ok := c.threads.Resolve(parent.AgentID); !ok || meta.Status != agentthread.StatusCompleted {
-		t.Fatalf("parent thread final status = %+v (ok=%v), want completed", meta, ok)
-	}
+	waitForThreadStatus(t, c, parent.AgentID, agentthread.StatusCompleted)
 }
 
 // A parent with no live children never parks: completion delivers directly.

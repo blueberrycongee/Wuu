@@ -396,14 +396,16 @@ describe("queued turn reconciliation", () => {
   });
 
   it("does not restore the follow-up draft while turn/start is still settling", async () => {
-    let resolveStart: ((value: {
-      turn: { id: string; status: string; items_view: string; items: unknown[] };
-    }) => void) | undefined;
+    const followUpTurn = {
+      id: "turn-follow-up",
+      status: "in_progress" as const,
+      items_view: "full" as const,
+      items: [] as [],
+    };
+    let resolveStart: ((value: { turn: typeof followUpTurn }) => void) | undefined;
     const startTurn = vi.fn(
       () =>
-        new Promise<{
-          turn: { id: string; status: string; items_view: string; items: unknown[] };
-        }>((resolve) => {
+        new Promise<{ turn: typeof followUpTurn }>((resolve) => {
           resolveStart = resolve;
         }),
     );
@@ -435,14 +437,7 @@ describe("queued turn reconciliation", () => {
     expect(composerProbe().dataset.queuedIds).toBe("");
 
     await act(async () => {
-      resolveStart?.({
-        turn: {
-          id: "turn-follow-up",
-          status: "in_progress",
-          items_view: "full",
-          items: [],
-        },
-      });
+      resolveStart?.({ turn: followUpTurn });
       await Promise.resolve();
     });
     await flushAsync();
