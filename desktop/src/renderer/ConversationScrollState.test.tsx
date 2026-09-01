@@ -296,18 +296,34 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
         node.dispatchEvent(new Event("scroll", { bubbles: false }));
       });
 
-      const visual = conversationBottomOverscrollMax(600);
-      expect(content.style.transform).toBe(`translate3d(0, ${-visual}px, 0)`);
+      const firstVisual = rubberBandOffset(80, 600);
+      expect(content.style.transform).toBe(
+        `translate3d(0, ${-firstVisual}px, 0)`,
+      );
 
       act(() => {
         node.dispatchEvent(
           new WheelEvent("wheel", { bubbles: true, deltaY: 160, deltaMode: 0 }),
         );
       });
-      expect(content.style.transform).toBe(`translate3d(0, ${-visual}px, 0)`);
+      const stretchedVisual = rubberBandOffset(240, 600);
+      expect(stretchedVisual).toBeGreaterThan(firstVisual);
+      expect(stretchedVisual).toBeLessThan(
+        conversationBottomOverscrollMax(600),
+      );
+      expect(content.style.transform).toBe(
+        `translate3d(0, ${-stretchedVisual}px, 0)`,
+      );
 
       act(() => {
-        vi.advanceTimersByTime(32);
+        vi.advanceTimersByTime(239);
+      });
+      expect(content.style.transform).toBe(
+        `translate3d(0, ${-stretchedVisual}px, 0)`,
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(33);
       });
       expect(content.style.transform).toBe("translate3d(0, 0, 0)");
 
@@ -315,12 +331,19 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
         vi.advanceTimersByTime(440);
       });
       expect(content.style.transform).toBe("");
+
+      act(() => {
+        node.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: 160, deltaMode: 0 }),
+        );
+      });
+      expect(content.style.transform).toBe("");
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("rubber-bands when a downward gesture lands on latest without leftover delta", () => {
+  it("waits for travel beyond latest when a downward gesture lands exactly on it", () => {
     vi.useFakeTimers();
     try {
       const node = mount({
@@ -348,8 +371,15 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
         node.dispatchEvent(new Event("scroll", { bubbles: false }));
       });
 
+      expect(content.style.transform).toBe("");
+
+      act(() => {
+        node.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: 80, deltaMode: 0 }),
+        );
+      });
       expect(content.style.transform).toBe(
-        `translate3d(0, ${-conversationBottomOverscrollMax(600)}px, 0)`,
+        `translate3d(0, ${-rubberBandOffset(80, 600)}px, 0)`,
       );
     } finally {
       vi.useRealTimers();
@@ -380,9 +410,14 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
 });
 
 describe("conversation bottom overscroll helpers", () => {
-  it("applies a rubber-band curve that stays below the raw offset", () => {
-    expect(rubberBandOffset(80, 600)).toBeGreaterThan(0);
-    expect(rubberBandOffset(80, 600)).toBeLessThan(80);
+  it("adds diminishing resistance as the rubber band stretches", () => {
+    const first = rubberBandOffset(80, 600);
+    const second = rubberBandOffset(160, 600);
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThan(80);
+    expect(second).toBeGreaterThan(first);
+    expect(second - first).toBeLessThan(first);
+    expect(second).toBeLessThan(conversationBottomOverscrollMax(600));
     expect(rubberBandOffset(0, 600)).toBe(0);
     expect(rubberBandOffset(-20, 600)).toBe(0);
   });

@@ -21,7 +21,7 @@ import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  conversationBottomOverscrollMax,
+  rubberBandOffset,
   useConversationScrollState,
 } from "./ConversationScrollState";
 import type { Turn } from "../shared/protocol";
@@ -1131,7 +1131,7 @@ describe("useConversationScrollState — high-frequency stream", () => {
     });
 
     expect(contentNode.style.transform).toBe(
-      `translate3d(0, ${-conversationBottomOverscrollMax(600)}px, 0)`,
+      `translate3d(0, ${-rubberBandOffset(64, 600)}px, 0)`,
     );
 
     act(() => {
