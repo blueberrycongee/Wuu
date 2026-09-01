@@ -40,9 +40,10 @@ const CONVERSATION_USER_SCROLL_AWAY_INTENT_WINDOW_MS =
   USER_SCROLL_AWAY_INTENT_WINDOW_MS;
 // One-shot arrival feedback after the user returns from older content to the
 // latest turn. Keep following the gesture while it is active. Touch has an
-// explicit touchend; wheel events do not expose trackpad contact state, so
-// wait for the wheel stream (including momentum) to settle before releasing.
-export const CONVERSATION_BOTTOM_OVERSCROLL_WHEEL_SETTLE_MS = 240;
+// explicit touchend; on desktop the main process forwards the trackpad's
+// native gesture end. The long wheel timeout is only a fallback for platforms
+// that do not expose that native signal.
+export const CONVERSATION_BOTTOM_OVERSCROLL_WHEEL_SETTLE_MS = 1500;
 
 export function conversationBottomOverscrollMax(dimension: number): number {
   return Math.min(140, Math.max(96, dimension * 0.2));
@@ -972,6 +973,14 @@ export function useConversationScrollState({
         absorbTowardLatestOverscroll(node, deltaPx);
       }
     };
+    const handleNativeScrollGestureEnd = (): void => {
+      if (
+        bottomOverscrollRawRef.current > 0 &&
+        !bottomOverscrollReturningRef.current
+      ) {
+        beginLockedBottomOverscrollReturn(node);
+      }
+    };
     const handlePointerDown = (event: PointerEvent): void => {
       if (eventTargetsNestedAutoFollowScroll(event.target, node)) {
         return;
@@ -1053,6 +1062,10 @@ export function useConversationScrollState({
       }
     };
     node.addEventListener("wheel", handleWheel, { passive: false });
+    window.addEventListener(
+      "wuu-scroll-gesture-end",
+      handleNativeScrollGestureEnd,
+    );
     node.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("pointerup", handlePointerEnd);
     window.addEventListener("pointercancel", handlePointerEnd);
@@ -1064,6 +1077,10 @@ export function useConversationScrollState({
     node.addEventListener("keydown", handleKeyDown);
     return () => {
       node.removeEventListener("wheel", handleWheel);
+      window.removeEventListener(
+        "wuu-scroll-gesture-end",
+        handleNativeScrollGestureEnd,
+      );
       node.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointerup", handlePointerEnd);
       window.removeEventListener("pointercancel", handlePointerEnd);

@@ -316,14 +316,14 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
       );
 
       act(() => {
-        vi.advanceTimersByTime(239);
+        window.dispatchEvent(new Event("wuu-scroll-gesture-end"));
       });
       expect(content.style.transform).toBe(
         `translate3d(0, ${-stretchedVisual}px, 0)`,
       );
 
       act(() => {
-        vi.advanceTimersByTime(33);
+        vi.advanceTimersByTime(32);
       });
       expect(content.style.transform).toBe("translate3d(0, 0, 0)");
 
