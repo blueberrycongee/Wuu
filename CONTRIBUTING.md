@@ -52,7 +52,10 @@ AI-assisted pull requests are welcome. The author remains responsible for the
 design, license compliance, security, and correctness of every line. Review the
 complete diff, remove unrelated generated changes, and run the relevant real
 tests. Do not submit raw model output or claim checks passed when they were not
-run.
+run. Merge-gate tests must catch a realistic observable regression, invariant,
+or bug. Do not add tests that read stylesheet source, pin CSS declarations,
+snapshot generated theme matrices, or quote prompt phrasing.
+`make test-policy-check` rejects new stylesheet-source tests.
 
 ### Commit conventions
 

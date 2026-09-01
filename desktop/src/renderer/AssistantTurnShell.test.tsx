@@ -19,8 +19,6 @@
  *     defaults to collapsed, but the user can re-expand it (and the
  *     nested reasoning fold inside) manually.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,28 +37,6 @@ import {
 
 let idCounter = 0;
 let mountedRoots: Root[] = [];
-
-const turnsCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/turns.css"),
-  "utf8",
-);
-const baseCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/base.css"),
-  "utf8",
-);
-const conversationShellCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/conversation-shell.css"),
-  "utf8",
-);
-
-function cssRule(selector: string): string {
-  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = turnsCSS.match(
-    new RegExp(`^${escapedSelector}\\s*\\{([\\s\\S]*?)\\n\\}`, "m"),
-  );
-  expect(match).not.toBeNull();
-  return match?.[1] ?? "";
-}
 
 function nextID(prefix: string): string {
   idCounter += 1;
@@ -1355,78 +1331,6 @@ describe("AssistantTurnShell — answer region (rule 1 + rule 8)", () => {
     );
     expect(container.querySelector(".turn-process-fold-body-inner")).toBeNull();
     expect(container.querySelector(".turn-answer-body")).not.toBeNull();
-  });
-});
-
-describe("AssistantTurnShell — turn divider styles", () => {
-  it("separates the user query and assistant reply with whitespace, not a rule", () => {
-    const shellRule = cssRule(".turn > .assistant-turn-shell");
-    // The full-width hairline that used to split every Q&A pair is gone —
-    // turn-to-turn separation already owns the single visible boundary
-    // (the 48px --conversation-turn-boundary-gap band on .turn).
-    expect(shellRule).not.toContain("border-top");
-    expect(shellRule).not.toContain("var(--wuu-hairline)");
-    // Separation survives as whitespace: the shell still carries the
-    // query -> reply gap so the reply doesn't collide with the query.
-    expect(shellRule).toContain("var(--conversation-user-rule-gap)");
-    // And it must not have collapsed onto the old rule-process padding,
-    // which would have pushed the pair's gap past the 48px turn boundary.
-    expect(shellRule).not.toContain("padding-top");
-  });
-
-  it("moves a compositor wave over live labels without repainting clipped text", () => {
-    expect(turnsCSS).not.toContain("@keyframes live-gray-shimmer");
-    expect(turnsCSS).not.toContain("animation: live-gray-shimmer");
-    expect(turnsCSS).not.toContain("@keyframes turn-text-sweep");
-    expect(baseCSS).toContain(".wuu-live-text-wave");
-    expect(baseCSS).toContain("--wuu-live-text-wave-duration");
-    expect(baseCSS).toContain("--wuu-live-text-wave-travel-stop");
-    expect(baseCSS).toContain("background-clip: text;");
-    expect(baseCSS).toContain('.cached-conversation-pane[data-active="false"]');
-    expect(turnsCSS).not.toContain("background-clip: text;");
-    expect(cssRule(".turn-progress.in_progress .turn-progress-title")).not.toContain(
-      "animation:",
-    );
-    expect(turnsCSS).toContain(".process-surface-count.is-changing");
-    expect(turnsCSS).not.toContain(".process-surface-row.is-streaming::after");
-    expect(turnsCSS).not.toContain(
-      ".turn-reasoning-summary-text.is-streaming::after",
-    );
-  });
-
-  it("pauses infinite turn animations while the renderer is hidden", () => {
-    expect(turnsCSS).toContain(":root[data-renderer-hidden] .turn-process-live-dot");
-    expect(turnsCSS).toContain("animation-play-state: paused;");
-  });
-
-  it("keeps live bottom content on real layout instead of placeholder layout", () => {
-    const liveTurnRule = cssRule('.turn[data-turn-status="in_progress"]');
-    expect(liveTurnRule).toContain("content-visibility: visible;");
-    expect(liveTurnRule).toContain("contain-intrinsic-size: none;");
-
-    expect(turnsCSS).not.toMatch(
-      /\.streaming-markdown-block\s*\{[\s\S]*?content-visibility:/,
-    );
-    expect(turnsCSS).not.toContain(
-      '.streaming-markdown[data-stream-state="streaming"] .streaming-markdown-block',
-    );
-
-    expect(cssRule(".activity-timeline-item")).not.toContain("animation:");
-    expect(turnsCSS).not.toContain("activity-timeline-item-in");
-  });
-});
-
-describe("AssistantTurnShell — process typography", () => {
-  it("keeps process commentary tighter than long-form answer prose", () => {
-    const commentaryRule = cssRule(".turn-process-entry-commentary");
-
-    expect(commentaryRule).toContain(
-      "line-height: var(--conversation-commentary-line-height);",
-    );
-    expect(commentaryRule).not.toContain("--conversation-reading-line-height");
-    expect(conversationShellCSS).toContain(
-      "--conversation-commentary-line-height: 1.6;",
-    );
   });
 });
 

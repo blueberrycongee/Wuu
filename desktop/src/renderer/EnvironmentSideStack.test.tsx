@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -13,22 +11,6 @@ import { unhoverTooltip } from "./tooltipTestUtils";
 
 let container: HTMLDivElement;
 let root: Root | null = null;
-
-const environmentCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/environment.css"),
-  "utf8",
-);
-
-function cssRule(selector: string): string {
-  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const matches = Array.from(
-    environmentCSS.matchAll(
-      new RegExp(`^${escapedSelector}\\s*\\{([\\s\\S]*?)\\n\\}`, "gm"),
-    ),
-  );
-  expect(matches).not.toHaveLength(0);
-  return matches.at(-1)?.[1] ?? "";
-}
 
 beforeEach(() => {
   container = document.createElement("div");
@@ -95,13 +77,6 @@ describe("EnvironmentSideStack", () => {
     expect(container.querySelector(".query-history-popover")).toBeNull();
   });
 
-  it("lets branch menus escape the side-stack panel bounds", () => {
-    const rule = cssRule(".environment-side-stack > .environment-panel");
-
-    expect(rule).toContain("overflow: visible");
-    expect(rule).not.toContain("overflow: hidden");
-  });
-
   it("scales the complete environment panel at narrow widths", () => {
     Object.defineProperty(container, "clientWidth", {
       configurable: true,
@@ -122,9 +97,5 @@ describe("EnvironmentSideStack", () => {
     expect(stack?.style.getPropertyValue("--environment-panel-scale")).toBe(
       "0.6",
     );
-
-    const rule = cssRule(".environment-side-stack.environment-info-side-stack");
-    expect(rule).toContain("transform: scale(var(--environment-panel-scale, 1))");
-    expect(rule).toContain("transform-origin: top right");
   });
 });

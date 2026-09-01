@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -23,8 +21,6 @@ import { hoverTooltipText, unhoverTooltip } from "./tooltipTestUtils";
 import type { HeaderSnapshotV1, PresentationHost } from "../shared/workbench";
 import { PluginHost } from "./plugins/PluginHost";
 import { WorkbenchController } from "./plugins/Workbench";
-
-const workspaceCSS = readFileSync(resolve(__dirname, "styles/workspace.css"), "utf-8");
 
 // Renders the cwd it received so tests can assert which context prop
 // (activeContext vs workspaceContext) actually reached the terminal panel,
@@ -231,15 +227,6 @@ describe("WorkspaceRightPanel", () => {
     await act(async () => presentationHost?.invoke("header.close-tab", { tabId: tab.id }));
     expect(onSelectTab).toHaveBeenCalledWith(tab.id);
     expect(onCloseTab).toHaveBeenCalledWith(tab.id);
-  });
-
-  it("places the file-tree drag handle in the search row instead of a separate row", () => {
-    expect(workspaceCSS).toMatch(
-      /\.workspace-files-tree\s*\{[^}]*position:\s*relative;/s,
-    );
-    expect(workspaceCSS).toMatch(
-      /\.workspace-file-tree-drag-handle\s*\{[^}]*position:\s*absolute;[^}]*inset-block-start:\s*11px;[^}]*inset-inline-end:\s*8px;[^}]*width:\s*32px;[^}]*height:\s*26px;/s,
-    );
   });
 
   it("prewarms the hidden lightweight body during idle time", () => {

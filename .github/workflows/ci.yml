@@ -31,7 +31,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Check repository metadata
-        run: make repository-metadata-check
+        run: make repository-check
 
   go-check:
     name: Go check
@@ -67,9 +67,6 @@ jobs:
 
       - name: Install
         run: npm ci --prefix desktop
-
-      - name: Check generated theme contracts
-        run: make theme-surface-matrix-check
 
       - name: Typecheck
         run: make check-desktop
@@ -185,10 +182,8 @@ jobs:
       - name: Install Desktop dependencies
         run: npm ci --prefix desktop
 
-      - name: Check and test cross-platform Desktop code on Windows
-        run: |
-          npm --prefix desktop run typecheck
-          npm --prefix desktop run test:unit
+      - name: Typecheck Desktop on Windows
+        run: npm --prefix desktop run typecheck
 
       - name: Package unpacked Windows app
         run: npm --prefix desktop run pack:win

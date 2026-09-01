@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import * as React from "react";
 import { Suspense, act, createRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -30,22 +28,6 @@ import type {
 
 let container: HTMLDivElement;
 let root: Root | null = null;
-const composerCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/composer.css"),
-  "utf8",
-);
-const turnsCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/turns.css"),
-  "utf8",
-);
-const workspaceCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/workspace.css"),
-  "utf8",
-);
-const responsiveDesignCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/responsive-design.css"),
-  "utf8",
-);
 
 beforeEach(() => {
   container = document.createElement("div");
@@ -460,15 +442,6 @@ function setTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
   setter?.call(textarea, value);
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function cssRuleBlock(css: string, selector: string): string {
-  const start = css.indexOf(`${selector} {`);
-  if (start < 0) {
-    throw new Error(`missing css rule: ${selector}`);
-  }
-  const end = css.indexOf("}", start);
-  return css.slice(start, end + 1);
 }
 
 describe("Composer send control", () => {
@@ -1202,11 +1175,6 @@ describe("Composer send control", () => {
       '[data-floating-menu-owner="composer-slash"]',
     );
     expect(slashLayer).not.toBeNull();
-    expect(composerCSS).toMatch(/\.composer-plus-menu\s*{[^}]*width:\s*100%;/s);
-    expect(composerCSS).toMatch(
-      /\.composer-plus-menu\s*{[^}]*max-height:\s*min\([^}]*var\(--floating-menu-available-height/s,
-    );
-    expect(composerCSS).not.toContain("--slash-command-available-height");
   });
 
   it("shows the hero project selector inside the composer toolbar", () => {
@@ -1269,11 +1237,6 @@ describe("Composer send control", () => {
     expect(selector).not.toBeNull();
     // Matches the sidebar group and the session tab, which both read "对话".
     expect(selector?.textContent).toContain("对话");
-  });
-
-  it("does not apply dock Plus icon sizing to the hero project selector", () => {
-    expect(composerCSS).toContain(".composer-bar button.composer-project-control > svg");
-    expect(composerCSS).not.toContain(".composer-bar .composer-project-control svg");
   });
 
   it("separates auxiliary controls from the send action for responsive collapse", () => {
@@ -1339,10 +1302,6 @@ describe("Composer send control", () => {
     expect(menu?.style.left).toBe("80px");
     expect(menu?.style.bottom).toBe(`${window.innerHeight - 400 + 8}px`);
     expect(menu?.style.getPropertyValue("--floating-menu-available-height")).toBe("384px");
-    expect(composerCSS).toMatch(/\.composer-plus-menu\s*{[^}]*width:\s*100%;/s);
-    expect(composerCSS).toMatch(
-      /\.composer-plus-menu\s*{[^}]*max-height:\s*min\([^}]*var\(--floating-menu-available-height/s,
-    );
     expect(menu?.querySelectorAll(".composer-plus-menu-section")).toHaveLength(2);
     expect(menu?.textContent).toContain("添加");
     expect(menu?.textContent).toContain("添加附件");
@@ -1460,40 +1419,6 @@ describe("Composer send control", () => {
     const runtimeButton = container.querySelector<HTMLButtonElement>(".codex-runtime-trigger");
     expect(runtimeButton?.textContent).toContain("model-b");
     expect(runtimeButton?.disabled).toBe(false);
-  });
-
-  it("uses the disabled cursor for locked runtime model controls", () => {
-    expect(workspaceCSS).toMatch(
-      /\.codex-runtime-trigger:disabled\s*{[^}]*cursor:\s*not-allowed;/,
-    );
-  });
-
-  it("collapses read-only composer indicators before functional controls", () => {
-    expect(composerCSS).toContain("container: composer-toolbar / inline-size");
-
-    const speedLabelCollapse = responsiveDesignCSS.indexOf("@container composer-toolbar (max-width: 680px)");
-    const permissionLabelCollapse = responsiveDesignCSS.indexOf("@container composer-toolbar (max-width: 620px)");
-    const gaugeCollapse = responsiveDesignCSS.indexOf("@container composer-toolbar (max-width: 560px)");
-    const projectCollapse = responsiveDesignCSS.indexOf("@container composer-toolbar (max-width: 360px)");
-
-    expect(speedLabelCollapse).toBeGreaterThan(-1);
-    expect(permissionLabelCollapse).toBeGreaterThan(speedLabelCollapse);
-    expect(gaugeCollapse).toBeGreaterThan(permissionLabelCollapse);
-    expect(projectCollapse).toBeGreaterThan(gaugeCollapse);
-    expect(responsiveDesignCSS).toContain(".composer-token-gauge-label");
-    expect(responsiveDesignCSS).toContain(".composer-project-control");
-    expect(responsiveDesignCSS).not.toMatch(
-      /@container composer-toolbar[^{}]*{[^}]*\.codex-runtime-anchor[^}]*display:\s*none/s,
-    );
-    expect(responsiveDesignCSS).not.toMatch(
-      /@container composer-toolbar[^{}]*{[^}]*(?:\.provider-pill|\.model-label)[^}]*display:\s*none/s,
-    );
-    expect(workspaceCSS).toMatch(
-      /\.codex-runtime-anchor\s*{[^}]*max-width:\s*280px;[^}]*flex:\s*0 1 auto;/,
-    );
-    expect(responsiveDesignCSS).toMatch(
-      /@media \(max-width: 1120px\)[\s\S]*?\.codex-runtime-anchor\s*{[^}]*max-width:\s*240px;[^}]*flex:\s*0 1 auto;/,
-    );
   });
 
   it("inserts a selected skill slash command into the composer", async () => {
@@ -1721,26 +1646,6 @@ describe("Composer send control", () => {
 });
 
 describe("Composer long text folding", () => {
-  it("bounds folded paste chips inside a scrollable wrapping strip", () => {
-    const listRule = cssRuleBlock(composerCSS, ".composer-collapsed-prompt-list");
-    expect(listRule).toContain("display: flex");
-    expect(listRule).toContain("flex-wrap: wrap");
-    expect(listRule).toContain("max-height: min(168px, 26vh)");
-    expect(listRule).toContain("overflow-y: auto");
-    expect(listRule).toContain("overscroll-behavior: contain");
-
-    const cardRule = cssRuleBlock(composerCSS, ".composer-collapsed-prompt-card");
-    expect(cardRule).toContain("max-width: min(260px, 100%)");
-    expect(cardRule).toContain("min-height: 38px");
-
-    const removeRule = cssRuleBlock(composerCSS, ".composer-collapsed-prompt-remove");
-    expect(removeRule).toContain("position: absolute");
-    expect(removeRule).toContain("border-radius: var(--radius-pill)");
-
-    const splitRule = cssRuleBlock(workspaceCSS, ".split-composer .composer-collapsed-prompt-list");
-    expect(splitRule).toContain("margin: 0");
-  });
-
   it("folds a long paste while sending the original text plus follow-up", () => {
     const longText = longPastedPrompt();
     const onSend = vi.fn();
@@ -2447,117 +2352,6 @@ describe("ComposerTokenGauge", () => {
 });
 
 describe("Composer expand button", () => {
-  it("keeps the document composer shorter without changing expanded input", () => {
-    expect(composerCSS).toMatch(
-      /\.document-composer-wrap\s+\.composer-stack\s*\{[^}]*--composer-collapsed-min-height:\s*80px/,
-    );
-    expect(composerCSS).toMatch(
-      /\.document-composer-wrap\s+\.composer-stack:not\(\.is-expanded\)\s+\.composer\s+textarea\s*\{[^}]*height:\s*44px[^}]*min-height:\s*44px/,
-    );
-    expect(composerCSS).toMatch(
-      /\.document-composer-wrap\s+\.composer-bar\s*\{[^}]*height:\s*36px[^}]*padding-bottom:\s*2px/,
-    );
-    expect(workspaceCSS).toMatch(
-      /\.workspace-document-turn-drawer\s*\{[^}]*width:\s*calc\(100% - 48px\)/,
-    );
-    expect(composerCSS).toMatch(
-      /\.dock-composer-wrap::before\s*\{[^}]*background:\s*transparent/,
-    );
-    expect(composerCSS).toMatch(
-      /\.document-composer-wrap\s+\.composer-frame-shell\s*\{[^}]*z-index:\s*10/,
-    );
-    expect(workspaceCSS).toMatch(
-      /\.workspace-document-turn-composer\s*\{[^}]*z-index:\s*10/,
-    );
-    expect(workspaceCSS).toMatch(
-      /\.workspace-document-composer\s+\.dock-composer-wrap\s+\.composer-stack\s*\{[^}]*width:\s*100%/,
-    );
-    expect(composerCSS).toMatch(
-      /\.document-composer-wrap\s+\.composer-accessory-drawer:hover,[^{]*\.document-composer-wrap\s+\.composer-accessory-drawer:focus-within\s*\{[^}]*translate:\s*0 -2px[^}]*border-color:[^}]*box-shadow:/,
-    );
-    expect(composerCSS).toMatch(
-      /\.document-composer-wrap\s+\.composer-accessory-drawer\.expanded\s*\{[^}]*z-index:\s*4[^}]*translate:\s*0 -6px/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-accessory-drawer\s*\{[^}]*border-bottom:\s*0[^}]*border-radius:\s*12px 12px 0 0[^}]*box-shadow:\s*0 -6px 24px/,
-    );
-    expect(workspaceCSS).toMatch(
-      /\.workspace-document-turn-drawer\.expanded\s*\{[^}]*translate:\s*0 -6px[^}]*border-radius:\s*16px 16px 0 0/,
-    );
-    expect(workspaceCSS).not.toMatch(
-      /\.workspace-document-turn-drawer\.expanded\s*\{[^}]*width:/,
-    );
-    expect(workspaceCSS).toMatch(
-      /\.workspace-document-turn-summary\s*\{[^}]*width:\s*100%[^}]*justify-items:\s*end[^}]*padding:\s*0 12px 0 0/,
-    );
-  });
-
-  it("uses anchored flex layouts so the bottom toolbar stays pinned when expanded", () => {
-    expect(composerCSS).toContain(".composer-stack.is-expanded");
-    expect(composerCSS).toContain("min-height: clamp(180px, 34vh, 320px)");
-    expect(composerCSS).toContain("--composer-collapsed-min-height: 112px");
-    expect(composerCSS).toMatch(
-      /\.composer\s+textarea\s*\{[^}]*display:\s*block[^}]*height:\s*72px[^}]*min-height:\s*72px[^}]*padding:\s*10px\s+44px\s+8px\s+var\(--composer-text-start\)/,
-    );
-    expect(composerCSS).toMatch(
-      /\.hero-composer-wrap\s+\.composer\s+textarea\s*\{[^}]*height:\s*78px[^}]*min-height:\s*78px[^}]*padding:\s*16px\s+52px\s+8px\s+var\(--composer-text-start\)/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-bar\s*\{[^}]*height:\s*40px[^}]*padding:\s*0\s+8px\s+4px\s+calc\(var\(--composer-text-start\)\s*-\s*var\(--composer-control-icon-inset\)\)/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-send-button,\s*\n\.composer-stop-button\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/,
-    );
-    expect(composerCSS).toMatch(/\.composer-tool-button::before,[\s\S]*inset:\s*4px 0/);
-    expect(composerCSS).toMatch(/\.composer-plus-button::before\s*\{[^}]*inset:\s*4px/);
-    expect(composerCSS).toMatch(
-      /\.composer-send-button::before,\s*\n\.composer-stop-button::before\s*\{[^}]*inset:\s*1px/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-send-button\s+svg\s*\{[^}]*width:\s*14px[^}]*height:\s*14px/,
-    );
-    expect(composerCSS).toContain("--composer-expanded-min-height: clamp(240px, 44vh, 420px)");
-    expect(composerCSS).toMatch(
-      /\.hero-composer-wrap\s+\.composer-stack\s*\{[^}]*--composer-collapsed-min-height:\s*118px/,
-    );
-    expect(composerCSS).toMatch(
-      /\.dock-composer-wrap\s*\{[^}]*align-self:\s*end/,
-    );
-    expect(turnsCSS).toMatch(
-      /\.empty-home-inner\s*>\s*\.hero-composer-wrap\s*\{[^}]*height:\s*118px[^}]*align-items:\s*flex-end/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-frame\s*\{[^}]*contain:\s*layout paint/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer\s*\{[^}]*position:\s*relative/,
-    );
-    // Expanded composer is a flex column; the textarea absorbs the extra
-    // height so .composer-bar stays at the original bottom edge instead
-    // of floating above block-flow whitespace.
-    expect(composerCSS).toMatch(
-      /\.composer-stack\.is-expanded\s+\.composer\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-stack\.is-expanded\s+\.composer-frame-shell\s*\{[^}]*margin-bottom:\s*calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)[^}]*transform:\s*translateY\(calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)\)/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-stack\.is-expanded\s+\.composer-pending-drawer\s*\{[^}]*transform:\s*translateY\(calc\(var\(--composer-expanded-offset,\s*var\(--composer-expanded-delta\)\) \* -1\)\)/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-stack\.is-expanded\s+\.composer\s*\{[^}]*min-height:\s*var\(--composer-expanded-min-height\)/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-stack\.is-expanded\s+\.composer\s+textarea\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*height:\s*auto/,
-    );
-    expect(composerCSS).not.toContain("grid-template-rows: auto minmax(0, 1fr) auto");
-    expect(composerCSS).not.toContain("transition: min-height");
-    expect(composerCSS).not.toContain("transition: width");
-    // Width stays pinned to the session composer width in both dock and hero
-    // variants — the expand button only grows the composer vertically.
-    expect(composerCSS).not.toContain("width: min(1040px");
-  });
-
   it("anchors the expanded frame to the original bottom edge in the hero composer", () => {
     renderComposer({ variant: "hero" });
     const stack = container.querySelector(".composer-stack");
@@ -2662,50 +2456,6 @@ describe("Composer expand button", () => {
     expect(button?.disabled).toBe(true);
     expect(button?.getAttribute("title")).toBe("只读会话不可展开");
     expect(stack?.classList.contains("is-expanded")).toBe(false);
-  });
-
-  it("places the placeholder line on the same axis as the expand button", () => {
-    // Top padding 10px + line-height 24px / 2 = 22px visual center; the
-    // expand button is at top:8 height:28 → center 22px. They line up so
-    // the placeholder glyph sits next to the chevron, not high above it.
-    expect(composerCSS).toMatch(
-      /\.composer\s+textarea\s*\{[^}]*padding:\s*10px\s+44px\s+8px\s+var\(--composer-text-start\)/,
-    );
-    expect(composerCSS).toMatch(
-      /\.hero-composer-wrap\s+\.composer\s+textarea\s*\{[^}]*padding:\s*16px\s+52px\s+8px\s+var\(--composer-text-start\)/,
-    );
-    // Hero retains its roomier 16px text inset and moves the button down by
-    // the same 6px. The compact document composer reuses the canonical 10px
-    // inset rather than pulling its placeholder above the button.
-    expect(composerCSS).toMatch(
-      /\.hero-composer-wrap\s+\.composer-expand-button\s*\{[^}]*top:\s*14px/,
-    );
-    expect(composerCSS).toMatch(
-      /\.document-composer-wrap\s+\.composer-stack:not\(\.is-expanded\)\s+\.composer\s+textarea\s*\{[^}]*padding-top:\s*10px/,
-    );
-  });
-
-  it("centers the expand button on the same vertical axis as the send button", () => {
-    // The send button is the rightmost 28x28 element in the bar; the expand
-    // button is positioned absolutely at right:8 width:28, so its right edge
-    // sits 8px from the frame's right edge — same gutter as the bar.
-    expect(composerCSS).toMatch(
-      /\.composer-expand-button\s*\{[^}]*right:\s*8px[^}]*width:\s*28px[^}]*height:\s*28px/,
-    );
-  });
-
-  it("keeps queued-message header actions aligned with the expand button", () => {
-    // The drawer stays inset when open. Its details wrapper must not add
-    // another horizontal inset around rows that already own their 8px gutter.
-    expect(composerCSS).toMatch(
-      /--composer-input-header-inline-padding:\s*8px;/,
-    );
-    expect(composerCSS).not.toMatch(
-      /\.composer-accessory-drawer\.expanded\s*\{[^}]*width:/,
-    );
-    expect(composerCSS).toMatch(
-      /\.composer-pending-details\s*\{[^}]*padding:\s*4px\s+0\s+16px/,
-    );
   });
 });
 
@@ -2846,11 +2596,6 @@ describe("composer drag and drop", () => {
     });
 
     expect(container.querySelector(".composer-frame-drop-active")).toBeNull();
-  });
-
-  it("keeps the frame border highlight style in the stylesheet", () => {
-    expect(composerCSS).toContain(".composer-frame.composer-frame-drop-active");
-    expect(workspaceCSS).toContain(".split-composer-shell.split-composer-shell-drop-active");
   });
 
   it("appends a dragged workspace path in the split pane composer", () => {

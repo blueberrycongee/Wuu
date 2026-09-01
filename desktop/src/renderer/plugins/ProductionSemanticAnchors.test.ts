@@ -100,66 +100,14 @@ describe("production semantic anchors", () => {
     expect(source).toContain('data-wuu-variant="agent"');
   });
 
-  it("publishes message action placement and host-owned rhythm tokens", () => {
+  it("publishes message action placement", () => {
     const actions = readFileSync(resolve(RENDERER_ROOT, "MessageActions.tsx"), "utf8");
     expect(actions).toContain("data-wuu-placement={placement}");
-    const themeContract = readFileSync(
-      resolve(process.cwd(), "../config/desktop-theme-contract.json"),
-      "utf8",
-    );
-    for (const token of [
-      "--wuu-message-actions-block-gap",
-      "--wuu-message-actions-overlay-gap",
-      "--wuu-message-actions-control-gap",
-      "--wuu-message-actions-inline-offset",
-      "--wuu-message-action-size",
-      "--wuu-message-action-radius",
-    ]) {
-      expect(themeContract).toContain(`"name": "${token}"`);
-    }
   });
 
   it("publishes the user bubble as one visual surface", () => {
     const source = readFileSync(resolve(RENDERER_ROOT, "ThreadItemView.tsx"), "utf8");
     expect(source).toContain('data-wuu-component="message-bubble"');
-    const themeContract = readFileSync(
-      resolve(process.cwd(), "../config/desktop-theme-contract.json"),
-      "utf8",
-    );
-    for (const token of [
-      "--wuu-message-user-background",
-      "--wuu-message-user-border",
-      "--wuu-message-user-color",
-      "--wuu-message-user-radius",
-      "--wuu-message-user-shadow",
-    ]) {
-      expect(themeContract).toContain(`"name": "${token}"`);
-    }
-  });
-
-  it("publishes sidebar navigation hover as theme tokens", () => {
-    const sidebar = readFileSync(resolve(RENDERER_ROOT, "styles/sidebar.css"), "utf8");
-    expect(sidebar).toContain("var(--wuu-nav-item-hover-background,");
-    expect(sidebar).toContain("var(--wuu-nav-item-hover-ring,");
-    const settings = readFileSync(resolve(RENDERER_ROOT, "styles/settings.css"), "utf8");
-    expect(settings).toContain("var(--wuu-nav-item-hover-background,");
-    const themeContract = readFileSync(
-      resolve(process.cwd(), "../config/desktop-theme-contract.json"),
-      "utf8",
-    );
-    for (const token of [
-      "--wuu-nav-item-hover-background",
-      "--wuu-nav-item-hover-ring",
-    ]) {
-      expect(themeContract).toContain(`"name": "${token}"`);
-    }
-  });
-
-  it("paints the sidebar drawer through the public surface token", () => {
-    const sidebar = readFileSync(resolve(RENDERER_ROOT, "styles/sidebar.css"), "utf8");
-    expect(sidebar).toContain("--sidebar-drawer-bg: var(--wuu-color-surface-muted,");
-    const theme = readFileSync(resolve(RENDERER_ROOT, "styles/theme.css"), "utf8");
-    expect(theme).toContain("--sidebar-drawer-bg: var(--wuu-color-surface-muted,");
   });
 
   it("keeps the coarse plugin UI Kit anchors stable", () => {

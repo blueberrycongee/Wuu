@@ -8,8 +8,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   containsMermaidFence,
   StreamingMarkdown,
@@ -21,11 +19,6 @@ import {
   streamTextKey,
   streamTextStore,
 } from "./StreamText";
-
-const turnsCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/turns.css"),
-  "utf8",
-);
 
 // jsdom doesn't implement layout. Stub getBoundingClientRect so React
 // doesn't crash on layout queries.
@@ -464,15 +457,6 @@ describe("StreamingMarkdown", () => {
     rerender({ streamKey: key, initialText: "", isLive: false, phase: "final_answer" });
     expect(surface.querySelector(".stream-word")).toBeNull();
     expect(surface.textContent).toContain("你好 world");
-  });
-
-  it("drives the word arrival animation from the motion ladder", () => {
-    const rule =
-      turnsCSS.match(/\.streaming-markdown \.stream-word\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
-    expect(rule).toContain("stream-word-in");
-    // Token-driven duration: prefers-reduced-motion zeroes the whole ladder.
-    expect(rule).toContain("var(--motion-base)");
-    expect(turnsCSS).toContain("@keyframes stream-word-in");
   });
 });
 

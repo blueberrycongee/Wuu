@@ -1,15 +1,8 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Tooltip, TOOLTIP_MAX_CONTENT_LENGTH, tooltipContent } from "./Tooltip";
 import { WuuUIRoot } from "./ui/layers/UILayerHost";
-
-const tooltipCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/tooltip.css"),
-  "utf8",
-);
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -214,19 +207,5 @@ describe("tooltipContent", () => {
     expect(capped.length).toBeLessThanOrEqual(TOOLTIP_MAX_CONTENT_LENGTH);
     expect(capped.endsWith("…")).toBe(true);
     expect(capped).not.toBe(long);
-  });
-});
-
-describe("tooltip.css", () => {
-  it("keeps the trigger wrapper out of the layout and the layer above app surfaces", () => {
-    expect(tooltipCSS).toContain("display: contents");
-    expect(tooltipCSS).toContain("pointer-events: none");
-    expect(tooltipCSS).toContain("max-width:");
-    const zIndex = Number(
-      tooltipCSS.match(/z-index:\s*(\d+)/)?.[1] ?? Number.NaN,
-    );
-    // Above the image preview band (2147483000), below the int32 ceiling.
-    expect(zIndex).toBeGreaterThan(2147483000);
-    expect(zIndex).toBeLessThanOrEqual(2147483647);
   });
 });

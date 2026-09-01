@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -16,10 +14,6 @@ import {
 
 let container: HTMLDivElement;
 let root: Root | null = null;
-const sidebarCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/sidebar.css"),
-  "utf8",
-);
 
 beforeEach(() => {
   container = document.createElement("div");
@@ -207,78 +201,6 @@ describe("AppSidebar layout", () => {
     expect(container.querySelector(".channel-mention-badge")).toBeNull();
   });
 
-  it("defines a hover edge drawer for the collapsed sidebar", () => {
-    expect(sidebarCSS).toContain(".sidebar-hover-zone");
-    expect(sidebarCSS).toMatch(/\.sidebar-hover-zone\s*\{[\s\S]*width:\s*14px;/);
-    expect(sidebarCSS).not.toMatch(
-      /\.sidebar-collapsed\s+\.sidebar-hover-zone:hover[\s\S]*background:/,
-    );
-    expect(sidebarCSS).toContain(
-      "--sidebar-drawer-bg: var(--wuu-color-surface-muted, #ffffff)",
-    );
-    expect(sidebarCSS).not.toMatch(/--sidebar-drawer-bg:\s*rgba\(/);
-    expect(sidebarCSS).toMatch(
-      /\.sidebar-collapsed\.sidebar-drawer-open \.sidebar,[\s\S]*background:\s*var\(--sidebar-drawer-bg\);/,
-    );
-    expect(sidebarCSS).toMatch(
-      /\.sidebar-drawer-docking :is\(\.sidebar, \.settings-sidebar\)\s*\{[\s\S]*background:\s*var\(--sidebar-material-fill\);[\s\S]*background-color var\(--sidebar-motion-duration\)/,
-    );
-    expect(sidebarCSS).toMatch(
-      /\.sidebar-drawer-docking :is\(\.sidebar, \.settings-sidebar\)::before\s*\{[\s\S]*opacity:\s*0\.5;[\s\S]*transition:\s*opacity var\(--sidebar-motion-duration\)/,
-    );
-    // The ease itself now lives in base.css as a shared motion token;
-    // sidebar.css only consumes it.
-    expect(sidebarCSS).toContain("var(--sidebar-motion-ease)");
-    expect(sidebarCSS).toMatch(
-      /\.sidebar-collapsed \.titlebar\s*\{[^}]*padding-left:\s*max\(24px, calc\(var\(--window-controls-inset-left\) \+ 10px\)\);/,
-    );
-    expect(sidebarCSS).toContain(
-      ".sidebar-collapsed.sidebar-drawer-open .sidebar",
-    );
-    expect(sidebarCSS).toContain(
-      ".sidebar-collapsed.sidebar-drawer-closing .sidebar",
-    );
-    expect(sidebarCSS).toContain(
-      ".sidebar-collapsed.sidebar-drawer-open .sidebar .sidebar-content",
-    );
-    // The collapsed rail carries the drawer's off-canvas start transform
-    // (excluded while the dock<->collapse grid animation runs), so the open
-    // transition is a real slide-in instead of an instant pop.
-    expect(sidebarCSS).toMatch(
-      /\.sidebar-collapsed:not\(\.sidebar-animating\) :is\(\.sidebar, \.settings-sidebar\)\s*\{\s*transform:\s*translate3d\(-100%, 0, 0\);/,
-    );
-    expect(sidebarCSS).toMatch(
-      /\.sidebar-collapsed\.sidebar-drawer-open :is\(\.sidebar, \.settings-sidebar\)[\s\S]*?transition:\s*transform\s+var\(--sidebar-drawer-enter-duration\)\s+var\(--sidebar-drawer-enter-easing\);/,
-    );
-    // The titlebar toggle stays above the drawer (140) as a stationary click
-    // target while the panel slides underneath it.
-    expect(sidebarCSS).toMatch(
-      /\.sidebar-collapsed :is\(\.titlebar, \.settings-titlebar\) \.sidebar-toggle-button\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*150;/,
-    );
-    expect(sidebarCSS).toMatch(
-      /\.sidebar-collapsed\.sidebar-drawer-open :is\(\.sidebar, \.settings-sidebar\),[\s\S]*?z-index:\s*140;/,
-    );
-    // Closing slides the panel back off-screen with the exit tokens; the old
-    // whole-panel opacity fade must not come back.
-    expect(sidebarCSS).toMatch(
-      /\.sidebar-collapsed\.sidebar-drawer-closing \.sidebar,\s*\.sidebar-collapsed\.sidebar-drawer-closing \.settings-sidebar\s*\{\s*transform:\s*translate3d\(-100%, 0, 0\);\s*transition:\s*transform\s+var\(--sidebar-drawer-exit-duration\)\s+var\(--sidebar-drawer-exit-easing\);/,
-    );
-    expect(sidebarCSS).not.toMatch(
-      /\.sidebar-collapsed\.sidebar-drawer-closing \.settings-sidebar\s*\{[^}]*opacity:\s*0/,
-    );
-  });
-
-  it("keeps the drawer width continuous when navigation becomes compact", () => {
-    const compactWidthRule = sidebarCSS.match(
-      /\.app-shell\.compact-navigation\s*\{([^}]*)\}/,
-    )?.[1] ?? "";
-
-    expect(compactWidthRule).toContain(
-      "min(var(--sidebar-open-width, 326px), 80vw)",
-    );
-    expect(compactWidthRule).not.toMatch(/min\(80vw,\s*326px\)/);
-  });
-
   it("keeps primary actions outside the scrollable sidebar list", () => {
     renderSidebar();
 
@@ -303,46 +225,6 @@ describe("AppSidebar layout", () => {
     );
     expect(workspaceAction?.classList.contains("sidebar-functional-action")).toBe(true);
     expect(collaborationAction).toBeNull();
-
-    const sharedActionRule =
-      sidebarCSS.match(/\.sidebar-functional-action\s*\{[^}]*\}/)?.[0] ?? "";
-    expect(sharedActionRule).toMatch(/place-items:\s*center/);
-    expect(sharedActionRule).toMatch(/padding:\s*0/);
-    expect(sharedActionRule).toMatch(/background:\s*transparent/);
-
-    const sharedActionHoverRule =
-      sidebarCSS.match(
-        /\.sidebar-functional-action:hover,\s*\.sidebar-functional-action:focus-visible,\s*\.sidebar-functional-action\[aria-expanded="true"\]\s*\{[^}]*\}/,
-      )?.[0] ?? "";
-    expect(sharedActionHoverRule).toMatch(
-      /background:\s*var\(--sidebar-row-icon-hover-bg-default\)/,
-    );
-
-    const sectionActionRule =
-      sidebarCSS.match(/\.sidebar-section-add-action\s*\{[^}]*\}/)?.[0] ?? "";
-    expect(sectionActionRule).toMatch(/top:\s*50%/);
-    expect(sectionActionRule).toMatch(/right:\s*var\(--sidebar-row-pad-x, 8px\)/);
-    expect(sectionActionRule).toMatch(/transform:\s*translateY\(-50%\)/);
-  });
-
-  it("keeps sidebar buttons on a stable horizontal axis across interaction states", () => {
-    const rowHoverRule =
-      sidebarCSS.match(
-        /\.nav-item:hover,\s*\.project-row:hover,\s*\.thread-row:hover\s*\{[^}]*\}/,
-      )?.[0] ?? "";
-    const rowActiveRule =
-      sidebarCSS.match(/\.nav-item:active,\s*\.project-row:active\s*\{[^}]*\}/)?.[0] ?? "";
-    const settingsHoverRule =
-      sidebarCSS.match(
-        /\.sidebar-settings-button:hover,\s*\.sidebar-settings-button\[aria-expanded="true"\]\s*\{[^}]*\}/,
-      )?.[0] ?? "";
-
-    expect(rowHoverRule).toMatch(/transform:\s*none/);
-    expect(rowActiveRule).toMatch(/transform:\s*scale\(0\.992\)/);
-    expect(settingsHoverRule).toMatch(/transform:\s*none/);
-    expect([rowHoverRule, rowActiveRule, settingsHoverRule].join("\n")).not.toMatch(
-      /translateX|translate3d/,
-    );
   });
 
   it("renders the brand lockup above the primary nav", () => {

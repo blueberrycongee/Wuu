@@ -79,5 +79,5 @@ deploying.
   and host wiring status), generated from `config/desktop-theme-contract.json`
   and the host stylesheet dependency graph by
   `scripts/generate-theme-surface-matrix.ts` (run
-  `make generate-theme-surface-matrix`); do not edit them by hand. CI checks
-  freshness with `make theme-surface-matrix-check`.
+  `make generate-theme-surface-matrix`); do not edit them by hand. Freshness
+  is an author check (`make theme-surface-matrix-check`), not a merge gate.

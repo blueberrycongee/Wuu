@@ -9,7 +9,8 @@
  *   cd desktop && npx vite-node ../scripts/generate-theme-surface-matrix.ts
  *
  * `--check` verifies the committed artifacts are current and exits non-zero
- * when stale (wired to `make theme-surface-matrix-check`).
+ * when stale (`make theme-surface-matrix-check`). This is an author/docs
+ * check, not a merge gate.
  */
 
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";

@@ -10,7 +10,7 @@ doc it implements.
 
 ## Test plan
 
-- [ ] Added or updated behavior/contract tests when the change needs them
+- [ ] Added or updated tests only for a realistic observable regression, invariant, or bug (not CSS text, prompt phrasing, or generated matrices)
 - [ ] `make check test` passes, or failures unrelated to this change are noted below
 - [ ] Manually verified the behavior in the desktop shell (if applicable)
 

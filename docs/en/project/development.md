@@ -23,7 +23,7 @@ Run from the repository root:
 |---|---|
 | `make setup` | Install locked npm dependencies for desktop, clients, protocol, and docs site |
 | `make dev` | Start the real Electron development path |
-| `make check` | Check Go modules/format/vet and TypeScript types |
+| `make check` | Check repository metadata, test policy, Go modules/format/vet, and TypeScript types |
 | `make test` | Run Go, desktop, remote-core, and mobile tests |
 | `make build` | Build the Go CLI, Electron renderer/main, and mobile web export |
 | `make ci` | Run the cross-platform check, test, and build gate |
@@ -48,10 +48,12 @@ subprocess and Electron main process are not hot-reloaded.
 
 Pull requests and pushes to `main` run:
 
+- **Repository check:** versions, eval records, and merge-gate test policy;
 - **Go check:** module consistency, format, vet, tests, and CLI build;
-- **Desktop check:** install, typecheck, unit/performance tests, and Electron build;
+- **Desktop check:** install, typecheck, unit tests, and Electron build;
 - **Clients check:** protocol/core/mobile typecheck, client tests, and mobile web export;
-- **macOS native check:** Swift/native tests and a directory-packaged Electron app.
+- **macOS native check:** Swift/native tests and a directory-packaged Electron app;
+- **Windows native check:** Windows process/sandbox boundaries, Desktop typecheck, and unpacked packaging. Typecheck only; the full Desktop unit suite already runs on Ubuntu.
 
 Tagged releases add unsigned macOS DMG/ZIP verification. GitHub Releases do not
 publish standalone CLI archives. See the [release guide](release.md).

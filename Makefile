@@ -1,4 +1,4 @@
-.PHONY: setup dev docs-dev check repository-check repository-metadata-check version-check eval-check theme-contract-check generate-theme-contract theme-surface-matrix-check generate-theme-surface-matrix check-go check-desktop check-clients check-docs test test-go \
+.PHONY: setup dev docs-dev check repository-check repository-metadata-check version-check eval-check test-policy-check theme-contract-check generate-theme-contract theme-surface-matrix-check generate-theme-surface-matrix check-go check-desktop check-clients check-docs test test-go \
 	test-go-uncached test-desktop test-clients test-native build build-go build-desktop \
 	build-clients build-docs build-macos ci install vet clean release-check \
 	print-version tag-release version-check release-prepare
@@ -32,13 +32,17 @@ docs-dev:
 
 check: repository-check check-go check-desktop check-clients
 
-repository-check: repository-metadata-check theme-surface-matrix-check
+repository-check: repository-metadata-check test-policy-check
 
 repository-metadata-check: version-check eval-check theme-contract-check
 
 eval-check:
 	node scripts/check-evals.mjs --self-test
 	node scripts/check-evals.mjs
+
+test-policy-check:
+	node scripts/check-test-policy.mjs --self-test
+	node scripts/check-test-policy.mjs
 
 theme-contract-check:
 	node scripts/generate-desktop-theme-contract.mjs --check

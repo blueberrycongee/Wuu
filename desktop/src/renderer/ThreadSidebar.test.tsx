@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -11,10 +9,6 @@ import { I18nProvider, setActiveLocale } from "./i18n";
 
 let container: HTMLDivElement;
 let root: Root | null = null;
-const environmentCSS = readFileSync(
-  resolve(process.cwd(), "src/renderer/styles/environment.css"),
-  "utf8",
-);
 
 beforeEach(() => {
   container = document.createElement("div");
@@ -53,17 +47,6 @@ function changeInput(input: HTMLInputElement, value: string): void {
   )?.set;
   setter?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function cssRule(selector: string): string {
-  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const matches = Array.from(
-    environmentCSS.matchAll(
-      new RegExp(`^${escapedSelector}\\s*\\{([\\s\\S]*?)\\n\\}`, "gm"),
-    ),
-  );
-  expect(matches).not.toHaveLength(0);
-  return matches.at(-1)?.[1] ?? "";
 }
 
 describe("ThreadRowTitle", () => {
@@ -537,16 +520,6 @@ describe("ProjectList", () => {
     } finally {
       window.prompt = originalPrompt;
     }
-  });
-
-  it("centers the rename dialog while reusing the search overlay shell", () => {
-    const overlayRule = cssRule(".sidebar-name-dialog-overlay");
-    expect(overlayRule).toMatch(/align-items:\s*center;/);
-    expect(overlayRule).toMatch(/padding:\s*24px;/);
-    expect(overlayRule).not.toMatch(/padding-top:/);
-
-    const dialogRule = cssRule(".sidebar-name-dialog");
-    expect(dialogRule).toMatch(/transform-origin:\s*center;/);
   });
 
   it("never auto-expands the active section — expansion is header-toggle only", () => {
