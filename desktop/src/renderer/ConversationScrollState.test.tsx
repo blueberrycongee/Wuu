@@ -2,11 +2,8 @@ import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  conversationBottomOverscrollMax,
-  rubberBandOffset,
   useConversationScrollState,
   wheelDeltaPixels,
-  wheelEventHasMomentum,
 } from "./ConversationScrollState";
 import type { Turn } from "../shared/protocol";
 
@@ -278,7 +275,7 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
     });
   });
 
-  it("rubber-bands leftover downward inertia after scrolling back to latest", () => {
+  it("keeps a hard boundary on platforms without native scroll bounce", () => {
     vi.useFakeTimers();
     try {
       const node = mount({
@@ -306,24 +303,14 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
         node.dispatchEvent(new Event("scroll", { bubbles: false }));
       });
 
-      const firstVisual = rubberBandOffset(80, 600);
-      expect(content.style.transform).toBe(
-        `translate3d(0, ${-firstVisual}px, 0)`,
-      );
+      expect(content.style.transform).toBe("");
 
       act(() => {
         node.dispatchEvent(
           new WheelEvent("wheel", { bubbles: true, deltaY: 160, deltaMode: 0 }),
         );
       });
-      const stretchedVisual = rubberBandOffset(240, 600);
-      expect(stretchedVisual).toBeGreaterThan(firstVisual);
-      expect(stretchedVisual).toBeLessThan(
-        conversationBottomOverscrollMax(600),
-      );
-      expect(content.style.transform).toBe(
-        `translate3d(0, ${-stretchedVisual}px, 0)`,
-      );
+      expect(content.style.transform).toBe("");
 
       act(() => {
         const momentumEvent = new WheelEvent("wheel", {
@@ -334,14 +321,12 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
         Object.defineProperty(momentumEvent, "momentum", { value: true });
         node.dispatchEvent(momentumEvent);
       });
-      expect(content.style.transform).toBe(
-        `translate3d(0, ${-stretchedVisual}px, 0)`,
-      );
+      expect(content.style.transform).toBe("");
 
       act(() => {
         vi.advanceTimersByTime(32);
       });
-      expect(content.style.transform).toBe("translate3d(0, 0, 0)");
+      expect(content.style.transform).toBe("");
 
       act(() => {
         vi.advanceTimersByTime(440);
@@ -408,7 +393,7 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
     }
   });
 
-  it("waits for travel beyond latest when a downward gesture lands exactly on it", () => {
+  it("does not synthesize overscroll after returning from older content", () => {
     vi.useFakeTimers();
     try {
       const node = mount({
@@ -443,9 +428,7 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
           new WheelEvent("wheel", { bubbles: true, deltaY: 80, deltaMode: 0 }),
         );
       });
-      expect(content.style.transform).toBe(
-        `translate3d(0, ${-rubberBandOffset(80, 600)}px, 0)`,
-      );
+      expect(content.style.transform).toBe("");
     } finally {
       vi.useRealTimers();
     }
@@ -474,19 +457,7 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
   });
 });
 
-describe("conversation bottom overscroll helpers", () => {
-  it("adds diminishing resistance as the rubber band stretches", () => {
-    const first = rubberBandOffset(80, 600);
-    const second = rubberBandOffset(160, 600);
-    expect(first).toBeGreaterThan(0);
-    expect(first).toBeLessThan(80);
-    expect(second).toBeGreaterThan(first);
-    expect(second - first).toBeLessThan(first);
-    expect(second).toBeLessThan(conversationBottomOverscrollMax(600));
-    expect(rubberBandOffset(0, 600)).toBe(0);
-    expect(rubberBandOffset(-20, 600)).toBe(0);
-  });
-
+describe("conversation wheel helpers", () => {
   it("normalizes wheel deltas from line and page modes", () => {
     expect(
       wheelDeltaPixels({ deltaY: 80, deltaMode: 0 } as WheelEvent, 600),
@@ -497,13 +468,6 @@ describe("conversation bottom overscroll helpers", () => {
     expect(
       wheelDeltaPixels({ deltaY: 1, deltaMode: 2 } as WheelEvent, 600),
     ).toBe(600);
-  });
-
-  it("detects native momentum wheel events after a trackpad lift", () => {
-    const event = new WheelEvent("wheel");
-    expect(wheelEventHasMomentum(event)).toBe(false);
-    Object.defineProperty(event, "momentum", { value: true });
-    expect(wheelEventHasMomentum(event)).toBe(true);
   });
 });
 

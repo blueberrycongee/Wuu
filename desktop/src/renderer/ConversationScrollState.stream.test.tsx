@@ -20,10 +20,7 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  rubberBandOffset,
-  useConversationScrollState,
-} from "./ConversationScrollState";
+import { useConversationScrollState } from "./ConversationScrollState";
 import type { Turn } from "../shared/protocol";
 import { AUTO_FOLLOW_NESTED_SCROLL_ATTR } from "./AutoFollowScroll";
 import { WINDOW_RESIZING_CLASS } from "./WindowResizeState";
@@ -1107,7 +1104,7 @@ describe("useConversationScrollState — high-frequency stream", () => {
     expect(layout.scrollTop).toBe(2200 - 350);
   });
 
-  it("keeps following after leftover downward inertia rubber-bands at latest", () => {
+  it("keeps following at the hard boundary after downward inertia", () => {
     mount({ scrollHeight: 2000, clientHeight: 600 });
     if (!layout || !handle || !node) throw new Error("not mounted");
     flushScheduledScroll();
@@ -1130,9 +1127,7 @@ describe("useConversationScrollState — high-frequency stream", () => {
       node!.dispatchEvent(new Event("scroll", { bubbles: false }));
     });
 
-    expect(contentNode.style.transform).toBe(
-      `translate3d(0, ${-rubberBandOffset(64, 600)}px, 0)`,
-    );
+    expect(contentNode.style.transform).toBe("");
 
     act(() => {
       layout!.scrollHeight += 80;

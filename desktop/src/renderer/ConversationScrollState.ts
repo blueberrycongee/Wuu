@@ -28,7 +28,7 @@ import {
   isWindowResizing,
 } from "./WindowResizeState";
 import { markSessionSwitch } from "./SessionSwitchPerformance";
-import { motionDurationMs, prefersReducedMotion } from "./motion";
+import { prefersReducedMotion } from "./motion";
 
 // Tight threshold so the conversation only re-engages auto-follow when the
 // user is effectively parked at the bottom. The previous 48px band let one
@@ -38,23 +38,6 @@ const CONVERSATION_AUTO_SCROLL_THRESHOLD_PX = AUTO_FOLLOW_BOTTOM_THRESHOLD_PX;
 const CONVERSATION_SCROLLBAR_HIDE_DELAY_MS = AUTO_FOLLOW_SCROLLBAR_HIDE_DELAY_MS;
 const CONVERSATION_USER_SCROLL_AWAY_INTENT_WINDOW_MS =
   USER_SCROLL_AWAY_INTENT_WINDOW_MS;
-// One-shot arrival feedback after the user returns from older content to the
-// latest turn. Keep following the gesture while it is active. Touch has an
-// explicit touchend; WheelEvent.momentum identifies the first inertial event
-// after a trackpad lift. The short settle delay covers mouse wheels and
-// platforms without momentum events.
-export const CONVERSATION_BOTTOM_OVERSCROLL_WHEEL_SETTLE_MS = 120;
-
-export function conversationBottomOverscrollMax(dimension: number): number {
-  return Math.min(140, Math.max(96, dimension * 0.2));
-}
-
-export function rubberBandOffset(offset: number, dimension: number): number {
-  const raw = Math.max(0, offset);
-  const limit = conversationBottomOverscrollMax(dimension);
-  return limit * (1 - Math.exp((-0.8 * raw) / limit));
-}
-
 export function wheelDeltaPixels(
   event: WheelEvent,
   viewportHeight: number,
@@ -66,10 +49,6 @@ export function wheelDeltaPixels(
     return event.deltaY * Math.max(1, viewportHeight);
   }
   return event.deltaY;
-}
-
-export function wheelEventHasMomentum(event: WheelEvent): boolean {
-  return (event as WheelEvent & { momentum?: boolean }).momentum === true;
 }
 
 function cssPixelValue(value: string): number {
@@ -199,12 +178,7 @@ export function useConversationScrollState({
   > | null>(null);
   const conversationScrollbarHideTimerRef = useRef<number | undefined>(undefined);
   const scrollContentRef = useRef<HTMLDivElement | null>(null);
-  const bottomOverscrollRawRef = useRef(0);
   const bottomOverscrollFromAwayRef = useRef(false);
-  const bottomOverscrollReturningRef = useRef(false);
-  const bottomOverscrollIdleTimerRef = useRef<number | undefined>(undefined);
-  const bottomOverscrollReleaseTimerRef = useRef<number | undefined>(undefined);
-  const bottomOverscrollReturnFrameRef = useRef<number | undefined>(undefined);
 
   const refreshPointerScrollGestureLayout = useCallback((node: HTMLElement): void => {
     const gesture = pointerScrollGestureRef.current;
@@ -222,33 +196,6 @@ export function useConversationScrollState({
     return conversationScrollRef.current ?? undefined;
   }
 
-  function bottomOverscrollContent(node: HTMLElement): HTMLElement | undefined {
-    const wrapped = scrollContentRef.current;
-    if (wrapped && node.contains(wrapped)) {
-      return wrapped;
-    }
-    const child = node.firstElementChild;
-    return child instanceof HTMLElement ? child : undefined;
-  }
-
-  function clearBottomOverscrollStyles(node?: HTMLElement): void {
-    const targets = new Set<HTMLElement>();
-    if (scrollContentRef.current) {
-      targets.add(scrollContentRef.current);
-    }
-    if (node) {
-      const content = bottomOverscrollContent(node);
-      if (content) {
-        targets.add(content);
-      }
-    }
-    for (const target of targets) {
-      target.style.removeProperty("transform");
-      target.style.removeProperty("will-change");
-      target.style.removeProperty("transition");
-    }
-  }
-
   function setNativeBottomOverscrollEnabled(
     node: HTMLElement,
     enabled: boolean,
@@ -260,186 +207,9 @@ export function useConversationScrollState({
   }
 
   function cancelBottomOverscroll(node?: HTMLElement): void {
-    bottomOverscrollRawRef.current = 0;
     bottomOverscrollFromAwayRef.current = false;
-    bottomOverscrollReturningRef.current = false;
-    if (bottomOverscrollIdleTimerRef.current !== undefined) {
-      window.clearTimeout(bottomOverscrollIdleTimerRef.current);
-      bottomOverscrollIdleTimerRef.current = undefined;
-    }
-    if (bottomOverscrollReleaseTimerRef.current !== undefined) {
-      window.clearTimeout(bottomOverscrollReleaseTimerRef.current);
-      bottomOverscrollReleaseTimerRef.current = undefined;
-    }
-    if (bottomOverscrollReturnFrameRef.current !== undefined) {
-      window.cancelAnimationFrame(bottomOverscrollReturnFrameRef.current);
-      bottomOverscrollReturnFrameRef.current = undefined;
-    }
-    clearBottomOverscrollStyles(node);
     if (node) {
       setNativeBottomOverscrollEnabled(node, false);
-    }
-  }
-
-  function canAbsorbBottomOverscroll(): boolean {
-    if (nativeScrollBounce) {
-      return false;
-    }
-    if (prefersReducedMotion() || bottomOverscrollReturningRef.current) {
-      return false;
-    }
-    if (smoothAutoFollowRef.current || isWindowResizing()) {
-      return false;
-    }
-    return (
-      bottomOverscrollFromAwayRef.current ||
-      !conversationAutoFollowRef.current
-    );
-  }
-
-  function bottomOverscrollEase(): string {
-    if (typeof window.getComputedStyle !== "function") {
-      return "cubic-bezier(0.16, 1, 0.3, 1)";
-    }
-    const token = window
-      .getComputedStyle(document.documentElement)
-      .getPropertyValue("--ease-out")
-      .trim();
-    return token || "cubic-bezier(0.16, 1, 0.3, 1)";
-  }
-
-  function applyBottomOverscrollVisual(node: HTMLElement): void {
-    const content = bottomOverscrollContent(node);
-    if (!content) {
-      return;
-    }
-    const visual = rubberBandOffset(
-      bottomOverscrollRawRef.current,
-      node.clientHeight,
-    );
-    if (visual < 0.5) {
-      content.style.removeProperty("transform");
-      content.style.removeProperty("will-change");
-      content.style.removeProperty("transition");
-      return;
-    }
-    content.style.willChange = "transform";
-    content.style.transition = "none";
-    content.style.transform = `translate3d(0, ${-visual}px, 0)`;
-  }
-
-  function finishBottomOverscrollReturn(content: HTMLElement): void {
-    bottomOverscrollReleaseTimerRef.current = undefined;
-    bottomOverscrollRawRef.current = 0;
-    bottomOverscrollFromAwayRef.current = false;
-    bottomOverscrollReturningRef.current = false;
-    content.style.removeProperty("transform");
-    content.style.removeProperty("will-change");
-    content.style.removeProperty("transition");
-  }
-
-  function startBottomOverscrollReturn(node: HTMLElement): void {
-    const content = bottomOverscrollContent(node);
-    if (bottomOverscrollIdleTimerRef.current !== undefined) {
-      window.clearTimeout(bottomOverscrollIdleTimerRef.current);
-      bottomOverscrollIdleTimerRef.current = undefined;
-    }
-    if (bottomOverscrollRawRef.current <= 0 || !content || prefersReducedMotion()) {
-      cancelBottomOverscroll(node);
-      return;
-    }
-    const duration = motionDurationMs("--motion-slower", 440);
-    content.style.willChange = "transform";
-    content.style.transition = `transform ${duration}ms ${bottomOverscrollEase()}`;
-    content.style.transform = "translate3d(0, 0, 0)";
-    if (bottomOverscrollReleaseTimerRef.current !== undefined) {
-      window.clearTimeout(bottomOverscrollReleaseTimerRef.current);
-    }
-    bottomOverscrollReleaseTimerRef.current = window.setTimeout(() => {
-      finishBottomOverscrollReturn(content);
-    }, duration);
-  }
-
-  function beginLockedBottomOverscrollReturn(node: HTMLElement): void {
-    if (bottomOverscrollReturningRef.current) {
-      return;
-    }
-    bottomOverscrollReturningRef.current = true;
-    bottomOverscrollFromAwayRef.current = false;
-    if (bottomOverscrollIdleTimerRef.current !== undefined) {
-      window.clearTimeout(bottomOverscrollIdleTimerRef.current);
-      bottomOverscrollIdleTimerRef.current = undefined;
-    }
-    applyBottomOverscrollVisual(node);
-    if (bottomOverscrollReturnFrameRef.current !== undefined) {
-      window.cancelAnimationFrame(bottomOverscrollReturnFrameRef.current);
-    }
-    bottomOverscrollReturnFrameRef.current = window.requestAnimationFrame(() => {
-      bottomOverscrollReturnFrameRef.current = window.requestAnimationFrame(() => {
-        bottomOverscrollReturnFrameRef.current = undefined;
-        startBottomOverscrollReturn(node);
-      });
-    });
-  }
-
-  function scheduleBottomOverscrollRelease(node: HTMLElement): void {
-    if (bottomOverscrollReturningRef.current) {
-      return;
-    }
-    if (bottomOverscrollIdleTimerRef.current !== undefined) {
-      window.clearTimeout(bottomOverscrollIdleTimerRef.current);
-    }
-    bottomOverscrollIdleTimerRef.current = window.setTimeout(() => {
-      bottomOverscrollIdleTimerRef.current = undefined;
-      beginLockedBottomOverscrollReturn(node);
-    }, CONVERSATION_BOTTOM_OVERSCROLL_WHEEL_SETTLE_MS);
-  }
-
-  function addBottomOverscroll(
-    node: HTMLElement,
-    deltaPx: number,
-    releaseAfterWheelSettle: boolean,
-  ): void {
-    if (
-      deltaPx <= 0 ||
-      prefersReducedMotion() ||
-      bottomOverscrollReturningRef.current
-    ) {
-      return;
-    }
-    const max = conversationBottomOverscrollMax(node.clientHeight);
-    bottomOverscrollRawRef.current = Math.min(
-      max * 4,
-      bottomOverscrollRawRef.current + deltaPx,
-    );
-    applyBottomOverscrollVisual(node);
-    if (bottomOverscrollIdleTimerRef.current !== undefined) {
-      window.clearTimeout(bottomOverscrollIdleTimerRef.current);
-      bottomOverscrollIdleTimerRef.current = undefined;
-    }
-    if (releaseAfterWheelSettle) {
-      scheduleBottomOverscrollRelease(node);
-    }
-  }
-
-  function absorbTowardLatestOverscroll(
-    node: HTMLElement,
-    deltaPx: number,
-    releaseAfterWheelSettle = true,
-  ): void {
-    if (deltaPx <= 0 || !canAbsorbBottomOverscroll()) {
-      return;
-    }
-    if (!conversationAutoFollowRef.current) {
-      bottomOverscrollFromAwayRef.current = true;
-    }
-    if (!bottomOverscrollFromAwayRef.current) {
-      return;
-    }
-    const remaining = Math.max(0, maxScrollTop(node) - node.scrollTop);
-    const leftover = deltaPx - remaining;
-    if (leftover > 0) {
-      addBottomOverscroll(node, leftover, releaseAfterWheelSettle);
     }
   }
 
@@ -906,9 +676,6 @@ export function useConversationScrollState({
     } else {
       suppressAutoFollowRearmRef.current = false;
     }
-    if (scrolledUp && bottomOverscrollRawRef.current > 0) {
-      cancelBottomOverscroll(node);
-    }
     if (nativeScrollBounce && scrolledUp) {
       bottomOverscrollFromAwayRef.current = true;
       setNativeBottomOverscrollEnabled(node, true);
@@ -976,34 +743,6 @@ export function useConversationScrollState({
         return;
       }
       const deltaPx = wheelDeltaPixels(event, node.clientHeight);
-      if (
-        !nativeScrollBounce &&
-        wheelEventHasMomentum(event) &&
-        bottomOverscrollRawRef.current > 0 &&
-        !bottomOverscrollReturningRef.current
-      ) {
-        event.preventDefault();
-        beginLockedBottomOverscrollReturn(node);
-        return;
-      }
-      if (deltaPx < 0 && bottomOverscrollReturningRef.current) {
-        event.preventDefault();
-        cancelBottomOverscroll(node);
-        markUserScrollAwayIntent(clampScrollTop(node, node.scrollTop));
-        disableConversationAutoFollow();
-        return;
-      }
-      if (deltaPx < 0 && bottomOverscrollRawRef.current > 0) {
-        event.preventDefault();
-        const consume = Math.min(bottomOverscrollRawRef.current, -deltaPx);
-        bottomOverscrollRawRef.current -= consume;
-        applyBottomOverscrollVisual(node);
-        if (bottomOverscrollRawRef.current > 0) {
-          scheduleBottomOverscrollRelease(node);
-          return;
-        }
-        cancelBottomOverscroll(node);
-      }
       if (deltaPx < 0) {
         cancelBottomOverscroll(node);
         if (nativeScrollBounce) {
@@ -1018,7 +757,6 @@ export function useConversationScrollState({
         disableConversationAutoFollow();
       } else if (deltaPx > 0) {
         selectionPausedAutoFollowRef.current = false;
-        absorbTowardLatestOverscroll(node, deltaPx);
       }
     };
     const handleNativeScrollEnd = (): void => {
@@ -1106,18 +844,11 @@ export function useConversationScrollState({
         currentY < previousY
       ) {
         selectionPausedAutoFollowRef.current = false;
-        absorbTowardLatestOverscroll(node, previousY - currentY, false);
       }
       touchLastYRef.current = currentY;
     };
     const handleTouchEnd = (): void => {
       touchLastYRef.current = undefined;
-      if (
-        bottomOverscrollRawRef.current > 0 &&
-        !bottomOverscrollReturningRef.current
-      ) {
-        beginLockedBottomOverscrollReturn(node);
-      }
     };
     node.addEventListener("wheel", handleWheel, { passive: false });
     node.addEventListener("scrollend", handleNativeScrollEnd);
@@ -1151,9 +882,6 @@ export function useConversationScrollState({
     if (!node || typeof ResizeObserver === "undefined") {
       return undefined;
     }
-    if (bottomOverscrollRawRef.current <= 0) {
-      scrollContentRef.current?.style.removeProperty("transform");
-    }
     const windowResizeScroll = createWindowResizeSettleScheduler(() => {
       // The resize has settled. Commit the real scrollTop so the scrollbar
       // position, the "jump to latest" pill, and the turn-rail anchor line
@@ -1169,14 +897,6 @@ export function useConversationScrollState({
         windowResizeScroll.schedule();
         return;
       }
-      if (bottomOverscrollReturningRef.current) {
-        return;
-      }
-      if (bottomOverscrollRawRef.current > 0) {
-        applyBottomOverscrollVisual(node);
-        return;
-      }
-      scrollContentRef.current?.style.removeProperty("transform");
       scrollConversationToBottom();
     });
     syncConversationViewportHeight(node);
@@ -1186,9 +906,6 @@ export function useConversationScrollState({
       windowResizeScroll.cancel();
       resizeObserver.disconnect();
       window.removeEventListener("resize", scheduleLiveResizeScroll);
-      if (bottomOverscrollRawRef.current <= 0) {
-        scrollContentRef.current?.style.removeProperty("transform");
-      }
     };
   }, [
     activePane,
