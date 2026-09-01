@@ -5074,7 +5074,7 @@ html.resizing-workspace-terminal-split * {
   grid-row: 2;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   scrollbar-gutter: stable;
   transition: padding-right var(--environment-flow-motion-duration) var(--environment-panel-motion-easing);
   transition-delay: 0ms;
@@ -5235,7 +5235,7 @@ html.resizing-workspace-terminal-split * {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   scrollbar-gutter: stable;
 }
 

@@ -115,7 +115,8 @@ export function useConversationScrollState({
   secondaryTurns,
   emptyConversation,
   previewingLaunch,
-  initialized
+  initialized,
+  nativeScrollBounce = window.wuu?.platform === "darwin",
 }: {
   activeThreadID?: string;
   activePane: ConversationPaneID;
@@ -125,6 +126,8 @@ export function useConversationScrollState({
   emptyConversation: boolean;
   previewingLaunch: boolean;
   initialized: boolean;
+  /** Use the macOS/AppKit rubber band instead of synthesizing wheel motion. */
+  nativeScrollBounce?: boolean;
 }): {
   conversationScrollRef: RefObject<HTMLDivElement | null>;
   /** Wrapper inside the conversation viewport. */
@@ -246,6 +249,16 @@ export function useConversationScrollState({
     }
   }
 
+  function setNativeBottomOverscrollEnabled(
+    node: HTMLElement,
+    enabled: boolean,
+  ): void {
+    if (!nativeScrollBounce) {
+      return;
+    }
+    node.style.overscrollBehaviorY = enabled ? "contain" : "none";
+  }
+
   function cancelBottomOverscroll(node?: HTMLElement): void {
     bottomOverscrollRawRef.current = 0;
     bottomOverscrollFromAwayRef.current = false;
@@ -263,9 +276,15 @@ export function useConversationScrollState({
       bottomOverscrollReturnFrameRef.current = undefined;
     }
     clearBottomOverscrollStyles(node);
+    if (node) {
+      setNativeBottomOverscrollEnabled(node, false);
+    }
   }
 
   function canAbsorbBottomOverscroll(): boolean {
+    if (nativeScrollBounce) {
+      return false;
+    }
     if (prefersReducedMotion() || bottomOverscrollReturningRef.current) {
       return false;
     }
@@ -890,6 +909,10 @@ export function useConversationScrollState({
     if (scrolledUp && bottomOverscrollRawRef.current > 0) {
       cancelBottomOverscroll(node);
     }
+    if (nativeScrollBounce && scrolledUp) {
+      bottomOverscrollFromAwayRef.current = true;
+      setNativeBottomOverscrollEnabled(node, true);
+    }
     rememberActiveThreadScrollSnapshot(node, nextAutoFollow);
   }
 
@@ -907,8 +930,11 @@ export function useConversationScrollState({
     const snapshot = threadScrollSnapshotsRef.current.get(activeThreadID);
     if (snapshot && !snapshot.autoFollow) {
       applyProgrammaticScroll(node, snapshot.scrollTop, false);
+      bottomOverscrollFromAwayRef.current = true;
+      setNativeBottomOverscrollEnabled(node, true);
     } else {
       applyProgrammaticScroll(node, node.scrollHeight, true);
+      setNativeBottomOverscrollEnabled(node, false);
     }
     markSessionSwitch(activeThreadID, "scroll-restore-end");
     return undefined;
@@ -938,6 +964,10 @@ export function useConversationScrollState({
     if (!node) {
       return undefined;
     }
+    setNativeBottomOverscrollEnabled(
+      node,
+      bottomOverscrollFromAwayRef.current,
+    );
     const handleWheel = (event: WheelEvent): void => {
       if (eventTargetsNestedAutoFollowScroll(event.target, node)) {
         if (event.deltaY < 0) {
@@ -947,6 +977,7 @@ export function useConversationScrollState({
       }
       const deltaPx = wheelDeltaPixels(event, node.clientHeight);
       if (
+        !nativeScrollBounce &&
         wheelEventHasMomentum(event) &&
         bottomOverscrollRawRef.current > 0 &&
         !bottomOverscrollReturningRef.current
@@ -975,6 +1006,10 @@ export function useConversationScrollState({
       }
       if (deltaPx < 0) {
         cancelBottomOverscroll(node);
+        if (nativeScrollBounce) {
+          bottomOverscrollFromAwayRef.current = true;
+          setNativeBottomOverscrollEnabled(node, true);
+        }
         markUserScrollAwayIntent(clampScrollTop(node, node.scrollTop));
         // Take user control before the browser's later `scroll` event. During
         // streaming, an already queued auto-follow frame can otherwise run in
@@ -984,6 +1019,16 @@ export function useConversationScrollState({
       } else if (deltaPx > 0) {
         selectionPausedAutoFollowRef.current = false;
         absorbTowardLatestOverscroll(node, deltaPx);
+      }
+    };
+    const handleNativeScrollEnd = (): void => {
+      if (
+        nativeScrollBounce &&
+        bottomOverscrollFromAwayRef.current &&
+        atLatestScrollView(node, 1)
+      ) {
+        bottomOverscrollFromAwayRef.current = false;
+        setNativeBottomOverscrollEnabled(node, false);
       }
     };
     const handlePointerDown = (event: PointerEvent): void => {
@@ -1013,6 +1058,10 @@ export function useConversationScrollState({
         return;
       }
       if (SCROLL_AWAY_KEYS.has(event.key)) {
+        if (nativeScrollBounce) {
+          bottomOverscrollFromAwayRef.current = true;
+          setNativeBottomOverscrollEnabled(node, true);
+        }
         markUserScrollAwayIntent(clampScrollTop(node, node.scrollTop));
       } else if (SCROLL_TOWARD_LATEST_KEYS.has(event.key)) {
         selectionPausedAutoFollowRef.current = false;
@@ -1046,6 +1095,10 @@ export function useConversationScrollState({
         previousY !== undefined &&
         currentY > previousY
       ) {
+        if (nativeScrollBounce) {
+          bottomOverscrollFromAwayRef.current = true;
+          setNativeBottomOverscrollEnabled(node, true);
+        }
         markUserScrollAwayIntent(clampScrollTop(node, node.scrollTop));
       } else if (
         currentY !== undefined &&
@@ -1067,6 +1120,7 @@ export function useConversationScrollState({
       }
     };
     node.addEventListener("wheel", handleWheel, { passive: false });
+    node.addEventListener("scrollend", handleNativeScrollEnd);
     node.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("pointerup", handlePointerEnd);
     window.addEventListener("pointercancel", handlePointerEnd);
@@ -1078,6 +1132,7 @@ export function useConversationScrollState({
     node.addEventListener("keydown", handleKeyDown);
     return () => {
       node.removeEventListener("wheel", handleWheel);
+      node.removeEventListener("scrollend", handleNativeScrollEnd);
       node.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointerup", handlePointerEnd);
       window.removeEventListener("pointercancel", handlePointerEnd);
@@ -1087,6 +1142,7 @@ export function useConversationScrollState({
       node.removeEventListener("touchend", handleTouchEnd);
       node.removeEventListener("touchcancel", handleTouchEnd);
       node.removeEventListener("keydown", handleKeyDown);
+      node.style.removeProperty("overscroll-behavior-y");
     };
   });
 

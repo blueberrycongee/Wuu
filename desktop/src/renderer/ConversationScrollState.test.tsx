@@ -52,7 +52,13 @@ function stubLayout(node: HTMLElement, opts: Partial<StubbedLayout>): StubbedLay
   return layout;
 }
 
-function Probe({ activeThreadID }: { activeThreadID?: string }): ReactNode {
+function Probe({
+  activeThreadID,
+  nativeScrollBounce,
+}: {
+  activeThreadID?: string;
+  nativeScrollBounce?: boolean;
+}): ReactNode {
   const h = useConversationScrollState({
     activeThreadID,
     activePane: "primary",
@@ -62,6 +68,7 @@ function Probe({ activeThreadID }: { activeThreadID?: string }): ReactNode {
     emptyConversation: false,
     previewingLaunch: false,
     initialized: true,
+    nativeScrollBounce,
   });
   return createElement(
     "div",
@@ -112,12 +119,14 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
     clientHeight: number;
     initialScrollTop: number;
     activeThreadID?: string;
+    nativeScrollBounce?: boolean;
   }): HTMLDivElement {
     act(() => {
       root = createRoot(container);
       root.render(
         createElement(Probe, {
           activeThreadID: opts.activeThreadID ?? "thread-1",
+          nativeScrollBounce: opts.nativeScrollBounce,
         }),
       );
     });
@@ -344,6 +353,55 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
           new WheelEvent("wheel", { bubbles: true, deltaY: 160, deltaMode: 0 }),
         );
       });
+      expect(content.style.transform).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves native rubber-band control active until the trackpad gesture ends", () => {
+    vi.useFakeTimers();
+    try {
+      const node = mount({
+        activeThreadID: "thread-a",
+        scrollHeight: 2400,
+        clientHeight: 600,
+        initialScrollTop: 1800,
+        nativeScrollBounce: true,
+      });
+      const content = container.querySelector(
+        "[data-testid='scroll-content']",
+      ) as HTMLDivElement | null;
+      if (!content || !layout) throw new Error("not mounted");
+
+      act(() => {
+        layout!.scrollTop = 520;
+        node.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: -80 }),
+        );
+        node.dispatchEvent(new Event("scroll", { bubbles: false }));
+        layout!.scrollTop = 1800;
+        node.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: 160 }),
+        );
+        node.dispatchEvent(new Event("scroll", { bubbles: false }));
+        vi.advanceTimersByTime(2_000);
+      });
+
+      expect(node.style.overscrollBehaviorY).toBe("contain");
+      expect(content.style.transform).toBe("");
+
+      act(() => {
+        node.dispatchEvent(new Event("scrollend"));
+      });
+      expect(node.style.overscrollBehaviorY).toBe("none");
+
+      act(() => {
+        node.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: 160 }),
+        );
+      });
+      expect(node.style.overscrollBehaviorY).toBe("none");
       expect(content.style.transform).toBe("");
     } finally {
       vi.useRealTimers();
