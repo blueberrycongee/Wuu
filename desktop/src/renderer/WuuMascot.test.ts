@@ -1,7 +1,7 @@
 import { VERSION as BLOBATAR_VERSION, _layout } from "blobatar";
 import { describe, expect, it } from "vitest";
 import { AVATAR_HUES } from "./DefaultAvatar";
-import { providerMascotHue } from "./WuuMascot";
+import { providerMascotHue, WUU_MASCOT_ACTIVITY_PROP_LAYOUT } from "./WuuMascot";
 import {
   WUU_MASCOT_ACTIVITY_LOOK,
   WUU_MASCOT_ACTIVITY_PERSPECTIVES,
@@ -78,6 +78,31 @@ describe("vendored mascot geometry", () => {
       const look = WUU_MASCOT_ACTIVITY_LOOK[activity];
       expect(look.x, activity).toBeCloseTo(pair.x - idlePair.x, 10);
       expect(look.y, activity).toBeCloseTo(pair.y - idlePair.y, 10);
+    }
+  });
+
+  it("keeps status props off the live eyes on the process-row canvas", () => {
+    const idle = forActivity("idle");
+    const authoredRadius: Record<keyof typeof WUU_MASCOT_ACTIVITY_PROP_LAYOUT, number> = {
+      thinking: 14,
+      search: 10,
+      edit: 16,
+      command: 16,
+      read: 14,
+      tool: 13,
+    };
+
+    for (const activity of Object.keys(WUU_MASCOT_ACTIVITY_PROP_LAYOUT) as (keyof typeof WUU_MASCOT_ACTIVITY_PROP_LAYOUT)[]) {
+      const layout = WUU_MASCOT_ACTIVITY_PROP_LAYOUT[activity];
+      const look = WUU_MASCOT_ACTIVITY_LOOK[activity];
+      const propRadius = authoredRadius[activity] * layout.s;
+      for (const [index, eye] of idle.eyes.entries()) {
+        const liveX = eye.cx + look.x;
+        const liveY = eye.cy + look.y;
+        const dist = Math.hypot(layout.x - liveX, layout.y - liveY);
+        const eyeRadius = Math.max(eye.rx, eye.ry);
+        expect(dist, `${activity} eye ${index}`).toBeGreaterThan(propRadius + eyeRadius * 0.55);
+      }
     }
   });
 

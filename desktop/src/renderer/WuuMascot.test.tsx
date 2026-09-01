@@ -1,7 +1,7 @@
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { WuuMascot } from "./WuuMascot";
+import { WuuMascot, WUU_MASCOT_ACTIVITY_PROP_LAYOUT } from "./WuuMascot";
 import {
   WUU_MASCOT_ACTIVITY_LOOK,
   WUU_MASCOT_IDENTITY_PERSPECTIVE,
@@ -67,6 +67,12 @@ describe("WuuMascot activity morph", () => {
       `${WUU_MASCOT_ACTIVITY_LOOK.thinking.y}px`,
     );
     expect(host.querySelector(".wuu-mascot-activity-prop-thinking")).not.toBeNull();
+    const thinkingLayout = WUU_MASCOT_ACTIVITY_PROP_LAYOUT.thinking;
+    expect(
+      host
+        .querySelector(".wuu-mascot-activity-prop-thinking .wuu-mascot-activity-motion > g")
+        ?.getAttribute("transform"),
+    ).toContain(`translate(${thinkingLayout.x} ${thinkingLayout.y})`);
     expect(thinkingPaths.length).toBeGreaterThan(0);
 
     rerender(<WuuMascot activity="edit" accessory="none" />);
@@ -84,6 +90,12 @@ describe("WuuMascot activity morph", () => {
     );
     expect(host.querySelector(".wuu-mascot-activity-prop-thinking")).toBeNull();
     expect(host.querySelector(".wuu-mascot-activity-prop-edit")).not.toBeNull();
+    const editLayout = WUU_MASCOT_ACTIVITY_PROP_LAYOUT.edit;
+    expect(
+      host
+        .querySelector(".wuu-mascot-activity-prop-edit .wuu-mascot-activity-motion > g")
+        ?.getAttribute("transform"),
+    ).toContain(`translate(${editLayout.x} ${editLayout.y})`);
   });
 
   it("bakes only the idle identity perspective into path data", () => {

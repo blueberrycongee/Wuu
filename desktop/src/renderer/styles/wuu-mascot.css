@@ -244,22 +244,31 @@
 }
 
 .wuu-mascot-activity-prop-thinking .wuu-mascot-activity-motion {
-  transform-origin: 79px 24px;
+  transform-origin: 87px 13px;
   animation: wuu-mascot-thinking-prop 1.35s ease-in-out infinite alternate;
 }
 
 .wuu-mascot-activity-prop-search .wuu-mascot-activity-motion {
-  transform-origin: 88px 65px;
+  transform-origin: 86px 57px;
   animation: wuu-mascot-search-prop 900ms ease-in-out infinite alternate;
 }
 
 .wuu-mascot-activity-prop-edit .wuu-mascot-activity-motion {
-  transform-origin: 80px 65px;
+  transform-origin: 85px 69px;
   animation: wuu-mascot-edit-prop 520ms ease-in-out infinite alternate;
 }
 
 .wuu-mascot-activity-prop-command .wuu-mascot-activity-motion {
+  transform-origin: 86px 66px;
   animation: wuu-mascot-command-prop 760ms ease-in-out infinite alternate;
+}
+
+.wuu-mascot-activity-prop-read .wuu-mascot-activity-motion {
+  transform-origin: 87px 74px;
+}
+
+.wuu-mascot-activity-prop-tool .wuu-mascot-activity-motion {
+  transform-origin: 88px 63.5px;
 }
 
 @keyframes wuu-mascot-activity-arrive {

@@ -450,6 +450,34 @@ export function WuuMascot({
   );
 }
 
+/**
+ * Where each status prop sits on the 100×100 canvas.
+ *
+ * Artwork is authored around the original centres (`ox`, `oy`). The process
+ * row draws this canvas at 28px, where a full-size question mark or
+ * magnifier lands on the eyes. Each layout recenters a slightly smaller
+ * copy onto the rim so the face stays readable and the prop still names
+ * the state.
+ */
+export const WUU_MASCOT_ACTIVITY_PROP_LAYOUT = {
+  thinking: { ox: 79, oy: 24, x: 87, y: 13, s: 0.78 },
+  search: { ox: 78, oy: 53, x: 86, y: 57, s: 0.88 },
+  edit: { ox: 80, oy: 64, x: 85, y: 69, s: 0.88 },
+  command: { ox: 81, oy: 62.5, x: 86, y: 66, s: 0.8 },
+  read: { ox: 83.5, oy: 70, x: 87, y: 74, s: 0.88 },
+  tool: { ox: 82, oy: 61, x: 88, y: 63.5, s: 0.84 },
+} as const;
+
+type ActivityWithProp = keyof typeof WUU_MASCOT_ACTIVITY_PROP_LAYOUT;
+
+function activityPropPlacement(
+  activity: Exclude<WuuMascotActivity, "idle">,
+): string | undefined {
+  if (!(activity in WUU_MASCOT_ACTIVITY_PROP_LAYOUT)) return undefined;
+  const { x, y, s, ox, oy } = WUU_MASCOT_ACTIVITY_PROP_LAYOUT[activity as ActivityWithProp];
+  return `translate(${x} ${y}) scale(${s}) translate(${-ox} ${-oy})`;
+}
+
 function MascotActivityProp({
   activity,
 }: {
@@ -461,94 +489,96 @@ function MascotActivityProp({
       aria-hidden="true"
     >
       <g className="wuu-mascot-activity-motion">
-        {activity === "thinking" ? (
-          <>
-            <circle
-              className="wuu-mascot-thinking-bubble"
-              cx="79"
-              cy="24"
-              r="14"
-            />
-            <path
-              className="wuu-mascot-activity-line"
-              d="M 73 19 C 73.5 12 84.5 12 85.5 18.5 C 86.5 24 79 24 79 29"
-            />
-            <circle
-              className="wuu-mascot-activity-solid"
-              cx="79"
-              cy="34.5"
-              r="3"
-            />
-          </>
-        ) : null}
-        {activity === "search" ? (
-          <>
-            <circle
-              className="wuu-mascot-activity-fill"
-              cx="78"
-              cy="53"
-              r="10"
-            />
-            <path
-              className="wuu-mascot-activity-line"
-              d="M 85 61 L 95 72"
-            />
-          </>
-        ) : null}
-        {activity === "edit" ? (
-          <>
-            <path
-              className="wuu-mascot-activity-fill"
-              d="M 68 71 L 87 50 L 94 57 L 74 77 L 66 79 Z"
-            />
-            <path
-              className="wuu-mascot-activity-line"
-              d="M 84 54 L 91 61 M 68 72 L 74 77"
-            />
-          </>
-        ) : null}
-        {activity === "command" ? (
-          <>
-            <rect
-              className="wuu-mascot-activity-fill"
-              x="67"
-              y="51"
-              width="28"
-              height="23"
-              rx="6"
-            />
-            <path
-              className="wuu-mascot-activity-line"
-              d="M 73 58 L 78 62.5 L 73 67 M 82 67 L 89 67"
-            />
-          </>
-        ) : null}
-        {activity === "read" ? (
-          <>
-            <path
-              className="wuu-mascot-activity-fill"
-              d="M 72 61 Q 79.5 58 83.5 62 Q 87.5 58 95 61 L 95 80 Q 87.5 77 83.5 82 Q 79.5 77 72 80 Z"
-            />
-            <path
-              className="wuu-mascot-activity-line"
-              d="M 83.5 62 L 83.5 82"
-            />
-          </>
-        ) : null}
-        {activity === "tool" ? (
-          <>
-            <path
-              className="wuu-mascot-activity-line"
-              d="M 82 49 L 82 73 M 70 61 L 94 61 M 73.5 52.5 L 90.5 69.5 M 90.5 52.5 L 73.5 69.5"
-            />
-            <circle
-              className="wuu-mascot-activity-fill"
-              cx="82"
-              cy="61"
-              r="5.5"
-            />
-          </>
-        ) : null}
+        <g transform={activityPropPlacement(activity)}>
+          {activity === "thinking" ? (
+            <>
+              <circle
+                className="wuu-mascot-thinking-bubble"
+                cx="79"
+                cy="24"
+                r="14"
+              />
+              <path
+                className="wuu-mascot-activity-line"
+                d="M 73 19 C 73.5 12 84.5 12 85.5 18.5 C 86.5 24 79 24 79 29"
+              />
+              <circle
+                className="wuu-mascot-activity-solid"
+                cx="79"
+                cy="34.5"
+                r="3"
+              />
+            </>
+          ) : null}
+          {activity === "search" ? (
+            <>
+              <circle
+                className="wuu-mascot-activity-fill"
+                cx="78"
+                cy="53"
+                r="10"
+              />
+              <path
+                className="wuu-mascot-activity-line"
+                d="M 85 61 L 95 72"
+              />
+            </>
+          ) : null}
+          {activity === "edit" ? (
+            <>
+              <path
+                className="wuu-mascot-activity-fill"
+                d="M 68 71 L 87 50 L 94 57 L 74 77 L 66 79 Z"
+              />
+              <path
+                className="wuu-mascot-activity-line"
+                d="M 84 54 L 91 61 M 68 72 L 74 77"
+              />
+            </>
+          ) : null}
+          {activity === "command" ? (
+            <>
+              <rect
+                className="wuu-mascot-activity-fill"
+                x="67"
+                y="51"
+                width="28"
+                height="23"
+                rx="6"
+              />
+              <path
+                className="wuu-mascot-activity-line"
+                d="M 73 58 L 78 62.5 L 73 67 M 82 67 L 89 67"
+              />
+            </>
+          ) : null}
+          {activity === "read" ? (
+            <>
+              <path
+                className="wuu-mascot-activity-fill"
+                d="M 72 61 Q 79.5 58 83.5 62 Q 87.5 58 95 61 L 95 80 Q 87.5 77 83.5 82 Q 79.5 77 72 80 Z"
+              />
+              <path
+                className="wuu-mascot-activity-line"
+                d="M 83.5 62 L 83.5 82"
+              />
+            </>
+          ) : null}
+          {activity === "tool" ? (
+            <>
+              <path
+                className="wuu-mascot-activity-line"
+                d="M 82 49 L 82 73 M 70 61 L 94 61 M 73.5 52.5 L 90.5 69.5 M 90.5 52.5 L 73.5 69.5"
+              />
+              <circle
+                className="wuu-mascot-activity-fill"
+                cx="82"
+                cy="61"
+                r="5.5"
+              />
+            </>
+          ) : null}
+        </g>
       </g>
     </g>
   );
