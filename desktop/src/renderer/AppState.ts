@@ -1831,7 +1831,24 @@ function mergeListedThreadTurns(existing: Turn[], listed: Turn[]): Turn[] {
         return turn;
       }
       needsMerge = true;
-      return { ...turn, items: [...turn.items, ...local.items.slice(turn.items.length)] };
+      const mergedTurn = {
+        ...turn,
+        items: [...turn.items, ...local.items.slice(turn.items.length)],
+      };
+      const localKeys = Object.keys(local) as Array<keyof Turn>;
+      const mergedKeys = Object.keys(mergedTurn);
+      const unchanged =
+        localKeys.length === mergedKeys.length &&
+        localKeys.every((key) => {
+          if (key !== "items") {
+            return Object.is(local[key], mergedTurn[key]);
+          }
+          return (
+            local.items.length === mergedTurn.items.length &&
+            local.items.every((item, itemIndex) => item === mergedTurn.items[itemIndex])
+          );
+        });
+      return unchanged ? local : mergedTurn;
     });
     if (needsMerge) {
       merged = [...listedTurns, ...existing.slice(listed.length)];

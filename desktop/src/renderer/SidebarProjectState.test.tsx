@@ -90,6 +90,41 @@ describe("mergeSidebarThreadSnapshots", () => {
 
     expect(repeated).toBe(reconciled);
   });
+
+  it("stabilizes when a listed turn omits cached trailing items", () => {
+    const listedItem = {
+      id: "item-listed",
+      type: "user_message" as const,
+      content: [{ type: "input_text" as const, text: "question" }],
+    };
+    const cachedItem = {
+      id: "item-cached",
+      type: "user_message" as const,
+      content: [{ type: "input_text" as const, text: "follow-up" }],
+    };
+    const listed = {
+      ...thread("thread-alpha", "/tmp/alpha"),
+      turns: [{
+        id: "turn-alpha",
+        items: [listedItem],
+        items_view: "full" as const,
+        status: "completed" as const,
+      }],
+    };
+    const cached = {
+      ...listed,
+      turns: [{
+        ...listed.turns[0],
+        items: [listedItem, cachedItem],
+      }],
+    };
+
+    const reconciled = mergeSidebarThreadSnapshots([cached], [listed]);
+    const repeated = mergeSidebarThreadSnapshots(reconciled, [listed]);
+
+    expect(reconciled[0]?.turns[0]?.items).toEqual([listedItem, cachedItem]);
+    expect(repeated).toBe(reconciled);
+  });
 });
 
 async function renderSidebarProjectState({
