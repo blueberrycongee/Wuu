@@ -11,6 +11,7 @@ export const zhCN = {
   "settings.engineNotInstalled": "未安装",
   "settings.engineNotInstalledHint": "安装对应 CLI 后会自动出现在这里",
   "settings.engineDetecting": "正在检测已安装的 Agent…",
+  "settings.engineRefresh": "重新检测",
   "settings.engineAdvanced": "高级设置",
   "settings.engineBinaryPath": "二进制路径",
   "settings.engineBinaryPathPlaceholder": "留空自动从 PATH 查找",

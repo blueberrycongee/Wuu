@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import type {
   CodexPetSettingsUpdate,
+  EngineListResult,
+  EngineUpdateParams,
   RuntimeAdvancedSettingsUpdate,
   RuntimeGeneralSettingsUpdate,
 } from "../shared/protocol";
@@ -123,6 +125,8 @@ export function SettingsView({
   usage,
   usageLoading = false,
   usageError = "",
+  engineInventory,
+  engineInventoryError = "",
   runningProviderNames,
   showDebugControlsSetting,
   debugControlsEnabled,
@@ -138,6 +142,8 @@ export function SettingsView({
   onSave,
   onRemoveProvider,
   onRefreshModelCatalog,
+  onRefreshEngineInventory,
+  onUpdateEngineInventory,
   onAdvancedSave,
   onGeneralSave,
   onCodexPetsRefresh,
@@ -165,6 +171,8 @@ export function SettingsView({
   usage?: SettingsUsageResponse;
   usageLoading?: boolean;
   usageError?: string;
+  engineInventory?: EngineListResult;
+  engineInventoryError?: string;
   runningProviderNames?: readonly string[];
   showDebugControlsSetting: boolean;
   debugControlsEnabled: boolean;
@@ -180,6 +188,8 @@ export function SettingsView({
   onSave: (provider: string, model: string, effort?: string, connection?: RuntimeConnectionUpdate, variant?: string) => Promise<void>;
   onRemoveProvider: (provider: string) => Promise<void>;
   onRefreshModelCatalog: () => Promise<void>;
+  onRefreshEngineInventory: () => Promise<EngineListResult | undefined>;
+  onUpdateEngineInventory: (params: EngineUpdateParams) => Promise<EngineListResult>;
   onAdvancedSave: (settings: RuntimeAdvancedSettingsUpdate) => Promise<void>;
   onGeneralSave: (settings: RuntimeGeneralSettingsUpdate) => Promise<void>;
   onCodexPetsRefresh: () => Promise<CodexPetsSnapshot>;
@@ -1047,7 +1057,12 @@ export function SettingsView({
               />
             ) : activePage === "providers" ? (
               <>
-                <EngineSettingsSection />
+                <EngineSettingsSection
+                  result={engineInventory}
+                  loadError={engineInventoryError}
+                  onRefresh={onRefreshEngineInventory}
+                  onUpdate={onUpdateEngineInventory}
+                />
                 <SettingsProvidersPage
                   providers={providers}
                   providerLabels={providerLabels}

@@ -1,5 +1,5 @@
-import { ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronRight, RefreshCw } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import type {
   EngineInfo,
   EngineListResult,
@@ -24,36 +24,46 @@ const EXTERNAL_ENGINES = ["codex", "claude"] as const;
  * required. Only the default selection is a first-class setting; binary path
  * overrides and explicit enable/disable live behind the advanced disclosure.
  */
-export function EngineSettingsSection(): JSX.Element {
+export function EngineSettingsSection({
+  result,
+  loadError = "",
+  onRefresh,
+  onUpdate,
+}: {
+  result?: EngineListResult;
+  loadError?: string;
+  onRefresh: () => Promise<EngineListResult | undefined>;
+  onUpdate: (params: EngineUpdateParams) => Promise<EngineListResult>;
+}): JSX.Element {
   const { t } = useI18n();
-  const [result, setResult] = useState<EngineListResult | undefined>();
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const refresh = useCallback(async () => {
+    setRefreshing(true);
+    setError("");
     try {
-      setResult(await window.wuu.listEngines());
+      await onRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRefreshing(false);
     }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  }, [onRefresh]);
 
   const save = useCallback(async (params: EngineUpdateParams) => {
     setBusy(true);
     setError("");
     try {
-      setResult(await window.wuu.updateEngines(params));
+      await onUpdate(params);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [onUpdate]);
 
   const engines = useMemo(() => result?.engines ?? [], [result]);
   const settings = result?.settings;
@@ -102,48 +112,58 @@ export function EngineSettingsSection(): JSX.Element {
           {t("settings.agentEnginesDescription")}
         </p>
       </header>
-      <div className="settings-group" data-wuu-component="settings-group">
-        {result === undefined ? (
-          <div className="settings-row">
-            <small className="settings-muted-line">{t("settings.engineDetecting")}</small>
-          </div>
-        ) : (
-          <>
-            <div className="settings-row">
-              <div className="settings-row-label">
-                <span className="settings-row-label-title">
-                  {t("settings.defaultEngine")}
-                </span>
-                <span className="settings-row-label-description">
-                  {t("settings.defaultEngineDescription")}
-                </span>
-              </div>
-              <div className="settings-row-control">
-                <SelectMenu
-                  triggerClassName="settings-select-trigger"
-                  ariaLabel={t("settings.defaultEngine")}
-                  dataTestid="settings-default-engine"
-                  value={defaultEngine}
-                  disabled={busy}
-                  onChange={(next) => {
-                    // The composer remembers the last agent picked there. An
-                    // explicit default change here is the newer decision, so
-                    // drop that memory instead of letting it mask the setting.
-                    clearDraftEngineMemory();
-                    void save({ default_engine: next });
-                  }}
-                  options={selectableIds.map((id) => ({
-                    value: id,
-                    label: ENGINE_LABELS[id] ?? id,
-                  }))}
-                />
-              </div>
+      {result === undefined ? (
+        <div
+          className="settings-group settings-engine-skeleton"
+          data-wuu-component="settings-group"
+          role="status"
+          aria-label={t("settings.engineDetecting")}
+          aria-busy="true"
+        >
+          <div className="settings-row" aria-hidden="true">
+            <div className="settings-row-label">
+              <span className="settings-engine-skeleton-line settings-engine-skeleton-title" />
+              <span className="settings-engine-skeleton-line settings-engine-skeleton-description" />
             </div>
-          </>
-        )}
-      </div>
-      {result !== undefined ? (
-        <div className="settings-engine-overview">
+            <span className="settings-engine-skeleton-control" />
+          </div>
+        </div>
+      ) : (
+        <div className="settings-group" data-wuu-component="settings-group">
+          <div className="settings-row">
+            <div className="settings-row-label">
+              <span className="settings-row-label-title">
+                {t("settings.defaultEngine")}
+              </span>
+              <span className="settings-row-label-description">
+                {t("settings.defaultEngineDescription")}
+              </span>
+            </div>
+            <div className="settings-row-control">
+              <SelectMenu
+                triggerClassName="settings-select-trigger"
+                ariaLabel={t("settings.defaultEngine")}
+                dataTestid="settings-default-engine"
+                value={defaultEngine}
+                disabled={busy}
+                onChange={(next) => {
+                  // The composer remembers the last agent picked there. An
+                  // explicit default change here is the newer decision, so
+                  // drop that memory instead of letting it mask the setting.
+                  clearDraftEngineMemory();
+                  void save({ default_engine: next });
+                }}
+                options={selectableIds.map((id) => ({
+                  value: id,
+                  label: ENGINE_LABELS[id] ?? id,
+                }))}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="settings-engine-overview">
+        {result !== undefined ? (
           <div className="settings-engine-statuses">
             {EXTERNAL_ENGINES.map((id) => {
               const flag = statusFlag(engineById(id));
@@ -161,22 +181,42 @@ export function EngineSettingsSection(): JSX.Element {
               );
             })}
           </div>
+        ) : (
+          <div className="settings-engine-skeleton-statuses" aria-hidden="true">
+            <span className="settings-engine-skeleton-line" />
+            <span className="settings-engine-skeleton-line" />
+          </div>
+        )}
+        <div className="settings-engine-actions">
           <button
-            className="settings-button settings-button-ghost settings-engine-advanced-toggle"
+            className="settings-button settings-button-ghost settings-engine-refresh"
             type="button"
-            aria-expanded={advancedOpen}
-            data-testid="settings-engine-advanced-toggle"
-            onClick={() => setAdvancedOpen((open) => !open)}
+            disabled={busy || refreshing}
+            aria-busy={refreshing}
+            data-testid="settings-engine-refresh"
+            onClick={() => void refresh()}
           >
-            <ChevronRight
-              className={`icon settings-engine-advanced-chevron${advancedOpen ? " open" : ""}`}
-              aria-hidden="true"
-            />
-            <span>{t("settings.engineAdvanced")}</span>
+            <RefreshCw className={`icon${refreshing ? " settings-spin" : ""}`} aria-hidden="true" />
+            <span>{t("settings.engineRefresh")}</span>
           </button>
+          {result !== undefined ? (
+            <button
+              className="settings-button settings-button-ghost settings-engine-advanced-toggle"
+              type="button"
+              aria-expanded={advancedOpen}
+              data-testid="settings-engine-advanced-toggle"
+              onClick={() => setAdvancedOpen((open) => !open)}
+            >
+              <ChevronRight
+                className={`icon settings-engine-advanced-chevron${advancedOpen ? " open" : ""}`}
+                aria-hidden="true"
+              />
+              <span>{t("settings.engineAdvanced")}</span>
+            </button>
+          ) : null}
         </div>
-      ) : null}
-      {advancedOpen ? (
+      </div>
+      {advancedOpen && result !== undefined ? (
         <div className="settings-group" data-wuu-component="settings-group">
           {EXTERNAL_ENGINES.map((id) => {
             const engineSettings = settings?.[id];
@@ -226,7 +266,7 @@ export function EngineSettingsSection(): JSX.Element {
           })}
         </div>
       ) : null}
-      {error ? <small className="settings-muted-line">{error}</small> : null}
+      {error || loadError ? <small className="settings-muted-line">{error || loadError}</small> : null}
     </section>
   );
 }

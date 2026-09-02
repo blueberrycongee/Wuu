@@ -17,6 +17,7 @@ import type {
   DesktopProject,
   EngineInfo,
   EngineListResult,
+  EngineUpdateParams,
   ExtensionPackageUpdateParams,
   InitializeResult,
   InputFile,
@@ -300,6 +301,7 @@ const ENVIRONMENT_PANEL_MOTION_MS = motionDurationMs(
   260,
 );
 const WORKSPACE_SHEET_EXIT_MS = motionDurationMs("--sheet-exit-duration", 220);
+const ENGINE_INVENTORY_STALE_MS = 6 * 60 * 60 * 1000;
 // Globalized-sheet phases: docked (grid child) → arming (promoted to a
 // full-window fixed sheet, teleported over its dock slot for one frame) →
 // open (slid to cover the window) → exiting (sliding back to park) →
@@ -878,21 +880,75 @@ export function App(): JSX.Element {
   const dismissModelCatalogTip = useCallback(() => {
     setModelCatalogTip(null);
   }, []);
-  // Agent engine inventory for the composer picker: which external agents are
-  // auto-detected plus the settings default. Loaded on mount and refreshed
-  // when the runtime picker opens, so engine settings changes show up without
-  // restarting. Failures keep the last known inventory (picker degrades to
-  // the built-in Wuu option).
+  // Agent engine inventory is session-scoped and shared by the composer and
+  // settings. Settings must never throw away a usable snapshot just because
+  // its page remounted; refreshes replace the snapshot only after they finish.
+  // A six-hour freshness window avoids repeatedly starting the Codex
+  // app-server while still allowing a long-idle app to discover CLI changes.
   const [engineInventory, setEngineInventory] = useState<EngineListResult | undefined>();
-  const refreshEngineInventory = useCallback(async () => {
-    try {
-      setEngineInventory(await window.wuu.listEngines());
-    } catch {
-      // Keep the last known inventory.
-    }
+  const [engineInventoryError, setEngineInventoryError] = useState("");
+  const engineInventoryRef = useRef<EngineListResult | undefined>(undefined);
+  const engineInventoryFetchedAtRef = useRef(0);
+  const engineInventoryRefreshRef = useRef<Promise<EngineListResult | undefined> | null>(null);
+  const engineInventoryRequestRef = useRef(0);
+  const storeEngineInventory = useCallback((next: EngineListResult, request: number) => {
+    if (request !== engineInventoryRequestRef.current) return;
+    engineInventoryRef.current = next;
+    engineInventoryFetchedAtRef.current = Date.now();
+    setEngineInventory(next);
+    setEngineInventoryError("");
   }, []);
+
+  const refreshEngineInventory = useCallback((force = false): Promise<EngineListResult | undefined> => {
+    const cached = engineInventoryRef.current;
+    const fresh = cached !== undefined
+      && Date.now() - engineInventoryFetchedAtRef.current < ENGINE_INVENTORY_STALE_MS;
+    if (!force && fresh) return Promise.resolve(cached);
+    if (engineInventoryRefreshRef.current) return engineInventoryRefreshRef.current;
+    // Focused renderer tests and older preload bridges can expose only a
+    // partial desktop API. Preserve the previous best-effort degradation
+    // rather than making engine discovery block the rest of the shell.
+    if (typeof window.wuu.listEngines !== "function") return Promise.resolve(cached);
+
+    const request = engineInventoryRequestRef.current + 1;
+    engineInventoryRequestRef.current = request;
+    const pending = window.wuu.listEngines()
+      .then((next) => {
+        storeEngineInventory(next, request);
+        return next;
+      })
+      .catch((error: unknown) => {
+        if (request === engineInventoryRequestRef.current) {
+          setEngineInventoryError(error instanceof Error ? error.message : String(error));
+        }
+        return engineInventoryRef.current;
+      })
+      .finally(() => {
+        if (engineInventoryRefreshRef.current === pending) {
+          engineInventoryRefreshRef.current = null;
+        }
+      });
+    engineInventoryRefreshRef.current = pending;
+    return pending;
+  }, [storeEngineInventory]);
+
+  const updateEngineInventory = useCallback(async (params: EngineUpdateParams) => {
+    const request = engineInventoryRequestRef.current + 1;
+    engineInventoryRequestRef.current = request;
+    const next = await window.wuu.updateEngines(params);
+    storeEngineInventory(next, request);
+    return next;
+  }, [storeEngineInventory]);
+
   useEffect(() => {
     void refreshEngineInventory();
+  }, [refreshEngineInventory]);
+  useEffect(() => {
+    const refreshAfterLongIdle = () => {
+      void refreshEngineInventory();
+    };
+    window.addEventListener("focus", refreshAfterLongIdle);
+    return () => window.removeEventListener("focus", refreshAfterLongIdle);
   }, [refreshEngineInventory]);
   // When the user clicks "分叉" on a non-latest user message, the fork
   // picker dialog asks whether to stay local or fork into a new worktree.
@@ -2945,8 +3001,8 @@ export function App(): JSX.Element {
         }}
         onToggleCodexRuntimeMenu={(menu) => {
           toggleCodexRuntimeMenu(menu);
-          // Engine settings may have changed in the settings page; re-check
-          // auto-detection when the picker is opened.
+          // Revalidate only after the shared session snapshot becomes stale;
+          // opening this frequently-used picker must not restart detection.
           void refreshEngineInventory();
         }}
         onSelectRuntimeModel={async (provider, model, variant) => {
@@ -4761,6 +4817,8 @@ export function App(): JSX.Element {
           usage={settingsUsage}
           usageLoading={settingsUsageLoading}
           usageError={settingsUsageError}
+          engineInventory={engineInventory}
+          engineInventoryError={engineInventoryError}
           codexPets={codexPets}
           codexPetsLoading={codexPetsLoading}
           codexPetsError={codexPetsError}
@@ -4785,6 +4843,8 @@ export function App(): JSX.Element {
           onSave={updateRuntimeSettings}
           onRemoveProvider={removeProvider}
           onRefreshModelCatalog={refreshModelCatalog}
+          onRefreshEngineInventory={() => refreshEngineInventory(true)}
+          onUpdateEngineInventory={updateEngineInventory}
           onAdvancedSave={updateAdvancedSettings}
           onGeneralSave={updateGeneralSettings}
           onCodexPetsRefresh={refreshCodexPets}

@@ -13,6 +13,7 @@ export const enUS = {
   "settings.engineNotInstalled": "Not installed",
   "settings.engineNotInstalledHint": "Appears here automatically once the CLI is installed",
   "settings.engineDetecting": "Detecting installed agents…",
+  "settings.engineRefresh": "Detect again",
   "settings.engineAdvanced": "Advanced",
   "settings.engineBinaryPath": "Binary path",
   "settings.engineBinaryPathPlaceholder": "Leave empty to look up on PATH",

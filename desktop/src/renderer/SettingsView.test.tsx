@@ -10,6 +10,8 @@ import {
 import type {
   BuildInfoResult,
   CodexPetsSnapshot,
+  EngineListResult,
+  EngineUpdateParams,
   InitializeResult,
   RuntimeAdvancedSettingsUpdate,
   CodexPetSettingsUpdate,
@@ -101,11 +103,26 @@ function emptyCodexPetsSnapshot(overrides: Partial<CodexPetsSnapshot> = {}): Cod
   };
 }
 
+function readyEngineInventory(): EngineListResult {
+  return {
+    engines: [
+      { id: "wuu", enabled: true, binary_ok: true },
+      { id: "codex", enabled: true, binary_ok: true },
+      { id: "claude", enabled: true, binary_ok: true },
+    ],
+    settings: { default_engine: "wuu" },
+  };
+}
+
 function renderSettings(props: {
   initialized: InitializeResult | undefined;
   usage?: SettingsUsageResponse;
   usageLoading?: boolean;
   usageError?: string;
+  engineInventory?: EngineListResult;
+  engineInventoryError?: string;
+  onRefreshEngineInventory?: () => Promise<EngineListResult | undefined>;
+  onUpdateEngineInventory?: (params: EngineUpdateParams) => Promise<EngineListResult>;
   initialPage?: SettingsPage;
   runningProviderNames?: string[];
   codexPets?: CodexPetsSnapshot;
@@ -140,6 +157,10 @@ function renderSettings(props: {
         usage={props.usage}
         usageLoading={props.usageLoading}
         usageError={props.usageError}
+        engineInventory={props.engineInventory ?? readyEngineInventory()}
+        engineInventoryError={props.engineInventoryError}
+        onRefreshEngineInventory={props.onRefreshEngineInventory ?? (async () => readyEngineInventory())}
+        onUpdateEngineInventory={props.onUpdateEngineInventory ?? (async () => readyEngineInventory())}
         runningProviderNames={props.runningProviderNames}
         codexPets={props.codexPets ?? emptyCodexPetsSnapshot()}
         codexPetsLoading={props.codexPetsLoading ?? false}

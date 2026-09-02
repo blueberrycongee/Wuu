@@ -15,6 +15,21 @@ import (
 	"github.com/blueberrycongee/wuu/internal/config"
 )
 
+const codexEngineModelCatalogTTL = 6 * time.Hour
+
+type codexEngineModelCatalogCacheEntry struct {
+	binaryPath string
+	models     []EngineModelInfo
+	expiresAt  time.Time
+}
+
+func (e *codexEngineModelCatalogCacheEntry) load(binaryPath string, now time.Time) ([]EngineModelInfo, bool) {
+	if e == nil || e.binaryPath != binaryPath || !now.Before(e.expiresAt) {
+		return nil, false
+	}
+	return cloneEngineModels(e.models), true
+}
+
 // handleEngineList reports the engine inventory and the persisted engine
 // settings for the settings UI.
 func (s *Server) handleEngineList(req Request) error {
@@ -87,13 +102,11 @@ func (s *Server) engineInventory() []EngineInfo {
 			info.BinaryPath = path
 			info.BinaryOK, info.Error = binaryStatus(path, err)
 			if info.Enabled && info.BinaryOK && s.rt.CodexHost() != nil {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				models, modelErr := s.rt.CodexHost().ListModels(ctx)
-				cancel()
+				models, modelErr := s.cachedCodexEngineModels(path, s.rt.CodexHost())
 				if modelErr != nil {
 					info.ModelsError = modelErr.Error()
 				} else {
-					info.Models = codexEngineModels(models)
+					info.Models = models
 				}
 			}
 		case "claude":
@@ -107,6 +120,45 @@ func (s *Server) engineInventory() []EngineInfo {
 		out = append(out, info)
 	}
 	return out
+}
+
+// cachedCodexEngineModels keeps the expensive app-server model catalog
+// independent from lightweight binary detection. Engine settings can be
+// revisited or re-detected without restarting Codex; a binary-path change
+// naturally misses the cache and resolves a fresh catalog.
+func (s *Server) cachedCodexEngineModels(binaryPath string, host *codexengine.Host) ([]EngineModelInfo, error) {
+	s.engineModelCatalogMu.Lock()
+	defer s.engineModelCatalogMu.Unlock()
+
+	now := time.Now()
+	if models, ok := s.codexEngineModelCatalogCache.load(binaryPath, now); ok {
+		return models, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	models, err := host.ListModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	converted := codexEngineModels(models)
+	s.codexEngineModelCatalogCache = &codexEngineModelCatalogCacheEntry{
+		binaryPath: binaryPath,
+		models:     cloneEngineModels(converted),
+		expiresAt:  now.Add(codexEngineModelCatalogTTL),
+	}
+	return converted, nil
+}
+
+func cloneEngineModels(models []EngineModelInfo) []EngineModelInfo {
+	if models == nil {
+		return nil
+	}
+	cloned := make([]EngineModelInfo, len(models))
+	for i, model := range models {
+		cloned[i] = model
+		cloned[i].SupportedEfforts = append([]string(nil), model.SupportedEfforts...)
+	}
+	return cloned
 }
 
 func codexEngineModels(models []codexengine.ModelListItem) []EngineModelInfo {

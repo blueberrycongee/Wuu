@@ -829,6 +829,59 @@
   white-space: nowrap;
 }
 
+.settings-engine-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.settings-engine-refresh {
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+}
+
+/* This fallback is visible only before the session-level inventory resolves.
+ * Static shapes preserve the final row geometry without adding ambient motion
+ * to a state that is normally gone before Settings opens. */
+.settings-engine-skeleton-line,
+.settings-engine-skeleton-control {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.settings-engine-skeleton-line {
+  width: 104px;
+  height: 10px;
+}
+
+.settings-engine-skeleton-title {
+  width: 88px;
+  height: 12px;
+}
+
+.settings-engine-skeleton-description {
+  width: 152px;
+}
+
+.settings-engine-skeleton-control {
+  width: 160px;
+  height: 32px;
+  justify-self: end;
+}
+
+.settings-engine-skeleton-statuses {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
 .settings-xai-login {
   display: flex;
   flex-direction: column;
