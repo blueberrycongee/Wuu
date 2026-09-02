@@ -266,6 +266,11 @@ export function SplitPaneComposer({
     if (handleQueryHistoryKeyDown(event)) {
       return;
     }
+    if (event.key === "Escape" && running && !sendDisabled && !event.repeat) {
+      event.preventDefault();
+      onInterrupt();
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submitComposer();
@@ -369,7 +374,7 @@ export function SplitPaneComposer({
                         type="button"
                         onClick={onInterrupt}
                         aria-label={t("composer.pause")}
-                        title={t("composer.pause")}
+                        title={t("composer.pauseShortcut")}
                       >
                         <Square aria-hidden="true" />
                       </button>

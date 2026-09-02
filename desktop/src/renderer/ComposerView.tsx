@@ -919,6 +919,11 @@ export function Composer({
     if (handleQueryHistoryKeyDown(event)) {
       return;
     }
+    if (event.key === "Escape" && running && !sendDisabled && !event.repeat) {
+      event.preventDefault();
+      onInterrupt();
+      return;
+    }
     const currentPrompt = hasCollapsedPromptBlocks
       ? `${collapsedPromptPrefix}${event.currentTarget.value}`
       : event.currentTarget.value;
@@ -1298,7 +1303,7 @@ export function Composer({
                   type="button"
                   onClick={showComposerStopAction ? onInterrupt : submitComposer}
                   aria-label={showComposerStopAction ? t("composer.pause") : voiceActionLabel}
-                  title={showComposerStopAction ? t("composer.pause") : voiceActionLabel}
+                  title={showComposerStopAction ? t("composer.pauseShortcut") : voiceActionLabel}
                   disabled={
                     !showComposerStopAction &&
                     (voiceSendPending || sendDisabled || readOnly || (!voiceRecording && !hasDraft))

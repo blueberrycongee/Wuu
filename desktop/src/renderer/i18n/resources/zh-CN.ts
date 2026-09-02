@@ -814,6 +814,7 @@ export const zhCN = {
   "composer.send": "发送",
   "composer.stop": "停止",
   "composer.pause": "暂停",
+  "composer.pauseShortcut": "暂停（Esc）",
   "composer.readOnly": "子任务会话只读",
   "composer.followupChanges": "要求后续变更",
   "composer.addDescription": "添加描述",

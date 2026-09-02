@@ -816,6 +816,7 @@ export const enUS = {
   "composer.send": "Send",
   "composer.stop": "Stop",
   "composer.pause": "Pause",
+  "composer.pauseShortcut": "Pause (Esc)",
   "composer.readOnly": "Subtask conversation is read-only",
   "composer.followupChanges": "Request follow-up changes",
   "composer.addDescription": "Add a description",

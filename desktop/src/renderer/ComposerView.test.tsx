@@ -197,6 +197,7 @@ function renderSplitPaneComposer(props: {
   status?: string;
   statusLiveProgress?: boolean;
   onSend?: () => void;
+  onInterrupt?: () => void;
 }): void {
   act(() => {
     root = createRoot(container);
@@ -215,7 +216,7 @@ function renderSplitPaneComposer(props: {
           onRemoveFile={() => {}}
           onRemoveImage={() => {}}
           onSend={props.onSend ?? (() => {})}
-          onInterrupt={() => {}}
+          onInterrupt={props.onInterrupt ?? (() => {})}
         />
       </ImagePreviewProvider>,
     );
@@ -913,6 +914,84 @@ describe("Composer send control", () => {
     expect(tabEvent.defaultPrevented).toBe(false);
     expect(reverseTabEvent.defaultPrevented).toBe(false);
     expect(onQueue).not.toHaveBeenCalled();
+  });
+
+  it("interrupts a running turn with Escape while preserving a draft", () => {
+    const onInterrupt = vi.fn();
+    const onSteer = vi.fn();
+    renderComposer({
+      prompt: "keep this follow-up",
+      running: true,
+      onInterrupt,
+      onSteer,
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+
+    act(() => {
+      textarea?.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onInterrupt).toHaveBeenCalledTimes(1);
+    expect(onSteer).not.toHaveBeenCalled();
+    expect(textarea?.value).toBe("keep this follow-up");
+  });
+
+  it("leaves Escape alone when no turn is running", () => {
+    const onInterrupt = vi.fn();
+    renderComposer({ prompt: "draft", running: false, onInterrupt });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+
+    act(() => {
+      textarea?.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(onInterrupt).not.toHaveBeenCalled();
+  });
+
+  it("dismisses the slash menu before Escape can interrupt a running turn", () => {
+    const onInterrupt = vi.fn();
+    renderComposer({ prompt: "/", running: true, onInterrupt });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    expect(document.body.querySelector('[data-floating-menu-owner="composer-slash"]')).not.toBeNull();
+
+    act(() => {
+      textarea?.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+
+    expect(document.body.querySelector('[data-floating-menu-owner="composer-slash"]')).toBeNull();
+    expect(onInterrupt).not.toHaveBeenCalled();
+  });
+
+  it("interrupts the focused split-pane composer with Escape", () => {
+    const onInterrupt = vi.fn();
+    renderSplitPaneComposer({ running: true, onInterrupt });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+
+    act(() => {
+      textarea?.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }));
+    });
+
+    expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 
   it("uses the same steer action as Enter when the send button is clicked", () => {
