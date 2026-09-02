@@ -1490,7 +1490,7 @@ func TestSetTemporaryEnvUnsetsMissingValue(t *testing.T) {
 	}
 }
 
-func TestResolveContextWindow_PrefersModelLimit(t *testing.T) {
+func TestResolveContextWindow_PrefersProviderContextOverride(t *testing.T) {
 	provider := config.ProviderConfig{
 		ContextWindow: 777,
 		Models: map[string]config.ProviderModelConfig{
@@ -1499,8 +1499,8 @@ func TestResolveContextWindow_PrefersModelLimit(t *testing.T) {
 			},
 		},
 	}
-	if got := runtime.ResolveContextWindow("gpt-5.4", provider, 555); got != 1_050_000 {
-		t.Fatalf("expected model-specific provider limit, got %d", got)
+	if got := runtime.ResolveContextWindow("gpt-5.4", provider, 555); got != 777 {
+		t.Fatalf("expected provider context override, got %d", got)
 	}
 }
 
