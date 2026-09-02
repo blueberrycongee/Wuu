@@ -1609,7 +1609,6 @@ export function AppSidebar({
                 <span>{t("sidebar.attentionEmpty")}</span>
               </div>
             ) : null}
-            <p className="sidebar-unread-hint">{t("sidebar.clearUnreadHint")}</p>
           </section>
         ) : (
           <>

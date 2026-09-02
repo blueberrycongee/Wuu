@@ -347,7 +347,7 @@ export const enUS = {
   "sidebar.unreadConversations": "Unread",
   "sidebar.unreadEmpty": "No unread conversations",
   "sidebar.attentionEmpty": "No conversations need attention",
-  "sidebar.clearUnreadHint": "Press and hold the bell to mark unread conversations as read",
+  "sidebar.clearUnreadHint": "Press and hold the bell to clear all unread",
   "sidebar.collaborationEmpty": "No channels yet",
   "sidebar.conversations": "Conversations",
   "sidebar.settings": "Settings",
