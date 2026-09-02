@@ -79,7 +79,7 @@ func TestResolveProviderOverrideWins(t *testing.T) {
 	}
 }
 
-func TestResolveModelLimitWinsOverProviderFallback(t *testing.T) {
+func TestResolveProviderContextOverrideWinsOverModelLimit(t *testing.T) {
 	budget := Resolve("k3", config.ProviderConfig{
 		Type:          "anthropic",
 		ContextWindow: 272_000,
@@ -92,8 +92,8 @@ func TestResolveModelLimitWinsOverProviderFallback(t *testing.T) {
 			},
 		},
 	}, 0)
-	if budget.ContextWindowTokens != 1_048_576 || budget.ContextWindowSource != SourceProviderModelLimit {
-		t.Fatalf("K3 should use its model limit, not provider fallback: %+v", budget)
+	if budget.ContextWindowTokens != 272_000 || budget.ContextWindowSource != SourceProviderContextWindow {
+		t.Fatalf("explicit provider context should override the K3 model limit: %+v", budget)
 	}
 
 	budget = Resolve("k3-256k", config.ProviderConfig{
@@ -105,8 +105,31 @@ func TestResolveModelLimitWinsOverProviderFallback(t *testing.T) {
 			},
 		},
 	}, 0)
-	if budget.ContextWindowTokens != 262_144 || budget.ContextWindowSource != SourceProviderModelLimit {
-		t.Fatalf("K3-256k should use its own model limit: %+v", budget)
+	if budget.ContextWindowTokens != 272_000 || budget.ContextWindowSource != SourceProviderContextWindow {
+		t.Fatalf("explicit provider context should override the K3-256k model limit: %+v", budget)
+	}
+}
+
+func TestResolveCodexProviderContextOverrideCanRaiseAutomaticLimit(t *testing.T) {
+	budget := Resolve("gpt-5.6-sol", config.ProviderConfig{
+		Type:          "openai-codex",
+		ContextWindow: 922_000,
+		Models: map[string]config.ProviderModelConfig{
+			"gpt-5.6-sol": {
+				ContextWindow: 400_000,
+				Limit: &config.ProviderModelLimitConfig{
+					Context: 400_000,
+					Input:   272_000,
+					Output:  128_000,
+				},
+			},
+		},
+	}, 0)
+	if budget.ContextWindowTokens != 922_000 || budget.InputLimitTokens != 0 {
+		t.Fatalf("explicit Codex context override was clamped to automatic metadata: %+v", budget)
+	}
+	if got, source := budget.EffectiveContextWindow(); got != 922_000 || source != SourceProviderContextWindow {
+		t.Fatalf("EffectiveContextWindow = %d, %q; want explicit provider override", got, source)
 	}
 }
 

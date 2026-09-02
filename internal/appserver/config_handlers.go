@@ -2673,15 +2673,32 @@ func applyCodexSubscriptionLimit(modelID string, cfg *config.ProviderModelConfig
 	if cfg == nil {
 		return
 	}
-	id := strings.ToLower(strings.TrimSpace(modelID))
-	if !strings.Contains(id, "gpt-5.5") {
+	inputCap := modelbudget.CodexSubscriptionInputCap(modelID, "openai-codex")
+	if inputCap <= 0 {
 		return
 	}
-	cfg.ContextWindow = 400_000
+	contextWindow := 400_000
+	inputLimit := inputCap
+	outputLimit := 128_000
+	if cfg.ContextWindow > 0 && cfg.ContextWindow < contextWindow {
+		contextWindow = cfg.ContextWindow
+	}
+	if cfg.Limit != nil {
+		if cfg.Limit.Context > 0 && cfg.Limit.Context < contextWindow {
+			contextWindow = cfg.Limit.Context
+		}
+		if cfg.Limit.Input > 0 && cfg.Limit.Input < inputLimit {
+			inputLimit = cfg.Limit.Input
+		}
+		if cfg.Limit.Output > 0 && cfg.Limit.Output < outputLimit {
+			outputLimit = cfg.Limit.Output
+		}
+	}
+	cfg.ContextWindow = contextWindow
 	cfg.Limit = &config.ProviderModelLimitConfig{
-		Context: 400_000,
-		Input:   modelbudget.CodexSubscriptionGPT5InputCap,
-		Output:  128_000,
+		Context: contextWindow,
+		Input:   inputLimit,
+		Output:  outputLimit,
 	}
 }
 

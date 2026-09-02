@@ -370,9 +370,6 @@ func applyProviderLimits(profile *modelprofile.Profile, provider config.Provider
 	if profile == nil {
 		return
 	}
-	if provider.ContextWindow > 0 {
-		profile.Context.WindowTokens = provider.ContextWindow
-	}
 	if modelCfg.ContextWindow > 0 {
 		profile.Context.WindowTokens = modelCfg.ContextWindow
 	}
@@ -383,6 +380,11 @@ func applyProviderLimits(profile *modelprofile.Profile, provider config.Provider
 		if modelCfg.Limit.Output > 0 {
 			profile.Context.MaxOutputTokens = modelCfg.Limit.Output
 		}
+	}
+	// The provider-level value is an explicit user override of discovered model
+	// metadata, including model-specific catalog limits.
+	if provider.ContextWindow > 0 {
+		profile.Context.WindowTokens = provider.ContextWindow
 	}
 }
 
@@ -419,6 +421,9 @@ func capabilitiesFromProfile(providerName string, provider config.ProviderConfig
 		if modelCfg.Limit.Output > 0 {
 			outputLimit = modelCfg.Limit.Output
 		}
+	}
+	if provider.ContextWindow > 0 {
+		inputLimit = 0
 	}
 	cacheGranularity := ""
 	if profile.Context.CacheGranularity != modelprofile.CacheGranularityNone {

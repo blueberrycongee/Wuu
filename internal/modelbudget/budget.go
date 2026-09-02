@@ -109,15 +109,14 @@ func (b Budget) EffectiveContextWindow() (int, Source) {
 }
 
 func resolveContextWindow(model, apiModel string, provider config.ProviderConfig, agentOverride int) (int, Source) {
-	if limit := configuredModelContextLimit(model, provider); limit > 0 {
-		return limit, SourceProviderModelLimit
-	}
-	// A model-specific limit is more precise than the provider fallback. This
-	// matters when one provider exposes models with different windows (for
-	// example K3 and K3-256k) while the provider-level value is set for a
-	// smaller/default model.
+	// Provider.ContextWindow is an explicit user override. It is allowed to
+	// exceed discovered model metadata; the upstream provider remains the
+	// authority and will reject an unsupported request naturally.
 	if provider.ContextWindow > 0 {
 		return provider.ContextWindow, SourceProviderContextWindow
+	}
+	if limit := configuredModelContextLimit(model, provider); limit > 0 {
+		return limit, SourceProviderModelLimit
 	}
 	if agentOverride > 0 {
 		return agentOverride, SourceAgentOverride
@@ -126,6 +125,12 @@ func resolveContextWindow(model, apiModel string, provider config.ProviderConfig
 }
 
 func resolveInputWindow(model, apiModel string, provider config.ProviderConfig) int {
+	// An explicit provider context override replaces the discovered effective
+	// ceiling as a whole. Keeping a catalog or subscription input cap here would
+	// silently force the UI/runtime back to the automatic value.
+	if provider.ContextWindow > 0 {
+		return 0
+	}
 	if limit := configuredModelInputLimit(model, provider); limit > 0 {
 		if cap := codexSubscriptionInputCapForModels(model, apiModel, provider.Type); cap > 0 && cap < limit {
 			return cap

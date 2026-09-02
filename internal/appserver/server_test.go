@@ -3195,6 +3195,30 @@ func TestCachedCodexModelsReplaceCatalogOnlyReasoningLevels(t *testing.T) {
 	if _, ok := model.Variants["ultra"]; ok {
 		t.Fatalf("client-only ultra mode leaked into reasoning variants: %#v", model.Variants)
 	}
+	if model.ContextWindow != 400_000 || model.Limit == nil || model.Limit.Context != 400_000 || model.Limit.Input != 272_000 || model.Limit.Output != 128_000 {
+		t.Fatalf("live Codex model did not receive subscription limits: %+v", model)
+	}
+	summaries := providerSummariesFromConfig(config.Config{
+		DefaultProvider: "openai-codex",
+		Providers: map[string]config.ProviderConfig{
+			"openai-codex": merged,
+		},
+	}, t.TempDir())
+	summary := providerModelByID(t, summaries[0], "gpt-5.6-sol")
+	if summary.Capabilities.ContextWindow != 400_000 || summary.Capabilities.InputLimit != 272_000 {
+		t.Fatalf("Codex model summary exposed API limits instead of subscription limits: %+v", summary.Capabilities)
+	}
+	merged.ContextWindow = 922_000
+	overriddenSummaries := providerSummariesFromConfig(config.Config{
+		DefaultProvider: "openai-codex",
+		Providers: map[string]config.ProviderConfig{
+			"openai-codex": merged,
+		},
+	}, t.TempDir())
+	overridden := providerModelByID(t, overriddenSummaries[0], "gpt-5.6-sol")
+	if overridden.Capabilities.ContextWindow != 922_000 || overridden.Capabilities.InputLimit != 0 {
+		t.Fatalf("explicit Codex context override was clamped in model summary: %+v", overridden.Capabilities)
+	}
 }
 
 func TestServerConfigProviderRemoveInactive(t *testing.T) {
