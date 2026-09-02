@@ -202,18 +202,22 @@
   color: var(--paper);
 }
 
-/* Settings-page variant: match .settings-select's surface box. */
+/* Settings-page variant: match .settings-select's paper field. */
 .select-menu-trigger.settings-select-trigger {
   height: 32px;
   padding: 0 12px;
   border-color: var(--control-boundary);
-  background: var(--wuu-control-field-background, var(--surface-1));
+  background: var(--wuu-control-field-background, var(--paper));
   font-weight: 400;
 }
 
 .select-menu-trigger.settings-select-trigger:hover:not(:disabled) {
-  background: var(--wuu-control-field-background, var(--surface-2));
+  background: var(--wuu-control-field-background, var(--surface-1));
   border-color: var(--control-boundary);
+}
+
+.select-menu-trigger.settings-select-trigger:disabled {
+  background: var(--surface-1);
 }
 
 .select-menu-trigger.settings-select-trigger:focus-visible,

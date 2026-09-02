@@ -6,10 +6,10 @@
  * (fill steps, borders, radii on grouped lists) are banned: one grouping
  * reads from one signal, and the signal is label-plus-whitespace.
  *
- * Color budget: paper canvas, the --ink-* text ramp, controls filled from
- * the --surface-1/2 steps (hover one step deeper, paper + the shared
- * accessible focus ring on focus). Semantic colors otherwise only carry
- * state (success/danger/accent). No
+ * Color budget: paper canvas, the --ink-* text ramp, editable controls on
+ * paper (surface-1 on hover, the shared accessible focus ring on focus),
+ * and surface-1 reserved for disabled controls. Semantic colors otherwise
+ * only carry state (success/danger/accent). No
  * local hex values — the usage heatmap is the sanctioned data-viz
  * exception.
  *
@@ -489,7 +489,7 @@
   height: 32px;
   border: 1px solid var(--control-boundary);
   border-radius: var(--radius-sm);
-  background: var(--wuu-control-field-background, var(--surface-1));
+  background: var(--wuu-control-field-background, var(--paper));
   color: var(--ink);
   font-size: var(--font-ui);
   font-weight: 400;
@@ -506,7 +506,7 @@
 
 .settings-input:hover:not(:disabled),
 .settings-select:hover:not(:disabled) {
-  background: var(--wuu-control-field-background, var(--surface-2));
+  background: var(--wuu-control-field-background, var(--surface-1));
 }
 
 .settings-input:focus,
@@ -521,6 +521,7 @@
 
 .settings-input:disabled,
 .settings-select:disabled {
+  background: var(--surface-1);
   opacity: 0.55;
   cursor: default;
 }
