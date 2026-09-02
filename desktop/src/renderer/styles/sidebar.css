@@ -855,7 +855,7 @@
   border-radius: 8px;
   padding: 0;
   background: transparent;
-  color: var(--ink-muted);
+  color: var(--ink-soft);
   cursor: pointer;
   line-height: 0;
   -webkit-app-region: no-drag;
@@ -1258,7 +1258,11 @@
     auto;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink-tertiary);
+  /* Idle chrome sits on --ink-soft so 16px Lucide outlines stay readable
+   * without matching the conversation's --ink-strong. Hover/selected still
+   * step up to --ink. --ink-tertiary is reserved for badges, status, and
+   * other decorative marks. */
+  color: var(--ink-soft);
   cursor: pointer;
   font-size: var(--font-ui);
   font-weight: var(--weight-medium);
@@ -1659,7 +1663,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink-muted);
+  color: var(--ink-soft);
   cursor: pointer;
   line-height: 0;
   padding: 0;
@@ -1797,7 +1801,7 @@
   width: 17px;
   height: 17px;
   flex: 0 0 auto;
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
 }
 
 .project-add-menu button span {
@@ -1846,7 +1850,7 @@
     minmax(0, 1fr)
     var(--sidebar-row-action-size);
   column-gap: var(--sidebar-nav-column-gap);
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
   padding-right: var(--sidebar-row-pad-x);
   font-weight: var(--weight-medium);
 }
@@ -1872,7 +1876,7 @@
 }
 
 .project-row.expanded .project-row-chevron {
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
   transform: rotate(90deg);
 }
 
@@ -1880,7 +1884,7 @@
 .project-row > svg:not(.project-row-chevron) {
   grid-column: 1;
   justify-self: center;
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
   transition: color var(--motion-fast) var(--ease-out);
 }
 
@@ -1994,7 +1998,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
   cursor: pointer;
   line-height: 0;
   padding: 0;
@@ -2206,7 +2210,7 @@
   min-width: 0;
   border-radius: var(--radius-sm);
   column-gap: var(--sidebar-nav-column-gap);
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
   font-size: var(--font-ui);
   font-weight: 500;
   padding-left: var(--sidebar-row-pad-x);
@@ -2363,7 +2367,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
   cursor: pointer;
   font-family: inherit;
   font-size: 12px;
@@ -2640,10 +2644,10 @@
 }
 
 /* When the row is hovered the action icons must read as clearly
- * clickable, not as faint decoration. They default to --ink-tertiary
- * which on the hover background reads as nearly invisible; bumping to
- * --ink makes pin / archive immediately discoverable the moment the
- * user parks the cursor on the row. */
+ * clickable, not as faint decoration. Idle --ink-soft still washes out
+ * on the hover background; bumping to --ink makes pin / archive
+ * immediately discoverable the moment the user parks the cursor on the
+ * row. */
 .thread-row:hover .thread-row-action {
   color: var(--ink);
 }
@@ -2724,7 +2728,7 @@
   grid-template-columns: var(--sidebar-nav-icon-col) minmax(0, 1fr);
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
   font-weight: var(--weight-medium);
   padding: 0 var(--sidebar-row-pad-x);
   text-align: left;
@@ -2852,7 +2856,7 @@
 /* Pinned icon: rotate the expanded-state Pin -45deg so it reads as a
  * "diagonal pin" while keeping a single glyph. */
 .project-row .project-row-icon:has([data-project-icon-kind="pinned"]) {
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
 }
 
 .project-row.expanded .project-row-icon:has([data-project-icon-kind="pinned"]) .project-row-icon-state.expanded {
