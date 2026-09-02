@@ -359,14 +359,24 @@ func ensureResponseObject(object map[string]any, key string) map[string]any {
 func splitResponsesInstructions(messages []providers.ChatMessage) (string, []providers.ChatMessage) {
 	instructions := make([]string, 0, 1)
 	input := make([]providers.ChatMessage, 0, len(messages))
+	var lastInstructionMessage providers.ChatMessage
 	for _, msg := range messages {
 		if strings.EqualFold(msg.Role, "system") {
 			if text := strings.TrimSpace(msg.Content); text != "" {
 				instructions = append(instructions, text)
+				lastInstructionMessage = msg
 			}
 			continue
 		}
 		input = append(input, msg)
+	}
+	// The Responses API does not accept instructions as the sole request
+	// context. A compaction pass can legitimately replace the entire transcript
+	// with one or more system messages, so retain the final one as an input item
+	// instead of emitting input=[] without a previous_response_id.
+	if len(input) == 0 && len(instructions) > 0 {
+		input = append(input, lastInstructionMessage)
+		instructions = instructions[:len(instructions)-1]
 	}
 	return strings.Join(instructions, "\n\n"), input
 }

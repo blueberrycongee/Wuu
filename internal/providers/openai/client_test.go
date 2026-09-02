@@ -1967,6 +1967,49 @@ func TestResponsesRequest_KeepsTopLevelToolsStableAcrossToolSearchLifecycle(t *t
 	}
 }
 
+func TestResponsesRequest_SystemOnlyCompactionKeepsInputItem(t *testing.T) {
+	client := &Client{}
+	const summary = "[Conversation summary]\nContinue the current task."
+	tests := []struct {
+		name             string
+		messages         []providers.ChatMessage
+		wantInstructions string
+	}{
+		{
+			name:     "summary only",
+			messages: []providers.ChatMessage{{Role: "system", Content: summary}},
+		},
+		{
+			name: "stable instructions and summary",
+			messages: []providers.ChatMessage{
+				{Role: "system", Content: "stable instructions"},
+				{Role: "system", Content: summary},
+			},
+			wantInstructions: "stable instructions",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload, err := client.buildResponsesRequest(providers.ChatRequest{
+				Model:    "gpt-test",
+				Messages: tt.messages,
+			}, false)
+			if err != nil {
+				t.Fatalf("build request: %v", err)
+			}
+			if payload.Instructions != tt.wantInstructions {
+				t.Fatalf("instructions = %q, want %q", payload.Instructions, tt.wantInstructions)
+			}
+			if len(payload.Input) != 1 {
+				t.Fatalf("input = %+v, want one compacted system item", payload.Input)
+			}
+			if payload.Input[0].Role != "system" || payload.Input[0].Content != summary {
+				t.Fatalf("compacted input item = %+v", payload.Input[0])
+			}
+		})
+	}
+}
+
 func TestResponsesRequest_ForceToolNameSetsForcedToolChoice(t *testing.T) {
 	client := &Client{}
 	req := providers.ChatRequest{
