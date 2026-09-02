@@ -106,12 +106,20 @@ func (c *Client) openAIClient(model string) (*openai.Client, error) {
 	for key := range headers {
 		if strings.EqualFold(key, "Authorization") ||
 			strings.EqualFold(key, "X-XAI-Token-Auth") ||
-			strings.EqualFold(key, "x-grok-model-override") {
+			strings.EqualFold(key, "x-grok-model-override") ||
+			strings.EqualFold(key, "x-grok-client-version") ||
+			strings.EqualFold(key, "x-grok-client-identifier") ||
+			strings.EqualFold(key, "x-grok-client-mode") ||
+			strings.EqualFold(key, "x-authenticateresponse") {
 			delete(headers, key)
 		}
 	}
 	headers["X-XAI-Token-Auth"] = grokbuildspec.TokenAuthHeaderValue
 	headers["x-grok-model-override"] = strings.TrimSpace(model)
+	headers["x-grok-client-version"] = grokbuildspec.ClientVersion
+	headers["x-grok-client-identifier"] = grokbuildspec.ClientIdentifier
+	headers["x-grok-client-mode"] = grokbuildspec.ClientMode
+	headers["x-authenticateresponse"] = grokbuildspec.AuthenticateResponseValue
 	return openai.New(openai.ClientConfig{
 		BaseURL:       c.baseURL,
 		WireAPI:       "chat",

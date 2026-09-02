@@ -6,8 +6,14 @@ const (
 	DefaultBaseURL       = "https://cli-chat-proxy.grok.com/v1"
 	DefaultModel         = "grok-4.5"
 	ContextWindowTokens  = 500_000
-	CredentialIssuer     = "https://accounts.x.ai/sign-in"
-	TokenAuthHeaderValue = "xai-grok-cli"
+	OAuthCredentialScope = "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828"
+	// CredentialIssuer is the legacy scope retained as a fallback by Grok Build.
+	CredentialIssuer          = "https://accounts.x.ai/sign-in"
+	TokenAuthHeaderValue      = "xai-grok-cli"
+	ClientVersion             = "1.0.13"
+	ClientIdentifier          = "wuu"
+	ClientMode                = "interactive"
+	AuthenticateResponseValue = "authenticate-response"
 )
 
 type Model struct {

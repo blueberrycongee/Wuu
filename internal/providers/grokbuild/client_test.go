@@ -25,6 +25,16 @@ func TestChatUsesGrokBuildHeadersAndChatCompletions(t *testing.T) {
 		if got := r.Header.Get("x-grok-model-override"); got != "grok-4.6" {
 			t.Fatalf("x-grok-model-override = %q", got)
 		}
+		for header, want := range map[string]string{
+			"x-grok-client-version":    "1.0.13",
+			"x-grok-client-identifier": "wuu",
+			"x-grok-client-mode":       "interactive",
+			"x-authenticateresponse":   "authenticate-response",
+		} {
+			if got := r.Header.Get(header); got != want {
+				t.Fatalf("%s = %q, want %q", header, got, want)
+			}
+		}
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
@@ -48,6 +58,8 @@ func TestChatUsesGrokBuildHeadersAndChatCompletions(t *testing.T) {
 			"authorization":         "Bearer wrong",
 			"x-xai-token-auth":      "wrong",
 			"X-Grok-Model-Override": "wrong",
+			"X-Grok-Client-Version": "0.0.0",
+			"X-Grok-Client-Mode":    "wrong",
 		},
 	})
 	if err != nil {

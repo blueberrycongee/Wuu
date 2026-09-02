@@ -1112,7 +1112,7 @@ func TestProviderSummariesAutoDiscoverLocalGrokBuildLogin(t *testing.T) {
 	if err := os.MkdirAll(grokHome, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(grokHome, "auth.json"), []byte(`{"https://accounts.x.ai/sign-in":{"key":"local-token"}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(grokHome, "auth.json"), []byte(`{"https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828":{"key":"local-token"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1174,7 +1174,7 @@ func TestSelectingAutoDiscoveredGrokBuildPersistsProvider(t *testing.T) {
 	if err := os.MkdirAll(grokHome, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(grokHome, "auth.json"), []byte(`{"https://accounts.x.ai/sign-in":{"key":"local-token"}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(grokHome, "auth.json"), []byte(`{"https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828":{"key":"local-token"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

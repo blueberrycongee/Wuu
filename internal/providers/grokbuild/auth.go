@@ -46,9 +46,15 @@ func loadCLIToken(home string) (string, error) {
 	if err := json.Unmarshal(data, &entries); err != nil {
 		return "", fmt.Errorf("parse Grok CLI credentials: %w", err)
 	}
-	entry, ok := entries[grokbuildspec.CredentialIssuer]
-	if !ok {
-		return "", fmt.Errorf("Grok CLI credentials do not contain %q; run `grok login`", grokbuildspec.CredentialIssuer)
+	var entry authEntry
+	found := false
+	for _, scope := range []string{grokbuildspec.OAuthCredentialScope, grokbuildspec.CredentialIssuer} {
+		if entry, found = entries[scope]; found {
+			break
+		}
+	}
+	if !found {
+		return "", errors.New("Grok CLI credentials do not contain a supported xAI login; run `grok login`")
 	}
 	token := firstNonEmpty(entry.Key, entry.Token, entry.AccessToken)
 	if token == "" {

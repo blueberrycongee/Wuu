@@ -15,10 +15,10 @@ func TestCredentialSourceUsesExplicitTokenFirst(t *testing.T) {
 	}
 }
 
-func TestLoadCLITokenUsesGrokHomeAndIssuerKey(t *testing.T) {
+func TestLoadCLITokenUsesGrokHomeAndCurrentOAuthScope(t *testing.T) {
 	grokHome := t.TempDir()
 	t.Setenv("GROK_HOME", grokHome)
-	writeAuthFile(t, grokHome, `{"https://accounts.x.ai/sign-in":{"key":"cli-token","token":"fallback"}}`)
+	writeAuthFile(t, grokHome, `{"https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828":{"key":"cli-token","token":"fallback"}}`)
 	token, err := loadCLIToken(t.TempDir())
 	if err != nil || token != "cli-token" {
 		t.Fatalf("token = %q, err = %v", token, err)
@@ -34,6 +34,19 @@ func TestLoadCLITokenFallsBackToHome(t *testing.T) {
 	writeAuthFile(t, filepath.Join(home, ".grok"), `{"https://accounts.x.ai/sign-in":{"key":"home-token"}}`)
 	token, err := loadCLIToken(home)
 	if err != nil || token != "home-token" {
+		t.Fatalf("token = %q, err = %v", token, err)
+	}
+}
+
+func TestLoadCLITokenPrefersCurrentOAuthScopeOverLegacy(t *testing.T) {
+	grokHome := t.TempDir()
+	t.Setenv("GROK_HOME", grokHome)
+	writeAuthFile(t, grokHome, `{
+		"https://accounts.x.ai/sign-in":{"key":"legacy-token"},
+		"https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828":{"key":"oauth-token"}
+	}`)
+	token, err := loadCLIToken(t.TempDir())
+	if err != nil || token != "oauth-token" {
 		t.Fatalf("token = %q, err = %v", token, err)
 	}
 }
