@@ -12,6 +12,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/providers/anthropic"
 	"github.com/blueberrycongee/wuu/internal/providers/codex"
+	"github.com/blueberrycongee/wuu/internal/providers/grokbuild"
 	"github.com/blueberrycongee/wuu/internal/providers/openai"
 	"github.com/blueberrycongee/wuu/internal/providers/xaisub"
 )
@@ -59,6 +60,8 @@ func IsCredentialError(err error) bool {
 	return strings.Contains(message, "no api key found") ||
 		strings.Contains(message, "no codex oauth credentials") ||
 		strings.Contains(message, "no wuu codex oauth credentials") ||
+		strings.Contains(message, "no grok build credential") ||
+		strings.Contains(message, "grok cli credentials") ||
 		strings.Contains(message, "no wuu xai supergrok oauth credentials") ||
 		strings.Contains(message, "no xai supergrok oauth credentials")
 }
@@ -188,6 +191,20 @@ func buildClient(provider config.ProviderConfig, providerName string) (providers
 
 	switch profile.Wire {
 	case wireOpenAIChat, wireOpenAIResponses:
+		if profile.Auth == authGrokBuild {
+			client, newErr := grokbuild.New(grokbuild.ClientConfig{
+				BaseURL:              provider.BaseURL,
+				APIKey:               resolveExplicitAPIKey(provider),
+				Headers:              provider.Headers,
+				StreamConfig:         providerStreamTransportConfig(provider),
+				Coordinator:          sharedProviderCoordinator,
+				ReuseGrokCredentials: provider.ReuseGrokCredentials,
+			})
+			if newErr != nil {
+				return nil, newErr
+			}
+			return client, nil
+		}
 		if profile.Auth == authCodexOAuth {
 			client, newErr := codex.New(codex.ClientConfig{
 				BaseURL:               provider.BaseURL,

@@ -1,14 +1,14 @@
 # Connecting a model service
 
-wuu uses BYOK (bring your own key). You choose a model service and provide the
-credentials; wuu uses that service for inference. Model costs and data policies are
-determined by the service you choose.
+You choose a model service and provide its API key or supported subscription login;
+wuu uses that service for inference. Model costs and data policies are determined by
+the service you choose.
 
 ## Configure the desktop app
 
 1. Open **Settings → Model providers**.
 2. Choose **Add provider**.
-3. Choose the provider type: **OpenAI-compatible**, **Anthropic-compatible**, or **xAI SuperGrok**.
+3. Choose the provider type: **OpenAI-compatible**, **Anthropic-compatible**, **xAI SuperGrok**, or **Grok Build**.
 4. Enter a provider identifier and the model name.
 5. Enter the API endpoint and API key as the provider requires.
 6. Choose **Add provider**, and confirm it is shown as the current provider.
@@ -29,6 +29,12 @@ the API prefix the service requires; follow that service's own documentation.
   linked X Premium+ account. Wuu keeps its own agent loop and sends the subscription
   OAuth token to `https://api.x.ai/v1`. This does not read `~/.grok/auth.json` and
   does not use `XAI_API_KEY`. From the CLI, run `wuu login xai`.
+- **Grok Build:** run `grok login`, then choose Grok Build. Wuu reads
+  `GROK_HOME/auth.json` or `~/.grok/auth.json` without modifying it and calls the
+  Grok Build CLI chat proxy while keeping Wuu's own agent loop. Run `grok login`
+  again when the credential expires. The default model is `grok-4.5`, with
+  `grok-4.6` also configured; both use a 500k context window and default `high`
+  reasoning effort, while 4.6 also supports `xhigh`.
 - **Anthropic:** choose the Anthropic-compatible type and enter the Anthropic API key
   and model ID.
 - **OpenRouter, one-api, or another gateway:** choose the OpenAI-compatible type and
@@ -50,7 +56,7 @@ wuu init
 
 The configuration is written to `~/.wuu/config.json` by default, or to
 `$WUU_HOME/config.json` when `WUU_HOME` is set. The initial configuration includes
-OpenAI, Anthropic, OpenRouter, and xAI SuperGrok examples.
+OpenAI, Anthropic, OpenRouter, xAI SuperGrok, and Grok Build examples.
 
 Set the environment variable named by your chosen provider's `api_key_env`:
 
@@ -64,6 +70,13 @@ SuperGrok subscriptions do not use an API key. Sign in first, then select the pr
 ```bash
 wuu login xai
 wuu exec --provider xai-subscription "describe this workspace"
+```
+
+Grok Build also does not use an API key in Wuu. Sign in with its CLI first:
+
+```bash
+grok login
+wuu exec --provider grok-build "describe this workspace"
 ```
 
 For a single run you can switch to another configured provider:

@@ -1,0 +1,36 @@
+// Package grokbuildspec contains the stable client-facing defaults shared by
+// Grok Build configuration and transport code.
+package grokbuildspec
+
+const (
+	DefaultBaseURL       = "https://cli-chat-proxy.grok.com/v1"
+	DefaultModel         = "grok-4.5"
+	ContextWindowTokens  = 500_000
+	CredentialIssuer     = "https://accounts.x.ai/sign-in"
+	TokenAuthHeaderValue = "xai-grok-cli"
+)
+
+type Model struct {
+	ID            string
+	DisplayName   string
+	Efforts       []string
+	DefaultEffort string
+}
+
+// Models matches the model list and defaults advertised by Grok Build 1.0.13.
+// xAI documents the same 500k context window and reasoning tiers for these
+// model IDs.
+var Models = []Model{
+	{
+		ID:            "grok-4.5",
+		DisplayName:   "Grok 4.5",
+		Efforts:       []string{"low", "medium", "high"},
+		DefaultEffort: "high",
+	},
+	{
+		ID:            "grok-4.6",
+		DisplayName:   "Grok 4.6",
+		Efforts:       []string{"low", "medium", "high", "xhigh"},
+		DefaultEffort: "high",
+	},
+}

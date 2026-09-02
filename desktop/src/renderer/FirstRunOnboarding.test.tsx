@@ -214,6 +214,40 @@ describe("FirstRunOnboarding", () => {
     root = createRoot(container);
   });
 
+  it("configures Grok Build without asking for an API key", async () => {
+    const save = vi.fn(async () => undefined);
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={[plugin("ask-user", false)]}
+            providers={[]}
+            onUpdateExtensionPackage={vi.fn(async () => undefined)}
+            onSaveProvider={save}
+            onComplete={vi.fn(async () => undefined)}
+          />
+        </I18nProvider>,
+      );
+    });
+    await clickButton("开始设置");
+    await clickButton("极简");
+    await clickButton("继续");
+
+    const type = container.querySelector("select") as HTMLSelectElement;
+    await act(async () => {
+      type.value = "grok-build";
+      type.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("grok login");
+    expect(container.querySelector("input[type='password']")).toBeNull();
+    await clickButton("继续");
+    expect(save).toHaveBeenCalledWith("grok-build", "grok-4.5", {
+      type: "grok-build",
+      create_provider: true,
+      base_url: "https://cli-chat-proxy.grok.com/v1",
+    });
+  });
+
   async function clickButton(label: string): Promise<void> {
     const button = [...container.querySelectorAll("button")].find(
       (candidate) => candidate.textContent?.trim() === label,

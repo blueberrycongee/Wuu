@@ -197,6 +197,11 @@ func EnrichProvider(providerName string, provider config.ProviderConfig, modelID
 				return providerName, MergeProvider(provider, catalogProvider)
 			}
 		}
+		if config.IsGrokBuildProvider(provider.Type) {
+			if catalogProvider, ok := catalogProviderModelsByID("xai", modelIDs...); ok {
+				return "xai", mergeProviderModelMetadata(provider, catalogProvider, modelIDs...)
+			}
+		}
 		if isOpenAICompatibleProviderType(provider.Type) {
 			if catalogProvider, ok := catalogProviderModelsByID("openai", modelIDs...); ok {
 				return providerName, mergeProviderModelMetadata(provider, catalogProvider, modelIDs...)

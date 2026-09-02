@@ -567,6 +567,55 @@ describe("SettingsView provider configuration", () => {
     expect(container.querySelector("input[type='password']")).toBeNull();
   });
 
+  it("adds Grok Build with CLI-managed credentials and model defaults", async () => {
+    installBuildInfoStub({
+      core: undefined,
+      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
+    });
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    renderSettings({
+      initialPage: "providers",
+      initialized: baseInitialized({
+        provider: "openai",
+        model: "gpt-5.5",
+        providers: [{
+          name: "openai", type: "openai", model: "gpt-5.5",
+          base_url: "https://api.openai.com/v1", api_key_configured: true,
+        }],
+      }),
+      onSave,
+    });
+    const addButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("新增服务"),
+    );
+    await act(async () => addButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const typeTrigger = container.querySelector('[data-testid="settings-provider-type-select"]') as HTMLButtonElement;
+    await act(async () => typeTrigger.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const option = Array.from(document.querySelectorAll<HTMLButtonElement>(".select-menu-panel .select-menu-item"))
+      .find((item) => item.getAttribute("data-value") === "grok-build");
+    expect(option).toBeDefined();
+    await act(async () => option?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    expect(container.textContent).toContain("请先运行 `grok login`");
+    expect(container.querySelector("input[type='password']")).toBeNull();
+    const inputs = Array.from(container.querySelectorAll<HTMLInputElement>("input"));
+    expect(inputs.map((input) => input.value)).toEqual([
+      "grok-build", "grok-4.5", "https://cli-chat-proxy.grok.com/v1",
+    ]);
+    const submit = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("添加服务"));
+    expect(submit?.disabled).toBe(false);
+    await act(async () => {
+      submit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(onSave).toHaveBeenCalledWith(
+      "grok-build", "grok-4.5", undefined,
+      { base_url: "https://cli-chat-proxy.grok.com/v1", type: "grok-build", create_provider: true },
+      "",
+    );
+  });
+
   it("shows an alert instead of removing a provider used by a running turn", async () => {
     installBuildInfoStub({
       core: undefined,

@@ -432,6 +432,15 @@ export function SettingsView({
 
   function changeProviderTypeDraft(type: string): void {
     setProviderTypeDraft(type);
+    if (isGrokBuildType(type)) {
+      if (!providerDraft.trim() || providerDraft.startsWith("custom-")) {
+        setProviderDraft(providers.some((item) => item.name === "grok-build") ? nextCustomProviderName(providers) : "grok-build");
+      }
+      setModelDraft("grok-4.5");
+      setBaseURLDraft("https://cli-chat-proxy.grok.com/v1");
+      setAPIKeyDraft("");
+      return;
+    }
     if (!isXAISubscriptionType(type)) {
       return;
     }
@@ -601,7 +610,7 @@ export function SettingsView({
         type: providerTypeDraft,
         create_provider: true
       };
-      if (!isXAISubscriptionType(providerTypeDraft)) {
+      if (!isXAISubscriptionType(providerTypeDraft) && !isGrokBuildType(providerTypeDraft)) {
         connection.api_key = apiKeyDraft.trim();
       }
       await onSave(providerDraft, modelDraft, undefined, connection, variantDraft);
@@ -815,14 +824,15 @@ export function SettingsView({
 
   // The create-transaction submit is the only explicit action left: every
   // other field on the page applies instantly on commit.
-  const addingXAISubscription = addingProvider && isXAISubscriptionType(providerTypeDraft);
+  const addingCredentiallessProvider = addingProvider &&
+    (isXAISubscriptionType(providerTypeDraft) || isGrokBuildType(providerTypeDraft));
   const addSubmitDisabled =
     running ||
     !providerDraft.trim() ||
     providerNameTaken ||
     !modelDraft.trim() ||
     !baseURLDraft.trim() ||
-    (!addingXAISubscription && !apiKeyDraft.trim());
+    (!addingCredentiallessProvider && !apiKeyDraft.trim());
   const shellStyle = {
     // Same variables as the main app shell (`--sidebar-width` collapses to 0,
     // `--sidebar-open-width` remembers the open width for the hover drawer)
@@ -1377,7 +1387,10 @@ function SettingsProvidersPage({
   const xaiType = addingProvider
     ? isXAISubscriptionType(providerTypeDraft)
     : isXAISubscriptionType(selectedProvider?.type);
-  const oauthLocked = connectionLocked || xaiType;
+  const grokBuildType = addingProvider
+    ? isGrokBuildType(providerTypeDraft)
+    : isGrokBuildType(selectedProvider?.type);
+  const oauthLocked = connectionLocked || xaiType || grokBuildType;
   // Text fields commit on blur, or on Enter — except while creating a
   // provider, where Enter submits the create transaction instead.
   const commitOnEnter =
@@ -1429,7 +1442,7 @@ function SettingsProvidersPage({
                 <small>{provider.model || t("provider.noModel")}</small>
                 <small>{providerConnectionStatus(provider, t)}</small>
               </button>
-              {onRemoveProvider && (!provider.connection_locked || isXAISubscriptionType(provider.type)) ? (
+              {onRemoveProvider && (!provider.connection_locked || isXAISubscriptionType(provider.type) || isGrokBuildType(provider.type)) ? (
                 <button
                   className="settings-provider-remove"
                   type="button"
@@ -1518,7 +1531,8 @@ function SettingsProvidersPage({
               options={[
                 { value: "openai-compatible", label: t("provider.openaiCompatible") },
                 { value: "anthropic", label: t("provider.anthropicCompatible") },
-                { value: "xai-subscription", label: t("provider.xaiSubscription") }
+                { value: "xai-subscription", label: t("provider.xaiSubscription") },
+                { value: "grok-build", label: t("provider.grokBuild") }
               ]}
             />
           </SettingsRow>
@@ -1573,7 +1587,9 @@ function SettingsProvidersPage({
             oauthLocked
               ? xaiType
                 ? t("provider.xaiOAuthManaged")
-                : t("provider.oauthManaged")
+                : grokBuildType
+                  ? t("provider.grokBuildManaged")
+                  : t("provider.oauthManaged")
               : undefined
           }
           block
@@ -1581,7 +1597,7 @@ function SettingsProvidersPage({
           <input
             className="settings-input"
             value={baseURLDraft}
-            placeholder={oauthLocked ? (xaiType ? t("provider.xaiOAuthManaged") : t("provider.oauthManaged")) : "https://api.openai.com/v1"}
+            placeholder={oauthLocked ? (xaiType ? t("provider.xaiOAuthManaged") : grokBuildType ? t("provider.grokBuildManaged") : t("provider.oauthManaged")) : "https://api.openai.com/v1"}
             onChange={(event) => onBaseURLDraftChange(event.target.value)}
             onBlur={() => onCommitBaseURL()}
             onKeyDown={commitOnEnter(onCommitBaseURL)}
@@ -1605,6 +1621,12 @@ function SettingsProvidersPage({
                 </p>
               ) : null}
             </div>
+          </SettingsRow>
+        ) : grokBuildType ? (
+          <SettingsRow title={t("provider.grokBuildLogin")} description={t("provider.grokBuildLoginHint")} block>
+            <p className="settings-hint">
+              {!addingProvider && selectedProvider?.api_key_configured ? t("provider.grokBuildLoggedIn") : t("provider.grokBuildLoginRequired")}
+            </p>
           </SettingsRow>
         ) : (
         <SettingsRow title={authFieldLabel} block>
@@ -3203,6 +3225,9 @@ function advancedContextSourceLabel(source: string | undefined, t: Translate): s
 }
 
 function providerConnectionStatus(provider: ProviderSummary, t: Translate): string {
+  if (isGrokBuildType(provider.type)) {
+    return provider.api_key_configured ? t("provider.grokBuildLoggedIn") : t("provider.grokBuildLoginRequired");
+  }
   if (isXAISubscriptionType(provider.type)) {
     return provider.api_key_configured ? t("provider.xaiLoggedIn") : t("provider.xaiLogin");
   }
@@ -3219,6 +3244,9 @@ function providerConnectionStatus(provider: ProviderSummary, t: Translate): stri
 
 function providerTypeLabel(provider: ProviderSummary, t: Translate): string {
   const type = provider.type.trim() || "openai-compatible";
+  if (isGrokBuildType(type)) {
+    return t("provider.grokBuildManaged");
+  }
   return provider.connection_locked ? t("provider.oauthManagedService") : type;
 }
 
@@ -3235,6 +3263,11 @@ function isXAISubscriptionType(type: string | undefined): boolean {
     normalized === "grok-subscription" ||
     normalized === "supergrok"
   );
+}
+
+function isGrokBuildType(type: string | undefined): boolean {
+  const normalized = (type ?? "").trim().toLowerCase().replaceAll("_", "-");
+  return normalized === "grok-build" || normalized === "xai-grok-build" || normalized === "grok-cli";
 }
 
 type UsageHeatmapCell = SettingsUsageDay & {
@@ -3574,6 +3607,9 @@ function providerServiceLabel(provider: ProviderSummary, t: Translate): string {
   const type = provider.type.trim().toLowerCase().replaceAll("_", "-");
   if (isXAISubscriptionType(type)) {
     return t("provider.xaiSubscription");
+  }
+  if (isGrokBuildType(type)) {
+    return t("provider.grokBuild");
   }
   if (provider.connection_locked || type === "openai-codex" || type === "codex-subscription" || type === "chatgpt-codex") {
     return "OpenAI OAuth";

@@ -17,6 +17,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/authstorage"
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/extensions"
+	"github.com/blueberrycongee/wuu/internal/grokbuildspec"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/modelbudget"
 	"github.com/blueberrycongee/wuu/internal/modelcatalog"
@@ -27,6 +28,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providerfactory"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/providers/codex"
+	"github.com/blueberrycongee/wuu/internal/providers/grokbuild"
 	"github.com/blueberrycongee/wuu/internal/providers/xaisub"
 	"github.com/blueberrycongee/wuu/internal/runtime"
 	"github.com/blueberrycongee/wuu/internal/session"
@@ -1197,6 +1199,8 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 				providerTypeValue = requested
 			case "xai-subscription", "xai-oauth", "grok-subscription", "supergrok":
 				providerTypeValue = requested
+			case "grok-build", "xai-grok-build", "grok-cli":
+				providerTypeValue = requested
 			default:
 				return s.writeResponse(req.ID, nil, fmt.Errorf("unsupported provider type %q", requested))
 			}
@@ -1204,10 +1208,13 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		if baseURL == "" && config.IsXAISubscriptionProvider(providerTypeValue) {
 			baseURL = xaisub.DefaultBaseURL
 		}
+		if baseURL == "" && config.IsGrokBuildProvider(providerTypeValue) {
+			baseURL = grokbuildspec.DefaultBaseURL
+		}
 		if baseURL == "" {
 			return s.writeResponse(req.ID, nil, errors.New("base_url is required"))
 		}
-		if apiKey == "" && authToken == "" && !config.IsXAISubscriptionProvider(providerTypeValue) {
+		if apiKey == "" && authToken == "" && !config.IsXAISubscriptionProvider(providerTypeValue) && !config.IsGrokBuildProvider(providerTypeValue) {
 			return s.writeResponse(req.ID, nil, errors.New("api_key or auth_token is required"))
 		}
 		providerCfg = config.ProviderConfig{
@@ -1223,6 +1230,10 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 				providerCfg.Model = xaisub.DefaultModel
 				model = providerCfg.Model
 			}
+		}
+		if config.IsGrokBuildProvider(providerTypeValue) {
+			providerCfg = config.ApplyGrokBuildProviderDefaults(providerCfg)
+			model = providerCfg.Model
 		}
 		createBaseURL = &baseURL
 		resolvedName = providerName
@@ -1638,6 +1649,7 @@ func providerClientConfigChanged(previous, next config.ProviderConfig) bool {
 		strings.TrimSpace(previous.AuthToken) != strings.TrimSpace(next.AuthToken) ||
 		strings.TrimSpace(previous.AuthTokenEnv) != strings.TrimSpace(next.AuthTokenEnv) ||
 		previous.ReuseCodexCredentials != next.ReuseCodexCredentials ||
+		previous.ReuseGrokCredentials != next.ReuseGrokCredentials ||
 		previous.NativeCompactionEnabled() != next.NativeCompactionEnabled() ||
 		previous.StreamConnectTimeoutMS != next.StreamConnectTimeoutMS ||
 		previous.StreamHeaderTimeoutMS != next.StreamHeaderTimeoutMS ||
@@ -2251,7 +2263,7 @@ func providerSummariesFromConfig(cfg config.Config, home string) []ProviderSumma
 			Model:            provider.Model,
 			BaseURL:          provider.BaseURL,
 			APIKeyConfigured: providerHasAuth(name, provider, home),
-			ConnectionLocked: isCodexProviderType(provider.Type) || config.IsXAISubscriptionProvider(provider.Type),
+			ConnectionLocked: isCodexProviderType(provider.Type) || config.IsXAISubscriptionProvider(provider.Type) || config.IsGrokBuildProvider(provider.Type),
 			Models:           providerModelSummaries(name, provider),
 		})
 	}
@@ -2268,6 +2280,16 @@ func providerHasAuth(name string, provider config.ProviderConfig, home string) b
 	}
 	if config.IsXAISubscriptionProvider(provider.Type) {
 		_, err := xaisub.LocalOAuthStatus(home)
+		return err == nil
+	}
+	if config.IsGrokBuildProvider(provider.Type) {
+		if strings.TrimSpace(provider.APIKey) != "" || configuredEnvValue(provider.APIKeyEnv) != "" {
+			return true
+		}
+		if !provider.ReuseGrokCredentials {
+			return false
+		}
+		_, err := grokbuild.LocalOAuthStatus(home)
 		return err == nil
 	}
 
@@ -2315,6 +2337,9 @@ func providerUsesAnthropicAuth(provider config.ProviderConfig) bool {
 }
 
 func providerModelSummaries(providerName string, provider config.ProviderConfig) []ProviderModelSummary {
+	if config.IsGrokBuildProvider(provider.Type) {
+		provider = config.ApplyGrokBuildProviderDefaults(provider)
+	}
 	ruleProviderName := providerName
 	ruleProvider := provider
 	var catalogProvider modelcatalog.Provider

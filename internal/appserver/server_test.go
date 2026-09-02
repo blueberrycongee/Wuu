@@ -1070,6 +1070,39 @@ func TestProviderHasAuthChecksCodexOAuthAvailability(t *testing.T) {
 	}
 }
 
+func TestProviderSummariesExposeGrokBuildLoginAndModelDefaults(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GROK_HOME", "")
+	grokHome := filepath.Join(home, ".grok")
+	if err := os.MkdirAll(grokHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(grokHome, "auth.json"), []byte(`{"https://accounts.x.ai/sign-in":{"key":"test-token"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Providers: map[string]config.ProviderConfig{
+		"grok-build": {
+			Type: "grok-build", Model: "grok-4.5", ReuseGrokCredentials: true,
+		},
+	}}
+	summaries := providerSummariesFromConfig(cfg, home)
+	if len(summaries) != 1 || !summaries[0].APIKeyConfigured || !summaries[0].ConnectionLocked {
+		t.Fatalf("summary = %+v", summaries)
+	}
+	for id, wantEfforts := range map[string]string{
+		"grok-4.5": "low,medium,high",
+		"grok-4.6": "low,medium,high,xhigh",
+	} {
+		model := providerModelByID(t, summaries[0], id)
+		if got := strings.Join(model.SupportedEfforts, ","); got != wantEfforts {
+			t.Fatalf("%s efforts = %q", id, got)
+		}
+		if model.DefaultEffort != "high" || model.DefaultVariant != "high" || model.Capabilities.ContextWindow != 500_000 {
+			t.Fatalf("%s summary = %+v", id, model)
+		}
+	}
+}
+
 func TestProviderSummariesExposeGPT56CatalogForCompatibleGateway(t *testing.T) {
 	cfg := config.Config{
 		DefaultProvider: "gateway",

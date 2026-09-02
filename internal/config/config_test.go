@@ -1772,6 +1772,81 @@ func TestCreateProviderRuntimePersistsNewProvider(t *testing.T) {
 	}
 }
 
+func TestGrokBuildDefaultsAndRuntimeCreation(t *testing.T) {
+	provider, ok := Default().Providers["grok-build"]
+	if !ok {
+		t.Fatal("default config is missing grok-build")
+	}
+	if provider.Model != "grok-4.5" || provider.BaseURL != "https://cli-chat-proxy.grok.com/v1" || !provider.ReuseGrokCredentials {
+		t.Fatalf("grok-build defaults = %+v", provider)
+	}
+	for id, wantEfforts := range map[string]string{
+		"grok-4.5": "low,medium,high",
+		"grok-4.6": "low,medium,high,xhigh",
+	} {
+		model := provider.Models[id]
+		if got := strings.Join(model.SupportedEfforts, ","); got != wantEfforts {
+			t.Fatalf("%s efforts = %q, want %q", id, got, wantEfforts)
+		}
+		if model.DefaultEffort != "high" || model.DefaultVariant != "high" || model.Limit == nil || model.Limit.Context != 500_000 {
+			t.Fatalf("%s defaults = %+v", id, model)
+		}
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".wuu.json")
+	orig := `{
+  "default_provider": "old",
+  "providers": {
+    "old": {"type": "openai-compatible", "base_url": "https://old.example.com", "model": "old"}
+  }
+}`
+	if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	providerType := "grok-build"
+	if err := CreateProviderRuntime(path, "grok-build", &providerType, "grok-4.5", nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("CreateProviderRuntime: %v", err)
+	}
+	cfg, _, err := LoadProjectConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := cfg.Providers["grok-build"]
+	if created.BaseURL != "https://cli-chat-proxy.grok.com/v1" || created.WireAPI != "chat" || !created.ReuseGrokCredentials || len(created.Models) != 2 {
+		t.Fatalf("created provider = %+v", created)
+	}
+}
+
+func TestGrokBuildConfigAllowsDefaultBaseURLAndRejectsResponses(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".wuu.json")
+	valid := `{
+  "default_provider": "grok",
+  "providers": {
+    "grok": {"type": "grok-build", "wire_api": "chat", "model": "grok-4.5", "reuse_grok_credentials": true}
+  },
+  "agent": {}
+}`
+	if err := os.WriteFile(path, []byte(valid), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := LoadProjectConfig(dir)
+	if err != nil {
+		t.Fatalf("load grok-build: %v", err)
+	}
+	if !cfg.Providers["grok"].ReuseGrokCredentials {
+		t.Fatal("reuse_grok_credentials was not parsed")
+	}
+	invalid := strings.Replace(valid, `"wire_api": "chat"`, `"wire_api": "responses"`, 1)
+	if err := os.WriteFile(path, []byte(invalid), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LoadProjectConfig(dir); err == nil || !strings.Contains(err.Error(), `wire_api must be "chat"`) {
+		t.Fatalf("responses wire error = %v", err)
+	}
+}
+
 func TestRemoveProviderInactiveKeepsDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".wuu.json")

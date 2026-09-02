@@ -169,13 +169,14 @@ export function FirstRunOnboarding({
   }
 
   const xaiSubscription = providerType === "xai-subscription";
+  const grokBuild = providerType === "grok-build";
 
   async function saveProvider(): Promise<void> {
     const name = providerName.trim();
     const providerModel = model.trim();
     const key = apiKey.trim();
     if (!name || !providerModel || savingProvider) return;
-    if (!xaiSubscription && !key) return;
+    if (!xaiSubscription && !grokBuild && !key) return;
     setSavingProvider(true);
     setError("");
     try {
@@ -209,7 +210,11 @@ export function FirstRunOnboarding({
       await onSaveProvider(name, providerModel, {
         type: providerType,
         create_provider: true,
-        ...(xaiSubscription ? { base_url: "https://api.x.ai/v1" } : { api_key: key }),
+        ...(xaiSubscription
+          ? { base_url: "https://api.x.ai/v1" }
+          : grokBuild
+            ? { base_url: "https://cli-chat-proxy.grok.com/v1" }
+            : { api_key: key }),
       });
       setStep("ready");
     } catch (reason) {
@@ -377,12 +382,16 @@ export function FirstRunOnboarding({
                       if (next === "xai-subscription") {
                         if (!providerName.trim()) setProviderName("xai-subscription");
                         if (!model.trim()) setModel("grok-4.6");
+                      } else if (next === "grok-build") {
+                        setProviderName("grok-build");
+                        setModel("grok-4.5");
                       }
                     }}
                   >
                     <option value="openai-compatible">{t("provider.openaiCompatible")}</option>
                     <option value="anthropic">{t("provider.anthropicCompatible")}</option>
                     <option value="xai-subscription">{t("provider.xaiSubscription")}</option>
+                    <option value="grok-build">{t("provider.grokBuild")}</option>
                   </select>
                 </label>
                 <label>
@@ -393,6 +402,8 @@ export function FirstRunOnboarding({
                   <p className="onboarding-provider-description">
                     {xaiLogin ? t("provider.xaiLoginCode", { code: xaiLogin.userCode }) : t("provider.xaiLoginHint")}
                   </p>
+                ) : providerType === "grok-build" ? (
+                  <p className="onboarding-provider-description">{t("provider.grokBuildLoginHint")}</p>
                 ) : (
                 <label>
                   <span>{t("provider.apiKey")}</span>
@@ -416,7 +427,7 @@ export function FirstRunOnboarding({
                 <button
                   className="onboarding-primary"
                   type="button"
-                  disabled={savingProvider || (!providerReady && (!providerName.trim() || !model.trim() || (providerType !== "xai-subscription" && !apiKey.trim())))}
+                  disabled={savingProvider || (!providerReady && (!providerName.trim() || !model.trim() || (providerType !== "xai-subscription" && providerType !== "grok-build" && !apiKey.trim())))}
                   onClick={() => providerReady ? setStep("ready") : void saveProvider()}
                 >
                   {savingProvider ? t("onboarding.savingProvider") : t("onboarding.continue")}

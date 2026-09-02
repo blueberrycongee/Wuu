@@ -926,7 +926,7 @@ type ConfigModelUpdateParams struct {
 	AuthToken      *string `json:"auth_token,omitempty"`
 	// Type is the provider protocol type used when CreateProvider is true.
 	// Accepted values: "openai", "openai-compatible", "anthropic", "claude",
-	// "anthropic-official", "xai-subscription". Codex OAuth types remain
+	// "anthropic-official", "xai-subscription", "grok-build". Codex OAuth types remain
 	// excluded because they require a separate connection flow.
 	Type           *string `json:"type,omitempty"`
 	CreateProvider bool    `json:"create_provider,omitempty"`

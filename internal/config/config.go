@@ -12,6 +12,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/extensions"
+	"github.com/blueberrycongee/wuu/internal/grokbuildspec"
 	"github.com/blueberrycongee/wuu/internal/securefs"
 	"github.com/blueberrycongee/wuu/internal/statepath"
 	"github.com/blueberrycongee/wuu/internal/storelock"
@@ -146,6 +147,9 @@ type ProviderConfig struct {
 	// Codex CLI auth store (CODEX_HOME/auth.json or ~/.codex/auth.json) as a
 	// read-only fallback when wuu does not have its own OAuth session.
 	ReuseCodexCredentials bool `json:"reuse_codex_credentials,omitempty"`
+	// ReuseGrokCredentials lets Grok Build providers read GROK_HOME/auth.json
+	// (or ~/.grok/auth.json) without taking ownership of the CLI login.
+	ReuseGrokCredentials bool `json:"reuse_grok_credentials,omitempty"`
 	// NativeCompaction controls provider-native context compaction for Codex
 	// subscription providers. Nil defaults to enabled; false explicitly keeps
 	// Wuu's portable text-summary compaction path.
@@ -690,7 +694,7 @@ func (c Config) Validate() error {
 		if provider.Type == "" {
 			return fmt.Errorf("providers.%s.type is required", name)
 		}
-		if provider.BaseURL == "" && !isCodexSubscriptionProvider(provider.Type) {
+		if provider.BaseURL == "" && !isCodexSubscriptionProvider(provider.Type) && !IsGrokBuildProvider(provider.Type) {
 			return fmt.Errorf("providers.%s.base_url is required", name)
 		}
 		if provider.Model == "" {
@@ -740,6 +744,9 @@ func (c Config) Validate() error {
 		}
 		if isCodexSubscriptionProvider(provider.Type) && provider.WireAPI == "chat" {
 			return fmt.Errorf("providers.%s.wire_api must be \"responses\" for %s", name, provider.Type)
+		}
+		if IsGrokBuildProvider(provider.Type) && provider.WireAPI == "responses" {
+			return fmt.Errorf("providers.%s.wire_api must be \"chat\" for %s", name, provider.Type)
 		}
 		if provider.StreamConnectTimeoutMS < 0 {
 			return fmt.Errorf("providers.%s.stream_connect_timeout_ms cannot be negative", name)
@@ -909,6 +916,7 @@ func validatePermissionMode(mode string) error {
 // Default returns a practical starter config.
 func Default() Config {
 	nativeCompaction := true
+	grokBuild := ApplyGrokBuildProviderDefaults(ProviderConfig{Type: "grok-build"})
 	return Config{
 		DefaultProvider: "openai",
 		Providers: map[string]ProviderConfig{
@@ -938,6 +946,7 @@ func Default() Config {
 				WireAPI: "responses",
 				Model:   "grok-4.6",
 			},
+			"grok-build": grokBuild,
 			"anthropic": {
 				Type:      "anthropic",
 				BaseURL:   "https://api.anthropic.com",
@@ -964,6 +973,61 @@ func Default() Config {
 			MaxSteps: 0,
 		},
 	}
+}
+
+// ApplyGrokBuildProviderDefaults fills the connection and model facts for a
+// newly created or generated-default Grok Build provider.
+func ApplyGrokBuildProviderDefaults(provider ProviderConfig) ProviderConfig {
+	if strings.TrimSpace(provider.Type) == "" {
+		provider.Type = "grok-build"
+	}
+	if strings.TrimSpace(provider.BaseURL) == "" {
+		provider.BaseURL = grokbuildspec.DefaultBaseURL
+	}
+	if strings.TrimSpace(provider.WireAPI) == "" {
+		provider.WireAPI = "chat"
+	}
+	if strings.TrimSpace(provider.NPM) == "" {
+		provider.NPM = "@ai-sdk/xai"
+	}
+	if strings.TrimSpace(provider.Model) == "" {
+		provider.Model = grokbuildspec.DefaultModel
+	}
+	provider.ReuseGrokCredentials = true
+	if provider.Models == nil {
+		provider.Models = make(map[string]ProviderModelConfig, len(grokbuildspec.Models))
+	}
+	for _, model := range grokbuildspec.Models {
+		if _, exists := provider.Models[model.ID]; exists {
+			continue
+		}
+		reasoning := true
+		attachment := true
+		toolCall := true
+		structuredOutput := true
+		variants := make(map[string]map[string]any, len(model.Efforts))
+		for _, effort := range model.Efforts {
+			variants[effort] = map[string]any{"reasoningEffort": effort}
+		}
+		provider.Models[model.ID] = ProviderModelConfig{
+			Name:             model.DisplayName,
+			Family:           "grok",
+			Reasoning:        &reasoning,
+			Attachment:       &attachment,
+			ToolCall:         &toolCall,
+			StructuredOutput: &structuredOutput,
+			Modalities: &ProviderModelModalitiesConfig{
+				Input:  []string{"text", "image"},
+				Output: []string{"text"},
+			},
+			Limit:            &ProviderModelLimitConfig{Context: grokbuildspec.ContextWindowTokens},
+			SupportedEfforts: append([]string(nil), model.Efforts...),
+			DefaultEffort:    model.DefaultEffort,
+			DefaultVariant:   model.DefaultEffort,
+			Variants:         variants,
+		}
+	}
+	return provider
 }
 
 // DefaultSystemPrompt returns wuu's built-in base behavior prompt for the
@@ -1069,6 +1133,19 @@ func IsXAISubscriptionProvider(providerType string) bool {
 	s = strings.ReplaceAll(s, "_", "-")
 	switch s {
 	case "xai-subscription", "xai-oauth", "grok-subscription", "supergrok":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsGrokBuildProvider reports whether this provider reuses the local Grok
+// Build CLI login and calls the CLI chat proxy.
+func IsGrokBuildProvider(providerType string) bool {
+	s := strings.ToLower(strings.TrimSpace(providerType))
+	s = strings.ReplaceAll(s, "_", "-")
+	switch s {
+	case "grok-build", "xai-grok-build", "grok-cli":
 		return true
 	default:
 		return false
@@ -1581,9 +1658,6 @@ func updateProviderSelection(configPath, providerName, newModel string, baseURL,
 		if strings.TrimSpace(providerName) == "" {
 			return fmt.Errorf("provider name is required")
 		}
-		if baseURL == nil || strings.TrimSpace(*baseURL) == "" {
-			return fmt.Errorf("base_url is required")
-		}
 		// Resolve the requested type. Nil or empty defaults to
 		// "openai-compatible" to preserve the legacy behavior for
 		// callers that have not been updated to send a type yet.
@@ -1593,9 +1667,31 @@ func updateProviderSelection(configPath, providerName, newModel string, baseURL,
 				providerTypeValue = requested
 			}
 		}
-		provider = map[string]any{
-			"type":     providerTypeValue,
-			"base_url": strings.TrimSpace(*baseURL),
+		if baseURL == nil || strings.TrimSpace(*baseURL) == "" {
+			if !IsGrokBuildProvider(providerTypeValue) {
+				return fmt.Errorf("base_url is required")
+			}
+			value := grokbuildspec.DefaultBaseURL
+			baseURL = &value
+		}
+		if IsGrokBuildProvider(providerTypeValue) {
+			defaults := ApplyGrokBuildProviderDefaults(ProviderConfig{
+				Type:    providerTypeValue,
+				BaseURL: strings.TrimSpace(*baseURL),
+				Model:   strings.TrimSpace(newModel),
+			})
+			encoded, marshalErr := json.Marshal(defaults)
+			if marshalErr != nil {
+				return fmt.Errorf("marshal Grok Build provider defaults: %w", marshalErr)
+			}
+			if unmarshalErr := json.Unmarshal(encoded, &provider); unmarshalErr != nil {
+				return fmt.Errorf("prepare Grok Build provider defaults: %w", unmarshalErr)
+			}
+		} else {
+			provider = map[string]any{
+				"type":     providerTypeValue,
+				"base_url": strings.TrimSpace(*baseURL),
+			}
 		}
 		if IsXAISubscriptionProvider(providerTypeValue) {
 			provider["wire_api"] = "responses"

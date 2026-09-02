@@ -564,3 +564,51 @@ func TestNativeToolSearchOptionOverridesResponsesWire(t *testing.T) {
 		t.Fatal("explicit mode must honor native_tool_search=false")
 	}
 }
+
+func TestResolveProviderProfileGrokBuild(t *testing.T) {
+	profile, err := resolveProviderProfile(config.ProviderConfig{Type: "grok-build", WireAPI: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.Wire != wireOpenAIChat || profile.Auth != authGrokBuild {
+		t.Fatalf("profile = %+v", profile)
+	}
+	if _, err := resolveProviderProfile(config.ProviderConfig{Type: "grok-build", WireAPI: "responses"}); err == nil {
+		t.Fatal("expected responses wire to be rejected")
+	}
+}
+
+func TestBuildClientGrokBuildUsesLocalCLICredentials(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	grokHome := filepath.Join(home, ".grok")
+	if err := os.MkdirAll(grokHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(grokHome, "auth.json"), []byte(`{"https://accounts.x.ai/sign-in":{"key":"factory-grok-token"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer factory-grok-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		if got := r.Header.Get("X-XAI-Token-Auth"); got != "xai-grok-cli" {
+			t.Fatalf("X-XAI-Token-Auth = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer server.Close()
+	client, err := BuildClient(config.ProviderConfig{
+		Type: "grok-build", BaseURL: server.URL, WireAPI: "chat", Model: "grok-4.5", ReuseGrokCredentials: true,
+	}, "grok-build")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Chat(context.Background(), providers.ChatRequest{
+		Model: "grok-4.5", Messages: []providers.ChatMessage{{Role: "user", Content: "hi"}},
+	})
+	if err != nil || resp.Content != "ok" {
+		t.Fatalf("resp = %+v, err = %v", resp, err)
+	}
+}

@@ -22,6 +22,7 @@ const (
 	authAnthropicToken  authMode = "anthropic_token"
 	authCodexOAuth      authMode = "codex_oauth"
 	authXAISubscription authMode = "xai_subscription"
+	authGrokBuild       authMode = "grok_build"
 )
 
 type providerProfile struct {
@@ -60,6 +61,15 @@ func resolveProviderProfile(provider config.ProviderConfig) (providerProfile, er
 			TypeName: typeName,
 			Wire:     wireOpenAIResponses,
 			Auth:     authXAISubscription,
+		}, nil
+	case "grok-build", "xai-grok-build", "grok-cli":
+		if wire := strings.ToLower(strings.TrimSpace(provider.WireAPI)); wire != "" && wire != "chat" {
+			return providerProfile{}, fmt.Errorf("provider type %q supports only chat wire_api", provider.Type)
+		}
+		return providerProfile{
+			TypeName: typeName,
+			Wire:     wireOpenAIChat,
+			Auth:     authGrokBuild,
 		}, nil
 	case "anthropic", "claude", "anthropic-official":
 		return providerProfile{

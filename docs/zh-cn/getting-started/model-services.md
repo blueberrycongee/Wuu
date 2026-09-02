@@ -1,13 +1,13 @@
 # 连接模型服务
 
-wuu 使用 BYOK（自带密钥）模式。你选择模型服务并提供凭据，wuu 使用该服务完成
-推理；模型费用和数据策略由对应服务决定。
+你选择模型服务并提供 API Key 或受支持的订阅登录，wuu 使用该服务完成推理；模型费用
+和数据策略由对应服务决定。
 
 ## 配置桌面应用
 
 1. 打开**设置 → 模型服务**。
 2. 选择**新增服务**。
-3. 选择服务类型：**OpenAI 兼容**、**Anthropic 兼容**或 **xAI SuperGrok**。
+3. 选择服务类型：**OpenAI 兼容**、**Anthropic 兼容**、**xAI SuperGrok**或 **Grok Build**。
 4. 填写服务标识和模型名称。
 5. 按服务要求填写 API 端点和 API Key。
 6. 选择**添加服务**，并确认它显示为当前服务。
@@ -26,6 +26,11 @@ wuu 使用 BYOK（自带密钥）模式。你选择模型服务并提供凭据�
   Premium+ 账号登录。Wuu 走自己的 agent loop，把订阅 OAuth token 打到
   `https://api.x.ai/v1`。这不会读取 `~/.grok/auth.json`，也不会使用
   `XAI_API_KEY`。CLI 可用 `wuu login xai`。
+- **Grok Build：**先运行 `grok login`，然后选择 Grok Build。Wuu 只读复用
+  `GROK_HOME/auth.json` 或 `~/.grok/auth.json`，通过 Grok Build CLI chat proxy 调用模型，
+  但继续使用 Wuu 自己的 agent loop。凭据过期后重新运行 `grok login`；Wuu 不会修改或
+  刷新 Grok CLI 的凭据。默认模型为 `grok-4.5`，也提供 `grok-4.6`；两者使用 500k
+  上下文和默认 `high` 思考强度，4.6 额外支持 `xhigh`。
 - **Anthropic：**选择 Anthropic 兼容类型，填写 Anthropic API Key 和模型 ID。
 - **OpenRouter、one-api 或其他网关：**选择 OpenAI 兼容类型，并填写网关端点、Key
   和它提供的模型 ID。
@@ -43,7 +48,7 @@ wuu init
 ```
 
 配置默认写入 `~/.wuu/config.json`；设置 `WUU_HOME` 后写入
-`$WUU_HOME/config.json`。初始配置包含 OpenAI、Anthropic、OpenRouter 和 xAI SuperGrok 示例。
+`$WUU_HOME/config.json`。初始配置包含 OpenAI、Anthropic、OpenRouter、xAI SuperGrok 和 Grok Build 示例。
 
 按照所选服务的 `api_key_env` 设置环境变量：
 
@@ -57,6 +62,13 @@ SuperGrok 订阅不走 API key。先登录，再指定 provider：
 ```bash
 wuu login xai
 wuu exec --provider xai-subscription "描述一下这个工作区"
+```
+
+Grok Build 在 Wuu 中同样不需要 API Key。先通过它自己的 CLI 登录：
+
+```bash
+grok login
+wuu exec --provider grok-build "描述一下这个工作区"
 ```
 
 单次运行可以切换到另一个已经配置的服务：

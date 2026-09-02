@@ -158,6 +158,21 @@ func applyOfficialCatalogCorrections(data *catalogData) {
 		case "xai":
 			provider.API = "https://api.x.ai/v1"
 			upsertOfficialModel(provider, Model{
+				ID:               "grok-4.5",
+				Name:             "Grok 4.5",
+				Family:           "grok",
+				Reasoning:        true,
+				ReasoningOptions: officialEffortOptions(false, "low", "medium", "high"),
+				Attachment:       officialBool(true),
+				ToolCall:         officialBool(true),
+				StructuredOutput: officialBool(true),
+				Temperature:      officialBool(true),
+				Modalities:       &Modalities{Input: []string{"text", "image"}, Output: []string{"text"}},
+				Limit:            &Limit{Context: 500_000},
+				SupportedEfforts: []string{"low", "medium", "high"},
+				DefaultVariant:   "high",
+			})
+			upsertOfficialModel(provider, Model{
 				ID:               "grok-4.6",
 				Name:             "Grok 4.6 (Early Access)",
 				Family:           "grok",
