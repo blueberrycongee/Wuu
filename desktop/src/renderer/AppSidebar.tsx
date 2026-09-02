@@ -2,14 +2,10 @@ import {
   Archive,
   Bell,
   ChevronRight,
-  Clock,
-  FileText,
   Folder,
   FolderMinus,
   FolderOpen,
   FolderPlus,
-  LayoutGrid,
-  List as ListIcon,
   MessageSquare,
   MessageSquarePlus,
   MessagesSquare,
@@ -60,7 +56,6 @@ import {
   type AppState,
   type ThreadSummary,
 } from "./AppState";
-import type { ConversationFixtureKind } from "./ConversationFixtures";
 import { SCRATCH_PSEUDO_PROJECT_ID } from "./AppState";
 import {
   OrganizationThreadList,
@@ -353,14 +348,11 @@ export function AppSidebar({
   projectMenuOpen,
   projectMenuRef,
   searchOpen,
-  debugFixturesVisible,
   sectionOrder,
   onStartNewThread,
   onOpenSkillsTab,
   groupChatEnabled = false,
   onToggleConversationSearch,
-  onSeedConversationFixture,
-  onOpenChipGallery,
   onSelectThread,
   onTogglePinned,
   onArchiveThread,
@@ -403,7 +395,6 @@ export function AppSidebar({
   projectMenuOpen: boolean;
   projectMenuRef: RefObject<HTMLDivElement | null>;
   searchOpen: boolean;
-  debugFixturesVisible: boolean;
   // Order of reorderable sections. The pinned section is rendered first
   // (fixed position) and is NOT included. Each key maps to either
   // SCRATCH_PSEUDO_PROJECT_ID or a real project id.
@@ -428,8 +419,6 @@ export function AppSidebar({
   onOpenChannels?: () => void;
   onCreateChannelRoom?: () => void;
   onToggleConversationSearch: () => void;
-  onSeedConversationFixture: (kind: ConversationFixtureKind) => void;
-  onOpenChipGallery: () => void;
   onSelectThread: (id: string) => void;
   onTogglePinned: (thread: ThreadSummary) => void;
   onArchiveThread: (thread: ThreadSummary) => void;
@@ -505,7 +494,6 @@ export function AppSidebar({
       && (folderDragThread?.pinned || organization.folderByThreadID[folderDragThreadID]),
   );
   const hasRuntimeContext = Boolean(state.activeContext);
-  const fixturesEnabled = hasRuntimeContext && Boolean(state.initialized);
   // The scratch pseudo project is "active" when the runtime context is in
   // no-project mode (i.e. the user is viewing a scratch conversation).
   // Active state is passed into ProjectList so the row highlights even though
@@ -1328,19 +1316,6 @@ export function AppSidebar({
         onActivate: () => activateNative(onOpenSkillsTab),
       },
     );
-    if (debugFixturesVisible) {
-      const fixtureCommands: Array<[string, string, () => void, boolean]> = [
-        ["fixture-long", t("sidebar.devFixtures.longConversation"), () => onSeedConversationFixture("long"), !fixturesEnabled],
-        ["fixture-rich", t("sidebar.devFixtures.richContent"), () => onSeedConversationFixture("rich"), !fixturesEnabled],
-        ["fixture-running", t("sidebar.devFixtures.running"), () => onSeedConversationFixture("running"), !fixturesEnabled],
-        ["fixture-compact", t("sidebar.devFixtures.compaction"), () => onSeedConversationFixture("compact"), !fixturesEnabled],
-        ["fixture-chips", t("sidebar.devFixtures.chipGallery"), onOpenChipGallery, false],
-      ];
-      for (const [id, label, onActivate, disabled] of fixtureCommands) {
-        nodes.push({ id: `command:${id}`, kind: "command", label, disabled, onActivate });
-      }
-    }
-
     const functionalGroupNodes: Record<SidebarFunctionalGroupID, NavigationSourceNode[]> = {
       pinned: [],
       folders: [],
@@ -1531,9 +1506,8 @@ export function AppSidebar({
     return Object.freeze(nodes);
   }, [
     activateNative, activeProjectID, activeThreadID,
-    debugFixturesVisible, fixturesEnabled, hasPinnedRows, hasRuntimeContext,
-    onOpenChipGallery, onOpenSettings, onOpenSkillsTab,
-    onSeedConversationFixture,
+    hasPinnedRows, hasRuntimeContext,
+    onOpenSettings, onOpenSkillsTab,
     onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
     onStartNewThread, onToggleConversationSearch,
     onTogglePinned, pendingThreadID, pinnedHasRunning,
@@ -1667,50 +1641,6 @@ export function AppSidebar({
             <PluginBlocksIcon className="icon-lg" />
             <span>{t("skills.sectionSkills")}</span>
           </button>
-          {debugFixturesVisible ? (
-            <div className="dev-fixture-nav" aria-label={t("sidebar.devFixtures.label")}>
-              <div className="dev-fixture-label">{t("sidebar.devFixtures.title")}</div>
-              <button
-                className="nav-item dev-fixture-button"
-                onClick={() => onSeedConversationFixture("long")}
-                disabled={!fixturesEnabled}
-              >
-                <FileText className="icon" />
-                <span>{t("sidebar.devFixtures.longConversation")}</span>
-              </button>
-              <button
-                className="nav-item dev-fixture-button"
-                onClick={() => onSeedConversationFixture("rich")}
-                disabled={!fixturesEnabled}
-              >
-                <ListIcon className="icon" />
-                <span>{t("sidebar.devFixtures.richContent")}</span>
-              </button>
-              <button
-                className="nav-item dev-fixture-button"
-                onClick={() => onSeedConversationFixture("running")}
-                disabled={!fixturesEnabled}
-              >
-                <Clock className="icon" />
-                <span>{t("sidebar.devFixtures.running")}</span>
-              </button>
-              <button
-                className="nav-item dev-fixture-button"
-                onClick={() => onSeedConversationFixture("compact")}
-                disabled={!fixturesEnabled}
-              >
-                <Archive className="icon" />
-                <span>{t("sidebar.devFixtures.compaction")}</span>
-              </button>
-              <button
-                className="nav-item dev-fixture-button"
-                onClick={onOpenChipGallery}
-              >
-                <LayoutGrid className="icon" />
-                <span>{t("sidebar.devFixtures.chipGallery")}</span>
-              </button>
-            </div>
-          ) : null}
         </nav>
 
         <div className="sidebar-main scrollbar-hidden">

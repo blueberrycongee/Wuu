@@ -43,7 +43,6 @@ export type HistoryMessageEditState = {
 export type ConversationHistoryActionsDeps = {
   appStateRef: MutableRefObject<AppState>;
   setAppState: SetAppState;
-  localDemoThreadsRef: MutableRefObject<Map<string, Thread>>;
   getPendingFork: () => PendingForkState | undefined;
   setPendingFork: (update: SetStateAction<PendingForkState | undefined>) => void;
   setHistoryMessageEdit: (
@@ -130,13 +129,6 @@ export function createConversationHistoryActions(
   ): Promise<void> {
     const activeContext = deps.appStateRef.current.activeContext;
     if (!activeContext || sourceThread.read_only) {
-      return;
-    }
-    if (deps.localDemoThreadsRef.current.has(sourceThread.id)) {
-      deps.setAppState((current) => ({
-        ...current,
-        status: localizedText("history.demoCannotFork"),
-      }));
       return;
     }
     if (mode === "worktree") {
@@ -272,13 +264,6 @@ export function createConversationHistoryActions(
     pane?: ConversationPaneID,
   ): void {
     if (!deps.appStateRef.current.activeContext || sourceThread.read_only) {
-      return;
-    }
-    if (deps.localDemoThreadsRef.current.has(sourceThread.id)) {
-      deps.setAppState((current) => ({
-        ...current,
-        status: localizedText("history.demoCannotEdit"),
-      }));
       return;
     }
     if (isThreadRunning(sourceThread)) {

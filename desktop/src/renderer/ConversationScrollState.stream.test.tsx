@@ -102,7 +102,6 @@ function Probe({
     primaryTurns: turns ?? makeLongTurns(),
     secondaryTurns: undefined,
     emptyConversation: false,
-    previewingLaunch: false,
     initialized: true,
   });
   if (!showConversation) {

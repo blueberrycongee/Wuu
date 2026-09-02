@@ -126,7 +126,7 @@ export function ConversationSplitPane({
   const paneRunning = isThreadRunning(thread);
   const paneReadOnly = Boolean(thread.read_only);
   const paneStatus = paneRunning
-    ? streamStatus?.text ?? t("runDebug.inProgress")
+    ? streamStatus?.text ?? t("messageFlow.stillGenerating")
     : active && appStatus !== "ready"
       ? appStatus
       : "";

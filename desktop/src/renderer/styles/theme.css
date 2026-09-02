@@ -327,8 +327,8 @@
   /* macOS's `under-window` vibrancy material can remain light even when the
      renderer is dark. Keep a little wallpaper depth from the native material,
      but make the dark surface dense enough that navigation text has contrast.
-     After the 2026-07-15 neutral rewrite, glass shadows + the dev-fixture
-     text + the resizer overlay ride on the shared ink-overlay ladder; their
+     After the 2026-07-15 neutral rewrite, glass shadows and the resizer
+     overlay ride on the shared ink-overlay ladder; their
      hue now follows --ink-* instead of carrying its own green or blue cast. */
   --sidebar-material-fill: rgba(16, 18, 21, 0.88);
   --sidebar-material-edge: rgba(255, 255, 255, 0.16);
@@ -355,8 +355,6 @@
   --sidebar-row-selected-bg: var(--ink-overlay-6);
   --sidebar-resizer-hover-bg: var(--ink-overlay-18);
   --sidebar-resizer-hover-ring: rgba(0, 0, 0, 0.4);
-  --sidebar-dev-fixture-nav-border: var(--ink-overlay-12);
-  --sidebar-dev-fixture-button-color: var(--ink-tertiary);
   --sidebar-nav-item-hover-ring: var(--wuu-nav-item-hover-ring, rgba(255, 255, 255, 0.08));
   --sidebar-nav-item-focus-shadow: var(--focus-ring);
   --sidebar-project-row-pending-bg: rgba(255, 255, 255, 0.05);
@@ -421,7 +419,6 @@
   --empty-home-action-border-hover: var(--wuu-border-strong, #40464c);
   --empty-home-action-icon-color: var(--wuu-color-text-muted, #8b9196);
   --project-empty-content-color: var(--wuu-color-text-muted, #989ea3);
-  --wuu-launch-exit-border: var(--wuu-border-subtle, #33383d);
   --project-empty-actions-border: var(--wuu-border-subtle, #33383d);
   --project-empty-actions-hover-bg: #24282c;
   --diff-insert-bg: rgba(63, 185, 112, 0.12);
@@ -440,11 +437,6 @@
   --shell-session-tab-pending-count-bg: rgba(228, 232, 235, 0.12);
   --shell-session-tab-active-pending-count-bg: rgba(228, 232, 235, 0.16);
   --shell-session-tab-drag-overlay-ring: rgba(20, 22, 24, 0.72);
-  --shell-launch-preview-button-hover-bg: #2b2f34;
-  --shell-run-debug-panel-shadow-1: rgba(0, 0, 0, 0.5);
-  --shell-run-debug-panel-shadow-2: rgba(0, 0, 0, 0.35);
-  --shell-run-debug-phase-running-color: #7dbba5;
-  --shell-run-debug-empty-border: var(--wuu-border-subtle, #33383d);
   --shell-todo-card-bg: var(--wuu-color-surface-elevated, var(--surface-3));
   --shell-todo-card-border: var(--wuu-color-border-strong, var(--hairline-strong));
   --shell-todo-card-shadow: rgba(0, 0, 0, 0.44);

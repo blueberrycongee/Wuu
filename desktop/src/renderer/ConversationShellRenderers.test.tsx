@@ -225,27 +225,6 @@ describe("ConversationTitleActions icon sizing", () => {
       root?.render(
         <ConversationTitleActions
           state={initialState}
-          debugControlsVisible={false}
-          enableLaunchPreview={false}
-          previewingLaunch={false}
-          onPinLaunchPreview={() => {}}
-          enableTodoPanelDebug={false}
-          onSeedTodoPanelDebug={() => {}}
-          enableRunDebugPanel={false}
-          runDebugRef={createRef<HTMLDivElement>()}
-          runDebugOpen={false}
-          onToggleRunDebug={() => {}}
-          runDebugPhase={{ label: "", detail: "", tone: "idle" }}
-          runDebugEvents={[]}
-          queuedMessages={[]}
-          guideMessages={[]}
-          composerImages={[]}
-          composerFiles={[]}
-          runDebugCopied={false}
-          onCopyRunDebug={() => {}}
-          onCloseRunDebug={() => {}}
-          chipGalleryOpen={false}
-          onCloseChipGallery={() => {}}
           environmentToggleRef={createRef<HTMLButtonElement>()}
           environmentPanelVisible={false}
           onToggleEnvironmentPanel={() => {}}

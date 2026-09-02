@@ -1,10 +1,9 @@
-import type { Thread, Turn } from "../shared/protocol";
+import type { Thread, ThreadItem, Turn } from "../shared/protocol";
 import { isInternalUserNotificationItem } from "./InternalUserNotification";
 import {
   messageFlowFinalTextIndex,
   messageFlowStatusLabel,
 } from "./message-flow-display";
-import { debugStreamFieldLength, latestDebugItem } from "./RunDebugPanel";
 import { streamFieldValue } from "./ThreadItemText";
 import { prefersReducedMotion } from "./motion";
 import { formatCurrentNumber, getActiveLocale, translateCurrent as t } from "./i18n";
@@ -13,6 +12,16 @@ type TurnProgressContent = {
   label: string;
   detail?: string;
 };
+
+function latestNonUserItem(turn: Turn): ThreadItem | undefined {
+  for (let index = turn.items.length - 1; index >= 0; index--) {
+    const item = turn.items[index];
+    if (item.type !== "user_message") {
+      return item;
+    }
+  }
+  return undefined;
+}
 
 // Anchor IDs used by the input-box query history popover to scroll
 // back to a past user message. Kept as plain DOM ids (no hash routing
@@ -420,7 +429,7 @@ export function turnProgressContent(
     };
   }
 
-  const latestItem = latestDebugItem(turn);
+  const latestItem = latestNonUserItem(turn);
   if (!latestItem) {
     return {
       label: messageFlowStatusLabel({
@@ -436,7 +445,7 @@ export function turnProgressContent(
     const hasText =
       hasFinalText ||
       (latestItem.terminal === true &&
-        debugStreamFieldLength(turn.id, latestItem, "text") > 0);
+        streamFieldValue(turn.id, latestItem, "text").length > 0);
     return {
       label: messageFlowStatusLabel({
         done: false,

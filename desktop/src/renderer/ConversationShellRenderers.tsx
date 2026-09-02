@@ -7,10 +7,7 @@ import {
   type RefObject,
 } from "react";
 import {
-  Bug,
   Info,
-  ListChecks,
-  Terminal,
 } from "lucide-react";
 import type {
   Agent,
@@ -39,7 +36,6 @@ import {
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
 } from "./AppLayoutState";
-import { ChipGalleryPanel } from "./ChipGalleryPanel";
 import { EnvironmentSideStack } from "./EnvironmentSideStack";
 import {
   Composer,
@@ -49,7 +45,6 @@ import { ConversationSplitPane } from "./ConversationSplitPane";
 import type { HistoryMessageEditState } from "./ConversationHistoryActions";
 import { SessionTabStrip } from "./SessionTabs";
 import { SettingsView } from "./SettingsView";
-import { RunDebugPanel } from "./RunDebugPanel";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { ViewSwitchLoading } from "./LoadingViews";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
@@ -60,7 +55,6 @@ import type { PluginHost } from "./plugins/PluginHost";
 import { PluginSlot } from "./plugins/PluginSlot";
 import type { WorkbenchController } from "./plugins/Workbench";
 
-type RunDebugPanelProps = ComponentProps<typeof RunDebugPanel>;
 type EnvironmentSideStackProps = ComponentProps<typeof EnvironmentSideStack>;
 type SettingsViewProps = ComponentProps<typeof SettingsView>;
 
@@ -409,27 +403,6 @@ export function ConversationTitleContent({
 
 export type ConversationTitleActionsProps = {
   state: AppState;
-  debugControlsVisible: boolean;
-  enableLaunchPreview: boolean;
-  previewingLaunch: boolean;
-  onPinLaunchPreview: () => void;
-  enableTodoPanelDebug: boolean;
-  onSeedTodoPanelDebug: () => void;
-  enableRunDebugPanel: boolean;
-  runDebugRef: RefObject<HTMLDivElement | null>;
-  runDebugOpen: boolean;
-  onToggleRunDebug: () => void;
-  runDebugPhase: RunDebugPanelProps["phase"];
-  runDebugEvents: RunDebugPanelProps["events"];
-  queuedMessages: RunDebugPanelProps["queuedMessages"];
-  guideMessages: RunDebugPanelProps["guideMessages"];
-  composerImages: RunDebugPanelProps["composerImages"];
-  composerFiles: RunDebugPanelProps["composerFiles"];
-  runDebugCopied: RunDebugPanelProps["copied"];
-  onCopyRunDebug: () => void;
-  onCloseRunDebug: () => void;
-  chipGalleryOpen: boolean;
-  onCloseChipGallery: () => void;
   environmentToggleRef: RefObject<HTMLButtonElement | null>;
   environmentPanelVisible: boolean;
   onToggleEnvironmentPanel: () => void;
@@ -439,27 +412,6 @@ export type ConversationTitleActionsProps = {
 
 export function ConversationTitleActions({
   state,
-  debugControlsVisible,
-  enableLaunchPreview,
-  previewingLaunch,
-  onPinLaunchPreview,
-  enableTodoPanelDebug,
-  onSeedTodoPanelDebug,
-  enableRunDebugPanel,
-  runDebugRef,
-  runDebugOpen,
-  onToggleRunDebug,
-  runDebugPhase,
-  runDebugEvents,
-  queuedMessages,
-  guideMessages,
-  composerImages,
-  composerFiles,
-  runDebugCopied,
-  onCopyRunDebug,
-  onCloseRunDebug,
-  chipGalleryOpen,
-  onCloseChipGallery,
   environmentToggleRef,
   environmentPanelVisible,
   onToggleEnvironmentPanel,
@@ -469,59 +421,6 @@ export function ConversationTitleActions({
   const { t } = useI18n();
   return (
     <div className="title-actions">
-      {debugControlsVisible && enableLaunchPreview ? (
-        <button
-          className="launch-preview-button"
-          type="button"
-          disabled={previewingLaunch}
-          onClick={onPinLaunchPreview}
-        >
-          <Terminal className="icon" />
-          <span>{t("shell.launchPreview")}</span>
-        </button>
-      ) : null}
-      {debugControlsVisible && enableTodoPanelDebug ? (
-        <button
-          className="launch-preview-button todo-panel-debug-button"
-          type="button"
-          disabled={!state.activeContext || !state.initialized}
-          onClick={onSeedTodoPanelDebug}
-        >
-          <ListChecks className="icon" />
-          <span>{t("shell.todoPanel")}</span>
-        </button>
-      ) : null}
-      {debugControlsVisible && enableRunDebugPanel ? (
-        <div className="run-debug-anchor" ref={runDebugRef}>
-          <button
-            className={`launch-preview-button run-debug-button${runDebugOpen ? " active" : ""}`}
-            type="button"
-            aria-label={t(
-              runDebugOpen ? "shell.hideDebug" : "shell.showDebug",
-            )}
-            aria-expanded={runDebugOpen}
-            onClick={onToggleRunDebug}
-          >
-            <Bug className="icon" />
-            <span>{t("shell.debug")}</span>
-          </button>
-          {runDebugOpen ? (
-            <RunDebugPanel
-              state={state}
-              phase={runDebugPhase}
-              events={runDebugEvents}
-              queuedMessages={queuedMessages}
-              guideMessages={guideMessages}
-              composerImages={composerImages}
-              composerFiles={composerFiles}
-              copied={runDebugCopied}
-              onCopy={onCopyRunDebug}
-              onClose={onCloseRunDebug}
-            />
-          ) : null}
-        </div>
-      ) : null}
-      <ChipGalleryPanel open={chipGalleryOpen} onClose={onCloseChipGallery} />
       <button
             ref={environmentToggleRef}
             className={`icon-button environment-toggle-button${environmentPanelVisible ? " active" : ""}`}

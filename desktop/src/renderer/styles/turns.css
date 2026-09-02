@@ -56,7 +56,6 @@
   --empty-home-title-font: Georgia, "Iowan Old Style", Palatino,
     "Songti SC", "Noto Serif SC", "Noto Serif CJK SC", serif;
   --project-empty-content-color: var(--wuu-color-text-muted, var(--gray-600));
-  --wuu-launch-exit-border: var(--wuu-border-subtle, var(--gray-300));
   --project-empty-actions-border: var(--wuu-border-subtle, var(--gray-300));
   --project-empty-actions-hover-bg: var(--gray-50);
   --diff-insert-bg: rgba(18, 161, 80, 0.08);
@@ -4091,22 +4090,6 @@ pre {
   background: linear-gradient(90deg, transparent, var(--success) 48%, var(--ink));
   content: "";
   animation: wuu-rail-scan 1200ms cubic-bezier(0.2, 0, 0, 1) infinite;
-}
-
-.wuu-launch-exit {
-  height: 34px;
-  border: 1px solid var(--wuu-launch-exit-border);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: var(--font-ui);
-  font-weight: var(--weight-medium);
-  padding: 0 12px;
-}
-
-.wuu-launch-exit:hover {
-  background: var(--surface-2);
-  color: var(--ink);
 }
 
 .view-switch-loading {

@@ -93,7 +93,6 @@ export function useConversationScrollState({
   primaryTurns,
   secondaryTurns,
   emptyConversation,
-  previewingLaunch,
   initialized,
   nativeScrollBounce = window.wuu?.platform === "darwin",
 }: {
@@ -103,7 +102,6 @@ export function useConversationScrollState({
   primaryTurns?: Turn[];
   secondaryTurns?: Turn[];
   emptyConversation: boolean;
-  previewingLaunch: boolean;
   initialized: boolean;
   /** Use the macOS/AppKit rubber band instead of synthesizing wheel motion. */
   nativeScrollBounce?: boolean;
@@ -912,7 +910,6 @@ export function useConversationScrollState({
     activeThreadID,
     emptyConversation,
     initialized,
-    previewingLaunch,
     primaryTurns,
     refreshPointerScrollGestureLayout,
     secondaryTurns,
@@ -978,7 +975,6 @@ export function useConversationScrollState({
   }, [
     dockComposerNode,
     emptyConversation,
-    previewingLaunch,
     initialized,
     scrollConversationToBottom
   ]);

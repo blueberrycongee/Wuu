@@ -62,31 +62,22 @@ function useAutonomousMascotActivity(primary: WuuMascotActivity): WuuMascotActiv
 }
 
 export function RuntimeLoading({
-  status,
-  pinned = false,
-  onExitPreview
+  status
 }: {
   status: string;
-  pinned?: boolean;
-  onExitPreview?: () => void;
 }): JSX.Element {
   const { t } = useI18n();
-  const isStarting = pinned || status === "connecting" || status === "opening";
+  const isStarting = status === "connecting" || status === "opening";
   return (
     <div className="project-empty-pane" data-wuu-component="launch-view">
       {isStarting ? (
-        <div className="wuu-launch" role="status" aria-label={pinned ? t("loading.launchPreview") : t("loading.starting")}>
+        <div className="wuu-launch" role="status" aria-label={t("loading.starting")}>
           <div className="wuu-launch-glass" aria-hidden="true">
             <WuuMascot
               className="wuu-launch-mascot"
               accessory="none"
             />
           </div>
-          {pinned && onExitPreview ? (
-            <button className="wuu-launch-exit" type="button" onClick={onExitPreview}>
-              {t("loading.exitPreview")}
-            </button>
-          ) : null}
         </div>
       ) : (
         <div className="project-empty-content">

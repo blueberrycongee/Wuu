@@ -115,7 +115,6 @@ function renderSidebar({
         projectMenuOpen={false}
         projectMenuRef={createRef<HTMLDivElement>()}
         searchOpen={false}
-        debugFixturesVisible={false}
         sectionOrder={sectionOrder}
         onStartNewThread={() => {}}
         onOpenSkillsTab={() => {}}
@@ -132,8 +131,6 @@ function renderSidebar({
         onOpenChannels={() => {}}
         onMarkThreadsViewed={() => {}}
         onToggleConversationSearch={() => {}}
-        onSeedConversationFixture={() => {}}
-        onOpenChipGallery={() => {}}
         onSelectThread={() => {}}
         onTogglePinned={() => {}}
         onArchiveThread={() => {}}

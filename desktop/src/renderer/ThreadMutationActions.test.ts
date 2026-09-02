@@ -92,14 +92,11 @@ function installWuuApi(baseThread: Thread): {
 function buildActions({
   initial,
   activeThreadID,
-  localDemoThreads = new Map<string, Thread>(),
 }: {
   initial: AppState;
   activeThreadID?: string;
-  localDemoThreads?: Map<string, Thread>;
 }) {
   let appState = initial;
-  const localDemoThreadsRef = { current: localDemoThreads };
   const clearPrimaryComposerDraft = vi.fn();
   const resetSplitComposerDrafts = vi.fn();
   const updateCachedSidebarThread = vi.fn();
@@ -112,7 +109,6 @@ function buildActions({
       appState = typeof update === "function" ? update(appState) : update;
     },
     getActiveThreadID: () => activeThreadID,
-    localDemoThreadsRef,
     nextDraftSessionTab: (context) =>
       createDraftSessionTab("draft:fallback", context),
     clearPrimaryComposerDraft,

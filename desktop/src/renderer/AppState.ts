@@ -3163,26 +3163,6 @@ function hasText(value: string): boolean {
   return value.trim() !== "";
 }
 
-function composerSubmissionDetail(imageCount: number, fileCount: number): string {
-  const parts = [
-    imageCount > 0
-      ? t(imageCount === 1 ? "appState.imageCountOne" : "appState.imageCount", {
-          count: formatCurrentNumber(imageCount),
-        })
-      : "",
-    fileCount > 0
-      ? t(fileCount === 1 ? "appState.fileCountOne" : "appState.fileCount", {
-          count: formatCurrentNumber(fileCount),
-        })
-      : "",
-  ].filter(Boolean);
-  return parts.length > 0
-    ? t("appState.submittedWith", {
-        contents: parts.join(t("appState.listSeparator")),
-      })
-    : t("appState.submitted");
-}
-
 function laterTimestamp(
   current: string,
   candidate: string | null | undefined,
@@ -3779,7 +3759,6 @@ export {
   cloneComposerDraft,
   cloneSessionTabDraft,
   composerDraftHasContent,
-  composerSubmissionDetail,
   conversationPaneThreadsByID,
   conversationSearchContextLabel,
   conversationSearchThreadMeta,

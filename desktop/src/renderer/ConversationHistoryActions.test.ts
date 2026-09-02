@@ -154,7 +154,6 @@ function buildActions({
   ];
   let splitDrafts = initialSplitComposerDrafts();
   
-  const localDemoThreadsRef = { current: new Map<string, Thread>() };
   const closeConversationSearch = vi.fn();
   const clearEnvironmentDialog = vi.fn();
   const scheduleGitStatusRefresh = vi.fn();
@@ -192,7 +191,6 @@ function buildActions({
       appState = typeof update === "function" ? update(appState) : update;
       appStateRef.current = appState;
     },
-    localDemoThreadsRef,
     getPendingFork: () => pendingForkState,
     setPendingFork: (update) => {
       pendingForkState =
@@ -247,7 +245,6 @@ function buildActions({
       splitDrafts,
       
     }),
-    localDemoThreadsRef,
     closeConversationSearch,
     clearEnvironmentDialog,
     scheduleGitStatusRefresh,
@@ -261,23 +258,6 @@ function buildActions({
 }
 
 describe("createConversationHistoryActions", () => {
-  it("localizes history action status in English", () => {
-    setActiveLocale("en-US");
-    const source = thread();
-    const harness = buildActions();
-    harness.localDemoThreadsRef.current.set(source.id, source);
-
-    harness.actions.startEditingThreadMessageFromHistory(
-      source,
-      "turn-1",
-      userItem(),
-    );
-
-    expect(resolveLocalizedText(harness.getAppState().status)).toBe(
-      "History cannot be edited in demo conversations",
-    );
-  });
-
   it("forks a pending conversation and clears the pending dialog", async () => {
     const source = thread("source-thread", {
       turns: [

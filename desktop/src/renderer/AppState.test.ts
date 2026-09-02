@@ -19,7 +19,6 @@ import {
   appendStreamingTokenSample,
   appendTurnTokenSample,
   composerDraftHasContent,
-  composerSubmissionDetail,
   conversationPaneThreadsByID,
   conversationSearchContextLabel,
   conversationSearchThreadMeta,
@@ -3938,9 +3937,6 @@ describe("AppState English localization", () => {
     expect(conversationSearchThreadMeta(scratchThread)).toBe("Pinned · Unknown time");
     expect(sessionTabLabel(draft, { ...initialState, projects: [] })).toBe(
       "Conversations",
-    );
-    expect(composerSubmissionDetail(1, 2)).toBe(
-      "Input submitted with 1 image, 2 files",
     );
     const attachmentPreview = turnPreview({
       id: "turn-attachments",

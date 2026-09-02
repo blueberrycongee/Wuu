@@ -106,7 +106,6 @@ import {
   activeTurnIDForThread,
   bindActiveSessionTabToThread,
   cloneSessionTabDraft,
-  composerSubmissionDetail,
   conversationPaneThreadsByID,
   createDraftSessionTab,
   emptyComposerDraft,
@@ -181,8 +180,6 @@ import { CommitChangesDialog, PullRequestDialog } from "./GitDialogs";
 import { motionDurationMs } from "./motion";
 import type { ContextCompositionEntry } from "./ContextCompositionCard";
 import type { InstructionFilesEntry } from "./InstructionFilesCard";
-import { DesignTokensPanel } from "./DesignTokensPanel";
-import { useAppDebugState } from "./AppDebugState";
 import {
   resolveDraftEngineMemory,
   writeDraftEngineMemory,
@@ -222,7 +219,6 @@ import { ConversationStatusCluster } from "./ConversationStatusCluster";
 import { externalAgentActivityStore } from "./ExternalAgentActivityStore";
 import { SkillsCatalog } from "./SkillsCatalog";
 import { skillsAssistantPrompt, userVisibleThreads } from "./SkillsAssistant";
-import { runDebugPhaseForState } from "./RunDebugPanel";
 import { useBrowserVisibility } from "./BrowserVisibility";
 import { useSideThreadController } from "./SideThreadController";
 import {
@@ -271,7 +267,7 @@ import { createSessionTabActions } from "./SessionTabActions";
 import { createThreadActivationActions } from "./ThreadActivationActions";
 import { createThreadMutationActions } from "./ThreadMutationActions";
 import { createRuntimeSettingsActions } from "./RuntimeSettingsActions";
-import { createConversationDemoPaneActions } from "./ConversationDemoPaneActions";
+import { createConversationPaneActions } from "./ConversationPaneActions";
 import {
   createConversationHistoryActions,
   type HistoryMessageEditState,
@@ -315,22 +311,6 @@ const ENVIRONMENT_PANEL_WIDTH_CSS = `${ENVIRONMENT_PANEL_WIDTH_PX}px`;
 // we collapse the tail into a single bar.
 const QUERY_HISTORY_RAIL_MAX_BARS = 20;
 type EnvironmentDialog = "commit" | "pull-request" | null;
-const RENDERER_ENV = (
-  import.meta as ImportMeta & {
-    env?: { DEV?: boolean; VITE_ENABLE_RUN_DEBUG_PANEL?: string };
-  }
-).env;
-const ENABLE_DEBUG_CONTROL_SETTING = Boolean(RENDERER_ENV?.DEV);
-const ENABLE_DEBUG_CONTROLS = Boolean(
-  RENDERER_ENV?.DEV || RENDERER_ENV?.VITE_ENABLE_RUN_DEBUG_PANEL === "true",
-);
-const ENABLE_LAUNCH_PREVIEW = Boolean(RENDERER_ENV?.DEV);
-const ENABLE_RUN_DEBUG_PANEL = Boolean(
-  RENDERER_ENV?.DEV || RENDERER_ENV?.VITE_ENABLE_RUN_DEBUG_PANEL === "true",
-);
-const ENABLE_CONVERSATION_FIXTURES = Boolean(RENDERER_ENV?.DEV);
-const ENABLE_TODO_PANEL_DEBUG = Boolean(RENDERER_ENV?.DEV);
-
 /**
  * True when a turn/start failure means the user has no usable model
  * configuration (no provider with a key, or model roles unresolved).
@@ -689,7 +669,6 @@ export function App(): JSX.Element {
     };
   }, [state.initialized]);
   const [projectFilter, setProjectFilter] = useState("");
-  const [launchPreviewPinned, setLaunchPreviewPinned] = useState(false);
   const {
     workspaceViewTabs,
     workspaceActiveViewTabID,
@@ -969,29 +948,6 @@ export function App(): JSX.Element {
     cancelViewSwitch,
     isCurrentViewSwitchRequest,
   } = useViewSwitchState();
-  const hideDebugControls = useCallback(() => {
-    setLaunchPreviewPinned(false);
-  }, []);
-  const {
-    debugControlsEnabled,
-    setDebugControlsEnabled,
-    debugControlsVisible,
-    runDebugOpen,
-    setRunDebugOpen,
-    chipGalleryOpen,
-    setChipGalleryOpen,
-    runDebugEvents,
-    runDebugCopied,
-    runDebugRef,
-    appendRunDebugEvent,
-    resetRunDebugEvents,
-    recordRunDebugEvent,
-    copyRunDebugInfo,
-  } = useAppDebugState({
-    enabled: ENABLE_DEBUG_CONTROLS,
-    forced: RENDERER_ENV?.VITE_ENABLE_RUN_DEBUG_PANEL === "true",
-    onHideDebugControls: hideDebugControls,
-  });
   const queryHistoryRailRef = useRef<HTMLDivElement | null>(null);
   const [queryHistoryOpen, setQueryHistoryOpen] = useState(false);
   const queryHistoryCloseTimerRef = useRef<number | undefined>(undefined);
@@ -1062,7 +1018,6 @@ export function App(): JSX.Element {
       })),
     sendComposerMessageToThread,
   });
-  const localDemoThreadsRef = useRef(new Map<string, Thread>());
   const runtimeVariantByModelRef = useRef(new Map<string, string>());
   const cachedThreadPaneHistoryRef = useRef<string[]>([]);
   const cachedConversationPaneThreadsRef = useRef(new Map<string, Thread>());
@@ -1874,7 +1829,6 @@ export function App(): JSX.Element {
       if (!serverEventTargetsActiveContext(event, appStateRef.current)) {
         return;
       }
-      recordRunDebugEvent(event);
       const handling = handleStreamingNotification(event, appStateRef.current);
       if (handling === "stream" || handling === "stream-state") {
         // The first visible delta still needs to mount and reveal the live
@@ -2055,9 +2009,6 @@ export function App(): JSX.Element {
           closeEnvironmentPanel();
         }
       }
-      if (runDebugOpen && !runDebugRef.current?.contains(target)) {
-        setRunDebugOpen(false);
-      }
     }
 
     window.addEventListener("pointerdown", handlePointerDown);
@@ -2070,7 +2021,6 @@ export function App(): JSX.Element {
     environmentPanelMenu,
     environmentPanelOpen,
     projectMenuOpen,
-    runDebugOpen,
     runtimeMenuOpen,
   ]);
 
@@ -2097,11 +2047,8 @@ export function App(): JSX.Element {
       state.projects.find((project) => project.id === state.activeProjectId),
     [state.activeProjectId, state.projects],
   );
-  const previewingLaunch =
-    debugControlsVisible && ENABLE_LAUNCH_PREVIEW && launchPreviewPinned;
   const showingSkillsCatalog = Boolean(
     state.initialized &&
-    !previewingLaunch &&
     currentSessionTab?.kind === "skills",
   );
   const showingManagementCatalog = showingSkillsCatalog;
@@ -2181,7 +2128,6 @@ export function App(): JSX.Element {
     useState(false);
   const mainConversationDockVisible =
     Boolean(state.initialized) &&
-    !previewingLaunch &&
     !emptyConversation &&
     !splitConversation &&
     !showingManagementCatalog &&
@@ -2237,7 +2183,6 @@ export function App(): JSX.Element {
     primaryTurns: state.thread?.turns,
     secondaryTurns: state.secondaryThread?.turns,
     emptyConversation,
-    previewingLaunch,
     initialized: Boolean(state.initialized),
   });
   const activeManagementTabID = showingManagementCatalog
@@ -2682,7 +2627,6 @@ export function App(): JSX.Element {
   const environmentPanelCanShow = Boolean(
     state.initialized &&
     !poppedOutMode &&
-    !previewingLaunch &&
     !rightPanelGlobalized &&
     !sideThreadPanelVisible,
   );
@@ -2696,7 +2640,7 @@ export function App(): JSX.Element {
   const environmentPanelMotionState: EnvironmentPanelMotionState =
     environmentPanelVisible ? "open" : "closing";
   const sessionTabsVisible = Boolean(
-    state.initialized && !previewingLaunch && !poppedOutMode && !compactNavigation,
+    state.initialized && !poppedOutMode && !compactNavigation,
   );
   const sidebarVisible = !poppedOutMode;
 
@@ -2737,8 +2681,6 @@ export function App(): JSX.Element {
   const pullRequestDisabledReason = pullRequestUnavailableReason(
     state.gitStatus,
   );
-  const runDebugPhase = runDebugPhaseForState(state);
-
   useLayoutEffect(() => {
     if (environmentPanelVisible) {
       setEnvironmentPanelMounted(true);
@@ -3182,7 +3124,6 @@ export function App(): JSX.Element {
     return (
       !thread.read_only &&
       !isThreadRunning(thread) &&
-      !localDemoThreadsRef.current.has(thread.id) &&
       !threadHasPendingComposerMessages(thread.id)
     );
   }
@@ -3265,7 +3206,6 @@ export function App(): JSX.Element {
     restorePrimaryComposerDraft,
     resetSplitComposerDrafts: () =>
       setSplitComposerDrafts(initialSplitComposerDrafts()),
-    getLocalDemoThread: (threadID) => localDemoThreadsRef.current.get(threadID),
     getSidebarThreads: () => sidebarThreads,
     getSidebarProjectThreadsByProjectID: () =>
       sidebarProjectThreadsByProjectID,
@@ -3605,7 +3545,6 @@ export function App(): JSX.Element {
     getAppState: () => appStateRef.current,
     setAppState: setState,
     getActiveThreadID: () => activeThreadID,
-    localDemoThreadsRef,
     nextDraftSessionTab,
     clearPrimaryComposerDraft: () =>
       restorePrimaryComposerDraft(emptyComposerDraft()),
@@ -3696,26 +3635,9 @@ export function App(): JSX.Element {
     setSettingsOpen,
   });
 
-  const {
-    seedConversationFixture,
-    seedTodoPanelDebug,
-    activateConversationPane,
-    closeConversationPane,
-  } = createConversationDemoPaneActions({
-    getAppState: () => appStateRef.current,
+  const { activateConversationPane, closeConversationPane } = createConversationPaneActions({
     setAppState: setState,
-    localDemoThreadsRef,
-    cancelViewSwitch,
-    
-    setPrompt,
-    setComposerImages,
-    setComposerFiles,
-    setSplitComposerDrafts,
     moveSplitDraftToGlobalComposer,
-    setRunDebugOpen,
-    setEnvironmentPanelOpen,
-    setEnvironmentPanelDismissed,
-    setEnvironmentPanelMenu,
   });
 
   const {
@@ -3727,7 +3649,6 @@ export function App(): JSX.Element {
   } = createConversationHistoryActions({
     appStateRef,
     setAppState: setState,
-    localDemoThreadsRef,
     getPendingFork: () => pendingFork,
     setPendingFork,
     setHistoryMessageEdit,
@@ -3855,13 +3776,6 @@ export function App(): JSX.Element {
     }
 
     enableConversationAutoFollow();
-    resetRunDebugEvents({
-      source: "client",
-      method: "client/compact",
-      detail: t("app.compactionStarting"),
-      tone: "running",
-      threadID: targetThread.id,
-    });
     appStateRef.current = {
       ...currentState,
       running: true,
@@ -3918,24 +3832,9 @@ export function App(): JSX.Element {
           { running: true, status: localizedText("app.compactingContext") },
         ),
       );
-      appendRunDebugEvent({
-        source: "client",
-        method: "thread/compact/start response",
-        detail: t("app.compactionAccepted"),
-        tone: "running",
-        threadID: targetThread.id,
-        turnID: result.turn.id,
-      });
     } catch (error) {
       const rawMessage = rawErrorMessage(error, t("composer.compactFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.compactFailed"));
-      appendRunDebugEvent({
-        source: "client",
-        method: "thread/compact/start failed",
-        detail: rawMessage,
-        tone: "error",
-        threadID: targetThread.id,
-      });
       const failedTurn = failOptimisticCompactTurn(
         optimisticTurn,
         rawMessage,
@@ -4131,13 +4030,6 @@ export function App(): JSX.Element {
       effort: draftEngineRuntime.effort || defaultExternalRuntime.effort,
     };
     requestSubmittedQueryScroll();
-    resetRunDebugEvents({
-      source: "client",
-      method: "client/send",
-      detail: composerSubmissionDetail(imageCount, files.length),
-      tone: "running",
-      threadID: targetThread?.id,
-    });
     appStateRef.current = {
       ...currentState,
       running: true,
@@ -4268,14 +4160,6 @@ export function App(): JSX.Element {
             ),
         ),
       );
-      appendRunDebugEvent({
-        source: "client",
-        method: "turn/start response",
-        detail: t("app.turnAccepted"),
-        tone: "running",
-        threadID: thread.id,
-        turnID: result.turn.id,
-      });
     } catch (error) {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
@@ -4288,13 +4172,6 @@ export function App(): JSX.Element {
           ),
           optimisticTurnID,
         );
-      appendRunDebugEvent({
-        source: "client",
-        method: interrupted ? "turn/start interrupted" : "turn/start failed",
-        detail: rawMessage,
-        tone: interrupted ? "warning" : "error",
-        threadID: targetThread?.id,
-      });
       const droppedState =
         optimisticTurnID && optimisticThreadID
           ? updateThreadByID(
@@ -4431,13 +4308,6 @@ export function App(): JSX.Element {
       return false;
     }
     enableConversationAutoFollow();
-    resetRunDebugEvents({
-      source: "client",
-      method: "client/send",
-      detail: composerSubmissionDetail(imageCount, files.length),
-      tone: "running",
-      threadID: targetThread.id,
-    });
     appStateRef.current = {
       ...currentState,
       activePane: pane,
@@ -4511,14 +4381,6 @@ export function App(): JSX.Element {
             ),
         ),
       );
-      appendRunDebugEvent({
-        source: "client",
-        method: "turn/start response",
-        detail: t("app.turnAccepted"),
-        tone: "running",
-        threadID: targetThread.id,
-        turnID: result.turn.id,
-      });
     } catch (error) {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
@@ -4531,13 +4393,6 @@ export function App(): JSX.Element {
           ),
           optimisticTurnID,
         );
-      appendRunDebugEvent({
-        source: "client",
-        method: interrupted ? "turn/start interrupted" : "turn/start failed",
-        detail: rawMessage,
-        tone: interrupted ? "warning" : "error",
-        threadID: targetThread.id,
-      });
       const droppedState = optimisticTurnID
         ? updateThreadByID(
             appStateRef.current,
@@ -4600,13 +4455,6 @@ export function App(): JSX.Element {
     const targetIsActive = activeThreadIDForState(currentState) === targetThread.id;
     if (targetIsActive) {
       enableConversationAutoFollow();
-      resetRunDebugEvents({
-        source: "client",
-        method: "client/send",
-        detail: composerSubmissionDetail(imageCount, files.length),
-        tone: "running",
-        threadID: targetThread.id,
-      });
       appStateRef.current = {
         ...currentState,
         running: true,
@@ -4680,16 +4528,6 @@ export function App(): JSX.Element {
           targetIsActive ? { running: true } : {},
         ),
       );
-      if (targetIsActive) {
-        appendRunDebugEvent({
-          source: "client",
-          method: "turn/start response",
-          detail: t("app.turnAccepted"),
-          tone: "running",
-          threadID: targetThread.id,
-          turnID: result.turn.id,
-        });
-      }
     } catch (error) {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
@@ -4701,15 +4539,6 @@ export function App(): JSX.Element {
           ),
           optimisticTurnID,
         );
-      if (targetIsActive) {
-        appendRunDebugEvent({
-          source: "client",
-          method: interrupted ? "turn/start interrupted" : "turn/start failed",
-          detail: rawMessage,
-          tone: interrupted ? "warning" : "error",
-          threadID: targetThread.id,
-        });
-      }
       const droppedState = optimisticTurnID
         ? updateThreadByID(
             appStateRef.current,
@@ -4822,8 +4651,6 @@ export function App(): JSX.Element {
           codexPets={codexPets}
           codexPetsLoading={codexPetsLoading}
           codexPetsError={codexPetsError}
-          showDebugControlsSetting={ENABLE_DEBUG_CONTROL_SETTING}
-          debugControlsEnabled={debugControlsEnabled}
           sidebarWidth={sidebarWidth}
           resizingSidebar={resizingSidebar}
           shellRef={settingsShellRef}
@@ -4849,7 +4676,6 @@ export function App(): JSX.Element {
           onGeneralSave={updateGeneralSettings}
           onCodexPetsRefresh={refreshCodexPets}
           onCodexPetsUpdate={updateCodexPets}
-          onDebugControlsChange={setDebugControlsEnabled}
           onSidebarResizeStart={startSidebarResize}
           onSidebarSeparatorKey={handleSidebarSeparatorKey}
           archivedThreads={state.threads
@@ -4996,9 +4822,6 @@ export function App(): JSX.Element {
             projectMenuOpen={projectMenuOpen}
             projectMenuRef={projectMenuRef}
             searchOpen={conversationSearch.open}
-            debugFixturesVisible={
-              debugControlsVisible && ENABLE_CONVERSATION_FIXTURES
-            }
             sectionOrder={sidebarSectionOrder}
             onStartNewThread={() => {
               revealConversationFromFocusedWorkspace();
@@ -5018,8 +4841,6 @@ export function App(): JSX.Element {
               setState((current) => markThreadSummariesViewed(current, threads));
             }}
             onToggleConversationSearch={toggleConversationSearch}
-            onSeedConversationFixture={seedConversationFixture}
-            onOpenChipGallery={() => setChipGalleryOpen(true)}
             onSelectThread={(id) => {
               revealConversationFromFocusedWorkspace();
               closeCompactSessionSwitcher();
@@ -5259,38 +5080,6 @@ export function App(): JSX.Element {
           </div>
           <ConversationTitleActions
             state={state}
-            debugControlsVisible={debugControlsVisible}
-            enableLaunchPreview={ENABLE_LAUNCH_PREVIEW}
-            previewingLaunch={previewingLaunch}
-            onPinLaunchPreview={() => setLaunchPreviewPinned(true)}
-            enableTodoPanelDebug={ENABLE_TODO_PANEL_DEBUG}
-            onSeedTodoPanelDebug={seedTodoPanelDebug}
-            enableRunDebugPanel={ENABLE_RUN_DEBUG_PANEL}
-            runDebugRef={runDebugRef}
-            runDebugOpen={runDebugOpen}
-            onToggleRunDebug={() => {
-              closeEnvironmentPanel();
-              setRunDebugOpen((open) => !open);
-            }}
-            runDebugPhase={runDebugPhase}
-            runDebugEvents={runDebugEvents}
-            queuedMessages={queuedMessages}
-            guideMessages={guideMessages}
-            composerImages={composerImages}
-            composerFiles={composerFiles}
-            runDebugCopied={runDebugCopied}
-            onCopyRunDebug={() =>
-              void copyRunDebugInfo({
-                state,
-                queuedMessages,
-                guideMessages,
-                composerImages,
-                composerFiles,
-              })
-            }
-            onCloseRunDebug={() => setRunDebugOpen(false)}
-            chipGalleryOpen={chipGalleryOpen}
-            onCloseChipGallery={() => setChipGalleryOpen(false)}
             environmentToggleRef={environmentToggleRef}
             environmentPanelVisible={environmentPanelVisible}
             onToggleEnvironmentPanel={toggleEnvironmentPanel}
@@ -5378,7 +5167,7 @@ export function App(): JSX.Element {
           />
         ) : null}
 
-        {state.initialized && !previewingLaunch ? (
+        {state.initialized ? (
           <div
             className={`scroll-region${emptyConversation ? " empty-scroll-region" : ""}${
               splitConversation ? " split-scroll-region" : ""
@@ -5538,8 +5327,6 @@ export function App(): JSX.Element {
         ) : (
           <RuntimeLoading
             status={resolveLocalizedText(state.status)}
-            pinned={previewingLaunch}
-            onExitPreview={() => setLaunchPreviewPinned(false)}
           />
         )}
 
@@ -5690,7 +5477,6 @@ export function App(): JSX.Element {
           onChoose={choosePendingFork}
         />
       ) : null}
-      {debugControlsVisible ? <DesignTokensPanel /> : null}
       {queryHistoryOpen &&
       !activeThreadReadOnly &&
       pastQueries.length > 0 ? (

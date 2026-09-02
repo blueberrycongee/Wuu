@@ -24,7 +24,6 @@ import { useLiveTextWave } from "./LiveTextWave";
 import { streamFieldValue } from "./ThreadItemText";
 import { TurnEventNotice } from "./TurnNotice";
 import { turnEventForItem } from "./TurnEvents";
-import { parseTurnTimestampMs } from "./RunDebugPanel";
 import {
   clearPausedTurnElapsed,
   formatChineseDuration,
@@ -58,6 +57,10 @@ import {
 
 const recoveredTurnStartedAt = new Map<string, number>();
 const MAX_RECOVERED_TURN_STARTS = 1_000;
+
+function parseTurnTimestampMs(value: string | null | undefined): number {
+  return value ? Date.parse(value) : NaN;
+}
 
 function recoveredTurnStart(turnID: string): number {
   const existing = recoveredTurnStartedAt.get(turnID);

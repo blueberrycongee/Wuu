@@ -128,8 +128,6 @@ export function SettingsView({
   engineInventory,
   engineInventoryError = "",
   runningProviderNames,
-  showDebugControlsSetting,
-  debugControlsEnabled,
   codexPets,
   codexPetsLoading,
   codexPetsError,
@@ -148,7 +146,6 @@ export function SettingsView({
   onGeneralSave,
   onCodexPetsRefresh,
   onCodexPetsUpdate,
-  onDebugControlsChange,
   onSidebarResizeStart,
   onSidebarSeparatorKey,
   archivedThreads,
@@ -174,8 +171,6 @@ export function SettingsView({
   engineInventory?: EngineListResult;
   engineInventoryError?: string;
   runningProviderNames?: readonly string[];
-  showDebugControlsSetting: boolean;
-  debugControlsEnabled: boolean;
   codexPets?: CodexPetsSnapshot;
   codexPetsLoading: boolean;
   codexPetsError: string;
@@ -194,7 +189,6 @@ export function SettingsView({
   onGeneralSave: (settings: RuntimeGeneralSettingsUpdate) => Promise<void>;
   onCodexPetsRefresh: () => Promise<CodexPetsSnapshot>;
   onCodexPetsUpdate: (settings: CodexPetSettingsUpdate) => Promise<CodexPetsSnapshot>;
-  onDebugControlsChange: (enabled: boolean) => void;
   onSidebarResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onSidebarSeparatorKey: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   // 归档页只读侧边栏归档清单 + 恢复回调。列表为空时渲染空态卡片。
@@ -1155,8 +1149,6 @@ export function SettingsView({
                 initialized={initialized}
                 running={running}
                 desktopBuild={desktopBuild}
-                showDebugControlsSetting={showDebugControlsSetting}
-                debugControlsEnabled={debugControlsEnabled}
                 mcpServers={mcpServers}
                 mcpLoading={mcpLoading}
                 mcpError={mcpError}
@@ -1164,7 +1156,6 @@ export function SettingsView({
                 codexPets={codexPets}
                 codexPetsLoading={codexPetsLoading}
                 codexPetsError={codexPetsError}
-                onDebugControlsChange={onDebugControlsChange}
                 onGeneralSave={onGeneralSave}
                 onMCPAction={runMCPAction}
                 onMCPAuthStart={startMCPAuth}
@@ -1941,8 +1932,6 @@ function SettingsGeneralPage({
   initialized,
   running,
   desktopBuild,
-  showDebugControlsSetting,
-  debugControlsEnabled,
   mcpServers,
   mcpLoading,
   mcpError,
@@ -1950,7 +1939,6 @@ function SettingsGeneralPage({
   codexPets,
   codexPetsLoading,
   codexPetsError,
-  onDebugControlsChange,
   onGeneralSave,
   onMCPAction,
   onMCPAuthStart,
@@ -1964,8 +1952,6 @@ function SettingsGeneralPage({
   initialized: InitializeResult | undefined;
   running: boolean;
   desktopBuild: DesktopBuildInfo | undefined;
-  showDebugControlsSetting: boolean;
-  debugControlsEnabled: boolean;
   mcpServers: MCPServerStatus[];
   mcpLoading: boolean;
   mcpError: string;
@@ -1973,7 +1959,6 @@ function SettingsGeneralPage({
   codexPets: CodexPetsSnapshot | undefined;
   codexPetsLoading: boolean;
   codexPetsError: string;
-  onDebugControlsChange: (enabled: boolean) => void;
   onGeneralSave: (settings: RuntimeGeneralSettingsUpdate) => Promise<void>;
   onMCPAction: (name: string, action: "connect" | "disconnect" | "refresh") => Promise<void>;
   onMCPAuthStart: (name: string) => Promise<MCPAuthStartResult | undefined>;
@@ -2385,60 +2370,6 @@ function SettingsGeneralPage({
           {mcpToggleError ? <div className="settings-mcp-empty settings-mcp-error">{mcpToggleError}</div> : null}
         </SettingsCard>
       </SettingsSection>
-
-      {showDebugControlsSetting ? (
-        <SettingsSection title={t("settings.development")}>
-          <SettingsCard>
-            <SettingsRow
-              title={t("settings.debugControls")}
-              description={t("settings.debugControlsDescription")}
-            >
-              <button
-                className="settings-switch"
-                type="button"
-                role="switch"
-                aria-checked={debugControlsEnabled}
-                onClick={() => onDebugControlsChange(!debugControlsEnabled)}
-              >
-                <span className="settings-switch-thumb" aria-hidden="true" />
-                <span className="sr-only">{debugControlsEnabled ? t("settings.disableDebugControls") : t("settings.enableDebugControls")}</span>
-              </button>
-            </SettingsRow>
-          </SettingsCard>
-        </SettingsSection>
-      ) : null}
-
-      {showDebugControlsSetting && debugControlsEnabled ? (
-        <SettingsSection title={t("settings.tools")} testID="settings-tool-surface">
-          <SettingsCard>
-            <SettingsRow
-              title={t("settings.profile")}
-              description={formatSurfaceRuntime(initialized, t)}
-            >
-              <span className="settings-row-control-value">
-                {initialized?.tool_surface?.profile_name ?? initialized?.model_profile?.profile_name ?? "—"}
-              </span>
-            </SettingsRow>
-            <SettingsRow
-              title={t("settings.editMethod")}
-              description={initialized?.tool_surface?.bash_first ? t("settings.editMethodBash") : t("settings.editMethodNative")}
-            >
-              <span className="settings-row-control-value">
-                {initialized?.tool_surface?.edit_primitive ?? initialized?.model_profile?.edit_primitive ?? "—"}
-              </span>
-            </SettingsRow>
-            <SettingsRow
-              title={t("settings.availableTools")}
-              description={formatToolSurfaceCounts(initialized, t)}
-              block
-            >
-              <span className="settings-row-control-value">
-                {formatToolSurfaceCapabilities(initialized, t)}
-              </span>
-            </SettingsRow>
-          </SettingsCard>
-        </SettingsSection>
-      ) : null}
 
       <SettingsSection title={t("settings.about")} testID="settings-about">
         <SettingsCard>
@@ -3450,36 +3381,6 @@ function formatBuildDate(iso: string): string {
     return iso;
   }
   return parsed.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "Z");
-}
-
-function formatSurfaceRuntime(initialized: InitializeResult | undefined, t: Translate): string {
-  if (!initialized) {
-    return t("tools.notConnected");
-  }
-  const provider = initialized.tool_surface?.provider || initialized.model_profile?.provider || initialized.provider;
-  const model = initialized.tool_surface?.model || initialized.model_profile?.model || initialized.model;
-  return `${provider} · ${model}`;
-}
-
-function formatToolSurfaceCounts(initialized: InitializeResult | undefined, t: Translate): string {
-  const surface = initialized?.tool_surface;
-  if (!surface) {
-    return t("tools.notConnected");
-  }
-  const visible = surface.tool_names.length;
-  const hidden = surface.hidden_tool_names.length;
-  return t("tools.counts", { visible, hidden });
-}
-
-function formatToolSurfaceCapabilities(initialized: InitializeResult | undefined, t: Translate): string {
-  const capabilities = initialized?.tool_surface?.capabilities ?? [];
-  if (capabilities.length === 0) {
-    return "—";
-  }
-  const shown = capabilities.slice(0, 4).join("、");
-  return capabilities.length > 4
-    ? t("tools.moreCapabilities", { shown, count: capabilities.length })
-    : shown;
 }
 
 function upsertMCPServerStatus(servers: MCPServerStatus[], status: MCPServerStatus): MCPServerStatus[] {

@@ -1,4 +1,4 @@
-import type { MutableRefObject, SetStateAction } from "react";
+import type { SetStateAction } from "react";
 import type { Thread } from "../shared/protocol";
 import {
   activeThreadIDForState,
@@ -22,7 +22,6 @@ export type ThreadMutationActionsDeps = {
   getAppState: () => AppState;
   setAppState: SetAppState;
   getActiveThreadID: () => string | undefined;
-  localDemoThreadsRef: MutableRefObject<Map<string, Thread>>;
   nextDraftSessionTab: (context: NonNullable<AppState["activeContext"]>) => SessionTab;
   clearPrimaryComposerDraft: () => void;
   resetSplitComposerDrafts: () => void;
@@ -82,19 +81,6 @@ export function createThreadMutationActions(
     showErrorToast(status);
   }
 
-  function upsertLocalDemoThread(thread: Thread): void {
-    deps.localDemoThreadsRef.current = new Map([
-      ...deps.localDemoThreadsRef.current,
-      [thread.id, thread],
-    ]);
-  }
-
-  function removeLocalDemoThread(threadID: string): void {
-    deps.localDemoThreadsRef.current = new Map(
-      [...deps.localDemoThreadsRef.current].filter(([id]) => id !== threadID),
-    );
-  }
-
   function clearActiveComposer(): void {
     deps.clearPrimaryComposerDraft();
     deps.resetSplitComposerDrafts();
@@ -113,23 +99,6 @@ export function createThreadMutationActions(
   async function toggleThreadPinned(thread: ThreadSummary): Promise<void> {
     const previousPinned = thread.pinned === true;
     const nextPinned = !previousPinned;
-    const localDemoThread = deps.localDemoThreadsRef.current.get(thread.id);
-    if (localDemoThread) {
-      const nextThread = { ...localDemoThread, pinned: nextPinned };
-      upsertLocalDemoThread(nextThread);
-      deps.setAppState((current) => ({
-        ...current,
-        thread: current.thread?.id === thread.id ? nextThread : current.thread,
-        secondaryThread:
-          current.secondaryThread?.id === thread.id
-            ? nextThread
-            : current.secondaryThread,
-        threads: upsertThread(current.threads, nextThread),
-        status: current.status === "ready" ? "ready" : current.status,
-      }));
-      return;
-    }
-
     // Pinning is a lightweight sidebar preference. Reflect it immediately so
     // the row moves between its workspace and the global pinned section on the
     // click that initiated the mutation, regardless of which tab/context is
@@ -196,22 +165,6 @@ export function createThreadMutationActions(
     if (!trimmed) {
       return;
     }
-    const localDemoThread = deps.localDemoThreadsRef.current.get(thread.id);
-    if (localDemoThread) {
-      const nextThread = { ...localDemoThread, title: trimmed };
-      upsertLocalDemoThread(nextThread);
-      deps.setAppState((current) => ({
-        ...current,
-        thread: current.thread?.id === thread.id ? nextThread : current.thread,
-        secondaryThread:
-          current.secondaryThread?.id === thread.id
-            ? nextThread
-            : current.secondaryThread,
-        threads: upsertThread(current.threads, nextThread),
-        status: current.status === "ready" ? "ready" : current.status,
-      }));
-      return;
-    }
     try {
       const result = await window.wuu.renameThread(thread.id, trimmed);
       deps.updateCachedSidebarThread(result.thread);
@@ -240,14 +193,13 @@ export function createThreadMutationActions(
     options?: ThreadArchiveOptions,
   ): Promise<ThreadArchiveOutcome> {
     const currentState = deps.getAppState();
-    const isLocalDemoThread = deps.localDemoThreadsRef.current.has(thread.id);
     if (!currentState.activeContext) {
       const error = translateCurrent("thread.archive.noWorkspace");
       setStatus(error);
       return { ok: false, error };
     }
     const force = options?.force === true;
-    if (!force && !isLocalDemoThread && isThreadRunning(thread)) {
+    if (!force && isThreadRunning(thread)) {
       const error = translateCurrent("thread.archive.running");
       setStatus(error);
       return { ok: false, error, forceRetryable: true };
@@ -259,17 +211,6 @@ export function createThreadMutationActions(
       : undefined;
     if (archivedActiveThread) {
       clearActiveComposer();
-    }
-    if (isLocalDemoThread) {
-      removeLocalDemoThread(thread.id);
-      deps.setAppState((current) => {
-        const nextTabs = removeSessionTab(
-          current.sessionTabs,
-          threadSessionTabID(thread.id),
-        );
-        return archiveMarkThreadState(current, thread.id, true, nextTabs, fallbackDraft);
-      });
-      return { ok: true };
     }
     // Reflect the archive in the visible lists on the click: the sidebar row
     // disappears and Settings → Archive gains the entry immediately. Pane and
@@ -325,27 +266,6 @@ export function createThreadMutationActions(
   }
 
   async function unarchiveThread(thread: Pick<ThreadSummary, "id">): Promise<void> {
-    const isLocalDemoThread = deps.localDemoThreadsRef.current.has(thread.id);
-    if (isLocalDemoThread) {
-      const localDemoThread = deps.localDemoThreadsRef.current.get(thread.id);
-      if (!localDemoThread) {
-        return;
-      }
-      const nextThread = { ...localDemoThread, archived: false };
-      upsertLocalDemoThread(nextThread);
-      deps.setAppState((current) => ({
-        ...current,
-        thread:
-          current.thread?.id === thread.id ? nextThread : current.thread,
-        secondaryThread:
-          current.secondaryThread?.id === thread.id
-            ? nextThread
-            : current.secondaryThread,
-        threads: upsertThread(current.threads, nextThread),
-        status: current.status === "ready" ? "ready" : current.status,
-      }));
-      return;
-    }
     // Un-archiving is optimistic: the Settings → Archive row leaves the list
     // and the thread rejoins the sidebar on the click, before the server
     // round-trip. The server response stays the persisted source of truth;
@@ -412,10 +332,9 @@ export function createThreadMutationActions(
 
   async function deleteThread(thread: ThreadSummary): Promise<void> {
     const currentState = deps.getAppState();
-    const isLocalDemoThread = deps.localDemoThreadsRef.current.has(thread.id);
     if (
       !currentState.activeContext ||
-      (!isLocalDemoThread && isThreadRunning(thread))
+      isThreadRunning(thread)
     ) {
       return;
     }
@@ -428,11 +347,7 @@ export function createThreadMutationActions(
       clearActiveComposer();
     }
     try {
-      if (isLocalDemoThread) {
-        removeLocalDemoThread(thread.id);
-      } else {
-        await window.wuu.deleteThread(thread.id);
-      }
+      await window.wuu.deleteThread(thread.id);
       deps.removeCachedSidebarThread(thread.id);
       deps.setAppState((current) => {
         const nextTabs = removeSessionTab(

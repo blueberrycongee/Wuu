@@ -50,12 +50,6 @@ async function run() {
   await loadFile(win, rendererHtml);
   await waitFor(win, () => Boolean(document.querySelector(".conversation-pane")), 5000);
 
-  const runDebugVisible = await evaluate(win, () => Boolean(document.querySelector(".run-debug-button")));
-  assert.equal(runDebugVisible, false, "Production desktop builds must not expose the internal run debug panel.");
-  const devFixturesVisible = await evaluate(win, () => Boolean(document.querySelector(".dev-fixture-nav")));
-  assert.equal(devFixturesVisible, false, "Production desktop builds must not expose development conversation fixtures.");
-  const planPanelDebugVisible = await evaluate(win, () => Boolean(document.querySelector(".plan-panel-debug-button")));
-  assert.equal(planPanelDebugVisible, false, "Production desktop builds must not expose the plan panel debug button.");
   await waitFor(
     win,
     () => {
@@ -871,7 +865,7 @@ async function run() {
     `;
     document.head.append(style);
     const probe = document.createElement("div");
-    probe.className = "resize-e2e-animation-probe launch-preview-button";
+    probe.className = "resize-e2e-animation-probe conversation-status-capsule";
     document.body.append(probe);
   });
   await evaluate(win, () => {

@@ -38,7 +38,6 @@ export type ThreadActivationActionsDeps = {
   getPrimaryComposerDraft: () => ComposerDraftState;
   restorePrimaryComposerDraft: (draft: ComposerDraftState) => void;
   resetSplitComposerDrafts: () => void;
-  getLocalDemoThread: (threadID: string) => Thread | undefined;
   getSidebarThreads: () => Thread[];
   getSidebarProjectThreadsByProjectID: () => SidebarProjectThreads;
   getRunningThreadIDs?: () => ReadonlySet<string>;
@@ -113,31 +112,6 @@ export function createThreadActivationActions(
     
     const outgoingDraft = deps.getPrimaryComposerDraft();
     const targetDraft = sessionTabDraftForThread(currentState, threadID);
-    const demoThread = deps.getLocalDemoThread(threadID);
-    if (demoThread) {
-      deps.cancelViewSwitch();
-      deps.restorePrimaryComposerDraft(targetDraft);
-      deps.resetSplitComposerDrafts();
-      deps.setAppState((current) => {
-        const withDraft = persistActiveSessionTabDraft(current, outgoingDraft);
-        return {
-          ...withDraft,
-          thread: demoThread,
-          secondaryThread: undefined,
-          activePane: "primary",
-          allowThreadAutoActivation: true,
-          sessionTabs: ensureSessionTab(
-            withDraft.sessionTabs,
-            createThreadSessionTab(demoThread, activeContext, targetDraft),
-          ),
-          activeSessionTabID: threadSessionTabID(demoThread.id),
-          threads: upsertThread(current.threads, demoThread),
-          running: isThreadRunning(demoThread),
-          status: "ready",
-        };
-      });
-      return;
-    }
     const sourceContext = currentState.activeContext;
     const localThread = currentThreadSnapshot(
       threadForTab(deps.getAppState(), threadID),
@@ -498,12 +472,10 @@ export function createThreadActivationActions(
     const sourceContext = currentState.activeContext;
     const requestID = deps.beginViewSwitch("thread", agent.id);
     try {
-      const thread =
-        deps.getLocalDemoThread(agent.id) ??
-        requireThread(
-          await window.wuu.resumeThread(agent.id),
-          translateCurrent("thread.childResumeMissing"),
-        );
+      const thread = requireThread(
+        await window.wuu.resumeThread(agent.id),
+        translateCurrent("thread.childResumeMissing"),
+      );
       if (
         !deps.finishViewSwitch(requestID) ||
         !sameRuntimeContext(deps.getAppState().activeContext, sourceContext)

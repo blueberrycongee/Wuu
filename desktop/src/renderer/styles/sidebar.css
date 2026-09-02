@@ -31,11 +31,6 @@
   --sidebar-brand-wordmark-color: var(--ink-strong);
   --sidebar-resizer-hover-bg: var(--ink-overlay-18);
   --sidebar-resizer-hover-ring: rgba(255, 255, 255, 0.4);
-  /* Dev fixtures: text + nav-border come from the shared ink ladder so they
-   * read as the same neutral as the rest of the chrome. Sage keeps living on
-   * the running-child-agent tokens below, where it carries meaning. */
-  --sidebar-dev-fixture-nav-border: var(--ink-overlay-12);
-  --sidebar-dev-fixture-button-color: var(--ink-tertiary);
   --sidebar-nav-item-hover-ring: var(--wuu-nav-item-hover-ring, rgba(255, 255, 255, 0.42));
   --sidebar-nav-item-focus-shadow: var(--focus-ring);
   /* One step deeper than the old overlay-6: the brighter frost fill washed
@@ -1240,32 +1235,10 @@
   flex: 0 0 auto;
 }
 
-.dev-fixture-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-  border-top: 1px solid var(--sidebar-dev-fixture-nav-border);
-  padding-top: 10px;
-}
-
-.dev-fixture-label {
-  color: var(--ink-muted);
-  font-size: var(--font-xs);
-  font-weight: var(--weight-semibold);
-  padding: 0 10px 2px;
-}
-
 .section-label {
   color: var(--ink-muted);
   font-size: var(--font-xs);
   font-weight: var(--weight-semibold);
-}
-
-.nav-item.dev-fixture-button {
-  height: 30px;
-  color: var(--sidebar-dev-fixture-button-color);
-  font-size: var(--font-sm);
 }
 
 /* Shared navigation and thread row spec. */

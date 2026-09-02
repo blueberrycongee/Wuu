@@ -63,7 +63,6 @@ function Probe({
     primaryTurns: makeLongTurns(),
     secondaryTurns: undefined,
     emptyConversation: false,
-    previewingLaunch: false,
     initialized: true,
     nativeScrollBounce,
   });
@@ -543,7 +542,6 @@ describe("useConversationScrollState — dock composer height", () => {
       primaryTurns: makeLongTurns(),
       secondaryTurns: undefined,
       emptyConversation: false,
-      previewingLaunch: false,
       initialized: true,
     });
     return createElement(

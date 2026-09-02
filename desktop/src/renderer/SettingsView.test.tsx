@@ -167,8 +167,6 @@ function renderSettings(props: {
         codexPetsError={props.codexPetsError ?? ""}
         onCodexPetsRefresh={async () => props.codexPets ?? emptyCodexPetsSnapshot()}
         onCodexPetsUpdate={props.onCodexPetsUpdate ?? (async () => props.codexPets ?? emptyCodexPetsSnapshot())}
-        showDebugControlsSetting={false}
-        debugControlsEnabled={false}
         sidebarWidth={320}
         sidebarMinWidth={240}
         sidebarMaxWidth={480}
@@ -185,7 +183,6 @@ function renderSettings(props: {
         onRefreshModelCatalog={props.onRefreshModelCatalog ?? (async () => {})}
         onAdvancedSave={props.onAdvancedSave ?? (async () => {})}
         onGeneralSave={props.onGeneralSave ?? (async () => {})}
-        onDebugControlsChange={() => {}}
         onSidebarResizeStart={noopResizeStart}
         onSidebarSeparatorKey={noopResizeKey}
         archivedThreads={props.archivedThreads ?? []}

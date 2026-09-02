@@ -125,7 +125,6 @@ function buildActions({
     getPrimaryComposerDraft: () => currentDraft,
     restorePrimaryComposerDraft,
     resetSplitComposerDrafts,
-    getLocalDemoThread: () => undefined,
     getSidebarThreads: () => sidebarThreads,
     getSidebarProjectThreadsByProjectID: () => sidebarProjectThreadsByProjectID,
     
