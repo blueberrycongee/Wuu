@@ -121,3 +121,40 @@ describe("buildAssistantTurnDisplay generated queries", () => {
     expect(display.entries.map((entry) => entry.kind)).toEqual(["commentary"]);
   });
 });
+
+describe("buildAssistantTurnDisplay compaction notices", () => {
+  it("keeps only the authoritative result when a legacy note status is also present", () => {
+    const noteStatus: ThreadItem = {
+      id: nextID("compact-note"),
+      type: "context_compaction",
+      status: "completed",
+      reason: "context_note",
+      text: "Context note used.",
+    };
+    const result: ThreadItem = {
+      id: nextID("compact-result"),
+      type: "context_compaction",
+      status: "completed",
+      reason: "proactive",
+      text: "Compacted history: 162 → 88 messages (~240k → ~123k tokens)",
+    };
+
+    const display = build(makeTurn("completed", [noteStatus, result]));
+
+    expect(display.entries.map((entry) => entry.item.id)).toEqual([result.id]);
+  });
+
+  it("keeps a standalone note status when there is no compact result", () => {
+    const noteStatus: ThreadItem = {
+      id: nextID("compact-note"),
+      type: "context_compaction",
+      status: "completed",
+      reason: "context_note",
+      text: "Context note updated.",
+    };
+
+    const display = build(makeTurn("completed", [noteStatus]));
+
+    expect(display.entries.map((entry) => entry.item.id)).toEqual([noteStatus.id]);
+  });
+});

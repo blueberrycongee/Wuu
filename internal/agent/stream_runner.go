@@ -640,6 +640,13 @@ func emitCompactionNoteEvent(onEvent StreamCallback, status string, noteErr erro
 	if onEvent == nil {
 		return
 	}
+	// Using (or synchronously generating) a note is an implementation detail of
+	// the compaction pass. OnCompact emits the authoritative completed event
+	// immediately afterward; surfacing both would complete the pending row here
+	// and force the real result into a second context-compaction row.
+	if status == "context_note" || status == "forced" {
+		return
+	}
 	// Stopping a turn also stops its hidden note fork. That is an expected
 	// interruption, not a compaction failure that should be shown to the user.
 	if status == "failed" && errors.Is(noteErr, context.Canceled) {

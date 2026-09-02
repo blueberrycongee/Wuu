@@ -87,6 +87,19 @@ func (cancellationNoteProvider) CompactWithNote(_ context.Context, _ string, mes
 	return CompactionNoteReplacement{Messages: messages, CoveredMessages: len(messages)}, nil
 }
 
+type replacementNoteProvider struct{ cancellationNoteProvider }
+
+func (replacementNoteProvider) CompactWithNote(_ context.Context, _ string, _ []providers.ChatMessage, note CompactionNote) (CompactionNoteReplacement, error) {
+	return CompactionNoteReplacement{
+		Messages: []providers.ChatMessage{{
+			Role:    "system",
+			Content: compact.BuildSummaryContent(note.Markdown),
+			Hidden:  true,
+		}},
+		CoveredMessages: 1,
+	}, nil
+}
+
 type cancellationNoteStore struct {
 	note       CompactionNote
 	storeCalls int
@@ -134,6 +147,49 @@ func TestCompactionNoteForkUsesStreamingProviderPath(t *testing.T) {
 	}
 	if !strings.Contains(result.Markdown, "Context note") || result.Usage == nil || result.Usage.OutputTokens != 4 {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestStreamRunnerNoteCompactionEmitsOneCompletedEvent(t *testing.T) {
+	history := []providers.ChatMessage{
+		{Role: "user", Content: "older request"},
+		{Role: "assistant", Content: "older response"},
+	}
+	store := &cancellationNoteStore{note: CompactionNote{
+		Markdown:        "# Existing note\n\nContinue the task.",
+		CoveredMessages: len(history),
+		CoveredHash:     CompactionHistoryHash(history),
+	}}
+	registry := NewCompactionRegistry()
+	registry.Register(replacementNoteProvider{})
+	runner := &StreamRunner{
+		Client:              &mockStreamClient{},
+		Model:               "test-model",
+		CompactionRegistry:  registry,
+		CompactionNoteStore: store,
+		ForceInitialCompact: true,
+		CompactOnly:         true,
+	}
+	var compactEvents []providers.StreamEvent
+	result, err := runner.RunWithCallback(context.Background(), history, func(event providers.StreamEvent) {
+		if event.Type == providers.EventCompact {
+			compactEvents = append(compactEvents, event)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.HistoryRewritten {
+		t.Fatal("expected note compaction to rewrite history")
+	}
+	if len(compactEvents) != 2 {
+		t.Fatalf("compact events = %+v, want one started and one completed event", compactEvents)
+	}
+	if compactEvents[0].CompactPhase != providers.CompactPhaseStarted || compactEvents[1].CompactPhase != providers.CompactPhaseCompleted {
+		t.Fatalf("compact event phases = %q, %q", compactEvents[0].CompactPhase, compactEvents[1].CompactPhase)
+	}
+	if compactEvents[1].Content == "" || strings.Contains(compactEvents[1].Content, "Context note") {
+		t.Fatalf("completed event should contain only the authoritative compaction result: %+v", compactEvents[1])
 	}
 }
 
