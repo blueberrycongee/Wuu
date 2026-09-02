@@ -568,6 +568,7 @@
    * close still works. */
   transition:
     background-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out),
     max-width var(--motion-base) var(--ease-out),
@@ -644,29 +645,9 @@
 }
 
 .workspace-tool-tab.active {
-  background: color-mix(in srgb, var(--surface-3) 78%, transparent);
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--workspace-tab-active-border);
   color: var(--ink);
-}
-
-.workspace-tool-tab::after {
-  /* Underline indicator shared by every tab — kept invisible on inactive tabs
-     so it can fade in/out when the active tab changes, instead of popping.
-     The pill radii on the top match the tab's own border-radius. */
-  content: "";
-  position: absolute;
-  right: 10px;
-  bottom: 0;
-  left: 10px;
-  height: 2px;
-  border-radius: var(--radius-pill) var(--radius-pill) 0 0;
-  background: var(--wuu-accent);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--motion-fast) var(--ease-out);
-}
-
-.workspace-tool-tab.active::after {
-  opacity: 1;
 }
 
 .workspace-tool-tab-main {
