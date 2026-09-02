@@ -114,6 +114,11 @@ export function turnEventForItem(item: ThreadItem): TurnEventDisplay | undefined
   return undefined;
 }
 
+export function isUnchangedContextCompaction(text?: string): boolean {
+  const normalized = (text ?? "").trim().replace(/^[✦*•]\s*/, "");
+  return /^Nothing to compact yet\b/i.test(normalized);
+}
+
 function latestTurnItemError(turn: Turn): string | undefined {
   for (let i = turn.items.length - 1; i >= 0; i--) {
     const item = turn.items[i];

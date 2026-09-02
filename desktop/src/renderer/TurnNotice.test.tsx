@@ -137,6 +137,18 @@ describe("ContextCompactionNotice", () => {
     expect(host.querySelector(".context-compaction-mascot")).toBeNull();
   });
 
+  it("does not render a completed compaction attempt that changed nothing", () => {
+    const host = mount(
+      <ContextCompactionNotice
+        status="completed"
+        reason="proactive"
+        text="Nothing to compact yet; history is unchanged."
+      />,
+    );
+
+    expect(host.childElementCount).toBe(0);
+  });
+
   it("shows both the old and replacement context token estimates", () => {
     const host = mount(
       <ContextCompactionNotice

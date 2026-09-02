@@ -123,6 +123,28 @@ describe("buildAssistantTurnDisplay generated queries", () => {
 });
 
 describe("buildAssistantTurnDisplay compaction notices", () => {
+  it("omits a completed compaction attempt that changed nothing", () => {
+    const commentary = makeCommentary("继续处理");
+    const unchanged: ThreadItem = {
+      id: nextID("compact-unchanged"),
+      type: "context_compaction",
+      status: "completed",
+      reason: "proactive",
+      text: "Nothing to compact yet; history is unchanged.",
+    };
+
+    const display = build(makeTurn("completed", [commentary, unchanged]));
+
+    expect(display.entries.map((entry) => entry.item.id)).toEqual([commentary.id]);
+    expect(
+      buildAssistantTurnDisplay(
+        makeTurn("completed", [unchanged]),
+        undefined,
+        stubRenderer,
+      ),
+    ).toBeUndefined();
+  });
+
   it("keeps only the authoritative result when a legacy note status is also present", () => {
     const noteStatus: ThreadItem = {
       id: nextID("compact-note"),

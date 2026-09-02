@@ -2,6 +2,7 @@ import { type JSX } from "react";
 import type { ThreadItem, Turn } from "../shared/protocol";
 import { streamFieldValue } from "./ThreadItemText";
 import { summarizeToolActivity } from "./ToolActivityHelpers";
+import { isUnchangedContextCompaction } from "./TurnEvents";
 import { isCancellationMessage } from "./UserFacingErrors";
 
 /**
@@ -118,6 +119,15 @@ export function buildAssistantTurnDisplay(
     if (seenItemIDs.has(item.id)) continue;
     seenItemIDs.add(item.id);
     if (item.type === "user_message") {
+      continue;
+    }
+    // A no-op completion exists only to settle the transient progress item.
+    // It changed no conversation state, so it should not become transcript
+    // history after the progress row closes.
+    if (
+      item.type === "context_compaction" &&
+      isUnchangedContextCompaction(item.text)
+    ) {
       continue;
     }
     // Older app-server versions completed the pending compact row once for

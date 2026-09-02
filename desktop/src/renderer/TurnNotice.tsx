@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ThreadItemStatus } from "../shared/protocol";
-import type { TurnEventDisplay } from "./TurnEvents";
+import { isUnchangedContextCompaction, type TurnEventDisplay } from "./TurnEvents";
 import type { UserFacingErrorDisplay, UserFacingErrorTone } from "./UserFacingErrors";
 import { translateCurrent as t } from "./i18n";
 import { ProcessSurfaceFold } from "./ProcessSurfaceFold";
@@ -119,7 +119,7 @@ export function ContextCompactionNotice({
    * shared process-surface body limit.
    */
   summary?: string;
-}): JSX.Element {
+}): JSX.Element | null {
   const normalized = normalizeContextCompactionText(text);
   const failed = status === "failed" || isFailedCompactNotice(normalized);
   const inProgress = status === "in_progress";
@@ -137,6 +137,9 @@ export function ContextCompactionNotice({
   ): void => {
     setExpanded(event.currentTarget.open);
   };
+  if (!inProgress && isUnchangedContextCompaction(text)) {
+    return null;
+  }
   return (
     <aside
       className={`process-surface context-compaction-notice ${state}`}
@@ -205,7 +208,7 @@ function contextCompactionTitle(
   if (isFailedCompactNotice(normalized)) {
     return t("compaction.failed");
   }
-  if (isUnchangedCompactNotice(normalized)) {
+  if (isUnchangedContextCompaction(normalized)) {
     return t("compaction.notNeeded");
   }
   if (isManualCompact(reason, normalized)) {
@@ -229,7 +232,7 @@ function contextCompactionDetail(
   if (isFailedCompactNotice(normalized)) {
     return t("compaction.failedDetail");
   }
-  if (isUnchangedCompactNotice(normalized)) {
+  if (isUnchangedContextCompaction(normalized)) {
     return t("compaction.notNeededDetail");
   }
   if (/^Compacted history$/i.test(normalized)) {
@@ -250,10 +253,6 @@ function isFailedCompactNotice(text: string): boolean {
   return /^(?:Manual context compaction|Context compaction|Proactive compact|Context-overflow compact|Compact) failed\b/i.test(
     text,
   );
-}
-
-function isUnchangedCompactNotice(text: string): boolean {
-  return /^Nothing to compact yet\b/i.test(text);
 }
 
 function isManualCompact(reason: string | undefined, text: string): boolean {
