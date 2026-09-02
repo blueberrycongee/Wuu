@@ -157,7 +157,6 @@ type PermissionModeOption = {
   label: string;
   chipLabel: string;
   icon: LucideIcon;
-  chipTone: ChipTone;
   tone: ChipTone;
 };
 
@@ -200,21 +199,18 @@ function permissionModeOptions(engine?: string): PermissionModeOption[] {
       mode: "standard",
       ...labels.standard,
       icon: Shield,
-      chipTone: "neutral",
       tone: "neutral"
     },
     {
       mode: "read_only",
       ...labels.read_only,
       icon: Eye,
-      chipTone: "neutral",
       tone: "neutral"
     },
     {
       mode: "unconfined",
       ...labels.unconfined,
       icon: TriangleAlert,
-      chipTone: "danger",
       tone: "danger"
     }
   ];

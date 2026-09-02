@@ -235,8 +235,6 @@
   --composer-project-search-bg: var(--wuu-control-field-background, #f8f8f6);
   --composer-project-search-placeholder: var(--wuu-color-text-muted, #9da1a4);
   --composer-project-menu-icon: var(--wuu-color-text-muted, #6b7176);
-  --composer-permission-mode-danger-border: rgba(180, 35, 24, 0.16);
-  --composer-permission-mode-danger-bg: #fff1ec;
   --composer-menu-note-warning-strong: var(--wuu-color-warning, #b45309);
   /* Accessory drawer upward shadow. Ink-sampled in light (a soft shade);
      redefined black-based in dark — an ink-colored shadow would read as a
@@ -1401,19 +1399,21 @@
   white-space: nowrap;
 }
 
+/* The tone belongs to the mode itself: unconfined keeps its danger-red label
+   at rest. Interaction stays quiet — hover and open use the same gray surface
+   as the other toolbar controls. */
 .permission-chip.tone-danger {
   color: var(--danger);
 }
 
-.permission-chip.tone-neutral:hover,
-.permission-chip.tone-neutral[aria-expanded="true"] {
-  background: var(--surface-2);
+.permission-chip:hover,
+.permission-chip[aria-expanded="true"] {
   color: var(--ink);
 }
 
 .permission-chip.tone-danger:hover,
 .permission-chip.tone-danger[aria-expanded="true"] {
-  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .permission-chip:disabled {
@@ -1794,28 +1794,18 @@
 }
 
 .composer-tool-button:hover:not(:disabled)::before,
-.permission-chip.tone-neutral:hover::before,
-.permission-chip.tone-neutral[aria-expanded="true"]::before,
+.permission-chip:hover::before,
+.permission-chip[aria-expanded="true"]::before,
 .hero-project-pill:hover::before,
 .hero-project-pill[aria-expanded="true"]::before {
   background: var(--surface-2);
 }
 
 .composer-tool-button:hover:not(:disabled),
-.permission-chip.tone-neutral:hover,
-.permission-chip.tone-neutral[aria-expanded="true"],
+.permission-chip:hover,
+.permission-chip[aria-expanded="true"],
 .hero-project-pill:hover,
 .hero-project-pill[aria-expanded="true"] {
-  background: transparent;
-}
-
-.permission-chip.tone-danger:hover::before,
-.permission-chip.tone-danger[aria-expanded="true"]::before {
-  background: var(--danger-soft);
-}
-
-.permission-chip.tone-danger:hover,
-.permission-chip.tone-danger[aria-expanded="true"] {
   background: transparent;
 }
 
@@ -2173,20 +2163,10 @@
   color: var(--danger);
 }
 
-.composer-context-menu .permission-mode-option[aria-checked="true"] {
-  border-color: var(--surface-4);
-  background: var(--surface-2);
-  color: var(--ink);
-}
-
-.composer-context-menu .permission-mode-option.danger:hover:not(:disabled) {
-  background: var(--danger-soft);
-}
-
-.composer-context-menu .permission-mode-option.danger[aria-checked="true"] {
-  border-color: var(--composer-permission-mode-danger-border);
-  background: var(--composer-permission-mode-danger-bg);
-}
+/* The permission-mode list carries no checked-state visual: the chip above the
+   composer already states the active mode, so hovering is the only in-list
+   affordance (generic gray hover above). The danger row's label keeps its
+   tone as an option cue. */
 
 .composer-context-menu button svg {
   width: 16px;

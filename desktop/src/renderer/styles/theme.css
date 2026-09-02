@@ -245,8 +245,6 @@
   --composer-project-search-bg: var(--wuu-control-field-background, #1b1e21);
   --composer-project-search-placeholder: var(--ink-tertiary);
   --composer-project-menu-icon: var(--wuu-color-text-muted, #9aa0a5);
-  --composer-permission-mode-danger-border: rgba(240, 112, 95, 0.3);
-  --composer-permission-mode-danger-bg: #341c18;
   --composer-menu-note-warning-strong: var(--wuu-color-warning, #e2a04a);
   --composer-accessory-shadow: rgba(0, 0, 0, 0.4);
   --composer-accessory-shadow-hover: rgba(0, 0, 0, 0.45);

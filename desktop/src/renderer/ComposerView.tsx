@@ -1202,7 +1202,7 @@ export function Composer({
                 {!textOnly && !hidePermissionControl ? (
                   <div className="permission-menu-anchor" ref={accessMenuRef}>
                     <button
-                      className={`permission-chip tone-${permissionOption.chipTone}`}
+                      className={`permission-chip tone-${permissionOption.tone}`}
                       type="button"
                       aria-haspopup="menu"
                       aria-expanded={accessMenuOpen}

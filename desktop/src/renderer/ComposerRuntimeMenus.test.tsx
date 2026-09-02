@@ -143,15 +143,12 @@ describe("RuntimePicker", () => {
     "reserves the danger tone for unconfined access regardless of engine (%s)",
     (engine) => {
       expect(permissionModeOption("standard", engine)).toMatchObject({
-        chipTone: "neutral",
         tone: "neutral",
       });
       expect(permissionModeOption("read_only", engine)).toMatchObject({
-        chipTone: "neutral",
         tone: "neutral",
       });
       expect(permissionModeOption("unconfined", engine)).toMatchObject({
-        chipTone: "danger",
         tone: "danger",
       });
     },
