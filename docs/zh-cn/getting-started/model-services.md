@@ -29,8 +29,10 @@
 - **Grok Build：**先运行 `grok login`，然后选择 Grok Build。Wuu 只读复用
   `GROK_HOME/auth.json` 或 `~/.grok/auth.json`，通过 Grok Build CLI chat proxy 调用模型，
   但继续使用 Wuu 自己的 agent loop。凭据过期后重新运行 `grok login`；Wuu 不会修改或
-  刷新 Grok CLI 的凭据。默认模型为 `grok-4.5`，也提供 `grok-4.6`；两者使用 500k
-  上下文和默认 `high` 思考强度，4.6 额外支持 `xhigh`。
+  刷新 Grok CLI 的凭据。桌面端检测到本机登录后会自动显示 Grok Build 服务，不需要
+  再次登录或手动新增；第一次选用时才把连接写入 Wuu 配置。默认模型为 `grok-4.5`，
+  也提供 `grok-4.6`；两者使用 500k 上下文和默认 `high` 思考强度，4.6 额外支持
+  `xhigh`。
 - **Anthropic：**选择 Anthropic 兼容类型，填写 Anthropic API Key 和模型 ID。
 - **OpenRouter、one-api 或其他网关：**选择 OpenAI 兼容类型，并填写网关端点、Key
   和它提供的模型 ID。

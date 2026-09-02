@@ -1194,6 +1194,7 @@ type ProviderSummary struct {
 	BaseURL          string                 `json:"base_url,omitempty"`
 	APIKeyConfigured bool                   `json:"api_key_configured,omitempty"`
 	ConnectionLocked bool                   `json:"connection_locked,omitempty"`
+	AutoDiscovered   bool                   `json:"auto_discovered,omitempty"`
 	Models           []ProviderModelSummary `json:"models,omitempty"`
 }
 

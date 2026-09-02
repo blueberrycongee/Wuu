@@ -1173,6 +1173,13 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	providerTypeValue := ""
 	var createBaseURL *string
 	creatingProvider := params.CreateProvider
+	autoDiscoveredGrokBuild := false
+	if !creatingProvider {
+		if _, discovered := localGrokBuildProvider(cfg, providerName, os.Getenv("HOME")); discovered {
+			creatingProvider = true
+			autoDiscoveredGrokBuild = true
+		}
+	}
 	if creatingProvider {
 		if providerName == "" {
 			return s.writeResponse(req.ID, nil, errors.New("provider is required"))
@@ -1188,7 +1195,9 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		// values are rejected so the UI cannot accidentally create a
 		// provider that the factory cannot service.
 		providerTypeValue = "openai-compatible"
-		if params.Type != nil {
+		if autoDiscoveredGrokBuild {
+			providerTypeValue = "grok-build"
+		} else if params.Type != nil {
 			requested := strings.ToLower(strings.TrimSpace(*params.Type))
 			switch requested {
 			case "", "openai", "openai-compatible":
@@ -2245,7 +2254,45 @@ func (s *Server) providerSummaries() []ProviderSummary {
 	if err != nil {
 		return nil
 	}
-	return providerSummariesFromConfig(cfg, os.Getenv("HOME"))
+	home := os.Getenv("HOME")
+	autoDiscovered := false
+	if provider, ok := localGrokBuildProvider(cfg, "grok-build", home); ok {
+		providers := make(map[string]config.ProviderConfig, len(cfg.Providers)+1)
+		for name, configured := range cfg.Providers {
+			providers[name] = configured
+		}
+		providers["grok-build"] = provider
+		cfg.Providers = providers
+		autoDiscovered = true
+	}
+	summaries := providerSummariesFromConfig(cfg, home)
+	if autoDiscovered {
+		for index := range summaries {
+			if summaries[index].Name == "grok-build" {
+				summaries[index].AutoDiscovered = true
+				break
+			}
+		}
+	}
+	return summaries
+}
+
+func localGrokBuildProvider(cfg config.Config, providerName, home string) (config.ProviderConfig, bool) {
+	if strings.TrimSpace(providerName) != "grok-build" {
+		return config.ProviderConfig{}, false
+	}
+	if _, exists := cfg.Providers[providerName]; exists {
+		return config.ProviderConfig{}, false
+	}
+	for _, provider := range cfg.Providers {
+		if config.IsGrokBuildProvider(provider.Type) {
+			return config.ProviderConfig{}, false
+		}
+	}
+	if _, err := grokbuild.LocalOAuthStatus(home); err != nil {
+		return config.ProviderConfig{}, false
+	}
+	return config.ApplyGrokBuildProviderDefaults(config.ProviderConfig{Type: "grok-build"}), true
 }
 
 func providerSummariesFromConfig(cfg config.Config, home string) []ProviderSummary {

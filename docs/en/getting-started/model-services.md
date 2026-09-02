@@ -32,8 +32,11 @@ the API prefix the service requires; follow that service's own documentation.
 - **Grok Build:** run `grok login`, then choose Grok Build. Wuu reads
   `GROK_HOME/auth.json` or `~/.grok/auth.json` without modifying it and calls the
   Grok Build CLI chat proxy while keeping Wuu's own agent loop. Run `grok login`
-  again when the credential expires. The default model is `grok-4.5`, with
-  `grok-4.6` also configured; both use a 500k context window and default `high`
+  again when the credential expires. The desktop automatically shows Grok Build
+  when it finds the local login, with no second login or manual provider setup;
+  the connection is written to Wuu's config only when first selected. The default
+  model is `grok-4.5`, with `grok-4.6` also configured; both use a 500k context
+  window and default `high`
   reasoning effort, while 4.6 also supports `xhigh`.
 - **Anthropic:** choose the Anthropic-compatible type and enter the Anthropic API key
   and model ID.

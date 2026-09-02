@@ -616,6 +616,41 @@ describe("SettingsView provider configuration", () => {
     );
   });
 
+  it("uses an auto-discovered local Grok login without an add or login step", () => {
+    installBuildInfoStub({
+      core: undefined,
+      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
+    });
+    renderSettings({
+      initialPage: "providers",
+      initialized: baseInitialized({
+        provider: "grok-build",
+        model: "grok-4.6",
+        providers: [{
+          name: "grok-build",
+          type: "grok-build",
+          model: "grok-4.6",
+          base_url: "https://cli-chat-proxy.grok.com/v1",
+          api_key_configured: true,
+          connection_locked: true,
+          auto_discovered: true,
+          models: [{
+            id: "grok-4.6",
+            supported_efforts: ["low", "medium", "high", "xhigh"],
+            default_variant: "high",
+          }],
+        }],
+      }),
+    });
+
+    expect(container.textContent).toContain("已找到 Grok Build CLI 登录");
+    expect(container.textContent).not.toContain("当前模型不支持思考");
+    const reasoning = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.getAttribute("aria-label") === "思考强度");
+    expect(reasoning?.disabled).toBe(false);
+    expect(container.querySelector(".settings-provider-remove")).toBeNull();
+  });
+
   it("shows an alert instead of removing a provider used by a running turn", async () => {
     installBuildInfoStub({
       core: undefined,

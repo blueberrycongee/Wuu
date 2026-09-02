@@ -1442,7 +1442,7 @@ function SettingsProvidersPage({
                 <small>{provider.model || t("provider.noModel")}</small>
                 <small>{providerConnectionStatus(provider, t)}</small>
               </button>
-              {onRemoveProvider && (!provider.connection_locked || isXAISubscriptionType(provider.type) || isGrokBuildType(provider.type)) ? (
+              {onRemoveProvider && !provider.auto_discovered && (!provider.connection_locked || isXAISubscriptionType(provider.type) || isGrokBuildType(provider.type)) ? (
                 <button
                   className="settings-provider-remove"
                   type="button"

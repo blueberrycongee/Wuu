@@ -1103,6 +1103,115 @@ func TestProviderSummariesExposeGrokBuildLoginAndModelDefaults(t *testing.T) {
 	}
 }
 
+func TestProviderSummariesAutoDiscoverLocalGrokBuildLogin(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GROK_HOME", "")
+	grokHome := filepath.Join(home, ".grok")
+	t.Setenv("GROK_HOME", grokHome)
+	if err := os.MkdirAll(grokHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(grokHome, "auth.json"), []byte(`{"https://accounts.x.ai/sign-in":{"key":"local-token"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := newTestRuntime(t, &fakeClient{})
+	cfg := config.Default()
+	delete(cfg.Providers, "grok-build")
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rt.ConfigPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	summaries := New(rt, &lockedBuffer{}).providerSummaries()
+	var discovered *ProviderSummary
+	for index := range summaries {
+		if summaries[index].Name == "grok-build" {
+			discovered = &summaries[index]
+			break
+		}
+	}
+	if discovered == nil {
+		t.Fatalf("auto-discovered Grok provider missing from %+v", summaries)
+	}
+	if !discovered.AutoDiscovered || !discovered.APIKeyConfigured || !discovered.ConnectionLocked {
+		t.Fatalf("auto-discovered Grok summary = %+v", discovered)
+	}
+	model := providerModelByID(t, *discovered, "grok-4.6")
+	if got := strings.Join(model.SupportedEfforts, ","); got != "low,medium,high,xhigh" {
+		t.Fatalf("grok-4.6 efforts = %q", got)
+	}
+}
+
+func TestProviderSummariesDoNotInventGrokBuildWithoutLocalLogin(t *testing.T) {
+	t.Setenv("GROK_HOME", filepath.Join(t.TempDir(), "missing"))
+	rt := newTestRuntime(t, &fakeClient{})
+	cfg := config.Default()
+	delete(cfg.Providers, "grok-build")
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rt.ConfigPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, summary := range New(rt, &lockedBuffer{}).providerSummaries() {
+		if summary.Name == "grok-build" {
+			t.Fatalf("unexpected Grok provider without local login: %+v", summary)
+		}
+	}
+}
+
+func TestSelectingAutoDiscoveredGrokBuildPersistsProvider(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GROK_HOME", "")
+	grokHome := filepath.Join(home, ".grok")
+	t.Setenv("GROK_HOME", grokHome)
+	if err := os.MkdirAll(grokHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(grokHome, "auth.json"), []byte(`{"https://accounts.x.ai/sign-in":{"key":"local-token"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := newTestRuntime(t, &fakeClient{})
+	cfg := config.Default()
+	delete(cfg.Providers, "grok-build")
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rt.ConfigPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	request := `{"id":"grok","method":"config/model/update","params":{"provider":"grok-build","model":"grok-4.6","variant":"xhigh"}}`
+	if err := srv.handleLine(context.Background(), []byte(request)); err != nil {
+		t.Fatalf("select auto-discovered Grok provider: %v", err)
+	}
+	response := responseByID(t, parseOutput(t, out.String()), "grok")
+	if response["error"] != nil {
+		t.Fatalf("select response = %+v", response)
+	}
+
+	persisted, _, err := config.LoadPath(rt.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, ok := persisted.Providers["grok-build"]
+	if !ok {
+		t.Fatalf("persisted providers = %+v", persisted.Providers)
+	}
+	if provider.Model != "grok-4.6" || !provider.ReuseGrokCredentials || provider.WireAPI != "chat" {
+		t.Fatalf("persisted Grok provider = %+v", provider)
+	}
+}
+
 func TestProviderSummariesExposeGPT56CatalogForCompatibleGateway(t *testing.T) {
 	cfg := config.Config{
 		DefaultProvider: "gateway",
