@@ -187,6 +187,41 @@ describe("TurnView", () => {
     ).toBe("true");
   });
 
+  it("reveals actions when a fast answer first mounts already completed", () => {
+    vi.useFakeTimers();
+    const userItem: ThreadItem = {
+      id: "user-1",
+      type: "user_message",
+      status: "completed",
+      text: "Reply quickly.",
+    };
+    const view = render(makeTurn("in_progress", [userItem]), true);
+
+    rerender(
+      makeTurn("completed", [userItem, makeFinalAnswer("Done.")]),
+      true,
+    );
+    act(() => {
+      vi.advanceTimersByTime(ASSISTANT_TURN_PRESENTATION_STABILIZE_MS);
+    });
+
+    expect(
+      view.querySelector(".agent-block")?.classList.contains("agent-actions-enter"),
+    ).toBe(true);
+  });
+
+  it("does not replay the action entrance for a historical completed answer", () => {
+    const view = render(
+      makeTurn("completed", [makeFinalAnswer("Already finished.")]),
+      true,
+    );
+
+    expect(view.querySelector(".agent-message-actions")).not.toBeNull();
+    expect(
+      view.querySelector(".agent-block")?.classList.contains("agent-actions-enter"),
+    ).toBe(false);
+  });
+
   it("does not focus a historical completed turn on initial mount", () => {
     const view = render(
       makeTurn("completed", [

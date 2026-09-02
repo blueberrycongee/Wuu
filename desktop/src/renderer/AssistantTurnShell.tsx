@@ -87,6 +87,7 @@ export function AssistantTurnShell({
   onOpenAgent,
   actionableAgentMessageID,
   latestAgentMessageID,
+  animateCompletionActions,
   onStreamFrame,
   onForkMessage,
   onCollapseComplete,
@@ -100,6 +101,7 @@ export function AssistantTurnShell({
   onOpenAgent?: (agentID: string) => void;
   actionableAgentMessageID?: string;
   latestAgentMessageID?: string;
+  animateCompletionActions?: boolean;
   onStreamFrame: () => void;
   onForkMessage?: (turnID: string, itemID: string) => void;
   onCollapseComplete?: () => void;
@@ -183,6 +185,7 @@ export function AssistantTurnShell({
     onOpenAgent,
     actionableAgentMessageID,
     latestAgentMessageID,
+    animateCompletionActions,
     onStreamFrame,
     onForkMessage,
     onCollapseComplete,
@@ -538,6 +541,7 @@ function EntryRenderer({
   onOpenAgent,
   actionableAgentMessageID,
   latestAgentMessageID,
+  animateCompletionActions,
   onStreamFrame,
   onForkMessage,
   editSummaryCard,
@@ -550,6 +554,7 @@ function EntryRenderer({
   onOpenAgent?: (agentID: string) => void;
   actionableAgentMessageID?: string;
   latestAgentMessageID?: string;
+  animateCompletionActions?: boolean;
   onStreamFrame: () => void;
   onForkMessage?: (turnID: string, itemID: string) => void;
   editSummaryCard?: JSX.Element;
@@ -612,6 +617,7 @@ function EntryRenderer({
         streaming={streaming}
         actionableAgentMessageID={actionableAgentMessageID}
         latestAgentMessageID={latestAgentMessageID}
+        animateCompletionActions={animateCompletionActions}
         onStreamFrame={onStreamFrame}
         onForkMessage={onForkMessage}
         editSummaryCard={

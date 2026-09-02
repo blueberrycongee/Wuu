@@ -69,6 +69,12 @@ interface ThreadItemViewProps {
   pendingCompanionReasoning?: boolean;
   actionableAgentMessageID?: string;
   latestAgentMessageID?: string;
+  /**
+   * The owning turn was submitted live in this mounted conversation. This
+   * lets an already-completed fast answer still play its one-shot action
+   * entrance without replaying that entrance for historical messages.
+   */
+  animateCompletionActions?: boolean;
   onStreamFrame: () => void;
   onForkMessage?: (turnID: string, itemID: string) => void;
   onEditMessage?: (turnID: string, item: ThreadItem) => void;
@@ -195,6 +201,7 @@ function BuiltInThreadItemView({
   pendingCompanionReasoning,
   actionableAgentMessageID,
   latestAgentMessageID,
+  animateCompletionActions,
   onStreamFrame,
   onForkMessage,
   onEditMessage,
@@ -209,7 +216,13 @@ function BuiltInThreadItemView({
   // Only a live item/turn completion handoff should animate. Historical
   // completed messages mount without this marker, so virtualized content does
   // not replay the entrance while the user scrolls.
-  const [settleEntered, setSettleEntered] = useState(false);
+  const [settleEntered, setSettleEntered] = useState(
+    () =>
+      Boolean(animateCompletionActions) &&
+      item.type === "agent_message" &&
+      item.status === "completed" &&
+      item.terminal === true,
+  );
   const previousTurnStatusRef = useRef(turnStatus);
   const previousItemStatusRef = useRef(item.status);
   useLayoutEffect(() => {

@@ -1541,15 +1541,29 @@
 
 /* CSS transitions do not run on initial mount. The live completion marker
  * supplies one paint-only rise and fade for the pair; historical turns never
- * receive it, and the zeroed motion tokens honor reduced-motion preferences. */
+ * receive it. A short delay lets the stream cursor begin settling first, so
+ * even a very fast answer reads as "text finished, actions available" rather
+ * than one abrupt burst. */
 .agent-actions-enter .agent-message-actions {
-  animation: agent-actions-reveal var(--motion-base) var(--ease-out) both;
+  animation: agent-actions-reveal var(--motion-base) var(--ease-out) 80ms both;
+}
+
+/* Keyboard focus must never land on a visually delayed control. */
+.agent-actions-enter .agent-message-actions:focus-within {
+  animation: none;
 }
 
 @keyframes agent-actions-reveal {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    pointer-events: none;
+    transform: translateY(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-actions-enter .agent-message-actions {
+    animation-delay: 0ms;
   }
 }
 

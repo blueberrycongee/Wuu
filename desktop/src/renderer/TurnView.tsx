@@ -120,6 +120,9 @@ function TurnContent({
         turn.items.some((item) => item.type === "user_message"),
     ),
   );
+  const animateCompletionActions = Boolean(
+    isLatestTurn && submissionFocusedRef.current,
+  );
   const actionableAgentMessageID =
     turn.status === "completed" || turnIsAnswerReady(turn)
       ? messageFlowAgentMessageItemID(turn)
@@ -157,6 +160,7 @@ function TurnContent({
         pendingCompanionReasoning={pendingCompanionReasoning}
         actionableAgentMessageID={actionableAgentMessageID}
         latestAgentMessageID={latestAgentMessageID}
+        animateCompletionActions={animateCompletionActions}
         onStreamFrame={onStreamFrame}
         onForkMessage={onForkMessage}
         onEditMessage={onEditMessage}
@@ -210,6 +214,7 @@ function TurnContent({
           onOpenFile={onOpenFile}
           actionableAgentMessageID={actionableAgentMessageID}
           latestAgentMessageID={latestAgentMessageID}
+          animateCompletionActions={animateCompletionActions}
           onStreamFrame={onStreamFrame}
           onForkMessage={onForkMessage}
           onCollapseComplete={onCollapseComplete}
