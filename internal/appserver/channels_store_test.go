@@ -1153,14 +1153,25 @@ func TestNamedAgentCoordinationSessionReturnsIdleAfterTurn(t *testing.T) {
 	if threadIsRunning(server.thread(sessionRef)) {
 		t.Fatal("coordination session turn did not finish")
 	}
-	binding, err := server.channelService.GetCollaborationSession(
-		context.Background(), recipient.Agent.ID, recipient.Token, sessionRef,
-	)
-	if err != nil {
-		t.Fatalf("GetCollaborationSession() error = %v", err)
-	}
-	if binding.State != channels.CollaborationSessionIdle || binding.RunID != "" {
-		t.Fatalf("completed coordination binding = %#v, want idle", binding)
+	// The idle transition is persisted after the turn's running flag clears —
+	// the completion path re-enters the named-agent lock and settles the store —
+	// so poll for the durable state instead of reading once inside that window.
+	deadline = time.Now().Add(5 * time.Second)
+	var binding channels.CollaborationSessionBinding
+	for {
+		binding, err = server.channelService.GetCollaborationSession(
+			context.Background(), recipient.Agent.ID, recipient.Token, sessionRef,
+		)
+		if err != nil {
+			t.Fatalf("GetCollaborationSession() error = %v", err)
+		}
+		if binding.State == channels.CollaborationSessionIdle && binding.RunID == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("completed coordination binding = %#v, want idle", binding)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
