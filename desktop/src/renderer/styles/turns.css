@@ -101,11 +101,12 @@
  * hover action overlays go (user actions above the bubble, agent
  * actions below the answer, both inside the 48px boundary band). Lift
  * the containment precisely when those overlays can be visible: while
- * the turn is hovered or holds focus. Off-screen turns keep the
- * rendering shortcut.
+ * the turn is hovered, holds focus, or keeps a latest-answer action
+ * bar visible. Off-screen turns keep the rendering shortcut.
  */
 .turn:hover,
-.turn:focus-within {
+.turn:focus-within,
+.turn:has(.agent-actions-persistent) {
   content-visibility: visible;
 }
 
@@ -1502,39 +1503,22 @@
 
 .agent-block-with-action-slot {
   position: relative;
-  display: grid;
   min-width: 0;
-  gap: var(--conversation-answer-action-gap);
 }
 
 /*
- * Only the persistent bar (latest completed answer, always visible)
- * earns in-flow space. Every other answer shows its actions on hover
- * as an overlay hanging below the last line, inside the 32px turn
- * boundary band — no reserved ghost row after every historical
- * answer. padding-top (not offset) keeps the hover chain unbroken
- * between the text and the row.
+ * Copy/fork hang below the whole answer block, including any attached
+ * edit-summary card, and paint into the existing turn-boundary band.
+ * padding-top (not offset) keeps the hover chain unbroken between the
+ * last in-flow content and the row. Latest answers stay visible; older
+ * ones wait for hover. Neither case reserves in-flow height, so the
+ * completed answer and composer stay put when the buttons appear.
  */
-.agent-actions-overlay > .agent-message-actions {
+.agent-block-with-action-slot > .agent-message-actions {
   position: absolute;
   top: 100%;
   left: 0;
   padding-top: var(--conversation-answer-hover-action-gap);
-}
-
-/* The persistent row consumes the space that already separates turns rather
- * than increasing the turn's total height when it mounts. This keeps the
- * completed answer and composer stationary while retaining a real in-flow hit
- * target for the always-visible actions. */
-.turn:has(.agent-actions-persistent) {
-  margin-bottom: max(
-    0px,
-    calc(
-      var(--conversation-turn-boundary-gap) -
-        var(--conversation-answer-action-gap) -
-        var(--conversation-message-action-size)
-    )
-  );
 }
 
 /* CSS transitions do not run on initial mount. The live completion marker

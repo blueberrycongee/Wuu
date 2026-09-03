@@ -371,9 +371,9 @@ function BuiltInThreadItemView({
       const actionsPersistent =
         actionsVisible &&
         (item.id === latestAgentMessageID || finalItemCompletedBeforeTurn);
-      // Only the persistent bar (latest answer, always visible) takes
-      // in-flow space; historical answers get a hover overlay so no
-      // invisible slot pads the turn boundary.
+      // Copy/fork always paint into the existing turn-boundary band.
+      // Latest answers stay visible; older ones appear on hover. Neither
+      // reserves in-flow height, so completion cannot shift auto-follow.
       return (
         <article
           data-wuu-component="message"

@@ -5110,7 +5110,7 @@ html.resizing-workspace-terminal-split * {
 
 .scroll-region:not(.empty-scroll-region):not(.workspace-scroll-region) .conversation-width {
   /* Reserve room for the floating dock composer so the last message's
-     persistent action row scrolls clear of it. The floating "jump to latest /
+     overlay action row stays clear of it. The floating "jump to latest /
      progress" pill cluster is intentionally NOT reserved here: it only mounts
      while the user is scrolled away and unmounts the instant they reach the
      bottom, so reserving its height would either jump the content on arrival

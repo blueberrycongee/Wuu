@@ -144,7 +144,8 @@
    * One spacing ladder, one value per meaning. These landmarks match
    * the visible message flow from top to bottom: user query -> assistant
    * reply (whitespace only, no rule), process header -> expanded details,
-   * process cluster -> final answer, final answer -> action row.
+   * process cluster -> final answer. Copy/fork overlay the turn
+   * boundary instead of adding a second in-flow row.
    * `--conversation-user-rule-gap` keeps its name for the query -> reply
    * gap (there is no longer a hairline rule; the 32px band stays under the
    * 48px turn boundary so a Q&A pair reads as one group).
@@ -156,7 +157,6 @@
   --conversation-process-answer-gap: 16px;
   /* Public message-action rhythm. Themes may tune these without depending on
    * the private action-bar DOM or taking over its interaction semantics. */
-  --conversation-answer-action-gap: var(--wuu-message-actions-block-gap, 12px);
   --conversation-answer-hover-action-gap: var(--wuu-message-actions-overlay-gap, 6px);
   --conversation-message-action-size: var(--wuu-message-action-size, 24px);
   --conversation-activity-gap: 8px;
