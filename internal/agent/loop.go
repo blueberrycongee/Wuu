@@ -1140,6 +1140,12 @@ func resolveEffectiveCompaction(cfg LoopConfig) CompactFn {
 				note, _, err = generateCompactionNote(
 					ctx, forked, cfg.CompactionNoteStore, cfg.ForkCompactionNote, cfg.Model, messages, true,
 				)
+				if errors.Is(err, ErrCompactionNoteSuperseded) {
+					note, valid, err = loadValidCompactionNote(ctx, cfg.CompactionNoteStore, forked.CompactionKey(), messages)
+					if err == nil && !valid {
+						err = ErrCompactionNoteSuperseded
+					}
+				}
 				if errors.Is(err, ErrCompactionNoteUnsupported) {
 					compacted, legacyErr := resolved.Compact(ctx, cfg.Model, messages)
 					if legacyErr == nil || !errors.Is(legacyErr, ErrCompactionUnavailable) {

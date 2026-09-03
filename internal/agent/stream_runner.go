@@ -23,6 +23,8 @@ type StreamCallback func(event providers.StreamEvent)
 
 const maxConsecutiveProactiveCompactFailures = 3
 
+const backgroundCompactionNoteTimeout = 20 * time.Minute
+
 // StreamRunner manages one multi-step coding turn with streaming.
 // It is a thin wrapper around RunToolLoop that supplies a streamStep
 // adapter (Step → providers.StreamClient.StreamChat with recovery),
@@ -194,8 +196,20 @@ type StreamRunner struct {
 	compactMu                sync.Mutex
 	proactiveCompactFailures int
 	noteMu                   sync.Mutex
+	noteInFlight             bool
+	notePending              *compactionNoteJob
+	backgroundNoteUsage      providers.TokenUsage
 
 	sysPromptMu sync.RWMutex
+}
+
+type compactionNoteJob struct {
+	ctx      context.Context
+	history  []providers.ChatMessage
+	provider ForkingCompactionProvider
+	store    CompactionNoteStore
+	model    string
+	fork     CompactionNoteFork
 }
 
 // Run executes one prompt with streaming tool-use loop.
@@ -401,6 +415,7 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 	}
 	contextWindowProvider := r.contextWindowProvider()
 	contextWindowsEnabled := contextWindowProvider != nil && r.CompactionNoteStore != nil && r.ArchiveHistory != nil && !policy.DisableCompaction
+	notePreparationEnabled := contextWindowProvider != nil && r.CompactionNoteStore != nil && !policy.DisableCompaction && !r.CompactOnly
 	beforeRequestContext := r.BeforeRequestContext
 	if contextWindowsEnabled {
 		beforeRequestContext = withContextWindowGuidance(beforeRequestContext)
@@ -601,6 +616,14 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 			return nil
 		}
 	}
+	if notePreparationEnabled {
+		backgroundFork := r.compactionNoteFork(nil)
+		backgroundStore := r.CompactionNoteStore
+		backgroundModel := requestModel
+		cfg.OnHistoryAdvanced = func(snapshot []providers.ChatMessage) {
+			r.scheduleCompactionNote(ctx, snapshot, contextWindowProvider, backgroundStore, backgroundModel, backgroundFork)
+		}
+	}
 	cfg.OnCompactionNote = func(status string, noteErr error) {
 		emitCompactionNoteEvent(effectiveOnEvent, status, noteErr)
 	}
@@ -633,26 +656,11 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 	if res.HistoryRewritten {
 		finalHistory = providers.CloneChatMessages(res.NewMessages)
 	}
-	if !r.CompactOnly {
-		if usage, noteErr := r.prepareCompactionNote(ctx, finalHistory, r.compactionNoteFork(res.RetainedRequestContext)); noteErr != nil {
-			if !errors.Is(noteErr, ErrCompactionNoteNotDue) {
-				providers.DebugLogf("context note update failed: %v", noteErr)
-				emitCompactionNoteEvent(effectiveOnEvent, "failed", noteErr)
-			}
-		} else if usage != nil {
-			emitCompactionNoteEvent(effectiveOnEvent, "updated", nil)
-			res.InputTokens += usage.InputTokens
-			res.OutputTokens += usage.OutputTokens
-			res.CacheCreationTokens += usage.CacheCreationTokens
-			res.CacheReadTokens += usage.CacheReadTokens
-			if r.OnUsage != nil {
-				r.OnUsage(usage.InputTokens, usage.OutputTokens)
-			}
-			if r.OnTokenUsage != nil {
-				r.OnTokenUsage(*usage)
-			}
-		}
-	}
+	backgroundUsage := r.takeBackgroundNoteUsage()
+	res.InputTokens += backgroundUsage.InputTokens
+	res.OutputTokens += backgroundUsage.OutputTokens
+	res.CacheCreationTokens += backgroundUsage.CacheCreationTokens
+	res.CacheReadTokens += backgroundUsage.CacheReadTokens
 	r.commitUsageTrackerForContract(runUsage, finalHistory, runUsageContract)
 	if r.AfterTurn != nil {
 		fullHistory := make([]providers.ChatMessage, 0, len(history)+len(res.NewMessages))
@@ -889,21 +897,59 @@ func (r *StreamRunner) freshContextBuilder(provider ForkingCompactionProvider, p
 	}
 }
 
-func (r *StreamRunner) prepareCompactionNote(ctx context.Context, history []providers.ChatMessage, fork CompactionNoteFork) (*providers.TokenUsage, error) {
-	if r == nil || r.CompactionRegistry == nil || r.CompactionNoteStore == nil {
-		return nil, ErrCompactionNoteNotDue
+func (r *StreamRunner) scheduleCompactionNote(ctx context.Context, history []providers.ChatMessage, provider ForkingCompactionProvider, store CompactionNoteStore, model string, fork CompactionNoteFork) {
+	if r == nil || provider == nil || store == nil || fork == nil {
+		return
 	}
-	provider, ok := r.CompactionRegistry.Resolve(nil).(ForkingCompactionProvider)
-	if !ok || provider == nil || !provider.CompactionNotesEnabled() {
-		return nil, ErrCompactionNoteNotDue
+	job := compactionNoteJob{
+		ctx: ctx, history: providers.CloneChatMessages(filterDurableHistory(history)),
+		provider: provider, store: store, model: model, fork: fork,
+	}
+	r.noteMu.Lock()
+	if r.noteInFlight {
+		r.notePending = &job
+		r.noteMu.Unlock()
+		return
+	}
+	r.noteInFlight = true
+	r.noteMu.Unlock()
+	r.startCompactionNoteJob(job)
+}
+
+func (r *StreamRunner) startCompactionNoteJob(job compactionNoteJob) {
+	backgroundCtx, cancel := context.WithTimeout(context.WithoutCancel(job.ctx), backgroundCompactionNoteTimeout)
+	go func() {
+		defer cancel()
+		_, usage, err := generateCompactionNote(backgroundCtx, job.provider, job.store, job.fork, job.model, job.history, false)
+		r.noteMu.Lock()
+		if usage != nil {
+			r.backgroundNoteUsage.InputTokens += usage.InputTokens
+			r.backgroundNoteUsage.OutputTokens += usage.OutputTokens
+			r.backgroundNoteUsage.CacheCreationTokens += usage.CacheCreationTokens
+			r.backgroundNoteUsage.CacheReadTokens += usage.CacheReadTokens
+		}
+		pending := r.notePending
+		r.notePending = nil
+		r.noteInFlight = pending != nil
+		r.noteMu.Unlock()
+		if err != nil && !errors.Is(err, ErrCompactionNoteNotDue) && !errors.Is(err, ErrCompactionNoteUnsupported) && !errors.Is(err, ErrCompactionNoteSuperseded) {
+			providers.DebugLogf("background context note update failed: %v", err)
+		}
+		if pending != nil {
+			r.startCompactionNoteJob(*pending)
+		}
+	}()
+}
+
+func (r *StreamRunner) takeBackgroundNoteUsage() providers.TokenUsage {
+	if r == nil {
+		return providers.TokenUsage{}
 	}
 	r.noteMu.Lock()
 	defer r.noteMu.Unlock()
-	_, usage, err := generateCompactionNote(ctx, provider, r.CompactionNoteStore, fork, r.requestModel(), filterDurableHistory(history), false)
-	if errors.Is(err, ErrCompactionNoteUnsupported) {
-		return nil, ErrCompactionNoteNotDue
-	}
-	return usage, err
+	usage := r.backgroundNoteUsage
+	r.backgroundNoteUsage = providers.TokenUsage{}
+	return usage
 }
 
 func (r *StreamRunner) requestModel() string {
@@ -918,8 +964,24 @@ func (r *StreamRunner) requestModel() string {
 // surface, and adds only a hidden tail instruction. Tool calls in the response
 // are rejected and never executed.
 func (r *StreamRunner) compactionNoteFork(retained *RetainedRequestContextState) CompactionNoteFork {
+	if r == nil {
+		return func(context.Context, []providers.ChatMessage, CompactionNotePlan) (CompactionNoteForkResult, error) {
+			return CompactionNoteForkResult{}, errors.New("context note runner is unavailable")
+		}
+	}
+	client, _ := r.providerConnectionSnapshot()
+	providerName := r.ProviderName
+	model := r.requestModel()
+	tools := toolDefinitions(r.Tools)
+	temperature := r.Temperature
+	effort := r.Effort
+	providerOptions := provideroptions.Clone(r.ProviderOptions)
+	nativeDeferredToolDiscovery := r.NativeDeferredToolDiscovery
+	mediaInput := r.MediaInput
+	beforeRequest := r.BeforeRequest
+	promptCacheKey := r.PromptCacheKey
+	inferenceJournal := r.InferenceJournal
 	return func(ctx context.Context, history []providers.ChatMessage, plan CompactionNotePlan) (CompactionNoteForkResult, error) {
-		client, _ := r.providerConnectionSnapshot()
 		if client == nil {
 			return CompactionNoteForkResult{}, errors.New("context note client is unavailable")
 		}
@@ -927,28 +989,29 @@ func (r *StreamRunner) compactionNoteFork(retained *RetainedRequestContextState)
 		if retained != nil && retained.validFor(messages) {
 			messages = spliceRetainedContext(messages, retained.Messages)
 		}
+		messages = annotateCompactionNoteHistorySeqs(messages)
 		messages = append(messages, providers.ChatMessage{
 			Role: "user", Content: strings.TrimSpace(plan.Prompt), Hidden: true, ReadOnly: true,
 			Origin: "internal", Cause: "compaction_note_fork",
 		})
 		req := providers.ChatRequest{
-			Provider:                    r.ProviderName,
-			Model:                       r.requestModel(),
+			Provider:                    providerName,
+			Model:                       model,
 			Messages:                    messages,
-			Tools:                       toolDefinitions(r.Tools),
-			Temperature:                 r.Temperature,
-			Effort:                      r.Effort,
-			ProviderOptions:             provideroptions.Clone(r.ProviderOptions),
-			NativeDeferredToolDiscovery: r.NativeDeferredToolDiscovery,
-			MediaInput:                  r.MediaInput,
+			Tools:                       tools,
+			Temperature:                 temperature,
+			Effort:                      effort,
+			ProviderOptions:             provideroptions.Clone(providerOptions),
+			NativeDeferredToolDiscovery: nativeDeferredToolDiscovery,
+			MediaInput:                  mediaInput,
 		}
 		if plan.MaxBytes > 0 {
 			req.MaxTokens = max(1024, plan.MaxBytes/3)
 		}
-		if r.BeforeRequest != nil {
+		if beforeRequest != nil {
 			forceBefore := strings.TrimSpace(req.ForceToolName)
 			forceAvailableBefore := requestHasTool(req.Tools, forceBefore)
-			if err := r.BeforeRequest(ctx, &req); err != nil {
+			if err := beforeRequest(ctx, &req); err != nil {
 				return CompactionNoteForkResult{}, fmt.Errorf("transform context note request: %w", err)
 			}
 			if err := validateTransformedRequest(req, forceBefore, forceAvailableBefore); err != nil {
@@ -956,10 +1019,10 @@ func (r *StreamRunner) compactionNoteFork(retained *RetainedRequestContextState)
 			}
 		}
 		cacheHint := buildCacheHint(req.Messages)
-		applyPromptCacheKeyOverride(&cacheHint, r.PromptCacheKey)
+		applyPromptCacheKeyOverride(&cacheHint, promptCacheKey)
 		req.CacheHint = cacheHint
 		req.Operation = providers.EnsureInferenceOperation(req.Operation, providers.InferenceOperationCompaction, providers.InferenceProfileContinuationCritical)
-		ctx = providers.WithInferenceJournal(ctx, r.InferenceJournal)
+		ctx = providers.WithInferenceJournal(ctx, inferenceJournal)
 		result, err := NewStreamStep(client).Execute(ctx, req)
 		if err != nil {
 			return CompactionNoteForkResult{Usage: result.Usage}, err

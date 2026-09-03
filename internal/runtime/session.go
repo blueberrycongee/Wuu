@@ -1497,6 +1497,23 @@ func (store sessionCompactionNoteStore) StoreCompactionNote(ctx context.Context,
 	return err
 }
 
+func (store sessionCompactionNoteStore) CompareAndSwapCompactionNote(ctx context.Context, providerKey string, expected agent.CompactionNote, expectedExists bool, replacement agent.CompactionNote) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	stored, err := session.CompareAndSwapCompactionNote(store.sessDir, session.CompactionNote{
+		SessionID: store.sessionID, ProviderKey: providerKey, Markdown: expected.Markdown,
+		CoveredMessages: expected.CoveredMessages, CoveredHash: expected.CoveredHash,
+	}, expectedExists, session.CompactionNote{
+		SessionID: store.sessionID, ProviderKey: providerKey, Markdown: replacement.Markdown,
+		CoveredMessages: replacement.CoveredMessages, CoveredHash: replacement.CoveredHash,
+	})
+	if errors.Is(err, session.ErrSessionNotFound) {
+		return false, nil
+	}
+	return stored, err
+}
+
 type sessionModelInputReceiptStore struct {
 	sessDir   string
 	sessionID string

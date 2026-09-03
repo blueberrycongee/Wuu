@@ -19,7 +19,7 @@ const (
 
 	conversationSummaryMark = "[Conversation summary]"
 
-	defaultCheckpointIntervalTokens = 12_000
+	defaultCheckpointIntervalTokens = 36_000
 	minimumCheckpointIntervalTokens = 2_000
 	maximumCheckpointIntervalTokens = 100_000
 	maxContextNoteBytes             = 24_000
@@ -105,11 +105,11 @@ func planNoteFork(ctx context.Context, host pluginapi.Host, input rawCompactionI
 	if previous == "" {
 		prompt = fmt.Sprintf(`You are a hidden context-note writing fork of the main agent. The conversation above is the source of truth.
 
-Write a self-contained continuation note in Markdown for a capable agent that may not receive the covered transcript. Preserve the user's objective and constraints, decisions and rationale, current implementation state, files and symbols involved, completed edits, commands and their results, external effects, blockers, and concrete next steps. Clearly distinguish verified facts from assumptions and never claim a check was run when it was not.
+Write a self-contained continuation note in Markdown for a capable agent that may not receive the covered transcript. Preserve the user's objective and constraints, decisions and rationale, current implementation state, files and symbols involved, completed edits, commands and their results, external effects, blockers, and concrete next steps. Preserve useful [History Seq N] references so exact source facts can be read later. Clearly distinguish verified facts from assumptions and never claim a check was run when it was not.
 
 Do not call tools. Return only the complete Markdown note, with no preamble or wrapping fence. This note covers the complete transcript above (%d messages).`, len(input.Messages))
 	} else {
-		prompt = fmt.Sprintf(`Update the previous context note using the final %d new transcript messages above. Return one complete replacement Markdown note, not an addendum. Do not call tools and do not add a preamble or wrapping fence.
+		prompt = fmt.Sprintf(`Update the previous context note using the final %d new transcript messages above. Preserve useful [History Seq N] references for exact recovery. Return one complete replacement Markdown note, not an addendum. Do not call tools and do not add a preamble or wrapping fence.
 
 Previous note:
 %s`, deltaCount, previous)

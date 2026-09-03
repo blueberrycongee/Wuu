@@ -92,52 +92,71 @@ func StoreCompactionNote(sessDir string, note CompactionNote) error {
 	return nil
 }
 
-// CopyCompactionNotesForFork copies only documents whose exact covered prefix
-// is present in the fork. The caller supplies the fork's provider-history hash
-// because session storage deliberately does not understand provider messages.
-func CopyCompactionNotesForFork(sessDir, sourceID, forkID string, coveredHash func(int) (string, bool)) error {
-	sourceID = strings.TrimSpace(sourceID)
-	forkID = strings.TrimSpace(forkID)
-	if sourceID == "" || forkID == "" || coveredHash == nil {
-		return nil
+// CompareAndSwapCompactionNote stores replacement only when the active note
+// still matches the version observed before a background model fork started.
+// expectedExists=false succeeds only when no active note exists.
+func CompareAndSwapCompactionNote(sessDir string, expected CompactionNote, expectedExists bool, replacement CompactionNote) (bool, error) {
+	replacement.SessionID = strings.TrimSpace(replacement.SessionID)
+	replacement.ProviderKey = strings.TrimSpace(replacement.ProviderKey)
+	replacement.Markdown = strings.TrimSpace(replacement.Markdown)
+	replacement.CoveredHash = strings.TrimSpace(replacement.CoveredHash)
+	if replacement.SessionID == "" || replacement.ProviderKey == "" || replacement.Markdown == "" || replacement.CoveredMessages < 0 || replacement.CoveredHash == "" {
+		return false, errors.New("compaction note requires session, provider, markdown, and a valid history anchor")
+	}
+	if expectedExists && (strings.TrimSpace(expected.Markdown) == "" || strings.TrimSpace(expected.CoveredHash) == "" || expected.CoveredMessages < 0) {
+		return false, errors.New("expected compaction note has an invalid history anchor")
+	}
+	if replacement.UpdatedAt.IsZero() {
+		replacement.UpdatedAt = time.Now().UTC()
 	}
 	db, err := openStore(sessDir)
 	if err != nil {
-		return err
+		return false, err
 	}
-	rows, err := db.Query(`
-		SELECT provider_key, markdown, covered_messages, covered_hash, updated_at
-		FROM session_compaction_notes WHERE session_id = ?`, sourceID)
+	defer db.Close()
+	storeWriteMu.Lock()
+	defer storeWriteMu.Unlock()
+	tx, err := db.Begin()
 	if err != nil {
-		db.Close()
-		return fmt.Errorf("load source compaction notes: %w", err)
+		return false, fmt.Errorf("begin compaction note compare-and-swap: %w", err)
 	}
-	var notes []CompactionNote
-	for rows.Next() {
-		var note CompactionNote
-		var updated string
-		if err := rows.Scan(&note.ProviderKey, &note.Markdown, &note.CoveredMessages, &note.CoveredHash, &updated); err != nil {
-			rows.Close()
-			db.Close()
-			return fmt.Errorf("scan source compaction note: %w", err)
-		}
-		if hash, ok := coveredHash(note.CoveredMessages); !ok || hash != note.CoveredHash {
-			continue
-		}
-		note.SessionID = forkID
-		note.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-		notes = append(notes, note)
+	defer tx.Rollback()
+	if ok, err := sessionExistsTx(tx, replacement.SessionID); err != nil {
+		return false, err
+	} else if !ok {
+		return false, fmt.Errorf("%w: %q", ErrSessionNotFound, replacement.SessionID)
 	}
-	rowsErr := rows.Err()
-	rows.Close()
-	db.Close()
-	if rowsErr != nil {
-		return fmt.Errorf("iterate source compaction notes: %w", rowsErr)
+
+	var result sql.Result
+	if expectedExists {
+		result, err = tx.Exec(`
+			UPDATE session_compaction_notes SET
+				markdown = ?, covered_messages = ?, covered_hash = ?, updated_at = ?
+			WHERE session_id = ? AND provider_key = ?
+			  AND markdown = ? AND covered_messages = ? AND covered_hash = ?`,
+			replacement.Markdown, replacement.CoveredMessages, replacement.CoveredHash, replacement.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			replacement.SessionID, replacement.ProviderKey,
+			strings.TrimSpace(expected.Markdown), expected.CoveredMessages, strings.TrimSpace(expected.CoveredHash),
+		)
+	} else {
+		result, err = tx.Exec(`
+			INSERT INTO session_compaction_notes (
+				session_id, provider_key, markdown, covered_messages, covered_hash, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT(session_id, provider_key) DO NOTHING`,
+			replacement.SessionID, replacement.ProviderKey, replacement.Markdown,
+			replacement.CoveredMessages, replacement.CoveredHash, replacement.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		)
 	}
-	for _, note := range notes {
-		if err := StoreCompactionNote(sessDir, note); err != nil {
-			return err
-		}
+	if err != nil {
+		return false, fmt.Errorf("compare and swap compaction note: %w", err)
 	}
-	return nil
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("inspect compaction note compare-and-swap: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit compaction note compare-and-swap: %w", err)
+	}
+	return changed == 1, nil
 }
