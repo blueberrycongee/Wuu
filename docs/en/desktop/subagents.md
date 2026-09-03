@@ -77,12 +77,19 @@ the background:
   main agent can do other work at the same time; when the subagent finishes, the system
   sends a completion notice instead of requiring repeated status checks.
 
+The main agent chooses this per task with `run_in_background`. Background is the
+default. When the next step depends on a child, the main agent sets it to `false`; the
+current tool call then waits and receives the child's terminal state, final output, and
+error directly. A foreground wait becomes background after five minutes so a slow or
+stuck child cannot block the parent indefinitely.
+
 The Subagent plugin contributes subtask state for the current parent session above the
-Composer and delivers completions as ordinary read-only query bubbles. A bubble only
-shows a summary such as "subtask A has updated"; the full handoff prompt goes only to
-the model input, and persisted records keep the plugin source and cause. Disabling the
-plugin withdraws the status slots, tools, prompts, and completion subscriptions
-together.
+Composer. Background completions arrive as ordinary read-only query bubbles. A bubble
+only shows a summary such as "subtask A has updated"; the full handoff prompt goes only
+to the model input. A foreground completion returns through the existing tool call and
+does not create a duplicate completion bubble. Persisted records keep the plugin source
+and cause. Disabling the plugin withdraws the status slots, tools, prompts, and
+completion subscriptions together.
 
 Stopping the main session's current reply is not disguised as product-specific control
 of sub-sessions. To terminate a subtask, the main agent uses the Subagent plugin's
