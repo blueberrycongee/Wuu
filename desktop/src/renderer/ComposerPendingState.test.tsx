@@ -140,6 +140,53 @@ describe("useComposerPendingState", () => {
     ).toEqual([message("queue-1", "First")]);
   });
 
+  it("cancels a queue submission before attachment preparation completes", async () => {
+    const dequeueTurn = vi.fn();
+    installWuuStub({ dequeueTurn });
+    const hook = await renderComposerPendingState();
+    act(() => {
+      hook.get().enqueueComposerMessage("thread-a", {
+        ...message("queue-1", "Cancel before send"),
+        operationState: "preparing",
+      });
+    });
+
+    let removed = false;
+    await act(async () => {
+      removed = await hook.get().removeQueuedMessage("queue-1");
+    });
+
+    expect(removed).toBe(true);
+    expect(dequeueTurn).not.toHaveBeenCalled();
+    expect(hook.get().pendingComposerMessagesByThread["thread-a"]).toBeUndefined();
+  });
+
+  it("cancels a guide submission before attachment preparation completes", async () => {
+    const unsteerTurn = vi.fn();
+    installWuuStub({ unsteerTurn });
+    const hook = await renderComposerPendingState();
+    act(() => {
+      hook.get().setPendingComposerMessagesByThreadNow({
+        "thread-a": {
+          queued: [],
+          guides: [{
+            ...message("guide-1", "Cancel before send"),
+            operationState: "preparing",
+          }],
+        },
+      });
+    });
+
+    let removed = false;
+    await act(async () => {
+      removed = await hook.get().removeGuideMessage("guide-1");
+    });
+
+    expect(removed).toBe(true);
+    expect(unsteerTurn).not.toHaveBeenCalled();
+    expect(hook.get().pendingComposerMessagesByThread["thread-a"]).toBeUndefined();
+  });
+
   it("deduplicates a held snapshot that arrives after the queue response", async () => {
     const hook = await renderComposerPendingState();
 
@@ -451,6 +498,49 @@ describe("useComposerPendingState", () => {
     );
   });
 
+  it("moves a pending guide back to the queue without changing its identity", async () => {
+    const requeueTurn = vi.fn().mockResolvedValue({
+      ok: true,
+      state: "queued",
+      queued: { id: "guide-1", thread_id: "thread-a" },
+    });
+    installWuuStub({ requeueTurn });
+    const runningThread = thread("thread-a", true);
+    const hook = await renderComposerPendingState({
+      appState: {
+        ...initialState,
+        thread: runningThread,
+        threads: [runningThread],
+      },
+    });
+    const guide = {
+      ...message("guide-1", "Send me next"),
+      origin: "steer" as const,
+      activeDocument: { path: "docs/next.md" },
+    };
+    act(() => {
+      hook.get().setPendingComposerMessagesByThreadNow({
+        "thread-a": { queued: [], guides: [guide] },
+      });
+    });
+
+    await act(async () => {
+      await hook.get().guideQueuedMessage("guide-1");
+    });
+
+    expect(requeueTurn).toHaveBeenCalledWith("thread-a", "guide-1");
+    const pending = hook.get().pendingComposerMessagesByThread["thread-a"];
+    expect(pending?.guides).toEqual([]);
+    expect(pending?.queued).toEqual([
+      expect.objectContaining({
+        id: "guide-1",
+        text: "Send me next",
+        origin: "queue",
+        activeDocument: { path: "docs/next.md" },
+      }),
+    ]);
+  });
+
   it("restores a queued message into the primary composer for editing", async () => {
     const dequeueTurn = vi.fn().mockResolvedValue({ ok: true });
     installWuuStub({ dequeueTurn });
@@ -605,52 +695,28 @@ describe("useComposerPendingState", () => {
     );
   });
 
-  it("dequeues before sending a queued message whose active turn ended", async () => {
-    const dequeueTurn = vi.fn().mockResolvedValue({ ok: true });
-    installWuuStub({ dequeueTurn });
+  it("leaves a queued message queued when there is no active turn to guide", async () => {
+    installWuuStub({});
     const hook = await renderComposerPendingState();
-    hook.sendComposerMessageToThread.mockResolvedValue(true);
 
     act(() => {
       hook
         .get()
-        .enqueueComposerMessage("thread-a", message("queue-1", "Send now"));
+        .enqueueComposerMessage("thread-a", message("queue-1", "Keep queued"));
     });
     await act(async () => {
       await hook.get().guideQueuedMessage("queue-1");
     });
 
-    expect(dequeueTurn).toHaveBeenCalledWith("thread-a", "queue-1");
-    expect(hook.sendComposerMessageToThread).toHaveBeenCalledWith(
-      message("queue-1", "Send now"),
-      expect.objectContaining({ id: "thread-a" }),
-    );
     expect(
-      hook.get().pendingComposerMessagesByThread["thread-a"],
-    ).toBeUndefined();
-  });
-
-  it("restores a dequeued message when immediate sending fails", async () => {
-    installWuuStub({
-      dequeueTurn: vi.fn().mockResolvedValue({ ok: true }),
-    });
-    const hook = await renderComposerPendingState();
-    hook.sendComposerMessageToThread.mockResolvedValue(false);
-
-    act(() => {
       hook
         .get()
-        .enqueueComposerMessage("thread-a", message("queue-1", "Retry me"));
-    });
-    await act(async () => {
-      await hook.get().guideQueuedMessage("queue-1");
-    });
-
-    expect(hook.restorePrimaryComposerDraft).toHaveBeenCalledWith({
-      prompt: "Retry me",
-      images: [],
-      files: [],
-    });
+        .pendingComposerMessagesByThread["thread-a"]?.queued,
+    ).toEqual([message("queue-1", "Keep queued")]);
+    expect(hook.sendComposerMessageToThread).not.toHaveBeenCalled();
+    expect(resolveLocalizedText(hook.setStatus.mock.calls[0][0] as string)).toBe(
+      "没有可引导的任务",
+    );
   });
 
   it("rolls back a queued message removal when dequeue fails", async () => {

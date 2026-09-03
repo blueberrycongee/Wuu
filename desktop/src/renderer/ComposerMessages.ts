@@ -87,6 +87,7 @@ export type QueuedComposerMessage = {
   held?: boolean;
   heldPosition?: number;
   origin?: "queue" | "steer";
+  operationState?: "preparing" | "sending" | "switching";
 };
 
 export function clipboardAttachmentFiles(event: ReactClipboardEvent<HTMLTextAreaElement>): File[] {

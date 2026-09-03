@@ -9,7 +9,6 @@ import {
   activeThreadIDForState,
   activeTurnIDForThread,
   composerDraftHasContent,
-  isThreadRunning,
   threadForTab,
   threadItemFromRecord,
   type AppState,
@@ -30,6 +29,7 @@ import {
   reconcilePendingComposerMessagesForThread,
   removePendingComposerMessagesByID,
   threadPendingComposerMessagesIsEmpty,
+  type LocatedPendingComposerMessage,
   type PendingComposerMessageRemovalScope,
   type PendingComposerMessagesByThread,
   type ThreadPendingComposerMessages,
@@ -209,7 +209,6 @@ export function useComposerPendingState({
   getPrimaryComposerDraft,
   restoreComposerDraftForThread,
   setStatus,
-  sendComposerMessageToThread,
 }: ComposerPendingStateOptions): ComposerPendingStateController {
   const [pendingComposerMessagesByThread, setPendingComposerMessagesByThread] =
     useState<PendingComposerMessagesByThread>({});
@@ -373,6 +372,13 @@ export function useComposerPendingState({
     if (!target) {
       return false;
     }
+    if (target.message.operationState === "preparing") {
+      updateThreadPendingComposerMessages(target.threadID, (previous) => ({
+        ...previous,
+        queued: previous.queued.filter((message) => message.id !== id),
+      }));
+      return true;
+    }
     const restoreTargetIfAbsent = (): void => {
       updateThreadPendingComposerMessages(target.threadID, (previous) => {
         if (
@@ -434,6 +440,13 @@ export function useComposerPendingState({
     );
     if (!target) {
       return false;
+    }
+    if (target.message.operationState === "preparing") {
+      updateThreadPendingComposerMessages(target.threadID, (previous) => ({
+        ...previous,
+        guides: previous.guides.filter((message) => message.id !== id),
+      }));
+      return true;
     }
     updateThreadPendingComposerMessages(target.threadID, (previous) => ({
       ...previous,
@@ -523,19 +536,27 @@ export function useComposerPendingState({
   }
 
   async function guideQueuedMessage(id: string): Promise<void> {
-    const target = findPendingComposerMessage(
+    const queuedTarget = findPendingComposerMessage(
       pendingComposerMessagesByThreadRef.current,
       id,
       "queue",
       activeThreadIDForState(getAppState()),
-    ) ??
-      findPendingComposerMessage(
-        pendingComposerMessagesByThreadRef.current,
-        id,
-        "guide",
-        activeThreadIDForState(getAppState()),
-      );
+    );
+    const guideTarget = findPendingComposerMessage(
+      pendingComposerMessagesByThreadRef.current,
+      id,
+      "guide",
+      activeThreadIDForState(getAppState()),
+    );
+    if (guideTarget && !guideTarget.message.held) {
+      await requeueGuideMessage(guideTarget);
+      return;
+    }
+    const target = queuedTarget ?? guideTarget;
     if (!target) {
+      return;
+    }
+    if (target.message.operationState) {
       return;
     }
     const currentState = getAppState();
@@ -543,20 +564,17 @@ export function useComposerPendingState({
     if (!targetThread) {
       return;
     }
-    if (!isThreadRunning(targetThread) && !target.message.held) {
-      if (!(await removeQueuedMessage(id))) {
-        return;
-      }
-      if (!(await sendComposerMessageToThread(target.message, targetThread))) {
-        restorePendingComposerMessage(target.threadID, target.message);
-      }
-      return;
-    }
     const turnID = activeTurnIDForThread(targetThread) ?? "";
     if (!turnID && !target.message.held) {
       setStatus(localizedText("composer.noActiveTurnToGuide"));
       return;
     }
+    updateThreadPendingComposerMessages(target.threadID, (previous) => ({
+      ...previous,
+      queued: previous.queued.map((message) =>
+        message.id === id ? { ...message, operationState: "switching" } : message,
+      ),
+    }));
     try {
       const files = inputFilesFromComposer(target.message.files);
       await window.wuu.steerTurn(
@@ -578,13 +596,72 @@ export function useComposerPendingState({
               ...withoutQueue,
               guides: previous.guides.filter((message) => message.id !== id),
             }
-          : appendPendingComposerMessage(withoutQueue, "guide", target.message);
+          : appendPendingComposerMessage(withoutQueue, "guide", {
+              ...target.message,
+              origin: "steer",
+              operationState: undefined,
+            });
       });
     } catch (error) {
+      updateThreadPendingComposerMessages(target.threadID, (previous) => ({
+        ...previous,
+        queued: previous.queued.map((message) =>
+          message.id === id ? { ...message, operationState: undefined } : message,
+        ),
+      }));
       setStatus(
         error instanceof Error
           ? error.message
           : translateCurrent("composer.guideFailed"),
+      );
+    }
+  }
+
+  async function requeueGuideMessage(
+    target: LocatedPendingComposerMessage,
+  ): Promise<void> {
+    const { id } = target.message;
+    if (target.message.operationState) {
+      return;
+    }
+    updateThreadPendingComposerMessages(target.threadID, (previous) => ({
+      ...previous,
+      guides: previous.guides.map((message) =>
+        message.id === id ? { ...message, operationState: "switching" } : message,
+      ),
+    }));
+    try {
+      const result = await window.wuu.requeueTurn(target.threadID, id);
+      if (!result.ok) {
+        updateThreadPendingComposerMessages(target.threadID, (previous) => ({
+          ...previous,
+          guides: previous.guides.filter((message) => message.id !== id),
+        }));
+        setStatus(localizedText("composer.guideAlreadyHandled"));
+        return;
+      }
+      updateThreadPendingComposerMessages(target.threadID, (previous) => {
+        const withoutGuide = {
+          ...previous,
+          guides: previous.guides.filter((message) => message.id !== id),
+        };
+        return appendPendingComposerMessage(withoutGuide, "queue", {
+          ...target.message,
+          origin: "queue",
+          operationState: undefined,
+        });
+      });
+    } catch (error) {
+      updateThreadPendingComposerMessages(target.threadID, (previous) => ({
+        ...previous,
+        guides: previous.guides.map((message) =>
+          message.id === id ? { ...message, operationState: undefined } : message,
+        ),
+      }));
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : translateCurrent("composer.requeueGuideFailed"),
       );
     }
   }
