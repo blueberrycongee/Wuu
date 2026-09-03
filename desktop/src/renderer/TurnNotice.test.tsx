@@ -69,12 +69,12 @@ describe("ContextCompactionNotice", () => {
     const host = mount(
       <ContextCompactionNotice
         status="completed"
-        text="Compacted history: 18 → 5 messages"
+        text="Compacted history: 18 → 5 messages (~12k → ~3k tokens)"
       />,
     );
 
     expect(host.querySelector(".context-compaction-title")?.textContent).toBe("Context compacted");
-    expect(host.querySelector(".context-compaction-detail")?.textContent).toContain("18 messages became 5");
+    expect(host.querySelector(".context-compaction-detail")?.textContent).toBe("12k → 3k");
   });
   it("renders the in_progress host with the shimmer-ready label when status is in_progress", () => {
     const host = mount(<ContextCompactionNotice status="in_progress" />);
@@ -130,7 +130,7 @@ describe("ContextCompactionNotice", () => {
     const title = host.querySelector(".context-compaction-title");
     expect(title?.textContent).toBe("上下文已压缩");
 
-    expect(host.querySelector(".context-compaction-detail")?.textContent).toContain("18 条消息整理为 5 条");
+    expect(host.querySelector(".context-compaction-detail")?.textContent).not.toContain("消息");
     expect(host.querySelector(".process-surface-row.is-live-gray")).toBeNull();
     expect(host.querySelector(".context-compaction-mascot")).toBeNull();
   });
@@ -156,8 +156,21 @@ describe("ContextCompactionNotice", () => {
     );
 
     expect(host.querySelector(".context-compaction-detail")?.textContent).toBe(
-      "已压缩较早上下文：119 条消息整理为 1 条，token 约从 239k 降至 49k",
+      "239k → 49k",
     );
+    expect(host.querySelector(".context-compaction-detail")?.textContent).not.toContain("消息");
+  });
+
+  it("shows the same token-only range after starting a fresh context", () => {
+    const host = mount(
+      <ContextCompactionNotice
+        status="completed"
+        reason="new_context"
+        text="✦ Started a fresh context window with history: 119 → 1 messages (~239k → ~49k tokens)"
+      />,
+    );
+
+    expect(host.querySelector(".context-compaction-detail")?.textContent).toBe("239k → 49k");
   });
 
   it("labels manual compact completion as success", () => {
@@ -172,9 +185,7 @@ describe("ContextCompactionNotice", () => {
     expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
       "压缩成功",
     );
-    expect(host.querySelector(".context-compaction-detail")?.textContent).toContain(
-      "18 条消息整理为 5 条",
-    );
+    expect(host.querySelector(".context-compaction-detail")?.textContent).not.toContain("消息");
   });
 
   it("labels failed manual compact status as failed", () => {
