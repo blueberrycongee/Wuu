@@ -199,9 +199,12 @@ export type ThreadSummary = Omit<
 
 type ThreadRunningCandidate = {
   status: Thread["status"];
-  turns?: Array<Pick<Turn, "status">>;
+  turns?: TurnAnswerReadyCandidate[];
   child_agents?: Array<Pick<Agent, "status" | "nested_running_count">>;
 };
+
+type TurnAnswerReadyCandidate = Pick<Turn, "status"> &
+  Partial<Pick<Turn, "answer_ready_at" | "items">>;
 
 type TurnTokenSample = {
   tokens: number;
@@ -2910,12 +2913,15 @@ export function agentRunning(
   }
 }
 
-function activeTurnForThread(thread: Thread | undefined): Turn | undefined {
-  if (!thread) {
+function activeTurnForThread<T extends Pick<Turn, "status">>(
+  thread: { turns?: T[] } | undefined,
+): T | undefined {
+  const turns = thread?.turns;
+  if (!turns) {
     return undefined;
   }
-  for (let index = thread.turns.length - 1; index >= 0; index -= 1) {
-    const turn = thread.turns[index];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
     if (turn.status === "in_progress") {
       return turn;
     }
@@ -2923,7 +2929,11 @@ function activeTurnForThread(thread: Thread | undefined): Turn | undefined {
   return undefined;
 }
 
-function turnIsAnswerReady(turn: Turn | undefined): boolean {
+function turnIsAnswerReady(
+  turn:
+    | Partial<Pick<Turn, "answer_ready_at" | "items">>
+    | undefined,
+): boolean {
   return Boolean(
     turn?.answer_ready_at ||
       turn?.items?.some(
@@ -2935,12 +2945,14 @@ function turnIsAnswerReady(turn: Turn | undefined): boolean {
   );
 }
 
-function activeTurnIsAnswerReady(thread: Thread | undefined): boolean {
+function activeTurnIsAnswerReady(
+  thread: { turns?: TurnAnswerReadyCandidate[] } | undefined,
+): boolean {
   return turnIsAnswerReady(activeTurnForThread(thread));
 }
 
 function isThreadPresentationRunning(
-  thread: Thread | undefined,
+  thread: ThreadRunningCandidate | undefined,
   aggregateRunning = false,
 ): boolean {
   // The terminal answer is the user-visible completion boundary. Runtime
@@ -3007,7 +3019,7 @@ function markThreadSummariesViewed(
 ): AppState {
   let nextLastViewed = state.lastViewedTurnByThreadID;
   for (const thread of threads) {
-    if (isThreadPresentationRunning(thread as Thread)) continue;
+    if (isThreadPresentationRunning(thread)) continue;
     const lastTurnID = latestCompletedTurnID(thread);
     if (!lastTurnID || nextLastViewed[thread.id] === lastTurnID) continue;
     if (nextLastViewed === state.lastViewedTurnByThreadID) {

@@ -2306,11 +2306,13 @@ export type HeldUserMessage = {
   images?: InputImage[];
   files?: InputFile[];
   content_parts?: MessageContentPart[];
+  active_document?: ActiveDocumentContext;
 };
 
 export type ThreadResumeResult = {
   thread: Thread;
   held_user_messages?: HeldUserMessage[];
+  pending_user_messages?: HeldUserMessage[];
 };
 
 export type ServerEvent = {
@@ -2959,6 +2961,10 @@ export type WuuDesktopApi = {
     contentParts?: MessageContentPart[],
   ) => Promise<{ turn_id: string }>;
   unsteerTurn: (threadId: string, steerId: string) => Promise<{ ok: boolean }>;
+  requeueTurn: (
+    threadId: string,
+    steerId: string,
+  ) => Promise<{ ok: boolean; state: "queued" | "consumed"; queued?: QueuedTurn }>;
   interruptTurn: (threadId: string) => Promise<{ ok: boolean }>;
   respondToServerRequest: (id: string, result: unknown) => Promise<void>;
   rejectServerRequest: (id: string, message: string) => Promise<void>;

@@ -2105,7 +2105,7 @@ describe("Composer queue strip", () => {
     expandPendingMessages();
 
     const guideButton = container.querySelector<HTMLButtonElement>(
-      "button[aria-label=\"转为引导 1\"]"
+      'button[aria-label="将消息 1 加入当前回复"]',
     );
     expect(guideButton).not.toBeNull();
 
@@ -2185,27 +2185,30 @@ describe("Composer queue strip", () => {
     expect(onEditQueuedMessage).toHaveBeenCalledWith("queue-1");
   });
 
-  it("cancels a guide from a single inline button click", () => {
+  it("moves a guide back to the queue from the reverse action", () => {
+    const onGuideQueuedMessage = vi.fn();
     const onRemoveGuideMessage = vi.fn();
     renderComposer({
       running: true,
       guideMessages: [
         { id: "guide-1", text: "已引导消息", images: [], files: [] }
       ],
-      onRemoveGuideMessage
+      onGuideQueuedMessage,
+      onRemoveGuideMessage,
     });
     expandPendingMessages();
 
-    const cancelButton = container.querySelector<HTMLButtonElement>(
-      "button[aria-label=\"取消引导 1\"]"
+    const requeueButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="将引导 1 改为下一条发送"]',
     );
-    expect(cancelButton).not.toBeNull();
+    expect(requeueButton).not.toBeNull();
 
     act(() => {
-      cancelButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      requeueButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
 
-    expect(onRemoveGuideMessage).toHaveBeenCalledWith("guide-1");
+    expect(onGuideQueuedMessage).toHaveBeenCalledWith("guide-1");
+    expect(onRemoveGuideMessage).not.toHaveBeenCalled();
   });
 
   it("does not render a per-row overflow menu (actions are inline)", () => {

@@ -975,6 +975,7 @@ export function App(): JSX.Element {
   });
   const {
     pendingComposerMessagesByThread,
+    pendingComposerMessagesByThreadRef,
     pendingComposerMessagesForThread: pendingComposerMessagesForActiveThread,
     updateThreadPendingComposerMessages,
     clearThreadPendingComposerMessages,
@@ -1864,8 +1865,8 @@ export function App(): JSX.Element {
           }
           const { heldComposerMessages, ...runtimeAppState } = loadedState;
           setState((current) => ({ ...current, ...runtimeAppState }));
-          if (loadedState.thread && heldComposerMessages?.length) {
-            seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages);
+          if (loadedState.thread) {
+            seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages ?? []);
           }
           return;
         }
@@ -1881,8 +1882,8 @@ export function App(): JSX.Element {
         setState((current) =>
           withLoadedRuntimeSessionTab(current, runtimeAppState),
         );
-        if (loadedState.thread && heldComposerMessages?.length) {
-          seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages);
+        if (loadedState.thread) {
+          seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages ?? []);
         }
       } catch (error) {
         if (!mounted) {
@@ -3887,9 +3888,27 @@ export function App(): JSX.Element {
     ) {
       return false;
     }
-    enqueueComposerMessage(targetThread.id, message);
+    enqueueComposerMessage(targetThread.id, {
+      ...message,
+      operationState: "preparing",
+    });
     try {
       const encodedImages = await awaitComposerImages(message.images);
+      if (
+        !pendingComposerMessagesByThreadRef.current[targetThread.id]?.queued.some(
+          (candidate) => candidate.id === message.id,
+        )
+      ) {
+        return true;
+      }
+      updateThreadPendingComposerMessages(targetThread.id, (previous) => ({
+        ...previous,
+        queued: previous.queued.map((candidate) =>
+          candidate.id === message.id
+            ? { ...candidate, operationState: "sending" }
+            : candidate,
+        ),
+      }));
       const images = inputImagesFromComposer(encodedImages);
       const result = await window.wuu.queueTurn(
         targetThread.id,
@@ -3909,19 +3928,27 @@ export function App(): JSX.Element {
                 ...candidate,
                 id: result.queued.id || message.id,
                 images: encodedImages,
+                operationState: undefined,
               }
             : candidate,
         ),
       }));
       return true;
     } catch (error) {
+      const stillPending = Boolean(
+        pendingComposerMessagesByThreadRef.current[targetThread.id]?.queued.some(
+          (candidate) => candidate.id === message.id,
+        ),
+      );
       removePendingComposerMessageByID(targetThread.id, message.id, "queue");
-      setState((current) => ({
-        ...current,
-        status:
-          error instanceof Error ? error.message : t("app.queueFailed"),
-      }));
-      return false;
+      if (stillPending) {
+        setState((current) => ({
+          ...current,
+          status:
+            error instanceof Error ? error.message : t("app.queueFailed"),
+        }));
+      }
+      return !stillPending;
     }
   }
 
@@ -3946,10 +3973,28 @@ export function App(): JSX.Element {
     }
     updateThreadPendingComposerMessages(targetThread.id, (previous) => ({
       ...previous,
-      guides: [...previous.guides, { ...message, origin: "steer" }],
+      guides: [
+        ...previous.guides,
+        { ...message, origin: "steer", operationState: "preparing" },
+      ],
     }));
     try {
       const encodedImages = await awaitComposerImages(message.images);
+      if (
+        !pendingComposerMessagesByThreadRef.current[targetThread.id]?.guides.some(
+          (candidate) => candidate.id === message.id,
+        )
+      ) {
+        return true;
+      }
+      updateThreadPendingComposerMessages(targetThread.id, (previous) => ({
+        ...previous,
+        guides: previous.guides.map((candidate) =>
+          candidate.id === message.id
+            ? { ...candidate, operationState: "sending" }
+            : candidate,
+        ),
+      }));
       await window.wuu.steerTurn(
         targetThread.id,
         turnID,
@@ -3964,19 +4009,26 @@ export function App(): JSX.Element {
         ...previous,
         guides: previous.guides.map((candidate) =>
           candidate.id === message.id
-            ? { ...candidate, images: encodedImages }
+            ? { ...candidate, images: encodedImages, operationState: undefined }
             : candidate,
         ),
       }));
       return true;
     } catch (error) {
+      const stillPending = Boolean(
+        pendingComposerMessagesByThreadRef.current[targetThread.id]?.guides.some(
+          (candidate) => candidate.id === message.id,
+        ),
+      );
       removePendingComposerMessageByID(targetThread.id, message.id, "guide");
-      setState((current) => ({
-        ...current,
-        status:
-          error instanceof Error ? error.message : t("composer.guideFailed"),
-      }));
-      return false;
+      if (stillPending) {
+        setState((current) => ({
+          ...current,
+          status:
+            error instanceof Error ? error.message : t("composer.guideFailed"),
+        }));
+      }
+      return !stillPending;
     }
   }
 

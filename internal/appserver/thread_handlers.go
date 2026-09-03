@@ -247,12 +247,15 @@ func (s *Server) writeThreadResumeResult(req Request, thread Thread) error {
 		s.startThreadPrewarm(th)
 	}
 	heldMessages := heldUserMessageSummaries(thread.ID, held)
-	result := ThreadResumeResult{Thread: thread, HeldUserMessages: heldMessages}
+	pendingMessages := s.pendingUserMessageSummaries(thread.ID)
+	result := ThreadResumeResult{
+		Thread: thread, HeldUserMessages: heldMessages, PendingUserMessages: pendingMessages,
+	}
 	if err := s.writeResponse(req.ID, result, nil); err != nil {
 		return err
 	}
 	if err := s.writeNotification(NotificationThreadResumed, ThreadResumedNotification{
-		Thread: thread, HeldUserMessages: heldMessages,
+		Thread: thread, HeldUserMessages: heldMessages, PendingUserMessages: pendingMessages,
 	}); err != nil {
 		return err
 	}

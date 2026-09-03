@@ -525,6 +525,8 @@ const api: WuuDesktopApi = {
     ),
   unsteerTurn: (threadId: string, steerId: string) =>
     ipcRenderer.invoke("wuu:turn-unsteer", threadId, steerId),
+  requeueTurn: (threadId: string, steerId: string) =>
+    ipcRenderer.invoke("wuu:turn-requeue", threadId, steerId),
   interruptTurn: (threadId: string) =>
     ipcRenderer.invoke("wuu:turn-interrupt", threadId),
   respondToServerRequest: (id: string, result: unknown) =>

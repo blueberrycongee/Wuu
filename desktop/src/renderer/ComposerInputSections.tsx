@@ -543,7 +543,7 @@ export function ComposerQueueStrip({
                 message={row.message}
                 kind={row.kind}
                 onGuide={
-                  row.kind === "queue" || row.message.held
+                  !row.message.operationState
                     ? () => onGuideQueuedMessage(row.message.id)
                     : undefined
                 }
@@ -589,7 +589,11 @@ function ComposerQueueItem({
     ? t("composer.editGuide", { position })
     : t("composer.editQueuedMessage", { position });
   return (
-    <li className={`composer-queue-row ${kind}`} data-position={position}>
+    <li
+      className={`composer-queue-row ${kind}`}
+      data-position={position}
+      aria-busy={Boolean(message.operationState)}
+    >
       <span className="composer-queue-index" aria-hidden="true">
         {position}
       </span>
@@ -602,6 +606,7 @@ function ComposerQueueItem({
           className="composer-queue-preview"
           aria-label={editContentLabel}
           onClick={onEdit}
+          disabled={Boolean(message.operationState)}
         >
           {queuedMessagePreview(message)}
         </button>
@@ -613,6 +618,7 @@ function ComposerQueueItem({
           aria-label={editLabel}
           title={t("common.edit")}
           onClick={onEdit}
+          disabled={Boolean(message.operationState)}
         >
           <PencilLine className="icon-sm" aria-hidden="true" />
         </button>
@@ -623,26 +629,24 @@ function ComposerQueueItem({
             aria-label={
               message.held
                 ? t("composer.continueHeld", { position })
-                : t("composer.convertToGuide", { position })
+                : kind === "guide"
+                  ? t("composer.convertToQueue", { position })
+                  : t("composer.convertToGuide", { position })
             }
             title={
               message.held
                 ? t("composer.continueHeldTitle")
-                : t("composer.convertToGuideTitle")
+                : kind === "guide"
+                  ? t("composer.convertToQueueTitle")
+                  : t("composer.convertToGuideTitle")
             }
             onClick={onGuide}
           >
-            <CornerDownRight className="icon-sm" aria-hidden="true" />
-          </button>
-        ) : kind === "guide" ? (
-          <button
-            type="button"
-            className="composer-queue-action composer-input-header-action"
-            aria-label={t("composer.cancelGuide", { position })}
-            title={t("composer.cancelGuideTitle")}
-            onClick={onRemove}
-          >
-            <CornerUpLeft className="icon-sm" aria-hidden="true" />
+            {kind === "guide" && !message.held ? (
+              <CornerUpLeft className="icon-sm" aria-hidden="true" />
+            ) : (
+              <CornerDownRight className="icon-sm" aria-hidden="true" />
+            )}
           </button>
         ) : null}
         <button
@@ -651,6 +655,7 @@ function ComposerQueueItem({
           aria-label={t("composer.removeQueuedMessage", { position })}
           title={t("common.remove")}
           onClick={onRemove}
+          disabled={message.operationState === "switching"}
         >
           <X className="icon-sm" aria-hidden="true" />
         </button>

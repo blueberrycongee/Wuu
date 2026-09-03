@@ -307,6 +307,8 @@ export class RemoteDesktopBridge {
         }),
       unsteerTurn: (threadId, steerId) =>
         this.call("turn/unsteer", { thread_id: threadId, steer_id: steerId }),
+      requeueTurn: (threadId, steerId) =>
+        this.call("turn/requeue", { thread_id: threadId, steer_id: steerId }),
       interruptTurn: (threadId) => this.call("turn/interrupt", { thread_id: threadId }),
 
       listUserQuestions: (threadId?: string) =>
