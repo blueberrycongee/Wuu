@@ -2105,7 +2105,7 @@ describe("Composer queue strip", () => {
     expandPendingMessages();
 
     const guideButton = container.querySelector<HTMLButtonElement>(
-      "button[aria-label=\"转为引导 1\"]"
+      'button[aria-label="将消息 1 加入当前回复"]',
     );
     expect(guideButton).not.toBeNull();
 
