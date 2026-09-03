@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/config"
+	"github.com/blueberrycongee/wuu/internal/modelbudget"
 	"github.com/blueberrycongee/wuu/internal/modelcatalog"
 	"github.com/blueberrycongee/wuu/internal/modelprofile"
 	"github.com/blueberrycongee/wuu/internal/modelvariant"
@@ -293,7 +294,12 @@ func BuildFacts(providerName string, provider config.ProviderConfig, model strin
 	profile := modelprofile.Resolve(ruleProviderName, model)
 	modelCfg := ruleProvider.Models[strings.TrimSpace(model)]
 	applyProviderLimits(&profile, ruleProvider, modelCfg)
-	return capabilitiesFromProfile(ruleProviderName, ruleProvider, modelCfg, profile), behaviorFromProfile(profile)
+	// Token ceilings must match runtime budgeting. Provider summaries and the
+	// composer meter read these capabilities; if they diverge from
+	// modelbudget.Resolve, the UI can show a catalog input limit (e.g. 922k)
+	// while turns actually clamp to the channel ceiling (e.g. Codex 272k).
+	budget := modelbudget.Resolve(model, ruleProvider, 0)
+	return capabilitiesFromProfile(ruleProviderName, ruleProvider, modelCfg, profile, budget), behaviorFromProfile(profile)
 }
 
 func resolveConfiguredRole(cfg config.Config, role Role, roleCfg config.ModelRoleConfig, main Selection) (Selection, error) {
@@ -388,7 +394,7 @@ func applyProviderLimits(profile *modelprofile.Profile, provider config.Provider
 	}
 }
 
-func capabilitiesFromProfile(providerName string, provider config.ProviderConfig, modelCfg config.ProviderModelConfig, profile modelprofile.Profile) Capabilities {
+func capabilitiesFromProfile(providerName string, provider config.ProviderConfig, modelCfg config.ProviderModelConfig, profile modelprofile.Profile, budget modelbudget.Budget) Capabilities {
 	toolCalling := string(profile.APIShape.ToolCalling)
 	tools := profile.APIShape.ToolCalling != modelprofile.ToolCallingNone
 	reasoning := profile.Reasoning.Budget != modelprofile.ReasoningBudgetNone ||
@@ -414,16 +420,14 @@ func capabilitiesFromProfile(providerName string, provider config.ProviderConfig
 		imageInput = containsString(modelCfg.Modalities.Input, "image")
 		fileInput = containsString(modelCfg.Modalities.Input, "pdf")
 	}
-	inputLimit := 0
-	outputLimit := profile.Context.MaxOutputTokens
-	if modelCfg.Limit != nil {
-		inputLimit = modelCfg.Limit.Input
-		if modelCfg.Limit.Output > 0 {
-			outputLimit = modelCfg.Limit.Output
-		}
+	contextWindow := budget.ContextWindowTokens
+	if contextWindow <= 0 {
+		contextWindow = profile.Context.WindowTokens
 	}
-	if provider.ContextWindow > 0 {
-		inputLimit = 0
+	inputLimit := budget.InputLimitTokens
+	outputLimit := budget.OutputLimitTokens
+	if outputLimit <= 0 {
+		outputLimit = profile.Context.MaxOutputTokens
 	}
 	cacheGranularity := ""
 	if profile.Context.CacheGranularity != modelprofile.CacheGranularityNone {
@@ -442,7 +446,7 @@ func capabilitiesFromProfile(providerName string, provider config.ProviderConfig
 		SystemRole:               profile.APIShape.SystemRole,
 		DeveloperRole:            profile.APIShape.DeveloperRole,
 		Reasoning:                reasoning,
-		ContextWindow:            profile.Context.WindowTokens,
+		ContextWindow:            contextWindow,
 		InputLimit:               inputLimit,
 		OutputLimit:              outputLimit,
 		ImageInput:               imageInput,

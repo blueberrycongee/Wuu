@@ -58,8 +58,9 @@ export function providerModelDisplayName(model?: ProviderModelSummary): string {
 
 // Resolve the ceiling for the exact provider/model shown in a conversation.
 // Workspace advanced settings describe the default runtime and can belong to a
-// different model after a conversation switch. Keep this calculation aligned
-// with the backend: a published input limit clamps the model context window.
+// different model after a conversation switch. Provider summaries already carry
+// the backend-budgeted ceilings (including channel clamps), so this helper only
+// picks the smaller published input limit when one is present.
 export function providerModelContextWindow(
   initialized: InitializeResult | undefined,
   providerName: string | undefined,

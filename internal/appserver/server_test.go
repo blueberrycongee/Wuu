@@ -1391,6 +1391,41 @@ func TestProviderSummariesExposeCodexSubscriptionAliasesOnly(t *testing.T) {
 	}
 }
 
+func TestProviderSummariesClampCodexCatalogInputLimit(t *testing.T) {
+	cfg := config.Config{
+		DefaultProvider: "openai-codex",
+		Providers: map[string]config.ProviderConfig{
+			"openai-codex": {
+				Type:    "openai-codex",
+				BaseURL: "https://chatgpt.com/backend-api/codex",
+				Model:   "gpt-5.6-sol",
+				Models: map[string]config.ProviderModelConfig{
+					"gpt-5.6-sol": {
+						ContextWindow: 1_050_000,
+						Limit: &config.ProviderModelLimitConfig{
+							Context: 1_050_000,
+							Input:   922_000,
+							Output:  128_000,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	summaries := providerSummariesFromConfig(cfg, t.TempDir())
+	if len(summaries) != 1 {
+		t.Fatalf("unexpected summaries: %+v", summaries)
+	}
+	model := providerModelByID(t, summaries[0], "gpt-5.6-sol")
+	if model.Capabilities.ContextWindow != 1_050_000 {
+		t.Fatalf("ContextWindow = %d, want catalog model window 1050000", model.Capabilities.ContextWindow)
+	}
+	if model.Capabilities.InputLimit != 272_000 {
+		t.Fatalf("InputLimit = %d, want Codex subscription clamp 272000; capabilities=%+v", model.Capabilities.InputLimit, model.Capabilities)
+	}
+}
+
 func providerModelByID(t *testing.T, provider ProviderSummary, id string) ProviderModelSummary {
 	t.Helper()
 	for _, model := range provider.Models {

@@ -2803,8 +2803,9 @@ export function App(): JSX.Element {
       contextWindowTokens: fallbackContextWindow,
     });
     // Live telemetry can still carry a ceiling from the previous workspace
-    // runtime. Once the exact conversation model is known, its catalog/config
-    // metadata is authoritative for the display denominator.
+    // runtime. Once the exact conversation model is known, reuse the same
+    // provider-summary ceiling the backend budgeted with (including channel
+    // clamps such as Codex subscription input caps).
     const contextUsage =
       rawContextUsage && modelContextWindow
         ? { ...rawContextUsage, window: modelContextWindow }

@@ -112,6 +112,31 @@ describe("providerModelContextWindow", () => {
       272_000,
     );
   });
+
+  it("uses the backend-clamped Codex subscription ceiling from provider summaries", () => {
+    const initialized = {
+      providers: [
+        {
+          name: "openai-codex",
+          type: "openai-codex",
+          model: "gpt-5.6-sol",
+          models: [
+            {
+              id: "gpt-5.6-sol",
+              capabilities: {
+                context_window: 1_050_000,
+                input_limit: 272_000,
+              },
+            },
+          ],
+        },
+      ],
+    } as Parameters<typeof providerModelContextWindow>[0];
+
+    expect(
+      providerModelContextWindow(initialized, "openai-codex", "gpt-5.6-sol"),
+    ).toBe(272_000);
+  });
 });
 
 describe("providerModelVariantOptions", () => {

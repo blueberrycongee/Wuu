@@ -218,6 +218,43 @@ func TestResolveCodexSubscriptionImageInput(t *testing.T) {
 	}
 }
 
+func TestResolveCodexSubscriptionClampsCatalogInputLimit(t *testing.T) {
+	cfg := config.Config{
+		DefaultProvider: "openai-codex",
+		Providers: map[string]config.ProviderConfig{
+			"openai-codex": {
+				Type:  "openai-codex",
+				Model: "gpt-5.6-sol",
+				Models: map[string]config.ProviderModelConfig{
+					"gpt-5.6-sol": {
+						ContextWindow: 1_050_000,
+						Limit: &config.ProviderModelLimitConfig{
+							Context: 1_050_000,
+							Input:   922_000,
+							Output:  128_000,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	roles, err := Resolve(cfg, ResolveOptions{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	caps := roles.Main.Capabilities
+	if caps.ContextWindow != 1_050_000 {
+		t.Fatalf("ContextWindow = %d, want catalog model window 1050000", caps.ContextWindow)
+	}
+	if caps.InputLimit != 272_000 {
+		t.Fatalf("InputLimit = %d, want Codex subscription clamp 272000", caps.InputLimit)
+	}
+	if caps.OutputLimit != 128_000 {
+		t.Fatalf("OutputLimit = %d, want 128000", caps.OutputLimit)
+	}
+}
+
 func TestResolveAliasProducesCompleteSelection(t *testing.T) {
 	cfg := config.Config{
 		DefaultProvider: "openai",
