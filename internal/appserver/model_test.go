@@ -233,6 +233,46 @@ func TestThreadStatePreservesRichToolResultDetail(t *testing.T) {
 	}
 }
 
+func TestTurnsFromHistoryPreservesRichToolResultDetail(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+	detail := toolresult.Result{
+		Content: []toolresult.ContentPart{{
+			Type: toolresult.ContentTypeText,
+			Text: "Success. Updated the following files:\nM desktop/src/renderer/MessageActions.tsx",
+		}},
+		StructuredContent: json.RawMessage(`{"files":[{"path":"desktop/src/renderer/MessageActions.tsx","action":"update"}]}`),
+	}
+	turns := turnsFromHistory("thread", []providers.ChatMessage{
+		{Role: "user", Content: "fix the alignment"},
+		{Role: "assistant", ToolCalls: []providers.ToolCall{{
+			ID:   "call-1",
+			Name: "apply_patch",
+		}}},
+		{
+			Role:       "tool",
+			Name:       "apply_patch",
+			ToolCallID: "call-1",
+			Content:    detail.TextProjection(),
+			ToolResult: &detail,
+		},
+		{Role: "assistant", Content: "Fixed."},
+	}, now)
+
+	if len(turns) != 1 {
+		t.Fatalf("expected one turn, got %+v", turns)
+	}
+	for _, item := range turns[0].Items {
+		if item.Type != ThreadItemToolCall || item.Name != "apply_patch" {
+			continue
+		}
+		if item.ResultDetail == nil || item.ResultDetail.JSONProjection() != detail.JSONProjection() {
+			t.Fatalf("history projection lost rich tool detail: %+v", item)
+		}
+		return
+	}
+	t.Fatalf("apply_patch item missing from projected turn: %+v", turns[0].Items)
+}
+
 func TestThreadStateDiscardsToolDraftsOnInferenceReplay(t *testing.T) {
 	now := time.Unix(0, 0).UTC()
 	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)

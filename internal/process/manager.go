@@ -80,14 +80,18 @@ type Process struct {
 	// Deprecated: Lifecycle is being retired with the managed process class.
 	// It still parses and round-trips so existing registry records keep
 	// loading; new behavior must not branch on it.
-	Lifecycle                      Lifecycle           `json:"lifecycle"`
-	CompletionMode                 CompletionMode      `json:"completion_mode,omitempty"`
-	Status                         Status              `json:"status"`
-	PID                            int                 `json:"pid"`
-	PGID                           int                 `json:"pgid"`
-	ProcessStartTime               string              `json:"process_start_time,omitempty"`
-	TTY                            bool                `json:"tty,omitempty"`
-	LogPath                        string              `json:"log_path"`
+	Lifecycle        Lifecycle      `json:"lifecycle"`
+	CompletionMode   CompletionMode `json:"completion_mode,omitempty"`
+	Status           Status         `json:"status"`
+	PID              int            `json:"pid"`
+	PGID             int            `json:"pgid"`
+	ProcessStartTime string         `json:"process_start_time,omitempty"`
+	TTY              bool           `json:"tty,omitempty"`
+	LogPath          string         `json:"log_path"`
+	// LogBaseOffset is the logical offset represented by byte zero of LogPath.
+	// Terminal log compaction advances it so continuation offsets issued before
+	// compaction resume at the retained tail or receive the compaction marker.
+	LogBaseOffset                  int64               `json:"log_base_offset,omitempty"`
 	Command                        string              `json:"command"`
 	CWD                            string              `json:"cwd"`
 	StartedAt                      time.Time           `json:"started_at"`
@@ -270,6 +274,9 @@ func NewManagerWithHostGeneration(rootDir, hostGenerationID string, runtimeDirs 
 	}
 	if err := m.resumePersistedManagedProcesses(); err != nil {
 		return nil, err
+	}
+	if err := m.maintainTerminalStorage(time.Now()); err != nil {
+		log.Printf("wuu: process storage maintenance: %v", err)
 	}
 	go m.recheckScheduler()
 	return m, nil
@@ -591,7 +598,8 @@ func terminalCommandEnv(env []string) []string {
 func (m *Manager) wait(id string, cmd *exec.Cmd, logf *os.File) {
 	err := cmd.Wait()
 	_ = logf.Close()
-	m.finishWait(id, cmd, err)
+	_, discarded, _ := compactProcessLog(filepath.Join(m.logDir, id+".log"), terminalProcessLogMaxBytes)
+	m.finishWait(id, cmd, err, discarded)
 }
 
 func (m *Manager) waitPTY(id string, cmd *exec.Cmd, logf *os.File, ptyFile *os.File) {
@@ -604,16 +612,20 @@ func (m *Manager) waitPTY(id string, cmd *exec.Cmd, logf *os.File, ptyFile *os.F
 	_ = ptyFile.Close()
 	<-copyDone
 	_ = logf.Close()
-	m.finishWait(id, cmd, err)
+	_, discarded, _ := compactProcessLog(filepath.Join(m.logDir, id+".log"), terminalProcessLogMaxBytes)
+	m.finishWait(id, cmd, err, discarded)
 }
 
-func (m *Manager) finishWait(id string, cmd *exec.Cmd, err error) {
+func (m *Manager) finishWait(id string, cmd *exec.Cmd, err error, discardedLogBytes int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.handles, id)
 	p, rerr := m.load(id)
 	if rerr != nil {
 		return
+	}
+	if discardedLogBytes > 0 {
+		p.LogBaseOffset += discardedLogBytes
 	}
 	alreadyTerminal := p.Status == StatusStopped || p.Status == StatusFailed
 	requestedStop := p.Status == StatusStopping || p.Status == StatusStopped
@@ -631,7 +643,7 @@ func (m *Manager) finishWait(id string, cmd *exec.Cmd, err error) {
 		p.ExitCode = cmd.ProcessState.ExitCode()
 	}
 	if p.SandboxMode != "" {
-		if output, _, _, _, _, readErr := readLogWindow(p.LogPath, 8*1024, nil); readErr == nil {
+		if output, _, _, _, _, readErr := readLogWindow(p.LogPath, 8*1024, nil, p.LogBaseOffset); readErr == nil {
 			classifier := processsandbox.ResultClassifier{DenialSignatures: p.SandboxDenialSignatures, RunnerFailureSignatures: p.SandboxRunnerFailureSignatures}
 			p.SandboxRunnerFailed = classifier.IsRunnerFailure(p.ExitCode, output)
 			p.SandboxDenied = !p.SandboxRunnerFailed && classifier.IsDenied(p.ExitCode, output)
@@ -737,7 +749,7 @@ func (m *Manager) ReadOutputSnapshot(ctx context.Context, id string, opt OutputR
 			if !isLiveStatus(p.Status) {
 				break
 			}
-			if size > offset && !time.Now().Before(minDwellAt) {
+			if p.LogBaseOffset+size > offset && !time.Now().Before(minDwellAt) {
 				break
 			}
 			if !time.Now().Before(deadline) {
@@ -761,7 +773,7 @@ func (m *Manager) ReadOutputSnapshot(ctx context.Context, id string, opt OutputR
 	if latest, loadErr := m.load(id); loadErr == nil {
 		p = latest
 	}
-	output, truncated, startOffset, endOffset, totalBytes, err := readLogWindow(p.LogPath, opt.MaxBytes, opt.OffsetBytes)
+	output, truncated, startOffset, endOffset, totalBytes, err := readLogWindow(p.LogPath, opt.MaxBytes, opt.OffsetBytes, p.LogBaseOffset)
 	if err != nil {
 		return OutputSnapshot{}, err
 	}
@@ -777,7 +789,7 @@ func (m *Manager) ReadOutputSnapshot(ctx context.Context, id string, opt OutputR
 	}, nil
 }
 
-func readLogWindow(path string, maxBytes int, offsetBytes *int64) (string, bool, int64, int64, int64, error) {
+func readLogWindow(path string, maxBytes int, offsetBytes *int64, baseOffset ...int64) (string, bool, int64, int64, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", false, 0, 0, 0, err
@@ -788,28 +800,33 @@ func readLogWindow(path string, maxBytes int, offsetBytes *int64) (string, bool,
 		return "", false, 0, 0, 0, err
 	}
 	size := info.Size()
-	end := size
-	start := int64(0)
+	base := int64(0)
+	if len(baseOffset) > 0 && baseOffset[0] > 0 {
+		base = baseOffset[0]
+	}
+	logicalSize := base + size
+	end := logicalSize
+	start := base
 	truncated := false
 	if offsetBytes != nil {
 		start = *offsetBytes
-		if start < 0 {
-			start = 0
+		if start < base {
+			start = base
 		}
 		if start > end {
 			start = end
 		}
-		end = min(size, start+int64(maxBytes))
-		if end < size {
+		end = min(logicalSize, start+int64(maxBytes))
+		if end < logicalSize {
 			truncated = true
 		}
 	} else if size > int64(maxBytes) {
-		start = size - int64(maxBytes)
+		start = logicalSize - int64(maxBytes)
 		truncated = true
 	}
-	_, _ = f.Seek(start, 0)
+	_, _ = f.Seek(start-base, 0)
 	b, err := io.ReadAll(io.LimitReader(f, end-start))
-	return string(b), truncated, start, end, size, err
+	return string(b), truncated, start, end, logicalSize, err
 }
 
 func fileSize(path string) (int64, error) {
@@ -1211,9 +1228,7 @@ func (m *Manager) PendingCompletions() ([]Process, error) {
 	}
 	pending := make([]Process, 0)
 	for _, p := range processes {
-		if p.CompletionMode != CompletionModeDetached && p.TerminalCause == EventCauseNaturalExit &&
-			(p.Status == StatusStopped || p.Status == StatusFailed) &&
-			p.CompletionDeliveredAt.IsZero() {
+		if processCompletionPending(p) {
 			pending = append(pending, p)
 		}
 	}
@@ -1227,9 +1242,7 @@ func (m *Manager) CompletionPending(id string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return p.CompletionMode != CompletionModeDetached && p.TerminalCause == EventCauseNaturalExit &&
-		(p.Status == StatusStopped || p.Status == StatusFailed) &&
-		p.CompletionDeliveredAt.IsZero(), nil
+	return processCompletionPending(*p), nil
 }
 
 func (m *Manager) MarkCompletionDelivered(id, consumer string) (*Process, error) {
@@ -1550,7 +1563,8 @@ func (m *Manager) Adopt(id string, cmd *exec.Cmd, handle *CommandHandle, logf *o
 		<-handle.Done()
 		waitErr := handle.Wait()
 		_ = logf.Close()
-		m.finishWait(id, cmd, waitErr)
+		_, discarded, _ := compactProcessLog(filepath.Join(m.logDir, id+".log"), terminalProcessLogMaxBytes)
+		m.finishWait(id, cmd, waitErr, discarded)
 	}()
 	if p.RecheckMinutes > 0 {
 		m.signalRecheckScheduler()
