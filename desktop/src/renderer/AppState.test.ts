@@ -800,6 +800,8 @@ describe("summarizeThreadsForSidebar", () => {
       completed_at: "2026-08-29T04:00:10.000Z",
     });
     expect(isThreadRunning(summary)).toBe(false);
+    expect(isThreadUnread(summary, undefined)).toBe(true);
+    expect(isThreadUnread(thread, undefined)).toBe(true);
     expect(presentationRunningThreadIDs([thread], runningIDs).has(thread.id)).toBe(false);
     expect(runningIDs.has(thread.id)).toBe(true);
   });
@@ -2600,6 +2602,27 @@ describe("AppState unread tracking", () => {
     expect(latestCompletedTurnID(thread)).toBeUndefined();
   });
 
+  it("latestCompletedTurnID treats an answer-ready in-progress tail as completed", () => {
+    const thread = {
+      ...makeThreadWithTurns("thread-1", [
+        { id: "turn-1", status: "completed" },
+        { id: "turn-2", status: "in_progress" },
+      ]),
+      latest_completed_turn_id: "turn-1",
+    };
+    thread.turns[1].answer_ready_at = "2026-08-29T04:00:10.000Z";
+    thread.turns[1].items = [{
+      id: "answer-ready",
+      type: "agent_message",
+      status: "completed",
+      terminal: true,
+      text: "done",
+    }];
+    expect(latestCompletedTurnID(thread)).toBe("turn-2");
+    expect(isThreadUnread(thread, "turn-1")).toBe(true);
+    expect(isThreadUnread(thread, "turn-2")).toBe(false);
+  });
+
   it("latestCompletedTurnID returns undefined for an empty thread", () => {
     const thread = makeThreadWithTurns("thread-1", []);
     expect(latestCompletedTurnID(thread)).toBeUndefined();
@@ -2634,6 +2657,44 @@ describe("AppState unread tracking", () => {
       { id: "turn-1", status: "in_progress" },
     ]);
     expect(isThreadUnread(thread, undefined)).toBe(false);
+  });
+
+  it("does not re-flag unread when an answer-ready turn later completes", () => {
+    const answerReady = {
+      ...makeThreadWithTurns("thread-1", [
+        { id: "turn-1", status: "in_progress" },
+      ]),
+      status: "in_progress" as const,
+    };
+    answerReady.turns[0].answer_ready_at = "2026-08-29T04:00:10.000Z";
+    answerReady.turns[0].items = [{
+      id: "answer-ready",
+      type: "agent_message",
+      status: "completed",
+      terminal: true,
+      text: "done",
+    }];
+    const viewed = markThreadTurnsViewed({
+      ...initialState,
+      thread: answerReady,
+      threads: [answerReady],
+    }, "thread-1");
+    expect(viewed.lastViewedTurnByThreadID["thread-1"]).toBe("turn-1");
+
+    const completed = {
+      ...answerReady,
+      status: "idle" as const,
+      turns: [{
+        ...answerReady.turns[0],
+        status: "completed" as const,
+      }],
+    };
+    expect(isThreadUnread(completed, viewed.lastViewedTurnByThreadID["thread-1"])).toBe(false);
+    expect(markThreadTurnsViewed({
+      ...viewed,
+      thread: completed,
+      threads: [completed],
+    }, "thread-1").lastViewedTurnByThreadID["thread-1"]).toBe("turn-1");
   });
 
   it("isThreadUnread returns false for an empty thread", () => {
@@ -2677,6 +2738,29 @@ describe("AppState unread tracking", () => {
       threads: [thread],
     };
     expect(markThreadTurnsViewed(state, "thread-1")).toBe(state);
+  });
+
+  it("markThreadTurnsViewed records an answer-ready in-progress turn", () => {
+    const thread = {
+      ...makeThreadWithTurns("thread-1", [
+        { id: "turn-1", status: "in_progress" },
+      ]),
+      status: "in_progress" as const,
+    };
+    thread.turns[0].answer_ready_at = "2026-08-29T04:00:10.000Z";
+    thread.turns[0].items = [{
+      id: "answer-ready",
+      type: "agent_message",
+      status: "completed",
+      terminal: true,
+      text: "done",
+    }];
+    const next = markThreadTurnsViewed({
+      ...initialState,
+      thread,
+      threads: [thread],
+    }, "thread-1");
+    expect(next.lastViewedTurnByThreadID["thread-1"]).toBe("turn-1");
   });
 
 });

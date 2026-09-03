@@ -177,8 +177,10 @@ type AppState = {
   // has actually been on the thread for. It is the source of truth for the
   // sidebar / session-tab "has-unread" indicator on work sessions — a thread
   // is unread when its latest completed turn ID is not in this map (or the
-  // entry is older). Active-tab tracking is what advances this map; running
-  // threads are never flagged unread because they have not finished yet.
+  // entry is older). Active-tab tracking is what advances this map. The
+  // user-visible completion boundary is answer-ready, not runtime cleanup:
+  // a still-running turn with a terminal answer counts as completed here,
+  // so unread is not deferred until turn/completed and then re-applied.
   lastViewedTurnByThreadID: Record<string, string>;
 };
 
@@ -2908,35 +2910,71 @@ export function agentRunning(
   }
 }
 
-function latestCompletedTurnID(thread: {
-  latest_completed_turn_id?: string;
-  turns: Array<Pick<Turn, "id" | "status">>;
-}): string | undefined {
-  if (thread.latest_completed_turn_id) {
-    return thread.latest_completed_turn_id;
+function activeTurnForThread(thread: Thread | undefined): Turn | undefined {
+  if (!thread) {
+    return undefined;
   }
-  // Walk newest → oldest. Most threads end with a non-in_progress turn so the
-  // first hit is the answer; we still guard against an in_progress tail so a
-  // thread that was reset to running does not get pinned to a stale ID.
   for (let index = thread.turns.length - 1; index >= 0; index -= 1) {
     const turn = thread.turns[index];
     if (turn.status === "in_progress") {
+      return turn;
+    }
+  }
+  return undefined;
+}
+
+function turnIsAnswerReady(turn: Turn | undefined): boolean {
+  return Boolean(
+    turn?.answer_ready_at ||
+      turn?.items?.some(
+        (item) =>
+          item.type === "agent_message" &&
+          item.status === "completed" &&
+          item.terminal === true,
+      ),
+  );
+}
+
+function activeTurnIsAnswerReady(thread: Thread | undefined): boolean {
+  return turnIsAnswerReady(activeTurnForThread(thread));
+}
+
+function isThreadPresentationRunning(
+  thread: Thread | undefined,
+  aggregateRunning = false,
+): boolean {
+  // The terminal answer is the user-visible completion boundary. Runtime
+  // cleanup can briefly leave the turn or child agents marked as executing,
+  // but presentation surfaces must stop showing activity at this point.
+  return !activeTurnIsAnswerReady(thread) && (isThreadExecuting(thread) || aggregateRunning);
+}
+
+function latestCompletedTurnID(thread: {
+  latest_completed_turn_id?: string;
+  turns: Array<Pick<Turn, "id" | "status" | "answer_ready_at">>;
+}): string | undefined {
+  // Walk newest → oldest. Answer-ready is the user-visible completion
+  // boundary, so an in_progress tail with a terminal answer still counts.
+  // A still-running tail without that boundary stays unread-deferred, even
+  // if a stale latest_completed_turn_id is sitting on the thread.
+  for (let index = thread.turns.length - 1; index >= 0; index -= 1) {
+    const turn = thread.turns[index];
+    if (turn.status === "in_progress" && !turnIsAnswerReady(turn)) {
       return undefined;
     }
     return turn.id;
   }
-  return undefined;
+  return thread.latest_completed_turn_id;
 }
 
 function isThreadUnread(
   thread: (ThreadRunningCandidate & {
     latest_completed_turn_id?: string;
-    turns: Array<Pick<Turn, "id" | "status">>;
+    turns: Array<Pick<Turn, "id" | "status" | "answer_ready_at">>;
   }) | undefined,
   lastViewedTurnID: string | undefined,
 ): boolean {
   if (!thread) return false;
-  if (isThreadRunning(thread)) return false;
   const lastTurnID = latestCompletedTurnID(thread);
   if (!lastTurnID) return false;
   if (!lastViewedTurnID) return true;
@@ -2949,6 +2987,7 @@ function markThreadTurnsViewed(
 ): AppState {
   const thread = threadForTab(state, threadID);
   if (!thread) return state;
+  if (isThreadPresentationRunning(thread)) return state;
   const lastTurnID = latestCompletedTurnID(thread);
   if (lastTurnID && state.lastViewedTurnByThreadID[threadID] !== lastTurnID) {
     return {
@@ -2968,7 +3007,7 @@ function markThreadSummariesViewed(
 ): AppState {
   let nextLastViewed = state.lastViewedTurnByThreadID;
   for (const thread of threads) {
-    if (isThreadRunning(thread)) continue;
+    if (isThreadPresentationRunning(thread as Thread)) continue;
     const lastTurnID = latestCompletedTurnID(thread);
     if (!lastTurnID || nextLastViewed[thread.id] === lastTurnID) continue;
     if (nextLastViewed === state.lastViewedTurnByThreadID) {
@@ -3009,32 +3048,6 @@ function activeTurnAcceptsSteering(thread: Thread | undefined): boolean {
   );
 }
 
-function turnIsAnswerReady(turn: Turn | undefined): boolean {
-  return Boolean(
-    turn?.answer_ready_at ||
-      turn?.items?.some(
-        (item) =>
-          item.type === "agent_message" &&
-          item.status === "completed" &&
-          item.terminal === true,
-      ),
-  );
-}
-
-function activeTurnIsAnswerReady(thread: Thread | undefined): boolean {
-  return turnIsAnswerReady(activeTurnForThread(thread));
-}
-
-function isThreadPresentationRunning(
-  thread: Thread | undefined,
-  aggregateRunning = false,
-): boolean {
-  // The terminal answer is the user-visible completion boundary. Runtime
-  // cleanup can briefly leave the turn or child agents marked as executing,
-  // but presentation surfaces must stop showing activity at this point.
-  return !activeTurnIsAnswerReady(thread) && (isThreadExecuting(thread) || aggregateRunning);
-}
-
 function presentationRunningThreadIDs(
   threads: readonly (Thread | undefined)[],
   runningThreadIDs: ReadonlySet<string>,
@@ -3046,19 +3059,6 @@ function presentationRunningThreadIDs(
     }
   }
   return visible;
-}
-
-function activeTurnForThread(thread: Thread | undefined): Turn | undefined {
-  if (!thread) {
-    return undefined;
-  }
-  for (let index = thread.turns.length - 1; index >= 0; index -= 1) {
-    const turn = thread.turns[index];
-    if (turn.status === "in_progress") {
-      return turn;
-    }
-  }
-  return undefined;
 }
 
 function turnStreamStatusForThread(

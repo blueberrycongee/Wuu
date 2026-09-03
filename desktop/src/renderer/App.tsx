@@ -2722,8 +2722,8 @@ export function App(): JSX.Element {
   // and session tab strip stop showing the "has-unread" dot. This effect is
   // the single source of truth for advancing `lastViewedTurnByThreadID`; any
   // state change that re-renders the conversation (tab switch, new turn for
-  // the active thread) reaches here. Running threads are skipped so a
-  // mid-stream turn does not get pinned as the viewed ID.
+  // the active thread) reaches here. Mid-stream turns stay deferred until
+  // the visible answer is ready, matching the tab/sidebar unread boundary.
   useEffect(() => {
     const tab = state.sessionTabs.find(
       (candidate) => candidate.id === state.activeSessionTabID,
@@ -2731,7 +2731,6 @@ export function App(): JSX.Element {
     if (tab?.kind !== "thread") return;
     const thread = threadForTab(state, tab.threadID);
     if (!thread) return;
-    if (isThreadRunning(thread)) return;
     setState((current) => {
       const next = markThreadTurnsViewed(current, thread.id);
       return next === current ? current : next;
