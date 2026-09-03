@@ -355,6 +355,36 @@ func TestFormatSummary_StripsAnalysisAndExtractsSummary(t *testing.T) {
 	}
 }
 
+func TestCompact_DoesNotApplyByteCapWithinOutputTokenAllowance(t *testing.T) {
+	messages := []providers.ChatMessage{
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "first reply"},
+		{Role: "user", Content: "second"},
+		{Role: "assistant", Content: "second reply"},
+		{Role: "user", Content: "third"},
+		{Role: "assistant", Content: "third reply"},
+	}
+	budget := Budget{OutputReserveTokens: 128_000}
+	// A supplementary-plane CJK rune occupies four UTF-8 bytes. This keeps the
+	// response within Wuu's output-token allowance while exercising summaries
+	// that the former byte-based post-processing cap silently truncated.
+	summary := strings.Repeat("𠀀", 21_000)
+	if got, maxTokens := EstimateTokens(summary), compactSummaryMaxTokensForBudget(budget); got >= maxTokens {
+		t.Fatalf("test summary estimate = %d, want below output allowance %d", got, maxTokens)
+	}
+
+	result, err := CompactWithBudget(context.Background(), messages, &mockCompactClient{response: summary}, "test", budget)
+	if err != nil {
+		t.Fatalf("CompactWithBudget: %v", err)
+	}
+	if len(result) == 0 || !IsConversationSummaryContent(result[0].Content) {
+		t.Fatalf("expected leading compact summary, got %+v", result)
+	}
+	if got := SummaryBodyFromContent(result[0].Content); got != summary {
+		t.Fatalf("complete summary was changed: got %d bytes, want %d", len(got), len(summary))
+	}
+}
+
 func TestBuildSummaryContent_UsesStableConversationSummaryPrefix(t *testing.T) {
 	content := BuildSummaryContent("Older turns were compacted.")
 	if !IsConversationSummaryContent(content) {

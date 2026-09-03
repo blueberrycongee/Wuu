@@ -22,11 +22,6 @@ import (
 // long enough for recovery while still bounding a stuck compaction.
 const defaultCompactTimeout = 20 * time.Minute
 
-// maxCompactOutputChars caps the summarization output to approximately
-// 20K tokens (~4 chars per token).
-// Without this cap, the summary itself can consume a large portion of
-// the context window, defeating the purpose of compaction.
-const maxCompactOutputChars = 80_000
 const (
 	compactSummaryFallbackMaxTokens = 4096
 	// SummaryInputMaxTokens caps each summarization request independently from
@@ -376,21 +371,10 @@ func summarizeCompactHistory(ctx context.Context, client providers.Client, model
 		if chunkBudget < inputBudget {
 			inputBudget = chunkBudget
 		}
-		summary = limitSummaryOutput(FormatSummary(next))
+		summary = FormatSummary(next)
 		remaining = remaining[n:]
 	}
 	return summary, nil
-}
-
-func limitSummaryOutput(summary string) string {
-	if len(summary) <= maxCompactOutputChars {
-		return summary
-	}
-	cut := maxCompactOutputChars
-	for cut > 0 && summary[cut-1]&0xC0 == 0x80 {
-		cut--
-	}
-	return summary[:cut]
 }
 
 func summarizeCompactChunk(ctx context.Context, client providers.Client, model string, budget Budget, options map[string]any, messages []providers.ChatMessage, previousSummary string) (string, error) {
