@@ -1280,6 +1280,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleTurnSteer(req)
 	case MethodTurnUnsteer:
 		return s.handleTurnUnsteer(req)
+	case MethodTurnRequeue:
+		return s.handleTurnRequeue(req)
 	case MethodTurnInterrupt:
 		return s.handleTurnInterrupt(req)
 	case MethodRunStart:

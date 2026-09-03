@@ -844,6 +844,56 @@ func (s *Server) handleTurnUnsteer(req Request) error {
 	return s.writeResponse(req.ID, OKResult{OK: removed}, nil)
 }
 
+func (s *Server) handleTurnRequeue(req Request) error {
+	var params TurnRequeueParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	threadID := strings.TrimSpace(params.ThreadID)
+	steerID := strings.TrimSpace(params.SteerID)
+	if threadID == "" {
+		return s.writeResponse(req.ID, nil, errors.New("thread_id is required"))
+	}
+	if steerID == "" {
+		return s.writeResponse(req.ID, nil, errors.New("steer_id is required"))
+	}
+	th, err := s.ensureThreadLoaded(threadID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+
+	th.mu.Lock()
+	document := th.steerDocumentOverrideLocked(steerID)
+	msg, removed := th.takePendingSteerLocked(steerID)
+	if removed {
+		th.removeSteerDocumentOverrideLocked(steerID)
+		msg.Steered = false
+		entry := queuedTurn{
+			id:       steerID,
+			msg:      msg,
+			snapshot: turnRuntimeSnapshot{ActiveDocument: document},
+			origin:   session.HeldUserWorkOriginQueue,
+		}
+		s.enqueueQueuedUserTurn(threadID, entry)
+		th.mu.Unlock()
+		queued := queuedTurnSummary(threadID, entry)
+		if err := s.writeResponse(req.ID, TurnRequeueResult{OK: true, State: "queued", Queued: queued}, nil); err != nil {
+			return err
+		}
+		_ = s.writeNotification(NotificationTurnQueued, TurnQueuedNotification{Queued: queued})
+		s.kickQueuedTurnDrain(threadID)
+		return nil
+	}
+	th.mu.Unlock()
+
+	if queued, ok := s.findQueuedUserTurn(threadID, steerID); ok {
+		return s.writeResponse(req.ID, TurnRequeueResult{
+			OK: true, State: "queued", Queued: queuedTurnSummary(threadID, queued),
+		}, nil)
+	}
+	return s.writeResponse(req.ID, TurnRequeueResult{OK: false, State: "consumed"}, nil)
+}
+
 func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, error) {
 	if th == nil {
 		return nil, errors.New("thread is required")
@@ -1796,6 +1846,15 @@ func (th *threadState) removeSteerDocumentOverrideLocked(steerID string) {
 		break
 	}
 	th.applyLatestSteerDocumentOverrideLocked()
+}
+
+func (th *threadState) steerDocumentOverrideLocked(steerID string) *ActiveDocument {
+	for index := len(th.steerDocumentOverrides) - 1; index >= 0; index-- {
+		if th.steerDocumentOverrides[index].steerID == steerID {
+			return cloneActiveDocument(th.steerDocumentOverrides[index].document)
+		}
+	}
+	return nil
 }
 
 func activeDocumentContextForTurn(base []agent.ContextSegment, overrideSet bool, document *ActiveDocument) []agent.ContextSegment {
@@ -2887,6 +2946,26 @@ func (s *Server) replaceQueuedUserTurn(threadID, queueID string, msg providers.C
 		pending[index] = updated
 		s.pendingQueuedTurns[threadID] = pending
 		return updated, true
+	}
+	return queuedTurn{}, false
+}
+
+func (s *Server) findQueuedUserTurn(threadID, queueID string) (queuedTurn, bool) {
+	threadID = strings.TrimSpace(threadID)
+	queueID = strings.TrimSpace(queueID)
+	if threadID == "" || queueID == "" {
+		return queuedTurn{}, false
+	}
+	s.queuedTurnMu.Lock()
+	defer s.queuedTurnMu.Unlock()
+	for _, entry := range s.pendingQueuedTurns[threadID] {
+		if entry.id == queueID {
+			return entry, true
+		}
+	}
+	claim := s.claimedQueuedTurns[queuedTurnClaimKey(threadID, queueID)]
+	if claim != nil && !claim.cancelled {
+		return claim.entry, true
 	}
 	return queuedTurn{}, false
 }

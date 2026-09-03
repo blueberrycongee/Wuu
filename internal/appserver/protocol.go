@@ -114,6 +114,7 @@ const (
 	MethodTurnDequeue                     = "turn/dequeue"
 	MethodTurnSteer                       = "turn/steer"
 	MethodTurnUnsteer                     = "turn/unsteer"
+	MethodTurnRequeue                     = "turn/requeue"
 	MethodTurnInterrupt                   = "turn/interrupt"
 	MethodRunStart                        = "run/start"
 	MethodRunInterrupt                    = "run/interrupt"
@@ -1826,6 +1827,17 @@ type HeldUserMessage struct {
 type TurnUnsteerParams struct {
 	ThreadID string `json:"thread_id"`
 	SteerID  string `json:"steer_id"`
+}
+
+type TurnRequeueParams struct {
+	ThreadID string `json:"thread_id"`
+	SteerID  string `json:"steer_id"`
+}
+
+type TurnRequeueResult struct {
+	OK     bool       `json:"ok"`
+	State  string     `json:"state"`
+	Queued QueuedTurn `json:"queued,omitempty"`
 }
 
 type TurnInterruptParams struct {

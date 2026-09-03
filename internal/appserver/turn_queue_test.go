@@ -1,6 +1,7 @@
 package appserver
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -153,4 +154,60 @@ func TestQueuedTurnCannotBeCancelledAfterCommit(t *testing.T) {
 		t.Fatal("committed queued turn was cancelled")
 	}
 	s.settleQueuedTurnClaim(threadID, entry, false)
+}
+
+func TestTurnRequeueAtomicallyMovesPendingSteerBackToQueue(t *testing.T) {
+	const threadID = "thread-1"
+	const steerID = "steer-1"
+	out := &lockedBuffer{}
+	th := &threadState{
+		ID:          threadID,
+		running:     true,
+		currentTurn: "turn-1",
+		pendingSteers: []providers.ChatMessage{{
+			Role: "user", Content: "send this next", ClientID: steerID, Steered: true,
+		}},
+		steerDocumentOverrides: []activeDocumentOverride{{
+			steerID: steerID, document: &ActiveDocument{Path: "docs/next.md"},
+		}},
+		activeSteerContextSet: true,
+		activeSteerDocument:   &ActiveDocument{Path: "docs/next.md"},
+	}
+	s := &Server{
+		out:                 out,
+		threads:             map[string]*threadState{threadID: th},
+		pendingQueuedTurns:  make(map[string][]queuedTurn),
+		claimedQueuedTurns:  make(map[string]*queuedTurnClaim),
+		drainingQueuedTurns: make(map[string]bool),
+		activeRunByThread:   make(map[string]string),
+	}
+	params, err := json.Marshal(TurnRequeueParams{ThreadID: threadID, SteerID: steerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.handleTurnRequeue(Request{ID: json.RawMessage(`"requeue"`), Params: params}); err != nil {
+		t.Fatalf("turn/requeue: %v", err)
+	}
+
+	th.mu.Lock()
+	pendingSteers := len(th.pendingSteers)
+	activeDocument := th.activeSteerDocument
+	th.mu.Unlock()
+	if pendingSteers != 0 || activeDocument != nil {
+		t.Fatalf("steer state remained after requeue: pending=%d document=%+v", pendingSteers, activeDocument)
+	}
+	queued, ok := s.findQueuedUserTurn(threadID, steerID)
+	if !ok || queued.msg.Content != "send this next" || queued.msg.Steered {
+		t.Fatalf("requeued turn = %+v, %v", queued, ok)
+	}
+	if queued.snapshot.ActiveDocument == nil || queued.snapshot.ActiveDocument.Path != "docs/next.md" {
+		t.Fatalf("requeued document snapshot = %+v", queued.snapshot.ActiveDocument)
+	}
+	result := remarshal[TurnRequeueResult](
+		t,
+		responseByID(t, parseOutput(t, out.String()), "requeue")["result"],
+	)
+	if !result.OK || result.State != "queued" || result.Queued.ID != steerID {
+		t.Fatalf("turn/requeue result = %+v", result)
+	}
 }

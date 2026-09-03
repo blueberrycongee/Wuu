@@ -526,21 +526,28 @@ func (th *threadState) drainPendingSteersLocked() []providers.ChatMessage {
 }
 
 func (th *threadState) removePendingSteerLocked(id string) bool {
+	_, removed := th.takePendingSteerLocked(id)
+	return removed
+}
+
+func (th *threadState) takePendingSteerLocked(id string) (providers.ChatMessage, bool) {
 	id = strings.TrimSpace(id)
 	if id == "" || len(th.pendingSteers) == 0 {
-		return false
+		return providers.ChatMessage{}, false
 	}
 	next := th.pendingSteers[:0]
-	removed := false
+	var removed providers.ChatMessage
+	found := false
 	for _, msg := range th.pendingSteers {
-		if !removed && msg.ClientID == id {
-			removed = true
+		if !found && msg.ClientID == id {
+			removed = msg
+			found = true
 			continue
 		}
 		next = append(next, msg)
 	}
 	th.pendingSteers = next
-	return removed
+	return removed, found
 }
 
 func maxTurnItemIndex(turn Turn) int {

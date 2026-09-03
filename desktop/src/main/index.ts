@@ -2300,6 +2300,12 @@ app.whenReady().then(async () => {
       steer_id: steerId,
     }),
   );
+  ipcMain.handle("wuu:turn-requeue", (event, threadId: string, steerId: string) =>
+    appServerRequest(event, "turn/requeue", {
+      thread_id: threadId,
+      steer_id: steerId,
+    }),
+  );
   ipcMain.handle("wuu:turn-interrupt", (event, threadId: string) =>
     appServerRequest<{ ok: boolean }>(event, "turn/interrupt", {
       thread_id: threadId,
