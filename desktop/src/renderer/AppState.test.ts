@@ -1478,6 +1478,14 @@ describe("AppState token usage", () => {
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
       text: "消息流暂时中断，约 2 秒后继续（第 2/4 次尝试）",
       liveProgress: true,
+      event: {
+        label: "消息流正在恢复",
+        attempt: 2,
+        maxAttempts: 4,
+        retryCount: 1,
+        maxRetries: 3,
+        waitText: "约 2 秒后继续",
+      },
     });
 
     const connected = reduceServerEvent(reconnecting, {
@@ -1558,6 +1566,13 @@ describe("AppState token usage", () => {
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
       text: "HTTP 消息流正在恢复（第 3/4 次尝试）",
       liveProgress: true,
+      event: {
+        label: "HTTP 消息流正在恢复",
+        attempt: 3,
+        maxAttempts: 4,
+        retryCount: 2,
+        maxRetries: 3,
+      },
     });
   });
 
@@ -1605,6 +1620,14 @@ describe("AppState token usage", () => {
     expect(turnStreamStatusForThread(first, first.thread)).toEqual({
       text: "429 触发限流，约 5 秒后继续（第 2/6 次尝试）",
       liveProgress: true,
+      event: {
+        label: "429 触发限流，正在重连",
+        attempt: 2,
+        maxAttempts: 6,
+        retryCount: 1,
+        maxRetries: 5,
+        waitText: "约 5 秒后继续",
+      },
     });
 
     // A later attempt with a shorter wait updates the same chip in place —
@@ -1632,6 +1655,14 @@ describe("AppState token usage", () => {
     expect(turnStreamStatusForThread(second, second.thread)).toEqual({
       text: "429 触发限流，约 2 秒后继续（第 3/6 次尝试）",
       liveProgress: true,
+      event: {
+        label: "429 触发限流，正在重连",
+        attempt: 3,
+        maxAttempts: 6,
+        retryCount: 2,
+        maxRetries: 5,
+        waitText: "约 2 秒后继续",
+      },
     });
   });
 
@@ -1677,6 +1708,11 @@ describe("AppState token usage", () => {
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
       text: "认证失败，正在重连中（第 2 次尝试）",
       liveProgress: true,
+      event: {
+        label: "认证失败，正在重连",
+        attempt: 2,
+        retryCount: 1,
+      },
     });
   });
 
@@ -1721,6 +1757,11 @@ describe("AppState token usage", () => {
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
       text: "上游过载，正在重连中（第 1 次尝试）",
       liveProgress: true,
+      event: {
+        label: "上游过载，正在重连",
+        attempt: 1,
+        retryCount: 0,
+      },
     });
   });
 
@@ -1766,6 +1807,11 @@ describe("AppState token usage", () => {
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
       text: "消息流正在恢复（第 1 次尝试）",
       liveProgress: true,
+      event: {
+        label: "消息流正在恢复",
+        attempt: 1,
+        retryCount: 0,
+      },
     });
   });
 
@@ -4011,6 +4057,14 @@ describe("AppState English localization", () => {
     expect(turnStreamStatusForThread(state, state.thread)).toEqual({
       text: "Message stream interrupted temporarily; continuing in about 2 seconds (Attempt 2 of 4)",
       liveProgress: true,
+      event: {
+        label: "Message stream is recovering",
+        attempt: 2,
+        maxAttempts: 4,
+        retryCount: 1,
+        maxRetries: 3,
+        waitText: "in about 2 seconds",
+      },
     });
   });
 });

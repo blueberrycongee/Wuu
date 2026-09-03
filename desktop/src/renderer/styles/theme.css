@@ -413,7 +413,6 @@
   --rich-blockquote-color: var(--wuu-color-text-muted, #a3a9ae);
   --rich-rule-color: var(--wuu-border-subtle, #33383d);
   --pre-text-color: var(--wuu-color-text, #ccd1d5);
-  --turn-notice-auth-color: var(--wuu-color-warning, #e0956a);
   --system-line-marker-color: var(--wuu-color-text-muted, #565c62);
   --empty-home-action-border: var(--wuu-border-subtle, #33383d);
   --empty-home-action-border-hover: var(--wuu-border-strong, #40464c);

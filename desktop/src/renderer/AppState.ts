@@ -60,6 +60,15 @@ type ComposerDraftState = {
 export type TurnStreamStatus = {
   text: string;
   liveProgress: boolean;
+  event?: {
+    label: string;
+    attempt: number;
+    maxAttempts?: number;
+    retryCount?: number;
+    maxRetries?: number;
+    submissionCount?: number;
+    waitText?: string;
+  };
 };
 
 function emptyComposerDraft(): ComposerDraftState {
@@ -1088,14 +1097,15 @@ function streamStatusFromLifecycle(
       liveProgress: false,
     };
   }
-  const retryCount =
-    positiveInteger(numberValue(lifecycle, "retry_count")) ??
-    retryCountFromAttempt(numberValue(lifecycle, "attempt"));
+  const reportedAttempt = positiveInteger(numberValue(lifecycle, "attempt"));
+  const reportedRetryCount = nonNegativeInteger(numberValue(lifecycle, "retry_count"));
+  const retryCount = reportedRetryCount ?? retryCountFromAttempt(reportedAttempt);
   const attempt =
-    positiveInteger(numberValue(lifecycle, "attempt")) ?? retryCount + 1;
+    reportedAttempt ?? retryCount + 1;
+  const maxRetries = positiveInteger(numberValue(lifecycle, "max_retries"));
   const maxAttempts =
     positiveInteger(numberValue(lifecycle, "max_attempts")) ??
-    maxAttemptsFromRetries(numberValue(lifecycle, "max_retries"));
+    maxAttemptsFromRetries(maxRetries);
   const attemptText = maxAttempts
     ? t("appState.attemptOf", {
         attempt: formatCurrentNumber(attempt),
@@ -1122,6 +1132,21 @@ function streamStatusFromLifecycle(
   // failure shows up — name the cause (429, auth refresh, …) instead of the
   // transport so the single line answers "what is being retried".
   const cause = reconnectCauseLabel(lifecycle);
+  const event = {
+    label: cause
+      ? t("appState.reconnectingCauseLabel", { cause })
+      : t("appState.reconnectingLabel", { subject }),
+    attempt,
+    ...(maxAttempts === undefined ? {} : { maxAttempts }),
+    ...(reportedRetryCount === undefined && reportedAttempt === undefined
+      ? {}
+      : { retryCount: reportedRetryCount ?? Math.max(0, attempt - 1) }),
+    ...(maxRetries === undefined && maxAttempts === undefined
+      ? {}
+      : { maxRetries: maxRetries ?? Math.max(0, (maxAttempts ?? 1) - 1) }),
+    ...(submissionCount === undefined ? {} : { submissionCount }),
+    ...(waitText === undefined ? {} : { waitText }),
+  };
   if (cause) {
     return {
       text: waitText
@@ -1132,6 +1157,7 @@ function streamStatusFromLifecycle(
           })
         : t("appState.reconnectingCause", { cause, progress: progressText }),
       liveProgress: true,
+      event,
     };
   }
   return {
@@ -1139,6 +1165,7 @@ function streamStatusFromLifecycle(
       ? t("appState.reconnectingAfter", { subject, wait: waitText, progress: progressText })
       : t("appState.reconnecting", { subject, progress: progressText }),
     liveProgress: true,
+    event,
   };
 }
 
@@ -1276,6 +1303,14 @@ function positiveInteger(value: number | undefined): number | undefined {
   }
   const integer = Math.floor(value);
   return integer > 0 ? integer : undefined;
+}
+
+function nonNegativeInteger(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const integer = Math.floor(value);
+  return integer >= 0 ? integer : undefined;
 }
 
 function releaseSettledTurnStreams(turn: Turn): void {

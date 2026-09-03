@@ -2866,12 +2866,10 @@ export function App(): JSX.Element {
             ? activeThreadIsRunning
               ? t("app.childTaskRunning")
               : t("app.childTaskReadOnly")
-            : streamStatus?.text ?? state.status
+            : state.status
         }
         statusLiveProgress={
-          activeThreadReadOnly
-            ? false
-            : streamStatus?.liveProgress
+          false
         }
         readOnly={activeThreadReadOnly}
         initialized={composerRuntime}

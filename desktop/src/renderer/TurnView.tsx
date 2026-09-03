@@ -14,7 +14,7 @@ import { AssistantTurnShell } from "./AssistantTurnShell";
 import { ThreadItemView } from "./ThreadItemView";
 import { TurnEditSummaryCard } from "./TurnEditSummaryCard";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
-import { TurnEventNotice, StreamReconnectNotice } from "./TurnNotice";
+import { TurnEventNotice, StreamStatusNotice } from "./TurnNotice";
 import { turnEventForTurn } from "./TurnEvents";
 import { isInternalUserNotificationItem } from "./InternalUserNotification";
 import { turnIsAnswerReady, type TurnStreamStatus } from "./AppState";
@@ -241,8 +241,8 @@ function TurnContent({
           }
         />
       ) : null}
-      {isLatestTurn && turn.status === "in_progress" && streamStatus?.liveProgress ? (
-        <StreamReconnectNotice text={streamStatus.text} />
+      {isLatestTurn && turn.status === "in_progress" && streamStatus ? (
+        <StreamStatusNotice status={streamStatus} />
       ) : null}
       {event ? <TurnEventNotice event={event} /> : null}
     </section>

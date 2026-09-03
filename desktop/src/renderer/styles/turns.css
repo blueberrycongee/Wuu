@@ -46,7 +46,6 @@
   --rich-blockquote-color: var(--wuu-color-text-muted, var(--gray-650));
   --rich-rule-color: var(--wuu-border-subtle, var(--gray-250));
   --pre-text-color: var(--wuu-color-text, var(--gray-700));
-  --turn-notice-auth-color: var(--wuu-color-warning, #9a3412);
   --system-line-marker-color: var(--wuu-color-text-muted, var(--gray-400));
   --empty-home-action-border: var(--wuu-border-subtle, var(--gray-200));
   --empty-home-action-border-hover: var(--wuu-border-strong, var(--gray-350));
@@ -2498,10 +2497,6 @@
   list-style: none;
 }
 
-.context-compaction-notice.failed .process-surface-row {
-  color: var(--danger);
-}
-
 .process-surface-fold > .process-surface-row {
   cursor: pointer;
 }
@@ -2627,6 +2622,41 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.system-event-title {
+  flex: 0 0 auto;
+}
+
+.system-event-detail {
+  display: block;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.system-event-expanded-detail {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: var(--conversation-process-font-size);
+  line-height: var(--conversation-process-line-height);
+}
+
+/* Conversation events share the same neutral row geometry as aggregated
+ * tool activity and context compaction. The legacy turn-notice selector is
+ * retained only as a DOM compatibility hook; it must not reintroduce the
+ * centered colored-divider treatment. */
+.turn-notice.system-event-notice {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--conversation-process-control-color, var(--process-control-color-fallback));
 }
 
 .process-surface-count {
@@ -3704,109 +3734,9 @@ pre {
                                                                        
    
 
-.turn-notice,
-.turn-error {
-  border-radius: 0;
-  padding: 4px 0;
-  line-height: var(--line-body);
-  background: transparent;
-  border: 0;
-}
-
-.turn-error {
-  color: var(--danger);
-}
-
                                                                      
                                                                
                                          
-.turn-notice {
-  --turn-event-line-color: var(--wuu-hairline);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  color: var(--ink-tertiary);
-  width: 100%;
-  max-width: 100%;
-  margin-inline: auto;
-}
-
-.turn-event-notice::before,
-.turn-event-notice::after {
-  /* System events read as a broken divider: hairlines on both sides,
-     a single quiet line of text in the gap. Neutral events match the
-     conversation rule; semantic events use a faint line of the same hue. */
-  content: "";
-  flex: 1 1 0;
-  min-width: 24px;
-  height: 1px;
-  background: var(--turn-event-line-color);
-}
-
-.turn-event-content {
-  /* The text sits bare in the divider gap — no fill, no radius. Tone is
-     carried by the text while the related line stays deliberately softer. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: min(520px, 100%);
-  text-align: center;
-  color: var(--ink-tertiary);
-  font-size: var(--font-ui);
-  font-weight: var(--weight-medium);
-  line-height: 1.4;
-}
-
-.turn-event-title {
-  color: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-/* Tone-aware event colors. Semantic lines share the text hue at hairline
-   intensity; neutral events keep the same rule used between turns. */
-.turn-notice.warning .turn-event-content {
-  color: var(--turn-warning-text);
-}
-
-.turn-notice.auth .turn-event-content {
-  color: var(--turn-notice-auth-color);
-}
-
-.turn-notice.error .turn-event-content {
-  color: var(--danger);
-}
-
-.turn-notice.context-compaction-notice .turn-event-content {
-  color: var(--ink-muted);
-}
-
-.turn-notice.warning {
-  --turn-event-line-color: color-mix(in srgb, currentColor 28%, transparent);
-  color: var(--turn-warning-text);
-}
-
-.turn-notice.auth {
-  --turn-event-line-color: color-mix(in srgb, currentColor 28%, transparent);
-  color: var(--turn-notice-auth-color);
-}
-
-.turn-notice.error {
-  --turn-event-line-color: color-mix(in srgb, currentColor 28%, transparent);
-  color: var(--danger);
-}
-
-.turn-notice.context-compaction-notice {
-  color: var(--ink-muted);
-}
-
   
                                                                       
                                                                    

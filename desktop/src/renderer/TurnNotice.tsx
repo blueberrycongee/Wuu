@@ -2,17 +2,18 @@ import { useState } from "react";
 import type { ThreadItemStatus } from "../shared/protocol";
 import { isUnchangedContextCompaction, type TurnEventDisplay } from "./TurnEvents";
 import type { UserFacingErrorDisplay, UserFacingErrorTone } from "./UserFacingErrors";
-import { translateCurrent as t } from "./i18n";
+import { formatCurrentNumber, translateCurrent as t } from "./i18n";
 import { ProcessSurfaceFold } from "./ProcessSurfaceFold";
 import { ProcessSurfaceMascot } from "./ProcessSurface";
 import { useLiveTextWave } from "./LiveTextWave";
-import { Tooltip } from "./Tooltip";
+import type { TurnStreamStatus } from "./AppState";
 
 export type SystemEventDisplay = {
   label: string;
   detail?: string;
   tone?: UserFacingErrorTone;
   state?: "settled" | "in_progress";
+  expandedDetail?: string;
 };
 
 export function SystemEventNotice({
@@ -24,32 +25,55 @@ export function SystemEventNotice({
 }): JSX.Element {
   const tone = event.tone ?? "neutral";
   const inProgress = event.state === "in_progress";
+  const [expanded, setExpanded] = useState(false);
   const description = event.detail
     ? `${event.label} — ${event.detail}`
     : event.label;
-  const waveRef = useLiveTextWave<HTMLElement>(inProgress);
+  const summaryText = event.detail
+    ? `${event.label} · ${event.detail}`
+    : event.label;
+  const waveRef = useLiveTextWave<HTMLSpanElement>(inProgress);
+  const hasExpandedDetail = Boolean(event.expandedDetail);
   return (
-    // The visible line carries only the label; when a detail exists the
-    // hover tooltip reveals the composed "label — detail" (bounded to the
-    // tooltip length cap), and aria-label carries it for screen readers.
-    <Tooltip content={event.detail ? description : undefined}>
-      <aside
-        className={`turn-notice turn-event-notice ${tone}${inProgress ? " is-progress" : ""}${className ? ` ${className}` : ""}`}
-        role={tone === "error" || tone === "auth" ? "alert" : "status"}
-        aria-label={description}
-        aria-live={inProgress ? "polite" : undefined}
+    <aside
+      className={`turn-notice process-surface system-event-notice${inProgress ? " is-progress" : ""}${className ? ` ${className}` : ""}`}
+      role={tone === "error" || tone === "auth" ? "alert" : "status"}
+      aria-label={description}
+      aria-live={inProgress ? "polite" : undefined}
+    >
+      <ProcessSurfaceFold
+        summary={
+          <span className="process-surface-summary-line" aria-label={description}>
+            {inProgress ? (
+              <ProcessSurfaceMascot active activity="idle" />
+            ) : null}
+            <span
+              ref={waveRef}
+              className={`process-surface-summary-text system-event-copy${inProgress ? " wuu-live-text-wave" : ""}`}
+              data-text={summaryText}
+            >
+              <span className="process-surface-segment system-event-title">
+                {event.label}
+              </span>
+              {event.detail ? (
+                <>
+                  <span className="process-surface-separator">·</span>
+                  <span className="process-surface-segment system-event-detail">
+                    {event.detail}
+                  </span>
+                </>
+              ) : null}
+            </span>
+          </span>
+        }
+        disabled={!hasExpandedDetail}
+        open={expanded}
+        onToggle={(toggleEvent) => setExpanded(toggleEvent.currentTarget.open)}
+        rowClassName={inProgress ? " is-live-gray is-streaming" : ""}
       >
-        <span className="turn-event-content">
-          <strong
-            ref={waveRef}
-            className={`turn-event-title${inProgress ? " wuu-live-text-wave" : ""}`}
-            data-text={event.label}
-          >
-            {event.label}
-          </strong>
-        </span>
-      </aside>
-    </Tooltip>
+        <div className="system-event-expanded-detail">{event.expandedDetail}</div>
+      </ProcessSurfaceFold>
+    </aside>
   );
 }
 
@@ -84,23 +108,64 @@ export function TurnNotice({
       event={{
         label: display.title,
         detail: display.detail,
+        expandedDetail: display.detail,
         tone: display.tone,
       }}
     />
   );
 }
 
-export function StreamReconnectNotice({
-  text,
+export function StreamStatusNotice({
+  status,
 }: {
-  text: string;
+  status: TurnStreamStatus;
 }): JSX.Element {
+  const detail = streamStatusDetail(status);
   return (
     <SystemEventNotice
-      event={{ label: text, state: "in_progress" }}
-      className="context-compaction-notice"
+      event={{
+        label: status.event?.label ?? status.text,
+        detail,
+        state: status.liveProgress ? "in_progress" : "settled",
+      }}
+      className="stream-status-notice"
     />
   );
+}
+
+function streamStatusDetail(status: TurnStreamStatus): string | undefined {
+  const event = status.event;
+  if (!event) return undefined;
+  const parts: string[] = [];
+  parts.push(
+    event.maxAttempts
+      ? t("appState.attemptOf", {
+          attempt: formatCurrentNumber(event.attempt),
+          max: formatCurrentNumber(event.maxAttempts),
+        })
+      : t("appState.attempt", { attempt: formatCurrentNumber(event.attempt) }),
+  );
+  if (event.retryCount !== undefined) {
+    parts.push(
+      event.maxRetries !== undefined
+        ? t("appState.retryOf", {
+            count: formatCurrentNumber(event.retryCount),
+            max: formatCurrentNumber(event.maxRetries),
+          })
+        : t("appState.retryCount", {
+            count: formatCurrentNumber(event.retryCount),
+          }),
+    );
+  }
+  if (event.submissionCount) {
+    parts.push(
+      t("appState.requestsSent", {
+        count: formatCurrentNumber(event.submissionCount),
+      }),
+    );
+  }
+  if (event.waitText) parts.push(event.waitText);
+  return parts.join(" · ");
 }
 
 export function ContextCompactionNotice({

@@ -7,10 +7,9 @@
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { ContextCompactionNotice, TurnNotice } from "./TurnNotice";
+import { ContextCompactionNotice, StreamStatusNotice, TurnNotice } from "./TurnNotice";
 import { userFacingErrorForMessage } from "./UserFacingErrors";
 import { setActiveLocale } from "./i18n";
-import { hoverTooltipText, unhoverTooltip } from "./tooltipTestUtils";
 
 beforeAll(() => {
   // jsdom does not lay out real heights. Stub getBoundingClientRect so
@@ -41,7 +40,6 @@ beforeEach(() => {
 
 afterEach(() => {
   setActiveLocale("zh-CN");
-  unhoverTooltip();
   if (root) {
     act(() => {
       root?.unmount();
@@ -240,44 +238,63 @@ describe("ContextCompactionNotice", () => {
   });
 });
 
-describe("TurnNotice compact chip", () => {
-  it("renders the title as the only visible label and moves the full detail into a hover tooltip", async () => {
+describe("TurnNotice process row", () => {
+  it("uses the shared process surface and keeps the full detail expandable", () => {
     const display = userFacingErrorForMessage("connection reset by peer", "turn");
     const host = mount(<TurnNotice display={display} />);
-    const aside = host.querySelector("aside.turn-event-notice");
+    const aside = host.querySelector("aside.system-event-notice");
     expect(aside).not.toBeNull();
-    // Tone class drives the visual treatment.
-    expect(aside?.classList.contains(display.tone)).toBe(true);
-    // The title element shows only the short title (single-line).
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(display.title);
-    // The full detail is reachable via a hover tooltip (no native `title`
-    // dump) and mirrored on `aria-label` for assistive tech.
-    expect(aside?.getAttribute("title")).toBeNull();
-    const tooltip = await hoverTooltipText(aside);
-    expect(tooltip).toContain(display.title);
-    expect(tooltip).toContain(display.detail);
+    expect(aside?.querySelector(".process-surface-row")).not.toBeNull();
+    expect(aside?.querySelector(".system-event-title")?.textContent).toBe(display.title);
+    expect(aside?.querySelector(".system-event-detail")?.textContent).toBe(display.detail);
+    expect(aside?.querySelector(".system-event-expanded-detail")?.textContent).toBe(display.detail);
     expect(aside?.getAttribute("aria-label")).toContain(display.title);
     expect(aside?.getAttribute("aria-label")).toContain(display.detail);
-    expect(host.querySelectorAll("button, a")).toHaveLength(0);
-    expect(host.querySelectorAll(".turn-event-title")).toHaveLength(1);
+    expect(aside?.querySelector(".process-surface-chevron")).not.toBeNull();
   });
 
-  it("renders cancellation as a read-only event", async () => {
+  it("renders cancellation in the same neutral process row", () => {
     const display = userFacingErrorForMessage("context canceled", "turn");
     const host = mount(<TurnNotice display={display} />);
-    expect(host.querySelectorAll("button, a")).toHaveLength(0);
-    // The host still carries the hover text and title element.
-    const aside = host.querySelector("aside.turn-event-notice");
-    expect(await hoverTooltipText(aside)).toContain(display.title);
-    expect(host.querySelector(".turn-event-title")?.textContent).toBe(display.title);
+    const aside = host.querySelector("aside.system-event-notice");
+    expect(aside?.querySelector(".system-event-title")?.textContent).toBe(display.title);
+    expect(aside?.classList.contains("neutral")).toBe(false);
   });
 
-  it("applies the auth tone to the host aside", () => {
+  it("keeps alert semantics without applying a colored tone class", () => {
     const display = userFacingErrorForMessage("401 unauthorized", "turn");
     const host = mount(<TurnNotice display={display} />);
-    const aside = host.querySelector("aside.turn-event-notice");
-    expect(aside?.classList.contains("auth")).toBe(true);
-    // Auth is the only category that resolves to the "auth" tone today.
-    expect(display.tone).toBe("auth");
+    const aside = host.querySelector("aside.system-event-notice");
+    expect(aside?.getAttribute("role")).toBe("alert");
+    expect(aside?.classList.contains("auth")).toBe(false);
+  });
+
+  it("shows structured retry progress in one live process row", () => {
+    const host = mount(
+      <StreamStatusNotice
+        status={{
+          text: "429 触发限流，约 2 秒后继续（第 3/6 次尝试）",
+          liveProgress: true,
+          event: {
+            label: "429 触发限流，正在重连",
+            attempt: 3,
+            maxAttempts: 6,
+            retryCount: 2,
+            maxRetries: 5,
+            submissionCount: 4,
+            waitText: "约 2 秒后继续",
+          },
+        }}
+      />,
+    );
+
+    const notice = host.querySelector("aside.stream-status-notice");
+    expect(notice?.querySelectorAll(".process-surface-row")).toHaveLength(1);
+    expect(notice?.textContent).toContain("429 触发限流，正在重连");
+    expect(notice?.textContent).toContain("第 3/6 次尝试");
+    expect(notice?.textContent).toContain("已重试 2/5 次");
+    expect(notice?.textContent).toContain("已发送 4 次请求");
+    expect(notice?.textContent).toContain("约 2 秒后继续");
+    expect(notice?.querySelector(".process-surface-chevron")).toBeNull();
   });
 });

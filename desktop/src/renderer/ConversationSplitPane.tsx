@@ -126,7 +126,7 @@ export function ConversationSplitPane({
   const paneRunning = isThreadRunning(thread);
   const paneReadOnly = Boolean(thread.read_only);
   const paneStatus = paneRunning
-    ? streamStatus?.text ?? t("messageFlow.stillGenerating")
+    ? t("messageFlow.stillGenerating")
     : active && appStatus !== "ready"
       ? appStatus
       : "";
@@ -222,7 +222,7 @@ export function ConversationSplitPane({
           sendDisabled={viewSwitchPending}
           readOnly={false}
           status={paneStatus}
-          statusLiveProgress={paneRunning ? streamStatus?.liveProgress : false}
+          statusLiveProgress={false}
           onPasteAttachmentFiles={onPasteAttachmentFiles}
           onRemoveFile={onRemoveFile}
           onRemoveImage={onRemoveImage}
