@@ -79,7 +79,7 @@ export function MessageForkButton({ onFork }: { onFork?: () => void }): JSX.Elem
       disabled={!onFork}
       onClick={onFork}
     >
-      <GitFork className="icon" />
+      <GitFork size={15} />
     </button>
   );
 }

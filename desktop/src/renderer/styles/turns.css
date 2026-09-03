@@ -1518,6 +1518,12 @@
   position: absolute;
   top: 100%;
   left: 0;
+  /* The 24px hit target is structurally flush with the prose, but centering a
+   * 15px Lucide glyph inside it leaves the visible mark about 5px inset. Hang
+   * the target into the gutter so the glyph, not its invisible box, aligns
+   * with the first character of the answer. Themes can still choose an exact
+   * offset through the public token. */
+  margin-inline-start: var(--wuu-message-actions-inline-offset, -5px);
   padding-top: var(--conversation-answer-hover-action-gap);
 }
 
