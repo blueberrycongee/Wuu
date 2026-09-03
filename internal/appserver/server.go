@@ -221,11 +221,12 @@ type Server struct {
 	pendingAgentCompletionTurns  map[string][]agentCompletionTurn
 	drainingAgentCompletionTurns map[string]bool
 
-	queuedTurnMu        sync.Mutex
-	pendingQueuedTurns  map[string][]queuedTurn
-	claimedQueuedTurns  map[string]*queuedTurnClaim
-	drainingQueuedTurns map[string]bool
-	heldUserWorkMu      sync.Mutex
+	queuedTurnMu                sync.Mutex
+	pendingQueuedTurns          map[string][]queuedTurn
+	claimedQueuedTurns          map[string]*queuedTurnClaim
+	cancelledPendingSubmissions map[string]string
+	drainingQueuedTurns         map[string]bool
+	heldUserWorkMu              sync.Mutex
 
 	pluginTurnUnbind   func()
 	userQuestionUnbind func()
@@ -319,6 +320,7 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		drainingAgentCompletionTurns: make(map[string]bool),
 		pendingQueuedTurns:           make(map[string][]queuedTurn),
 		claimedQueuedTurns:           make(map[string]*queuedTurnClaim),
+		cancelledPendingSubmissions:  make(map[string]string),
 		drainingQueuedTurns:          make(map[string]bool),
 		codexModelCache:              make(map[string]map[string]config.ProviderModelConfig),
 		inferenceMaintenanceStop:     make(chan struct{}),
@@ -846,6 +848,7 @@ func (s *Server) Close() {
 		}
 		clear(s.pendingQueuedTurns)
 		clear(s.claimedQueuedTurns)
+		clear(s.cancelledPendingSubmissions)
 		clear(s.drainingQueuedTurns)
 		s.queuedTurnMu.Unlock()
 		for threadID, entries := range queuedOnClose {

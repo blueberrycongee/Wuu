@@ -51,6 +51,8 @@ type queuedTurnClaim struct {
 
 var errQueuedTurnCancelled = errors.New("queued turn was cancelled before admission")
 
+const maxCancelledPendingSubmissions = 1024
+
 type agentCompletionTurnKind string
 
 const (
@@ -517,6 +519,11 @@ func (s *Server) handleTurnQueue(req Request) error {
 	}
 	enqueued := s.enqueueQueuedUserTurn(params.ThreadID, entry)
 	th.mu.Unlock()
+	if !enqueued {
+		if _, pending := s.findQueuedUserTurn(params.ThreadID, queueID); !pending {
+			return s.writeResponse(req.ID, nil, errors.New("queue submission was cancelled before arrival"))
+		}
+	}
 	if err := s.writeResponse(req.ID, TurnQueueResult{Queued: queued}, nil); err != nil {
 		return err
 	}
@@ -612,6 +619,9 @@ func (s *Server) handleTurnDequeue(req Request) error {
 			return s.writeResponse(req.ID, nil, err)
 		}
 	}
+	if !removed {
+		s.recordCancelledPendingSubmission(threadID, queueID, session.HeldUserWorkOriginQueue)
+	}
 	if err := s.writeResponse(req.ID, OKResult{OK: removed}, nil); err != nil {
 		return err
 	}
@@ -664,6 +674,10 @@ func (s *Server) handleTurnSteer(req Request) error {
 	}
 
 	th.mu.Lock()
+	if s.isCancelledPendingSubmission(params.ThreadID, clientID, session.HeldUserWorkOriginSteer) {
+		th.mu.Unlock()
+		return s.writeResponse(req.ID, nil, errors.New("steer submission was cancelled before arrival"))
+	}
 	if isHeld && th.interrupting {
 		th.mu.Unlock()
 		return s.writeResponse(req.ID, nil, errors.New("interrupted turn is still stopping"))
@@ -862,6 +876,9 @@ func (s *Server) handleTurnUnsteer(req Request) error {
 	}
 	if removed && held != nil {
 		s.notifyHeldUserTurns(threadID, held)
+	}
+	if !removed {
+		s.recordCancelledPendingSubmission(threadID, steerID, session.HeldUserWorkOriginSteer)
 	}
 	if removedLive {
 		_ = s.writeNotification(NotificationTurnUnsteered, TurnUnsteeredNotification{
@@ -2912,6 +2929,10 @@ func (s *Server) enqueueQueuedUserTurn(threadID string, entry queuedTurn) bool {
 	if s.pendingQueuedTurns == nil {
 		s.pendingQueuedTurns = make(map[string][]queuedTurn)
 	}
+	if s.isCancelledPendingSubmissionLocked(threadID, entry.id, session.HeldUserWorkOriginQueue) {
+		s.queuedTurnMu.Unlock()
+		return false
+	}
 	for _, pending := range s.pendingQueuedTurns[threadID] {
 		if pending.id == entry.id {
 			s.queuedTurnMu.Unlock()
@@ -2925,6 +2946,33 @@ func (s *Server) enqueueQueuedUserTurn(threadID string, entry queuedTurn) bool {
 	s.pendingQueuedTurns[threadID] = append(s.pendingQueuedTurns[threadID], entry)
 	s.queuedTurnMu.Unlock()
 	return true
+}
+
+func (s *Server) recordCancelledPendingSubmission(threadID, id, origin string) {
+	key := queuedTurnClaimKey(threadID, id)
+	if key == "\x00" {
+		return
+	}
+	s.queuedTurnMu.Lock()
+	defer s.queuedTurnMu.Unlock()
+	if s.cancelledPendingSubmissions == nil {
+		s.cancelledPendingSubmissions = make(map[string]string)
+	}
+	if len(s.cancelledPendingSubmissions) >= maxCancelledPendingSubmissions {
+		clear(s.cancelledPendingSubmissions)
+	}
+	s.cancelledPendingSubmissions[key] = origin
+}
+
+func (s *Server) isCancelledPendingSubmission(threadID, id, origin string) bool {
+	s.queuedTurnMu.Lock()
+	defer s.queuedTurnMu.Unlock()
+	return s.isCancelledPendingSubmissionLocked(threadID, id, origin)
+}
+
+func (s *Server) isCancelledPendingSubmissionLocked(threadID, id, origin string) bool {
+	key := queuedTurnClaimKey(threadID, id)
+	return s.cancelledPendingSubmissions[key] == origin
 }
 
 func (s *Server) removeQueuedUserTurn(threadID, queueID string) (queuedTurn, bool) {

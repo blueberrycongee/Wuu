@@ -260,3 +260,34 @@ func TestEnqueueQueuedUserTurnDeduplicatesStableID(t *testing.T) {
 		t.Fatalf("queued entries = %d, want 1", count)
 	}
 }
+
+func TestQueuedTurnCancellationTombstoneRejectsLateSubmissionAndRetry(t *testing.T) {
+	const threadID = "thread-1"
+	const queueID = "queue-1"
+	s := &Server{}
+	s.recordCancelledPendingSubmission(threadID, queueID, session.HeldUserWorkOriginQueue)
+	entry := queuedTurn{
+		id: queueID, msg: providers.ChatMessage{Role: "user", Content: "Too late"},
+	}
+
+	if s.enqueueQueuedUserTurn(threadID, entry) {
+		t.Fatal("late queue submission was accepted")
+	}
+	if s.enqueueQueuedUserTurn(threadID, entry) {
+		t.Fatal("retried late queue submission was accepted")
+	}
+	if s.hasQueuedUserTurns(threadID) {
+		t.Fatal("cancelled submission was resurrected")
+	}
+}
+
+func TestSteerCancellationTombstoneRejectsMatchingLateSubmission(t *testing.T) {
+	s := &Server{}
+	s.recordCancelledPendingSubmission("thread-1", "steer-1", session.HeldUserWorkOriginSteer)
+	if !s.isCancelledPendingSubmission("thread-1", "steer-1", session.HeldUserWorkOriginSteer) {
+		t.Fatal("steer cancellation tombstone was not retained")
+	}
+	if s.isCancelledPendingSubmission("thread-1", "steer-1", session.HeldUserWorkOriginQueue) {
+		t.Fatal("steer cancellation tombstone blocked the queue delivery mode")
+	}
+}
