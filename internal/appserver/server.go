@@ -223,6 +223,7 @@ type Server struct {
 
 	queuedTurnMu        sync.Mutex
 	pendingQueuedTurns  map[string][]queuedTurn
+	claimedQueuedTurns  map[string]*queuedTurnClaim
 	drainingQueuedTurns map[string]bool
 	heldUserWorkMu      sync.Mutex
 
@@ -317,6 +318,7 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 		pendingAgentCompletionTurns:  make(map[string][]agentCompletionTurn),
 		drainingAgentCompletionTurns: make(map[string]bool),
 		pendingQueuedTurns:           make(map[string][]queuedTurn),
+		claimedQueuedTurns:           make(map[string]*queuedTurnClaim),
 		drainingQueuedTurns:          make(map[string]bool),
 		codexModelCache:              make(map[string]map[string]config.ProviderModelConfig),
 		inferenceMaintenanceStop:     make(chan struct{}),
@@ -843,6 +845,7 @@ func (s *Server) Close() {
 			queuedOnClose[threadID] = append([]queuedTurn(nil), entries...)
 		}
 		clear(s.pendingQueuedTurns)
+		clear(s.claimedQueuedTurns)
 		clear(s.drainingQueuedTurns)
 		s.queuedTurnMu.Unlock()
 		for threadID, entries := range queuedOnClose {

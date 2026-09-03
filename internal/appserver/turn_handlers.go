@@ -43,6 +43,14 @@ type queuedTurn struct {
 	origin    string
 }
 
+type queuedTurnClaim struct {
+	entry     queuedTurn
+	cancelled bool
+	committed bool
+}
+
+var errQueuedTurnCancelled = errors.New("queued turn was cancelled before admission")
+
 type agentCompletionTurnKind string
 
 const (
@@ -2845,6 +2853,14 @@ func (s *Server) removeQueuedUserTurn(threadID, queueID string) (queuedTurn, boo
 	} else {
 		s.pendingQueuedTurns[threadID] = next
 	}
+	if !found {
+		claim := s.claimedQueuedTurns[queuedTurnClaimKey(threadID, queueID)]
+		if claim != nil && !claim.cancelled && !claim.committed {
+			claim.cancelled = true
+			removed = claim.entry
+			found = true
+		}
+	}
 	return removed, found
 }
 
@@ -2945,7 +2961,15 @@ func (s *Server) drainQueuedTurns(threadID string) {
 	started, err := s.startQueuedTurn(context.Background(), threadID, entry)
 	executionBusy := errors.Is(err, errThreadExecutionBusy)
 	retryableAdmission := errors.Is(err, errRetryableTurnAdmission)
-	if err != nil && !executionBusy && !retryableAdmission {
+	requeueCandidate := !started && (err == nil || executionBusy || retryableAdmission)
+	cancelled := s.settleQueuedTurnClaim(threadID, entry, requeueCandidate)
+	if errors.Is(err, errQueuedTurnCancelled) || cancelled {
+		err = errQueuedTurnCancelled
+		executionBusy = false
+		retryableAdmission = false
+		requeueCandidate = false
+	}
+	if err != nil && !executionBusy && !retryableAdmission && !errors.Is(err, errQueuedTurnCancelled) {
 		providers.DebugLogf("start queued turn for thread %q: %v", threadID, err)
 		if reference := entry.snapshot.PluginTurn; reference != nil {
 			// Terminal observation: persist to the outbox and deliver in the
@@ -2962,11 +2986,7 @@ func (s *Server) drainQueuedTurns(threadID string) {
 			QueueID:  entry.id,
 		})
 	}
-	requeued := false
-	if !started && (err == nil || executionBusy || retryableAdmission) {
-		s.prependQueuedUserTurns(threadID, []queuedTurn{entry})
-		requeued = true
-	}
+	requeued := requeueCandidate && !cancelled
 	s.clearQueuedTurnDrain(threadID)
 	if requeued && (executionBusy || retryableAdmission) {
 		s.scheduleThreadExecutionLeaseRetry(func() { s.kickQueuedTurnDrain(threadID) })
@@ -3269,14 +3289,22 @@ func (s *Server) startQueuedTurn(ctx context.Context, threadID string, entry que
 		snapshot,
 		false,
 		turnReadOnlyFail,
-		turnAdmissionHooks{afterLease: func(admitted *threadState, _ *providers.ChatMessage) error {
-			var runtimeErr error
-			threadRuntime, runtimeErr = s.ensureThreadRuntimeAfterAdmission(admitted)
-			if runtimeErr != nil {
-				return runtimeErr
-			}
-			return gateAlreadyDeliveredCompletions(admitted.History, threadRuntime, snapshot.AgentCompletionResultIDs, snapshot.ProcessCompletionIDs)
-		}},
+		turnAdmissionHooks{
+			afterLease: func(admitted *threadState, _ *providers.ChatMessage) error {
+				var runtimeErr error
+				threadRuntime, runtimeErr = s.ensureThreadRuntimeAfterAdmission(admitted)
+				if runtimeErr != nil {
+					return runtimeErr
+				}
+				return gateAlreadyDeliveredCompletions(admitted.History, threadRuntime, snapshot.AgentCompletionResultIDs, snapshot.ProcessCompletionIDs)
+			},
+			beforeUserAppendLocked: func(_ *threadState) (func() error, error) {
+				if err := s.commitQueuedTurnClaim(threadID, entry.id); err != nil {
+					return nil, err
+				}
+				return nil, nil
+			},
+		},
 	)
 	if errors.Is(err, errAgentCompletionAlreadyDelivered) {
 		return true, nil
@@ -3402,7 +3430,49 @@ func (s *Server) takeNextQueuedUserTurn(threadID string) (queuedTurn, bool) {
 		next := append([]queuedTurn(nil), pending[:index]...)
 		s.pendingQueuedTurns[threadID] = append(next, pending[index+1:]...)
 	}
+	if s.claimedQueuedTurns == nil {
+		s.claimedQueuedTurns = make(map[string]*queuedTurnClaim)
+	}
+	s.claimedQueuedTurns[queuedTurnClaimKey(threadID, entry.id)] = &queuedTurnClaim{entry: entry}
 	return entry, true
+}
+
+func queuedTurnClaimKey(threadID, queueID string) string {
+	return strings.TrimSpace(threadID) + "\x00" + strings.TrimSpace(queueID)
+}
+
+// commitQueuedTurnClaim runs while the thread lock is held immediately before
+// the user message append. A dequeue that wins first prevents the append;
+// after this point the message is committed and cancellation is too late.
+func (s *Server) commitQueuedTurnClaim(threadID, queueID string) error {
+	s.queuedTurnMu.Lock()
+	defer s.queuedTurnMu.Unlock()
+	claim := s.claimedQueuedTurns[queuedTurnClaimKey(threadID, queueID)]
+	if claim == nil {
+		return nil
+	}
+	if claim.cancelled {
+		return errQueuedTurnCancelled
+	}
+	claim.committed = true
+	return nil
+}
+
+// settleQueuedTurnClaim closes the temporary ownership gap between taking an
+// entry and committing or putting it back. Claim removal and requeue happen
+// under one lock, so cancellation can never miss both representations.
+func (s *Server) settleQueuedTurnClaim(threadID string, entry queuedTurn, requeue bool) bool {
+	s.queuedTurnMu.Lock()
+	defer s.queuedTurnMu.Unlock()
+	key := queuedTurnClaimKey(threadID, entry.id)
+	claim := s.claimedQueuedTurns[key]
+	cancelled := claim != nil && claim.cancelled
+	delete(s.claimedQueuedTurns, key)
+	if requeue && !cancelled {
+		existing := append([]queuedTurn(nil), s.pendingQueuedTurns[threadID]...)
+		s.pendingQueuedTurns[threadID] = append([]queuedTurn{entry}, existing...)
+	}
+	return cancelled
 }
 
 func (s *Server) prependQueuedUserTurns(threadID string, entries []queuedTurn) {
