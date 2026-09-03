@@ -1476,15 +1476,13 @@ describe("AppState token usage", () => {
     });
 
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
-      text: "消息流暂时中断，约 2 秒后继续（第 2/4 次尝试）",
+      text: "网络异常 · 第 1/3 次重试 · 2 秒后重试",
       liveProgress: true,
       event: {
-        label: "消息流正在恢复",
-        attempt: 2,
-        maxAttempts: 4,
+        label: "网络异常",
         retryCount: 1,
         maxRetries: 3,
-        waitText: "约 2 秒后继续",
+        retryAtMs: expect.any(Number),
       },
     });
 
@@ -1509,7 +1507,7 @@ describe("AppState token usage", () => {
     expect(turnStreamStatusForThread(connected, connected.thread)).toBeUndefined();
   });
 
-  it("uses provider transport in stream reconnect status when available", () => {
+  it("uses a generic network cause when reconnect details only name the transport", () => {
     const thread: Thread = {
       ...threadWithUserTexts(["hi"]),
       turns: [
@@ -1564,12 +1562,10 @@ describe("AppState token usage", () => {
     });
 
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
-      text: "HTTP 消息流正在恢复（第 3/4 次尝试）",
+      text: "网络异常 · 第 2/3 次重试",
       liveProgress: true,
       event: {
-        label: "HTTP 消息流正在恢复",
-        attempt: 3,
-        maxAttempts: 4,
+        label: "网络异常",
         retryCount: 2,
         maxRetries: 3,
       },
@@ -1618,15 +1614,13 @@ describe("AppState token usage", () => {
 
     const first = reduceServerEvent(state, reconnectEvent);
     expect(turnStreamStatusForThread(first, first.thread)).toEqual({
-      text: "429 触发限流，约 5 秒后继续（第 2/6 次尝试）",
+      text: "429 触发限流 · 第 1/5 次重试 · 5 秒后重试",
       liveProgress: true,
       event: {
-        label: "429 触发限流，正在重连",
-        attempt: 2,
-        maxAttempts: 6,
+        label: "429 触发限流",
         retryCount: 1,
         maxRetries: 5,
-        waitText: "约 5 秒后继续",
+        retryAtMs: expect.any(Number),
       },
     });
 
@@ -1653,15 +1647,13 @@ describe("AppState token usage", () => {
     });
     expect(Object.keys(second.turnStreamStatus)).toEqual(["turn-1"]);
     expect(turnStreamStatusForThread(second, second.thread)).toEqual({
-      text: "429 触发限流，约 2 秒后继续（第 3/6 次尝试）",
+      text: "429 触发限流 · 第 2/5 次重试 · 2 秒后重试",
       liveProgress: true,
       event: {
-        label: "429 触发限流，正在重连",
-        attempt: 3,
-        maxAttempts: 6,
+        label: "429 触发限流",
         retryCount: 2,
         maxRetries: 5,
-        waitText: "约 2 秒后继续",
+        retryAtMs: expect.any(Number),
       },
     });
   });
@@ -1706,11 +1698,10 @@ describe("AppState token usage", () => {
     });
 
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
-      text: "认证失败，正在重连中（第 2 次尝试）",
+      text: "认证失败 · 第 1 次重试",
       liveProgress: true,
       event: {
-        label: "认证失败，正在重连",
-        attempt: 2,
+        label: "认证失败",
         retryCount: 1,
       },
     });
@@ -1755,12 +1746,11 @@ describe("AppState token usage", () => {
     });
 
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
-      text: "上游过载，正在重连中（第 1 次尝试）",
+      text: "上游过载 · 第 1 次重试",
       liveProgress: true,
       event: {
-        label: "上游过载，正在重连",
-        attempt: 1,
-        retryCount: 0,
+        label: "上游过载",
+        retryCount: 1,
       },
     });
   });
@@ -1805,12 +1795,11 @@ describe("AppState token usage", () => {
     });
 
     expect(turnStreamStatusForThread(reconnecting, reconnecting.thread)).toEqual({
-      text: "消息流正在恢复（第 1 次尝试）",
+      text: "网络异常 · 第 1 次重试",
       liveProgress: true,
       event: {
-        label: "消息流正在恢复",
-        attempt: 1,
-        retryCount: 0,
+        label: "网络异常",
+        retryCount: 1,
       },
     });
   });
@@ -4055,15 +4044,13 @@ describe("AppState English localization", () => {
     );
 
     expect(turnStreamStatusForThread(state, state.thread)).toEqual({
-      text: "Message stream interrupted temporarily; continuing in about 2 seconds (Attempt 2 of 4)",
+      text: "Network error · Retry 1 of 3 · Retrying in 2 seconds",
       liveProgress: true,
       event: {
-        label: "Message stream is recovering",
-        attempt: 2,
-        maxAttempts: 4,
+        label: "Network error",
         retryCount: 1,
         maxRetries: 3,
-        waitText: "in about 2 seconds",
+        retryAtMs: expect.any(Number),
       },
     });
   });

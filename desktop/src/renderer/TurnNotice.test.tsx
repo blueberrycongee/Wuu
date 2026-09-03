@@ -269,20 +269,18 @@ describe("TurnNotice process row", () => {
     expect(aside?.classList.contains("auth")).toBe(false);
   });
 
-  it("shows structured retry progress in one live process row", () => {
+  it("shows retry-only progress and counts down in one live process row", () => {
+    const retryAtMs = Date.now() + 2_000;
     const host = mount(
       <StreamStatusNotice
         status={{
-          text: "429 触发限流，约 2 秒后继续（第 3/6 次尝试）",
+          text: "429 触发限流 · 第 2/5 次重试 · 2 秒后重试",
           liveProgress: true,
           event: {
-            label: "429 触发限流，正在重连",
-            attempt: 3,
-            maxAttempts: 6,
+            label: "429 触发限流",
             retryCount: 2,
             maxRetries: 5,
-            submissionCount: 4,
-            waitText: "约 2 秒后继续",
+            retryAtMs,
           },
         }}
       />,
@@ -290,11 +288,21 @@ describe("TurnNotice process row", () => {
 
     const notice = host.querySelector("aside.stream-status-notice");
     expect(notice?.querySelectorAll(".process-surface-row")).toHaveLength(1);
-    expect(notice?.textContent).toContain("429 触发限流，正在重连");
-    expect(notice?.textContent).toContain("第 3/6 次尝试");
-    expect(notice?.textContent).toContain("已重试 2/5 次");
-    expect(notice?.textContent).toContain("已发送 4 次请求");
-    expect(notice?.textContent).toContain("约 2 秒后继续");
+    expect(notice?.textContent).toContain("429 触发限流");
+    expect(notice?.textContent).toContain("第 2/5 次重试");
+    expect(notice?.textContent).toContain("2 秒后重试");
+    expect(notice?.textContent).not.toContain("尝试");
+    expect(notice?.textContent).not.toContain("已发送");
+
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(notice?.textContent).toContain("1 秒后重试");
+
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(notice?.textContent).toContain("正在重试");
     expect(notice?.querySelector(".process-surface-chevron")).toBeNull();
   });
 });

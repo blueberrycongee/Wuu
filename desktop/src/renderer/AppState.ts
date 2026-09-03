@@ -62,12 +62,9 @@ export type TurnStreamStatus = {
   liveProgress: boolean;
   event?: {
     label: string;
-    attempt: number;
-    maxAttempts?: number;
-    retryCount?: number;
+    retryCount: number;
     maxRetries?: number;
-    submissionCount?: number;
-    waitText?: string;
+    retryAtMs?: number;
   };
 };
 
@@ -1099,71 +1096,33 @@ function streamStatusFromLifecycle(
   }
   const reportedAttempt = positiveInteger(numberValue(lifecycle, "attempt"));
   const reportedRetryCount = nonNegativeInteger(numberValue(lifecycle, "retry_count"));
-  const retryCount = reportedRetryCount ?? retryCountFromAttempt(reportedAttempt);
-  const attempt =
-    reportedAttempt ?? retryCount + 1;
-  const maxRetries = positiveInteger(numberValue(lifecycle, "max_retries"));
-  const maxAttempts =
-    positiveInteger(numberValue(lifecycle, "max_attempts")) ??
-    maxAttemptsFromRetries(maxRetries);
-  const attemptText = maxAttempts
-    ? t("appState.attemptOf", {
-        attempt: formatCurrentNumber(attempt),
-        max: formatCurrentNumber(maxAttempts),
+  const retryCount = Math.max(
+    1,
+    reportedRetryCount ?? retryCountFromAttempt(reportedAttempt),
+  );
+  const reportedMaxAttempts = positiveInteger(numberValue(lifecycle, "max_attempts"));
+  const maxRetries =
+    positiveInteger(numberValue(lifecycle, "max_retries")) ??
+    (reportedMaxAttempts === undefined ? undefined : Math.max(1, reportedMaxAttempts - 1));
+  const progressText = maxRetries
+    ? t("appState.retryProgress", {
+        count: formatCurrentNumber(retryCount),
+        max: formatCurrentNumber(maxRetries),
       })
-    : t("appState.attempt", { attempt: formatCurrentNumber(attempt) });
+    : t("appState.retryOrdinal", { count: formatCurrentNumber(retryCount) });
   const retryInMs = positiveInteger(numberValue(lifecycle, "retry_in_ms"));
   const waitText = retryWaitText(retryInMs);
-  const submissionCount = positiveInteger(
-    numberValue(lifecycle, "submission_count"),
-  );
-  const progressText = submissionCount
-    ? t(
-        submissionCount === 1
-          ? "appState.attemptRequestsOne"
-          : "appState.attemptRequests",
-        {
-          attempt: attemptText,
-          count: formatCurrentNumber(submissionCount),
-        },
-      )
-    : attemptText;
-  // While the stream is being retried, this chip is the only place the
-  // failure shows up — name the cause (429, auth refresh, …) instead of the
-  // transport so the single line answers "what is being retried".
-  const cause = reconnectCauseLabel(lifecycle);
+  // Name the failure rather than the transport so the row reads as one clear
+  // status: cause, current retry, then the countdown when one is available.
+  const label = reconnectCauseLabel(lifecycle) ?? t("error.networkTitle");
   const event = {
-    label: cause
-      ? t("appState.reconnectingCauseLabel", { cause })
-      : t("appState.reconnectingLabel", { subject }),
-    attempt,
-    ...(maxAttempts === undefined ? {} : { maxAttempts }),
-    ...(reportedRetryCount === undefined && reportedAttempt === undefined
-      ? {}
-      : { retryCount: reportedRetryCount ?? Math.max(0, attempt - 1) }),
-    ...(maxRetries === undefined && maxAttempts === undefined
-      ? {}
-      : { maxRetries: maxRetries ?? Math.max(0, (maxAttempts ?? 1) - 1) }),
-    ...(submissionCount === undefined ? {} : { submissionCount }),
-    ...(waitText === undefined ? {} : { waitText }),
+    label,
+    retryCount,
+    ...(maxRetries === undefined ? {} : { maxRetries }),
+    ...(retryInMs === undefined ? {} : { retryAtMs: Date.now() + retryInMs }),
   };
-  if (cause) {
-    return {
-      text: waitText
-        ? t("appState.reconnectingCauseAfter", {
-            cause,
-            wait: waitText,
-            progress: progressText,
-          })
-        : t("appState.reconnectingCause", { cause, progress: progressText }),
-      liveProgress: true,
-      event,
-    };
-  }
   return {
-    text: waitText
-      ? t("appState.reconnectingAfter", { subject, wait: waitText, progress: progressText })
-      : t("appState.reconnecting", { subject, progress: progressText }),
+    text: [label, progressText, waitText].filter(Boolean).join(" · "),
     liveProgress: true,
     event,
   };
@@ -1233,11 +1192,6 @@ function retryWaitText(retryInMs: number | undefined): string | undefined {
   return t(minutes === 1 ? "appState.retryMinute" : "appState.retryMinutes", {
     count: formatCurrentNumber(minutes),
   });
-}
-
-function maxAttemptsFromRetries(maxRetries: number | undefined): number | undefined {
-  const safeRetries = positiveInteger(maxRetries);
-  return safeRetries ? safeRetries + 1 : undefined;
 }
 
 function failedTransportLabelFromProviderState(

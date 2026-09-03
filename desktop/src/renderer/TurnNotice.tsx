@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ThreadItemStatus } from "../shared/protocol";
 import { isUnchangedContextCompaction, type TurnEventDisplay } from "./TurnEvents";
 import type { UserFacingErrorDisplay, UserFacingErrorTone } from "./UserFacingErrors";
@@ -120,7 +120,8 @@ export function StreamStatusNotice({
 }: {
   status: TurnStreamStatus;
 }): JSX.Element {
-  const detail = streamStatusDetail(status);
+  const waitText = useRetryCountdown(status.event?.retryAtMs);
+  const detail = streamStatusDetail(status, waitText);
   return (
     <SystemEventNotice
       event={{
@@ -133,39 +134,58 @@ export function StreamStatusNotice({
   );
 }
 
-function streamStatusDetail(status: TurnStreamStatus): string | undefined {
+function streamStatusDetail(
+  status: TurnStreamStatus,
+  waitText: string | undefined,
+): string | undefined {
   const event = status.event;
   if (!event) return undefined;
-  const parts: string[] = [];
-  parts.push(
-    event.maxAttempts
-      ? t("appState.attemptOf", {
-          attempt: formatCurrentNumber(event.attempt),
-          max: formatCurrentNumber(event.maxAttempts),
-        })
-      : t("appState.attempt", { attempt: formatCurrentNumber(event.attempt) }),
-  );
-  if (event.retryCount !== undefined) {
-    parts.push(
-      event.maxRetries !== undefined
-        ? t("appState.retryOf", {
-            count: formatCurrentNumber(event.retryCount),
-            max: formatCurrentNumber(event.maxRetries),
-          })
-        : t("appState.retryCount", {
-            count: formatCurrentNumber(event.retryCount),
-          }),
-    );
+  const retryText = event.maxRetries
+    ? t("appState.retryProgress", {
+        count: formatCurrentNumber(event.retryCount),
+        max: formatCurrentNumber(event.maxRetries),
+      })
+    : t("appState.retryOrdinal", {
+        count: formatCurrentNumber(event.retryCount),
+      });
+  return [retryText, waitText].filter(Boolean).join(" · ");
+}
+
+function useRetryCountdown(retryAtMs: number | undefined): string | undefined {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (retryAtMs === undefined || retryAtMs <= Date.now()) return;
+
+    let timer: number | undefined;
+    const update = (): void => {
+      setTick((value) => value + 1);
+      if (retryAtMs <= Date.now() && timer !== undefined) {
+        window.clearInterval(timer);
+        timer = undefined;
+      }
+    };
+    timer = window.setInterval(update, 1_000);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      if (timer !== undefined) window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [retryAtMs]);
+
+  if (retryAtMs === undefined) return undefined;
+  const remainingMs = retryAtMs - Date.now();
+  if (remainingMs <= 0) return t("appState.retryNow");
+  if (remainingMs < 60_000) {
+    const seconds = Math.max(1, Math.ceil(remainingMs / 1_000));
+    return t(seconds === 1 ? "appState.retrySecond" : "appState.retrySeconds", {
+      count: formatCurrentNumber(seconds),
+    });
   }
-  if (event.submissionCount) {
-    parts.push(
-      t("appState.requestsSent", {
-        count: formatCurrentNumber(event.submissionCount),
-      }),
-    );
-  }
-  if (event.waitText) parts.push(event.waitText);
-  return parts.join(" · ");
+  const minutes = Math.ceil(remainingMs / 60_000);
+  return t(minutes === 1 ? "appState.retryMinute" : "appState.retryMinutes", {
+    count: formatCurrentNumber(minutes),
+  });
 }
 
 export function ContextCompactionNotice({
