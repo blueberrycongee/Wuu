@@ -509,13 +509,23 @@ func (s *Server) handleTurnQueue(req Request) error {
 		s.notifyHeldUserTurns(params.ThreadID, held)
 		return nil
 	}
-	s.enqueueQueuedUserTurn(params.ThreadID, entry)
+	for _, pendingSteer := range th.pendingSteers {
+		if strings.TrimSpace(pendingSteer.ClientID) == queueID {
+			th.mu.Unlock()
+			return s.writeResponse(req.ID, nil, errors.New("client_id is already pending as steering input"))
+		}
+	}
+	enqueued := s.enqueueQueuedUserTurn(params.ThreadID, entry)
 	th.mu.Unlock()
 	if err := s.writeResponse(req.ID, TurnQueueResult{Queued: queued}, nil); err != nil {
 		return err
 	}
-	_ = s.writeNotification(NotificationTurnQueued, TurnQueuedNotification{Queued: queued})
-	s.kickQueuedTurnDrain(params.ThreadID)
+	if enqueued {
+		_ = s.writeNotification(NotificationTurnQueued, TurnQueuedNotification{
+			Queued: queued, Message: heldUserMessageSummary(params.ThreadID, entry),
+		})
+		s.kickQueuedTurnDrain(params.ThreadID)
+	}
 	return nil
 }
 
@@ -696,6 +706,12 @@ func (s *Server) handleTurnSteer(req Request) error {
 		return s.writeResponse(req.ID, nil, errors.New("cannot steer a compact turn"))
 	}
 	turnID := th.currentTurn
+	for _, pendingSteer := range th.pendingSteers {
+		if strings.TrimSpace(pendingSteer.ClientID) == clientID {
+			th.mu.Unlock()
+			return s.writeResponse(req.ID, TurnSteerResult{TurnID: turnID}, nil)
+		}
+	}
 	var steerMsg providers.ChatMessage
 	var remaining []queuedTurn
 	var removedTurn queuedTurn
@@ -744,6 +760,11 @@ func (s *Server) handleTurnSteer(req Request) error {
 		s.notifyPluginTurnDiscarded(params.ThreadID, removedTurn, "held turn was converted to steering input")
 		s.notifyHeldUserTurns(params.ThreadID, remaining)
 	}
+	_ = s.writeNotification(NotificationTurnSteered, TurnSteeredNotification{
+		Message: heldUserMessageSummary(params.ThreadID, queuedTurn{
+			id: clientID, msg: steerMsg, origin: session.HeldUserWorkOriginSteer,
+		}),
+	})
 	return s.writeResponse(req.ID, TurnSteerResult{TurnID: turnID}, nil)
 }
 
@@ -826,6 +847,7 @@ func (s *Server) handleTurnUnsteer(req Request) error {
 	}
 	th.mu.Lock()
 	removed := th.removePendingSteerLocked(steerID)
+	removedLive := removed
 	if removed {
 		th.removeSteerDocumentOverrideLocked(steerID)
 	}
@@ -840,6 +862,11 @@ func (s *Server) handleTurnUnsteer(req Request) error {
 	}
 	if removed && held != nil {
 		s.notifyHeldUserTurns(threadID, held)
+	}
+	if removedLive {
+		_ = s.writeNotification(NotificationTurnUnsteered, TurnUnsteeredNotification{
+			ThreadID: threadID, SteerID: steerID,
+		})
 	}
 	return s.writeResponse(req.ID, OKResult{OK: removed}, nil)
 }
@@ -880,7 +907,9 @@ func (s *Server) handleTurnRequeue(req Request) error {
 		if err := s.writeResponse(req.ID, TurnRequeueResult{OK: true, State: "queued", Queued: queued}, nil); err != nil {
 			return err
 		}
-		_ = s.writeNotification(NotificationTurnQueued, TurnQueuedNotification{Queued: queued})
+		_ = s.writeNotification(NotificationTurnQueued, TurnQueuedNotification{
+			Queued: queued, Message: heldUserMessageSummary(threadID, entry),
+		})
 		s.kickQueuedTurnDrain(threadID)
 		return nil
 	}
@@ -2855,14 +2884,14 @@ func (s *Server) enqueueAgentCompletionTurn(threadID, agentID, resultID string, 
 	s.kickAgentCompletionDrain(threadID)
 }
 
-func (s *Server) enqueueQueuedUserTurn(threadID string, entry queuedTurn) {
+func (s *Server) enqueueQueuedUserTurn(threadID string, entry queuedTurn) bool {
 	if s == nil || s.closed.Load() {
-		return
+		return false
 	}
 	threadID = strings.TrimSpace(threadID)
 	entry.id = strings.TrimSpace(entry.id)
 	if threadID == "" || entry.id == "" || !chatMessageHasUserPayload(entry.msg) {
-		return
+		return false
 	}
 	if strings.TrimSpace(entry.msg.Role) == "" {
 		entry.msg.Role = "user"
@@ -2878,13 +2907,24 @@ func (s *Server) enqueueQueuedUserTurn(threadID string, entry queuedTurn) {
 	s.queuedTurnMu.Lock()
 	if s.closed.Load() {
 		s.queuedTurnMu.Unlock()
-		return
+		return false
 	}
 	if s.pendingQueuedTurns == nil {
 		s.pendingQueuedTurns = make(map[string][]queuedTurn)
 	}
+	for _, pending := range s.pendingQueuedTurns[threadID] {
+		if pending.id == entry.id {
+			s.queuedTurnMu.Unlock()
+			return false
+		}
+	}
+	if claim := s.claimedQueuedTurns[queuedTurnClaimKey(threadID, entry.id)]; claim != nil && !claim.cancelled {
+		s.queuedTurnMu.Unlock()
+		return false
+	}
 	s.pendingQueuedTurns[threadID] = append(s.pendingQueuedTurns[threadID], entry)
 	s.queuedTurnMu.Unlock()
+	return true
 }
 
 func (s *Server) removeQueuedUserTurn(threadID, queueID string) (queuedTurn, bool) {

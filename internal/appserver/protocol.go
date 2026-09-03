@@ -164,6 +164,8 @@ const (
 	NotificationTurnStarted            = "turn/started"
 	NotificationTurnQueued             = "turn/queued"
 	NotificationTurnDequeued           = "turn/dequeued"
+	NotificationTurnSteered            = "turn/steered"
+	NotificationTurnUnsteered          = "turn/unsteered"
 	NotificationTurnHeld               = "turn/held"
 	NotificationTurnEvent              = "turn/event"
 	NotificationTurnError              = "turn/error"
@@ -1304,8 +1306,9 @@ type ThreadResumeParams struct {
 }
 
 type ThreadResumeResult struct {
-	Thread           Thread            `json:"thread"`
-	HeldUserMessages []HeldUserMessage `json:"held_user_messages,omitempty"`
+	Thread              Thread            `json:"thread"`
+	HeldUserMessages    []HeldUserMessage `json:"held_user_messages,omitempty"`
+	PendingUserMessages []HeldUserMessage `json:"pending_user_messages,omitempty"`
 }
 
 type ThreadForkParams struct {
@@ -1815,13 +1818,14 @@ type TurnSteerResult struct {
 }
 
 type HeldUserMessage struct {
-	ID           string                         `json:"id"`
-	ThreadID     string                         `json:"thread_id"`
-	Origin       string                         `json:"origin"`
-	Prompt       string                         `json:"prompt,omitempty"`
-	Images       []TurnStartImage               `json:"images,omitempty"`
-	Files        []TurnStartFile                `json:"files,omitempty"`
-	ContentParts []providers.MessageContentPart `json:"content_parts,omitempty"`
+	ID             string                         `json:"id"`
+	ThreadID       string                         `json:"thread_id"`
+	Origin         string                         `json:"origin"`
+	Prompt         string                         `json:"prompt,omitempty"`
+	Images         []TurnStartImage               `json:"images,omitempty"`
+	Files          []TurnStartFile                `json:"files,omitempty"`
+	ContentParts   []providers.MessageContentPart `json:"content_parts,omitempty"`
+	ActiveDocument *ActiveDocument                `json:"active_document,omitempty"`
 }
 
 type TurnUnsteerParams struct {
@@ -1853,8 +1857,9 @@ type ThreadStartedNotification struct {
 }
 
 type ThreadResumedNotification struct {
-	Thread           Thread            `json:"thread"`
-	HeldUserMessages []HeldUserMessage `json:"held_user_messages,omitempty"`
+	Thread              Thread            `json:"thread"`
+	HeldUserMessages    []HeldUserMessage `json:"held_user_messages,omitempty"`
+	PendingUserMessages []HeldUserMessage `json:"pending_user_messages,omitempty"`
 }
 
 type ThreadUpdatedNotification struct {
@@ -1887,12 +1892,22 @@ type TurnStartedNotification struct {
 }
 
 type TurnQueuedNotification struct {
-	Queued QueuedTurn `json:"queued"`
+	Queued  QueuedTurn      `json:"queued"`
+	Message HeldUserMessage `json:"message"`
 }
 
 type TurnDequeuedNotification struct {
 	ThreadID string `json:"thread_id"`
 	QueueID  string `json:"queue_id"`
+}
+
+type TurnSteeredNotification struct {
+	Message HeldUserMessage `json:"message"`
+}
+
+type TurnUnsteeredNotification struct {
+	ThreadID string `json:"thread_id"`
+	SteerID  string `json:"steer_id"`
 }
 
 type TurnHeldNotification struct {

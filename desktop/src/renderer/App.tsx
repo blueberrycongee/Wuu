@@ -1865,8 +1865,8 @@ export function App(): JSX.Element {
           }
           const { heldComposerMessages, ...runtimeAppState } = loadedState;
           setState((current) => ({ ...current, ...runtimeAppState }));
-          if (loadedState.thread && heldComposerMessages?.length) {
-            seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages);
+          if (loadedState.thread) {
+            seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages ?? []);
           }
           return;
         }
@@ -1882,8 +1882,8 @@ export function App(): JSX.Element {
         setState((current) =>
           withLoadedRuntimeSessionTab(current, runtimeAppState),
         );
-        if (loadedState.thread && heldComposerMessages?.length) {
-          seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages);
+        if (loadedState.thread) {
+          seedHeldComposerMessages(loadedState.thread.id, heldComposerMessages ?? []);
         }
       } catch (error) {
         if (!mounted) {

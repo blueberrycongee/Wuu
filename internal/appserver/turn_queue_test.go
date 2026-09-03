@@ -7,6 +7,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/config"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/session"
 )
 
 func TestReplaceQueuedUserTurnPreservesOrder(t *testing.T) {
@@ -209,5 +210,53 @@ func TestTurnRequeueAtomicallyMovesPendingSteerBackToQueue(t *testing.T) {
 	)
 	if !result.OK || result.State != "queued" || result.Queued.ID != steerID {
 		t.Fatalf("turn/requeue result = %+v", result)
+	}
+}
+
+func TestPendingUserMessageSummariesIncludeLiveQueueAndSteer(t *testing.T) {
+	const threadID = "thread-1"
+	th := &threadState{
+		ID: threadID,
+		pendingSteers: []providers.ChatMessage{{
+			Role: "user", Content: "Guide", ClientID: "guide-1", Steered: true,
+		}},
+	}
+	s := &Server{
+		threads:            map[string]*threadState{threadID: th},
+		pendingQueuedTurns: make(map[string][]queuedTurn),
+		claimedQueuedTurns: make(map[string]*queuedTurnClaim),
+	}
+	s.enqueueQueuedUserTurn(threadID, queuedTurn{
+		id: "queue-1", msg: providers.ChatMessage{Role: "user", Content: "Next"},
+	})
+
+	messages := s.pendingUserMessageSummaries(threadID)
+	if len(messages) != 2 {
+		t.Fatalf("pending summaries = %+v, want guide and queue", messages)
+	}
+	if messages[0].ID != "guide-1" || messages[0].Origin != session.HeldUserWorkOriginSteer {
+		t.Fatalf("guide summary = %+v", messages[0])
+	}
+	if messages[1].ID != "queue-1" || messages[1].Origin != session.HeldUserWorkOriginQueue {
+		t.Fatalf("queue summary = %+v", messages[1])
+	}
+}
+
+func TestEnqueueQueuedUserTurnDeduplicatesStableID(t *testing.T) {
+	s := &Server{}
+	entry := queuedTurn{
+		id: "queue-1", msg: providers.ChatMessage{Role: "user", Content: "Only once"},
+	}
+	if !s.enqueueQueuedUserTurn("thread-1", entry) {
+		t.Fatal("first enqueue was not accepted")
+	}
+	if s.enqueueQueuedUserTurn("thread-1", entry) {
+		t.Fatal("duplicate enqueue was accepted")
+	}
+	s.queuedTurnMu.Lock()
+	count := len(s.pendingQueuedTurns["thread-1"])
+	s.queuedTurnMu.Unlock()
+	if count != 1 {
+		t.Fatalf("queued entries = %d, want 1", count)
 	}
 }

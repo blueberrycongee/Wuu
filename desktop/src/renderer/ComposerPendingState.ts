@@ -21,6 +21,7 @@ import {
 } from "./ComposerMessages";
 import {
   appendPendingComposerMessage,
+  applyAuthoritativeComposerSnapshot,
   applyHeldComposerSnapshot,
   emptyThreadPendingComposerMessages,
   findPendingComposerMessage,
@@ -41,6 +42,7 @@ import { rememberCollapsedPromptParts } from "./ComposerCollapsedPrompt";
 function heldComposerMessage(
   value: unknown,
   position: number,
+  held = true,
 ): QueuedComposerMessage | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -95,14 +97,18 @@ function heldComposerMessage(
         : [{ type: "text" as const, text }];
     },
   );
+  const activeDocumentPath = isRecord(value.active_document)
+    ? stringValue(value.active_document, "path")
+    : "";
   return {
     id,
     text: stringValue(value, "prompt") ?? "",
     images,
     files,
     contentParts,
-    held: true,
-    heldPosition: position,
+    activeDocument: activeDocumentPath ? { path: activeDocumentPath } : undefined,
+    held,
+    heldPosition: held ? position : undefined,
     origin,
   };
 }
@@ -118,21 +124,30 @@ function heldComposerMessagesFromParams(
   if (!threadID) {
     return undefined;
   }
-  const key = method === "thread/resumed" ? "held_user_messages" : "messages";
-  const raw = params[key];
-  if (method !== "thread/resumed" && !Array.isArray(raw)) {
+  const heldRaw = params[
+    method === "thread/resumed" ? "held_user_messages" : "messages"
+  ];
+  const pendingRaw =
+    method === "thread/resumed" ? params.pending_user_messages : undefined;
+  if (method !== "thread/resumed" && !Array.isArray(heldRaw)) {
     return undefined;
   }
-  const messages = (Array.isArray(raw) ? raw : []).flatMap((value, position) => {
+  const heldMessages = (Array.isArray(heldRaw) ? heldRaw : []).flatMap((value, position) => {
     const message = heldComposerMessage(value, position);
     return message ? [message] : [];
   });
-  return { threadID, messages };
+  const pendingMessages = (Array.isArray(pendingRaw) ? pendingRaw : []).flatMap(
+    (value, position) => {
+      const message = heldComposerMessage(value, position, false);
+      return message ? [message] : [];
+    },
+  );
+  return { threadID, messages: [...heldMessages, ...pendingMessages] };
 }
 
 /**
- * Parse the authoritative held snapshot carried by the `thread/resume` RPC
- * result. The desktop renderer restores pending composer messages from this
+ * Parse the authoritative pending and held snapshots carried by thread/resume.
+ * The desktop renderer restores pending composer messages from this
  * on boot: the `thread/resumed` notification that the server emits alongside
  * the response is filtered out while the app is still loading (the active
  * context is not set yet), so a reload must not rely on it alone.
@@ -140,15 +155,24 @@ function heldComposerMessagesFromParams(
 export function heldComposerMessagesFromResumeResult(
   result: ThreadResumeResult | undefined,
 ): QueuedComposerMessage[] {
-  const raw = result?.held_user_messages;
-  if (!Array.isArray(raw)) {
-    return [];
-  }
+  const heldRaw = result?.held_user_messages;
+  const pendingRaw = result?.pending_user_messages;
   const threadID = result?.thread?.id ?? "";
-  return raw.flatMap((value, position) => {
+  const heldMessages = (Array.isArray(heldRaw) ? heldRaw : []).flatMap((value, position) => {
     const message = heldComposerMessage({ ...value, thread_id: threadID }, position);
     return message ? [message] : [];
   });
+  const pendingMessages = (Array.isArray(pendingRaw) ? pendingRaw : []).flatMap(
+    (value, position) => {
+      const message = heldComposerMessage(
+        { ...value, thread_id: threadID },
+        position,
+        false,
+      );
+      return message ? [message] : [];
+    },
+  );
+  return [...heldMessages, ...pendingMessages];
 }
 
 export type ComposerPendingStateController = {
@@ -276,6 +300,9 @@ export function useComposerPendingState({
     if (
       method !== "turn/held" &&
       method !== "thread/resumed" &&
+      method !== "turn/queued" &&
+      method !== "turn/steered" &&
+      method !== "turn/unsteered" &&
       method !== "turn/started" &&
       method !== "turn/dequeued" &&
       method !== "item/completed"
@@ -301,8 +328,39 @@ export function useComposerPendingState({
         return;
       }
       updateThreadPendingComposerMessages(snapshot.threadID, (previous) =>
-        applyHeldComposerSnapshot(previous, snapshot.messages),
+        method === "thread/resumed"
+          ? applyAuthoritativeComposerSnapshot(previous, snapshot.messages)
+          : applyHeldComposerSnapshot(previous, snapshot.messages),
       );
+      return;
+    }
+    if (method === "turn/queued" || method === "turn/steered") {
+      const rawMessage = recordValue(params, "message");
+      const message = heldComposerMessage(rawMessage, 0, false);
+      const messageThreadID = rawMessage
+        ? stringValue(rawMessage, "thread_id")
+        : "";
+      if (!message || !messageThreadID) {
+        return;
+      }
+      updateThreadPendingComposerMessages(messageThreadID, (previous) => {
+        const withoutPreviousMode = {
+          queued: previous.queued.filter((candidate) => candidate.id !== message.id),
+          guides: previous.guides.filter((candidate) => candidate.id !== message.id),
+        };
+        return appendPendingComposerMessage(
+          withoutPreviousMode,
+          message.origin === "steer" ? "guide" : "queue",
+          message,
+        );
+      });
+      return;
+    }
+    if (method === "turn/unsteered") {
+      const steerID = stringValue(params, "steer_id");
+      if (steerID) {
+        removePendingComposerMessageByID(threadID, steerID, "guide");
+      }
       return;
     }
     if (method === "turn/started") {
@@ -354,11 +412,8 @@ export function useComposerPendingState({
     threadID: string,
     messages: QueuedComposerMessage[],
   ): void {
-    if (messages.length === 0) {
-      return;
-    }
     updateThreadPendingComposerMessages(threadID, (previous) =>
-      applyHeldComposerSnapshot(previous, messages),
+      applyAuthoritativeComposerSnapshot(previous, messages),
     );
   }
 

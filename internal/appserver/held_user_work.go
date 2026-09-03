@@ -137,7 +137,8 @@ func heldUserMessageSummary(threadID string, turn queuedTurn) HeldUserMessage {
 	return HeldUserMessage{
 		ID: turn.id, ThreadID: threadID, Origin: turn.origin,
 		Prompt: strings.TrimSpace(chatMessageDisplayContent(turn.msg)), Images: images, Files: files,
-		ContentParts: append([]providers.MessageContentPart(nil), turn.msg.ContentParts...),
+		ContentParts:   append([]providers.MessageContentPart(nil), turn.msg.ContentParts...),
+		ActiveDocument: cloneActiveDocument(turn.snapshot.ActiveDocument),
 	}
 }
 
@@ -147,6 +148,44 @@ func heldUserMessageSummaries(threadID string, turns []queuedTurn) []HeldUserMes
 		messages = append(messages, heldUserMessageSummary(threadID, turn))
 	}
 	return messages
+}
+
+func (s *Server) pendingUserMessageSummaries(threadID string) []HeldUserMessage {
+	turns := make([]queuedTurn, 0)
+	th := s.thread(threadID)
+	if th != nil {
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		for _, msg := range th.pendingSteers {
+			if _, _, pluginSteer := pluginSessionRequestFromClientID(msg.ClientID); pluginSteer {
+				continue
+			}
+			turns = append(turns, queuedTurn{
+				id:     strings.TrimSpace(msg.ClientID),
+				msg:    msg,
+				origin: session.HeldUserWorkOriginSteer,
+			})
+		}
+	}
+	s.queuedTurnMu.Lock()
+	defer s.queuedTurnMu.Unlock()
+	claimPrefix := strings.TrimSpace(threadID) + "\x00"
+	for key, claim := range s.claimedQueuedTurns {
+		if !strings.HasPrefix(key, claimPrefix) || claim == nil || claim.cancelled || claim.committed || claim.entry.snapshot.PluginTurn != nil {
+			continue
+		}
+		entry := claim.entry
+		entry.origin = session.HeldUserWorkOriginQueue
+		turns = append(turns, entry)
+	}
+	for _, entry := range s.pendingQueuedTurns[threadID] {
+		if entry.snapshot.PluginTurn != nil {
+			continue
+		}
+		entry.origin = session.HeldUserWorkOriginQueue
+		turns = append(turns, entry)
+	}
+	return heldUserMessageSummaries(threadID, turns)
 }
 
 func (s *Server) notifyHeldUserTurns(threadID string, turns []queuedTurn) {

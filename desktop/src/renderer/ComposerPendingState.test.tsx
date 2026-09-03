@@ -10,6 +10,7 @@ import {
 } from "./AppState";
 import type { QueuedComposerMessage } from "./ComposerMessages";
 import {
+  heldComposerMessagesFromResumeResult,
   useComposerPendingState,
   type ComposerPendingStateController,
 } from "./ComposerPendingState";
@@ -126,6 +127,30 @@ async function renderComposerPendingState({
 }
 
 describe("useComposerPendingState", () => {
+  it("restores live queue and guide messages from the resume snapshot", () => {
+    const restored = heldComposerMessagesFromResumeResult({
+      thread: thread("thread-a", true),
+      pending_user_messages: [
+        {
+          id: "guide-1",
+          thread_id: "thread-a",
+          origin: "steer",
+          prompt: "Guide",
+        },
+        {
+          id: "queue-1",
+          thread_id: "thread-a",
+          origin: "queue",
+          prompt: "Next",
+        },
+      ],
+    });
+
+    expect(restored).toEqual([
+      expect.objectContaining({ id: "guide-1", origin: "steer", held: false }),
+      expect.objectContaining({ id: "queue-1", origin: "queue", held: false }),
+    ]);
+  });
   it("enqueues messages per thread", async () => {
     const hook = await renderComposerPendingState();
 
@@ -294,6 +319,46 @@ describe("useComposerPendingState", () => {
     expect(
       hook.get().pendingComposerMessagesByThread["thread-a"],
     ).toBeUndefined();
+  });
+
+  it("syncs accepted queue and guide mode transitions from server events", async () => {
+    const hook = await renderComposerPendingState();
+    const notify = (method: string, params: Record<string, unknown>) => {
+      act(() => {
+        hook.get().syncPendingComposerMessagesFromServerEvent({
+          kind: "notification",
+          workdir: "/tmp/project",
+          message: { method, params },
+        } as ServerEvent);
+      });
+    };
+
+    notify("turn/steered", {
+      message: {
+        id: "shared-1",
+        thread_id: "thread-a",
+        origin: "steer",
+        prompt: "Switch me",
+      },
+    });
+    expect(
+      hook.get().pendingComposerMessagesByThread["thread-a"]?.guides.map(({ id }) => id),
+    ).toEqual(["shared-1"]);
+
+    notify("turn/queued", {
+      message: {
+        id: "shared-1",
+        thread_id: "thread-a",
+        origin: "queue",
+        prompt: "Switch me",
+      },
+    });
+    expect(
+      hook.get().pendingComposerMessagesByThread["thread-a"]?.guides,
+    ).toEqual([]);
+    expect(
+      hook.get().pendingComposerMessagesByThread["thread-a"]?.queued.map(({ id }) => id),
+    ).toEqual(["shared-1"]);
   });
 
   it("reconciles held messages in server order and releases only the selected idle item", async () => {

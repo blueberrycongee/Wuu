@@ -2306,11 +2306,13 @@ export type HeldUserMessage = {
   images?: InputImage[];
   files?: InputFile[];
   content_parts?: MessageContentPart[];
+  active_document?: ActiveDocumentContext;
 };
 
 export type ThreadResumeResult = {
   thread: Thread;
   held_user_messages?: HeldUserMessage[];
+  pending_user_messages?: HeldUserMessage[];
 };
 
 export type ServerEvent = {

@@ -87,6 +87,29 @@ export function applyHeldComposerSnapshot(
   };
 }
 
+export function applyAuthoritativeComposerSnapshot(
+  previous: ThreadPendingComposerMessages,
+  snapshot: QueuedComposerMessage[],
+): ThreadPendingComposerMessages {
+  const snapshotIDs = new Set(snapshot.map((message) => message.id));
+  const localQueued = previous.queued.filter(
+    (message) => Boolean(message.operationState) && !snapshotIDs.has(message.id),
+  );
+  const localGuides = previous.guides.filter(
+    (message) => Boolean(message.operationState) && !snapshotIDs.has(message.id),
+  );
+  return {
+    queued: [
+      ...snapshot.filter((message) => message.origin === "queue"),
+      ...localQueued,
+    ],
+    guides: [
+      ...snapshot.filter((message) => message.origin === "steer"),
+      ...localGuides,
+    ],
+  };
+}
+
 export function removePendingComposerMessagesByID(
   messagesByThread: PendingComposerMessagesByThread,
   threadID: string | undefined,
