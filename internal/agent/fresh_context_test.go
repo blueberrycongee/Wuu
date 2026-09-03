@@ -82,6 +82,9 @@ type contextSwitchStep struct {
 }
 
 func (s *contextSwitchStep) Execute(_ context.Context, req providers.ChatRequest) (StepResult, error) {
+	if _, err := providers.RepairAndValidateToolCallHistory(req.Messages); err != nil {
+		return StepResult{}, err
+	}
 	s.requests = append(s.requests, req)
 	if len(s.requests) == 1 {
 		return StepResult{ToolCalls: []providers.ToolCall{{ID: "switch-1", Name: newContextToolName, Arguments: `{}`}}}, nil
@@ -109,6 +112,7 @@ func TestRunToolLoopSwitchesOnlyAfterNewContextToolBatch(t *testing.T) {
 	step := &contextSwitchStep{}
 	res, err := RunToolLoop(context.Background(), history, LoopConfig{
 		Model: "test", MaxSteps: 3, Tools: contextSwitchTools{},
+		BeforeRequestContext: withContextWindowGuidance(nil),
 		ArchiveHistory: func(_ context.Context, messages []providers.ChatMessage) (HistoryArchive, error) {
 			archived = providers.CloneChatMessages(messages)
 			return HistoryArchive{Seqs: []int{776, 777}, HeadSeq: 777}, nil
@@ -133,5 +137,66 @@ func TestRunToolLoopSwitchesOnlyAfterNewContextToolBatch(t *testing.T) {
 	}
 	if len(res.DurableNewMessages) != 1 || res.DurableNewMessages[0].Content != "continued in fresh context" {
 		t.Fatalf("pending durable messages = %+v", res.DurableNewMessages)
+	}
+}
+
+func TestRunToolLoopContextWindowRemindersPreserveValidRequests(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		guidance      bool
+		inputTokens   int
+		wantReminders int
+		wantRollover  bool
+	}{
+		{name: "first request guidance", guidance: true, wantReminders: 1},
+		{name: "low budget", inputTokens: 10_000, wantReminders: 1},
+		{name: "failed rollover", inputTokens: 20_000, wantReminders: 2, wantRollover: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			history := []providers.ChatMessage{{Role: "system", Content: "system"}, {Role: "user", Content: "hello"}}
+			usage := NewUsageTracker()
+			usage.RecordResponse(&providers.TokenUsage{InputTokens: tt.inputTokens})
+			rolloverCalled := false
+			cfg := LoopConfig{
+				Model: "test", MaxSteps: 1, UsageTracker: usage, CompactThresholdTokens: 20_000,
+				ArchiveHistory: func(context.Context, []providers.ChatMessage) (HistoryArchive, error) {
+					return HistoryArchive{}, nil
+				},
+				FreshContext: func(context.Context, []providers.ChatMessage, int, int, int) ([]providers.ChatMessage, error) {
+					rolloverCalled = true
+					return nil, ErrFreshContextTooLarge
+				},
+			}
+			if tt.guidance {
+				cfg.BeforeRequestContext = withContextWindowGuidance(nil)
+			}
+			step := &fakeStep{results: []StepResult{{Content: "done"}}}
+			result, err := RunToolLoop(context.Background(), history, cfg, step)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rolloverCalled != tt.wantRollover {
+				t.Fatalf("rollover called = %t, want %t", rolloverCalled, tt.wantRollover)
+			}
+			if len(step.calls) != 1 {
+				t.Fatalf("provider requests = %d, want 1", len(step.calls))
+			}
+			request := step.calls[0]
+			if _, err := providers.RepairAndValidateToolCallHistory(request.Messages); err != nil {
+				t.Fatalf("provider rejected request: %v", err)
+			}
+			reminders := request.Messages[len(history):]
+			if len(reminders) != tt.wantReminders {
+				t.Fatalf("reminders = %d, want %d", len(reminders), tt.wantReminders)
+			}
+			for _, reminder := range reminders {
+				if !reminder.Hidden {
+					t.Fatal("context reminder leaked into the visible transcript")
+				}
+			}
+			if len(result.DurableNewMessages) != 1 || result.DurableNewMessages[0].Content != "done" {
+				t.Fatalf("durable messages = %+v, want only the assistant response", result.DurableNewMessages)
+			}
+		})
 	}
 }

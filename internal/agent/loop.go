@@ -480,18 +480,16 @@ func RunToolLoop(
 		requestSegments := append(newContextSegments, consumedPostToolSegments...)
 		requestSegments = append(requestSegments, RequestOnlyContextMessages(inactiveMessages)...)
 		if freshContextFailure != "" {
-			requestSegments = append(requestSegments, RequestOnlyContextMessages([]providers.ChatMessage{{
-				Role: "system", Name: "wuu_context_window",
-				Content: "The requested context-window transition was not applied; active history is unchanged. Continue safely or retry later. Reason: " + freshContextFailure,
-			}})...)
+			requestSegments = append(requestSegments, RequestOnlyContextMessages([]providers.ChatMessage{
+				contextWindowReminder("The requested context-window transition was not applied; active history is unchanged. Continue safely or retry later. Reason: " + freshContextFailure),
+			})...)
 		}
 		if freshContextEnabled && !freshContextApplied && !lowBudgetReminderSent && threshold > 0 {
 			reminderAt := max(1, threshold-freshContextReminderTokens)
 			if usage.EstimateCurrent() >= reminderAt {
-				requestSegments = append(requestSegments, RequestOnlyContextMessages([]providers.ChatMessage{{
-					Role: "system", Name: "wuu_context_window",
-					Content: "The active context budget is low. At the next safe semantic breakpoint, call new_context. Do not spend time writing a summary; Wuu maintains the continuation note in a background fork.",
-				}})...)
+				requestSegments = append(requestSegments, RequestOnlyContextMessages([]providers.ChatMessage{
+					contextWindowReminder("The active context budget is low. At the next safe semantic breakpoint, call new_context. Do not spend time writing a summary; Wuu maintains the continuation note in a background fork."),
+				})...)
 				lowBudgetReminderSent = true
 			}
 		}

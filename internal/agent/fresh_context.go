@@ -164,11 +164,19 @@ func withContextWindowGuidance(base func() []ContextSegment) func() []ContextSeg
 		if base != nil {
 			segments = append(segments, base()...)
 		}
-		segments = append(segments, RequestOnlyContextMessages([]providers.ChatMessage{{
-			Role: "system", Name: "wuu_context_window",
-			Content: `Wuu maintains a continuation note in a background model fork and keeps exact prior conversation and tool facts in this session's durable history. Do not write or maintain a note yourself. When a low-budget reminder arrives, or when the active context has grown large and you reach a safe semantic breakpoint, call new_context. The host switches only after the current tool batch and does not reset environment state. After a switch, continue from the note and use history_read or history_search only when exact prior details are needed.`,
-		}})...)
+		segments = append(segments, RequestOnlyContextMessages([]providers.ChatMessage{
+			contextWindowReminder(`Wuu maintains a continuation note in a background model fork and keeps exact prior conversation and tool facts in this session's durable history. Do not write or maintain a note yourself. When a low-budget reminder arrives, or when the active context has grown large and you reach a safe semantic breakpoint, call new_context. The host switches only after the current tool batch and does not reset environment state. After a switch, continue from the note and use history_read or history_search only when exact prior details are needed.`),
+		})...)
 		return segments
+	}
+}
+
+func contextWindowReminder(content string) providers.ChatMessage {
+	return providers.ChatMessage{
+		Role:    "user",
+		Name:    "wuu_context_window",
+		Content: "<system-reminder>\n" + strings.TrimSpace(content) + "\n</system-reminder>",
+		Hidden:  true,
 	}
 }
 
