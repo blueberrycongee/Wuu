@@ -403,8 +403,8 @@
   --rich-link-color: var(--wuu-color-link, #60a5fa);
   --rich-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
   --message-flow-card-bg: var(--wuu-color-surface-elevated, var(--surface-3));
-  --message-flow-card-border: var(--wuu-color-border-strong, var(--hairline-strong));
-  --message-flow-card-divider: var(--wuu-color-border-subtle, var(--hairline));
+  --message-flow-card-border: var(--hairline-soft);
+  --message-flow-card-divider: var(--hairline-soft);
   --message-flow-card-hover-bg: var(--wuu-color-surface, var(--surface-1));
   --surface-chip: var(--surface-4);
   --fork-worktree-copy-bg: rgba(38, 42, 46, 0.9);
