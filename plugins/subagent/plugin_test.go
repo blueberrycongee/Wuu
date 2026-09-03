@@ -79,8 +79,9 @@ func (s *taskStore) handle(method string, params map[string]any, result any) (bo
 }
 
 type captureHost struct {
-	calls []capturedCall
-	store taskStore
+	calls         []capturedCall
+	store         taskStore
+	inspectResult *pluginapi.SessionInspectResult
 }
 
 type lifecycleHost struct {
@@ -150,6 +151,10 @@ func (h *captureHost) CallHost(_ context.Context, method string, params, result 
 		response = `{"session_id":"child-1","created":true}`
 	case pluginapi.HostServiceSessionSend:
 		response = `{"state":"running","session_id":"child-1","turn_id":"turn-1"}`
+	case pluginapi.HostServiceSessionInspect:
+		if h.inspectResult != nil {
+			return decodeInto(*h.inspectResult, result)
+		}
 	}
 	return json.Unmarshal([]byte(response), result)
 }
@@ -207,6 +212,82 @@ func TestSpawnComposesPublicSessionServices(t *testing.T) {
 	}
 	if len(result.Content) != 1 || result.Content[0].Text == "" {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestSpawnForegroundWaitsForTerminalResultWithoutDuplicateDelivery(t *testing.T) {
+	host := &captureHost{inspectResult: &pluginapi.SessionInspectResult{Turn: &pluginapi.SessionTurnInspection{
+		RequestID: "child-request", State: "completed", TurnID: "turn-1", FinalOutput: "parser is correct",
+	}}}
+	result, err := executeTool(context.Background(), host, pluginapi.ToolCall{
+		ToolID: "spawn_agent", SessionID: "parent-1", TurnID: "parent-turn-1",
+		Arguments: json.RawMessage(`{"description":"Review parser","prompt":"Inspect and report.","run_in_background":false}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Content) != 1 || !strings.Contains(result.Content[0].Text, `"backgrounded":false`) || !strings.Contains(result.Content[0].Text, `"final_output":"parser is correct"`) {
+		t.Fatalf("result = %+v", result)
+	}
+	var inspect *capturedCall
+	for index := range host.calls {
+		if host.calls[index].method == pluginapi.HostServiceSessionInspect {
+			inspect = &host.calls[index]
+		}
+	}
+	if inspect == nil || inspect.params["wait"] != pluginapi.SessionInspectWaitTerminal || inspect.params["timeout_ms"] != float64(foregroundAwaitBudgetMS) || !strings.HasPrefix(fmt.Sprint(inspect.params["request_id"]), "turn-") {
+		t.Fatalf("inspect = %+v, calls = %+v", inspect, host.calls)
+	}
+	record, ok := host.store.recordBySession("child-1")
+	if !ok || !record.SuppressCompletion || record.State != "completed" {
+		t.Fatalf("persisted record = %+v", record)
+	}
+
+	input, _ := json.Marshal(pluginapi.TurnLifecycleInput{RequestID: record.RequestID, State: "completed", ThreadID: "child-1", FinalOutput: "parser is correct"})
+	if _, err := invokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityLifecycle, Input: input}); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range host.calls {
+		if call.method == pluginapi.HostServiceSessionSend && call.params["cause"] == "subagent.completion" {
+			t.Fatalf("foreground completion was delivered twice: %+v", host.calls)
+		}
+	}
+	if _, ok := host.store.recordBySession("child-1"); ok {
+		t.Fatalf("foreground terminal record was not cleaned up: %+v", host.store.index)
+	}
+}
+
+func TestSpawnForegroundTimeoutContinuesInBackground(t *testing.T) {
+	host := &captureHost{inspectResult: &pluginapi.SessionInspectResult{
+		Turn: &pluginapi.SessionTurnInspection{State: "running", TurnID: "turn-1"}, TimedOut: true,
+	}}
+	result, err := executeTool(context.Background(), host, pluginapi.ToolCall{
+		ToolID: "spawn_agent", SessionID: "parent-1", TurnID: "parent-turn-1",
+		Arguments: json.RawMessage(`{"description":"Review parser","prompt":"Inspect and report.","run_in_background":false}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Content) != 1 || !strings.Contains(result.Content[0].Text, `"backgrounded":true`) || !strings.Contains(result.Content[0].Text, `"timed_out":true`) {
+		t.Fatalf("result = %+v", result)
+	}
+	record, ok := host.store.recordBySession("child-1")
+	if !ok || record.SuppressCompletion {
+		t.Fatalf("timed-out record = %+v", record)
+	}
+
+	input, _ := json.Marshal(pluginapi.TurnLifecycleInput{RequestID: record.RequestID, State: "completed", ThreadID: "child-1", FinalOutput: "parser is correct"})
+	if _, err := invokeCapability(context.Background(), host, pluginapi.CapabilityCall{Capability: capabilityLifecycle, Input: input}); err != nil {
+		t.Fatal(err)
+	}
+	var delivered bool
+	for _, call := range host.calls {
+		if call.method == pluginapi.HostServiceSessionSend && call.params["cause"] == "subagent.completion" {
+			delivered = true
+		}
+	}
+	if !delivered {
+		t.Fatalf("timed-out foreground completion was not delivered: %+v", host.calls)
 	}
 }
 

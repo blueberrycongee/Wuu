@@ -38,6 +38,18 @@ type taskRecord struct {
 
 const taskIndexKey = "tasks.v2"
 const maxTaskRecords = 128
+const foregroundAwaitBudgetMS = 5 * 60 * 1000
+
+type spawnAgentOutput struct {
+	SessionID       string `json:"session_id"`
+	TaskName        string `json:"task_name"`
+	State           string `json:"state"`
+	RunInBackground bool   `json:"run_in_background"`
+	Backgrounded    bool   `json:"backgrounded"`
+	TimedOut        bool   `json:"timed_out,omitempty"`
+	FinalOutput     string `json:"final_output,omitempty"`
+	Error           string `json:"error,omitempty"`
+}
 
 type taskIndex struct {
 	Records []taskRecord `json:"records"`
@@ -49,7 +61,7 @@ func Handler() pluginapi.Handler {
 	return pluginapi.Handler{
 		Definition: pluginapi.Definition{
 			Tools: []pluginapi.Tool{
-				{ID: "spawn_agent", Description: "Delegate a bounded task when separate context or parallel work materially improves the result. Child sessions start with fresh conversation context unless context is explicitly set to fork. Installed plugins and workspace capabilities remain available in either mode. Completion is delivered back into this session as a normal read-only query bubble.", InputSchema: spawnSchema(), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
+				{ID: "spawn_agent", Description: "Delegate a bounded task when separate context materially improves the result. Set run_in_background=false when the next step depends on the child result; the tool waits in the current turn and returns the result directly. Background tasks return immediately and deliver completion later as a normal read-only query bubble.", InputSchema: spawnSchema(), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
 				{ID: "send_message", Description: "Send a follow-up turn to an existing child task by session id or task name.", InputSchema: objectSchema(map[string]any{"target": stringField("Child session id or task name."), "message": stringField("Message to deliver.")}, "target", "message"), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
 				{ID: "close_agent", Description: "Cancel an existing child task by session id or task name.", InputSchema: objectSchema(map[string]any{"target": stringField("Child session id or task name.")}, "target"), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
 			},
@@ -91,14 +103,15 @@ func executeTool(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCa
 
 func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
 	var args struct {
-		Description  string `json:"description"`
-		Prompt       string `json:"prompt"`
-		SubagentType string `json:"subagent_type"`
-		Name         string `json:"name"`
-		AgentProfile string `json:"agent_profile"`
-		Model        string `json:"model"`
-		Context      string `json:"context"`
-		Isolation    string `json:"isolation"`
+		Description     string `json:"description"`
+		Prompt          string `json:"prompt"`
+		SubagentType    string `json:"subagent_type"`
+		Name            string `json:"name"`
+		AgentProfile    string `json:"agent_profile"`
+		Model           string `json:"model"`
+		Context         string `json:"context"`
+		Isolation       string `json:"isolation"`
+		RunInBackground *bool  `json:"run_in_background"`
 	}
 	if err := json.Unmarshal(call.Arguments, &args); err != nil {
 		return pluginapi.ToolResult{}, err
@@ -112,6 +125,7 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	if strings.TrimSpace(call.SessionID) == "" {
 		return pluginapi.ToolResult{}, errors.New("spawn_agent requires a parent session")
 	}
+	runInBackground := args.RunInBackground == nil || *args.RunInBackground
 	name := strings.TrimSpace(args.Name)
 	if name == "" {
 		name = deriveTaskName(args.Description)
@@ -153,7 +167,56 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
-	return pluginapi.TextResult(fmt.Sprintf(`{"session_id":%q,"task_name":%q,"state":%q}`, created.SessionID, name, sent.State)), nil
+	if runInBackground {
+		return spawnAgentResult(spawnAgentOutput{
+			SessionID: created.SessionID, TaskName: name, State: sent.State,
+			RunInBackground: true, Backgrounded: true,
+		})
+	}
+
+	var inspected pluginapi.SessionInspectResult
+	if err := host.CallHost(ctx, pluginapi.HostServiceSessionInspect, pluginapi.SessionInspectParams{
+		SessionID: created.SessionID,
+		RequestID: record.RequestID,
+		Wait:      pluginapi.SessionInspectWaitTerminal,
+		TimeoutMS: foregroundAwaitBudgetMS,
+	}, &inspected); err != nil {
+		return pluginapi.ToolResult{}, err
+	}
+	if inspected.TimedOut || inspected.Turn == nil || !terminalTaskState(inspected.Turn.State) {
+		state := sent.State
+		if inspected.Turn != nil && strings.TrimSpace(inspected.Turn.State) != "" {
+			state = inspected.Turn.State
+		}
+		return spawnAgentResult(spawnAgentOutput{
+			SessionID: created.SessionID, TaskName: name, State: state,
+			RunInBackground: false, Backgrounded: true, TimedOut: inspected.TimedOut,
+		})
+	}
+
+	// The terminal result is returned by this tool call, so the queued lifecycle
+	// notification must only acknowledge and clean up the record instead of
+	// starting a duplicate parent turn with the same completion.
+	record.State = inspected.Turn.State
+	record.TurnID = inspected.Turn.TurnID
+	record.QueueID = inspected.Turn.QueueID
+	record.SuppressCompletion = true
+	if err := saveRecord(ctx, host, record); err != nil {
+		return pluginapi.ToolResult{}, err
+	}
+	return spawnAgentResult(spawnAgentOutput{
+		SessionID: created.SessionID, TaskName: name, State: inspected.Turn.State,
+		RunInBackground: false, Backgrounded: false,
+		FinalOutput: inspected.Turn.FinalOutput, Error: inspected.Turn.Error,
+	})
+}
+
+func spawnAgentResult(output spawnAgentOutput) (pluginapi.ToolResult, error) {
+	encoded, err := json.Marshal(output)
+	if err != nil {
+		return pluginapi.ToolResult{}, err
+	}
+	return pluginapi.TextResult(string(encoded)), nil
 }
 
 func sendMessage(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
@@ -669,7 +732,7 @@ func objectSchema(properties map[string]any, required ...string) map[string]any 
 	return map[string]any{"type": "object", "properties": properties, "required": required}
 }
 func spawnSchema() map[string]any {
-	return objectSchema(map[string]any{"description": stringField("Short 3-5 word summary of what the agent will do."), "prompt": stringField("Concrete, self-contained task brief with scope, constraints, acceptance criteria, and deliverable."), "subagent_type": stringField("Optional specialized agent type."), "name": stringField("Optional addressable task name using lowercase letters, digits, and underscores."), "model": stringField("Optional configured model alias or host capability model such as @verification."), "context": map[string]any{"type": "string", "enum": []string{"fresh", "fork"}, "description": "Optional conversation context source. Defaults to fresh; fork inherits the parent conversation."}, "isolation": map[string]any{"type": "string", "enum": []string{"worktree"}}}, "description", "prompt")
+	return objectSchema(map[string]any{"description": stringField("Short 3-5 word summary of what the agent will do."), "prompt": stringField("Concrete, self-contained task brief with scope, constraints, acceptance criteria, and deliverable."), "subagent_type": stringField("Optional specialized agent type."), "name": stringField("Optional addressable task name using lowercase letters, digits, and underscores."), "model": stringField("Optional configured model alias or host capability model such as @verification."), "context": map[string]any{"type": "string", "enum": []string{"fresh", "fork"}, "description": "Optional conversation context source. Defaults to fresh; fork inherits the parent conversation."}, "isolation": map[string]any{"type": "string", "enum": []string{"worktree"}}, "run_in_background": map[string]any{"type": "boolean", "default": true, "description": "Return immediately when true. Set false when the parent must wait for this result before continuing; a foreground wait automatically becomes background after five minutes."}}, "description", "prompt")
 }
 
 func workerInstructions(workerType string) string {
@@ -686,7 +749,7 @@ A completed subagent task does not mean the overall task is complete. Integrate 
 
 # Delegation
 
-The main agent owns the user conversation, final synthesis, and decision about whether delegation is worth the overhead. Keep tightly coupled, trivial, or critical-path work local. Delegate bounded independent research, verification, or disjoint implementation when separate context or parallel execution materially improves the result.
+The main agent owns the user conversation, final synthesis, and decision about whether delegation is worth the overhead. Keep tightly coupled or trivial work local. Delegate bounded research, verification, or disjoint implementation when separate context materially improves the result. Set run_in_background=false when your next step depends on the result so it returns in the current tool call. Use background mode for independent work you can overlap. A foreground wait that exceeds five minutes automatically becomes background and completes through the normal notification path.
 
 The Subagent plugin owns its task records, cancellation propagation, concurrency policy, and recovery. Use the public Session services to build whatever task topology fits the work; the host does not impose a delegation tree or a global child limit.
 
