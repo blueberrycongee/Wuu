@@ -1405,6 +1405,9 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 		case "tool":
 			if idx, ok := toolItems[msg.ToolCallID]; ok && idx >= 0 && idx < len(current.Items) {
 				current.Items[idx].Result += msg.Content
+				if msg.ToolResult != nil {
+					current.Items[idx].ResultDetail = cloneToolResult(msg.ToolResult)
+				}
 				current.Items[idx].Status = ThreadItemStatusCompleted
 				batch := toolBatches[msg.ToolCallID]
 				complete := batch.markSeen(msg.ToolCallID)
@@ -1414,11 +1417,12 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 				continue
 			}
 			appendItem(ThreadItem{
-				ID:     nextItemID(current.ID),
-				Seq:    msg.Seq,
-				Type:   ThreadItemToolCall,
-				Status: ThreadItemStatusCompleted,
-				Result: msg.Content,
+				ID:           nextItemID(current.ID),
+				Seq:          msg.Seq,
+				Type:         ThreadItemToolCall,
+				Status:       ThreadItemStatusCompleted,
+				Result:       msg.Content,
+				ResultDetail: cloneToolResult(msg.ToolResult),
 			}, historyIndex, true)
 		default:
 			item := chatMessageItem(nextItemID(current.ID), msg)
@@ -1557,7 +1561,9 @@ func chatMessageFromPersistedMessage(rec persistedMessage) providers.ChatMessage
 		ReasoningBlocks:      append([]providers.ReasoningBlock(nil), rec.ReasoningBlocks...),
 		ContentParts:         append([]providers.MessageContentPart(nil), rec.ContentParts...),
 		ToolCallID:           rec.ToolCallID,
+		ToolInvocationID:     rec.ToolInvocationID,
 		ToolResultKind:       providers.NormalizeToolCallKind(rec.ToolResultKind),
+		ToolResult:           cloneToolResult(rec.ToolResult),
 		FinishReason:         providers.FinishReason(strings.TrimSpace(rec.FinishReason)),
 		StopReason:           strings.ToLower(strings.TrimSpace(rec.StopReason)),
 		Truncated:            rec.Truncated,
