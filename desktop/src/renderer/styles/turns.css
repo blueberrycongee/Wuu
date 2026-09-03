@@ -809,6 +809,7 @@
   min-height: 20px;
   width: max-content;
   max-width: 100%;
+  gap: 8px;
   padding-top: 2px;
 }
 
@@ -819,7 +820,8 @@
 
 .user-message-time {
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: var(--font-sm);
+  font-weight: var(--weight-medium);
   font-variant-numeric: tabular-nums;
   line-height: 20px;
   pointer-events: none;
