@@ -132,9 +132,8 @@
   --workspace-document-drawer-shadow-expanded: rgba(0, 0, 0, 0.34);
   --workspace-tool-tab-text: var(--wuu-color-text-muted, #a2a8ad);
   --workspace-tab-highlight: rgba(255, 255, 255, 0.07);
-  --workspace-tab-active-border: rgba(228, 232, 235, 0.22);
+  --workspace-tab-active-bg: color-mix(in srgb, var(--wuu-color-accent, var(--wuu-accent)) 14%, var(--wuu-color-canvas, var(--paper)));
   --workspace-tab-close-icon: var(--wuu-color-text-muted, #969ba0);
-  --workspace-tab-hover-border: rgba(228, 232, 235, 0.16);
   --workspace-tab-focus-ring: var(--focus-ring);
   --workspace-menu-item-hover-bg: #2b2f34;
   --workspace-bottom-title-text: var(--wuu-color-text-muted, #9aa0a5);
@@ -428,8 +427,7 @@
   --turn-source-icon-hover-shadow: rgba(0, 0, 0, 0.45);
   /* conversation-shell.css */
   --shell-process-control-color: var(--wuu-color-text-muted, var(--gray-400));
-  --shell-session-tab-hover-border: rgba(228, 232, 235, 0.16);
-  --shell-session-tab-active-border: rgba(228, 232, 235, 0.22);
+  --shell-session-tab-active-bg: color-mix(in srgb, var(--wuu-color-accent, var(--wuu-accent)) 14%, var(--wuu-color-canvas, var(--paper)));
   --shell-session-tab-main-focus-shadow: var(--focus-ring);
   --shell-session-tab-status-default: rgba(228, 232, 235, 0.28);
   --shell-session-tab-status-running-notch: rgba(228, 232, 235, 0.22);
