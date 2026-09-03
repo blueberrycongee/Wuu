@@ -119,6 +119,13 @@ func RunToolLoop(
 	// prompt caches stay warm. It re-bases only when history is rewritten.
 	providerMessages := providers.CloneChatMessages(messages)
 	startLen := len(messages)
+	var durableNewMessages []providers.ChatMessage
+	var historyArchiveHeadSeq int
+	defer func() {
+		loopResult.DurableNewMessages = providers.CloneChatMessages(durableNewMessages)
+		loopResult.DurableMessagesTracked = true
+		loopResult.HistoryArchiveHeadSeq = historyArchiveHeadSeq
+	}()
 
 	// retainedContext tracks the transcript's request-only messages (position
 	// + content) for cross-run prompt-cache continuity. It seeds from the
@@ -177,6 +184,8 @@ func RunToolLoop(
 		// parent of the first agent round that consumes the rewritten history.
 		lastAgentOperationID  string
 		nextOperationParentID string
+		newContextRequested   bool
+		lowBudgetReminderSent bool
 	)
 	if usage == nil {
 		usage = NewUsageTracker()
@@ -251,6 +260,9 @@ func RunToolLoop(
 		compactCtx, lineage := providers.BeginInferenceOperationLineage(ctx, lastAgentOperationID)
 		compactCtx = withCompactBudgetHint(compactCtx, compactBudgetHint{Reason: reason})
 		compacted, cerr := effectiveCompact(compactCtx, messages)
+		if cerr == nil && compactChanged(messages, compacted) && estimateFreshContextMessages(compacted) >= estimateFreshContextMessages(messages) {
+			cerr = errors.New("compaction replacement did not shrink under the local context estimator")
+		}
 		if cfg.AfterCompact != nil {
 			if hookErr := cfg.AfterCompact(ctx, reason, cerr); hookErr != nil {
 				cerr = hookErr
@@ -310,9 +322,16 @@ func RunToolLoop(
 	appendMessage := func(msg providers.ChatMessage) {
 		messages = append(messages, msg)
 		providerMessages = append(providerMessages, providers.CloneChatMessage(msg))
+		durableNewMessages = append(durableNewMessages, providers.CloneChatMessage(msg))
 		if cfg.OnMessage != nil && !msg.Hidden {
 			cfg.OnMessage(msg)
 		}
+		if cfg.OnHistoryAdvanced != nil {
+			cfg.OnHistoryAdvanced(providers.CloneChatMessages(messages))
+		}
+	}
+	if cfg.OnHistoryAdvanced != nil {
+		cfg.OnHistoryAdvanced(providers.CloneChatMessages(messages))
 	}
 
 	if cfg.ForceInitialCompact {
@@ -345,7 +364,12 @@ func RunToolLoop(
 			}
 			usage.RecordPendingMessages(injected)
 		}
-		tryProactiveCompact()
+		freshContextEnabled := cfg.FreshContext != nil && cfg.ArchiveHistory != nil
+		hardContextRollover := freshContextEnabled && threshold > 0 && usage.EstimateCurrent() >= threshold
+		attemptFreshContext := newContextRequested || hardContextRollover
+		if !attemptFreshContext {
+			tryProactiveCompact()
+		}
 		if repaired, changed, nerr := repairLiveToolCallHistory(messages); nerr != nil {
 			return LoopResult{
 				NewMessages:         newMessagesForReturn(messages, startLen, historyRewritten),
@@ -359,6 +383,73 @@ func RunToolLoop(
 			resetTranscript(repaired)
 		}
 		currentSegments := requestContextSegments(cfg.BeforeRequestContext)
+		var freshContextFailure string
+		freshContextApplied := false
+		var freshContextAttempt *CompactAttemptInfo
+		var freshContextInfo *CompactInfo
+		var freshRollbackMessages []providers.ChatMessage
+		var freshRollbackProviderMessages []providers.ChatMessage
+		freshRollbackHistoryRewritten := historyRewritten
+		if attemptFreshContext {
+			targetTokens := cfg.FreshContextTokens
+			if targetTokens <= 0 {
+				targetTokens = FreshContextTargetTokens
+			}
+			fixedSegments := append(append([]ContextSegment(nil), currentSegments...), postToolContextSegments...)
+			fixedMessages := assembleModelRequest(nil, fixedSegments).Messages
+			fixedRequest := providers.ChatRequest{Messages: fixedMessages}
+			if cfg.Tools != nil {
+				fixedRequest.Tools = cfg.Tools.Definitions()
+			}
+			fixedTokens := estimateOutboundRequestTokens(fixedRequest)
+			beforeTokens := fixedTokens + estimateFreshContextMessages(messages)
+			beforeMessages := compactNoticeMessageCount(messages)
+			archive, archiveErr := cfg.ArchiveHistory(ctx, providers.CloneChatMessages(durableNewMessages))
+			if archiveErr == nil {
+				messages = applyArchivedHistorySeqs(messages, durableNewMessages, archive.Seqs)
+				providerMessages = applyArchivedHistorySeqs(providerMessages, durableNewMessages, archive.Seqs)
+				durableNewMessages = nil
+				if archive.HeadSeq > historyArchiveHeadSeq {
+					historyArchiveHeadSeq = archive.HeadSeq
+				}
+			}
+			var replacement []providers.ChatMessage
+			freshErr := archiveErr
+			if freshErr == nil {
+				replacement, freshErr = cfg.FreshContext(ctx, providers.CloneChatMessages(messages), historyArchiveHeadSeq, fixedTokens, targetTokens)
+			}
+			if freshErr == nil && compactChanged(messages, replacement) {
+				freshRollbackMessages = providers.CloneChatMessages(messages)
+				freshRollbackProviderMessages = providers.CloneChatMessages(providerMessages)
+				resetTranscript(replacement)
+				newContextRequested = false
+				lowBudgetReminderSent = false
+				freshContextApplied = true
+				afterTokens := fixedTokens + estimateFreshContextMessages(messages)
+				freshContextAttempt = &CompactAttemptInfo{
+					Reason: CompactReasonNewContext, Status: CompactAttemptSucceeded,
+					TokensBefore: beforeTokens, MessagesBefore: beforeMessages, MessagesAfter: len(messages),
+				}
+				freshContextInfo = &CompactInfo{
+					Reason: CompactReasonNewContext, TokensBefore: beforeTokens, TokensAfter: afterTokens,
+					MessagesBefore: beforeMessages, MessagesAfter: compactNoticeMessageCount(messages),
+					Summary: compactSummaryFromMessages(messages),
+				}
+			} else {
+				if freshErr == nil {
+					freshErr = ErrFreshContextNotSmaller
+				}
+				freshContextFailure = freshErr.Error()
+				newContextRequested = false
+				emitCompactAttempt(cfg, CompactAttemptInfo{
+					Reason: CompactReasonNewContext, Status: CompactAttemptFailed,
+					TokensBefore: beforeTokens, MessagesBefore: beforeMessages, Error: freshContextFailure,
+				})
+				// Storage or fixed-context failures are exceptional. Preserve the
+				// traditional compactor as the compatibility recovery path.
+				tryProactiveCompact()
+			}
+		}
 		// Cross-run continuity: on the first round, splice back only the
 		// previous run's retained request-only context at its recorded
 		// positions. Typed blocks retain their ordered update stream; generic
@@ -388,6 +479,22 @@ func RunToolLoop(
 		inactiveMessages := inactiveRequestContextMessages(currentRequestSegments, sentRequestContext)
 		requestSegments := append(newContextSegments, consumedPostToolSegments...)
 		requestSegments = append(requestSegments, RequestOnlyContextMessages(inactiveMessages)...)
+		if freshContextFailure != "" {
+			requestSegments = append(requestSegments, RequestOnlyContextMessages([]providers.ChatMessage{{
+				Role: "system", Name: "wuu_context_window",
+				Content: "The requested context-window transition was not applied; active history is unchanged. Continue safely or retry later. Reason: " + freshContextFailure,
+			}})...)
+		}
+		if freshContextEnabled && !freshContextApplied && !lowBudgetReminderSent && threshold > 0 {
+			reminderAt := max(1, threshold-freshContextReminderTokens)
+			if usage.EstimateCurrent() >= reminderAt {
+				requestSegments = append(requestSegments, RequestOnlyContextMessages([]providers.ChatMessage{{
+					Role: "system", Name: "wuu_context_window",
+					Content: "The active context budget is low. At the next safe semantic breakpoint, call new_context. Do not spend time writing a summary; Wuu maintains the continuation note in a background fork.",
+				}})...)
+				lowBudgetReminderSent = true
+			}
+		}
 		assembly := assembleModelRequest(providerMessages, requestSegments)
 		// Retain this round's request-only context in the transcript before
 		// compatibility transforms run, so retention is never contaminated by
@@ -454,6 +561,47 @@ func RunToolLoop(
 			}
 			if err := validateTransformedRequest(req, forceBefore, forceAvailableBefore); err != nil {
 				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), err
+			}
+		}
+		if freshContextApplied {
+			targetTokens := cfg.FreshContextTokens
+			if targetTokens <= 0 {
+				targetTokens = FreshContextTargetTokens
+			}
+			if estimated := estimateOutboundRequestTokens(req); estimated > targetTokens {
+				messages = freshRollbackMessages
+				providerMessages = freshRollbackProviderMessages
+				historyRewritten = freshRollbackHistoryRewritten
+				usage.Reset()
+				usage.SetAdjustment(UsageAdjustmentRequestShapeReset)
+				usage.RecordPendingMessages(messages)
+				err := fmt.Errorf("%w after request transforms: estimated=%d target=%d", ErrFreshContextTooLarge, estimated, targetTokens)
+				emitCompactAttempt(cfg, CompactAttemptInfo{
+					Reason: CompactReasonNewContext, Status: CompactAttemptFailed,
+					TokensBefore: estimateFreshContextMessages(messages), MessagesBefore: compactNoticeMessageCount(messages), Error: err.Error(),
+				})
+				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), err
+			}
+			if cfg.AcceptFreshContext != nil {
+				if err := cfg.AcceptFreshContext(ctx); err != nil {
+					messages = freshRollbackMessages
+					providerMessages = freshRollbackProviderMessages
+					historyRewritten = freshRollbackHistoryRewritten
+					usage.Reset()
+					usage.SetAdjustment(UsageAdjustmentRequestShapeReset)
+					usage.RecordPendingMessages(messages)
+					emitCompactAttempt(cfg, CompactAttemptInfo{
+						Reason: CompactReasonNewContext, Status: CompactAttemptFailed,
+						TokensBefore: estimateFreshContextMessages(messages), MessagesBefore: compactNoticeMessageCount(messages), Error: err.Error(),
+					})
+					return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), err
+				}
+			}
+			if freshContextAttempt != nil {
+				emitCompactAttempt(cfg, *freshContextAttempt)
+			}
+			if freshContextInfo != nil && cfg.OnCompact != nil {
+				cfg.OnCompact(*freshContextInfo)
 			}
 		}
 		cacheHint := buildCacheHint(req.Messages)
@@ -531,6 +679,12 @@ func RunToolLoop(
 			// request would erase that partial answer from durable history (and can
 			// duplicate what the user already saw). Preserve it through the normal
 			// error path below; reactive compaction is safe only before output.
+			if freshContextEnabled && providers.IsContextOverflow(err) && !overflowCompacted && stepResultHasNoPartialOutput(result) {
+				overflowCompacted = true
+				postToolContextSegments = consumedPostToolSegments
+				newContextRequested = true
+				continue
+			}
 			if effectiveCompact != nil && providers.IsContextOverflow(err) && !overflowCompacted && stepResultHasNoPartialOutput(result) {
 				overflowCompacted = true // gate first; never retry twice
 				usageBefore := usage.Breakdown()
@@ -560,6 +714,9 @@ func RunToolLoop(
 					})
 					lineage = compactLineage
 					compacted, cerr = effectiveCompact(compactCtx, messages)
+					if cerr == nil && compactChanged(messages, compacted) && estimateFreshContextMessages(compacted) >= estimateFreshContextMessages(messages) {
+						cerr = errors.New("compaction replacement did not shrink under the local context estimator")
+					}
 					if cfg.AfterCompact != nil {
 						if hookErr := cfg.AfterCompact(ctx, CompactReasonOverflow, cerr); hookErr != nil {
 							cerr = hookErr
@@ -781,6 +938,9 @@ func RunToolLoop(
 			appendMessage(toolMsg)
 		}
 		usage.RecordPendingMessages(orderedToolMessages)
+		if freshContextEnabled && hasNewContextToolCall(result.ToolCalls) {
+			newContextRequested = true
+		}
 	}
 
 	return LoopResult{
@@ -791,6 +951,31 @@ func RunToolLoop(
 		CacheCreationTokens: totalCacheCreation,
 		CacheReadTokens:     totalCacheRead,
 	}, fmt.Errorf("max steps exceeded (%d)", cfg.MaxSteps)
+}
+
+func applyArchivedHistorySeqs(messages, archived []providers.ChatMessage, seqs []int) []providers.ChatMessage {
+	if len(messages) == 0 || len(archived) == 0 || len(seqs) == 0 {
+		return messages
+	}
+	out := providers.CloneChatMessages(messages)
+	searchFrom := 0
+	for archivedIndex, archivedMessage := range archived {
+		if archivedIndex >= len(seqs) || seqs[archivedIndex] <= 0 {
+			continue
+		}
+		archivedMessage.Seq = 0
+		for messageIndex := searchFrom; messageIndex < len(out); messageIndex++ {
+			candidate := providers.CloneChatMessage(out[messageIndex])
+			candidate.Seq = 0
+			if !reflect.DeepEqual(candidate, archivedMessage) {
+				continue
+			}
+			out[messageIndex].Seq = seqs[archivedIndex]
+			searchFrom = messageIndex + 1
+			break
+		}
+	}
+	return out
 }
 
 func validateTransformedRequest(req providers.ChatRequest, forceBefore string, forceAvailableBefore bool) error {
@@ -955,6 +1140,12 @@ func resolveEffectiveCompaction(cfg LoopConfig) CompactFn {
 				note, _, err = generateCompactionNote(
 					ctx, forked, cfg.CompactionNoteStore, cfg.ForkCompactionNote, cfg.Model, messages, true,
 				)
+				if errors.Is(err, ErrCompactionNoteSuperseded) {
+					note, valid, err = loadValidCompactionNote(ctx, cfg.CompactionNoteStore, forked.CompactionKey(), messages)
+					if err == nil && !valid {
+						err = ErrCompactionNoteSuperseded
+					}
+				}
 				if errors.Is(err, ErrCompactionNoteUnsupported) {
 					compacted, legacyErr := resolved.Compact(ctx, cfg.Model, messages)
 					if legacyErr == nil || !errors.Is(legacyErr, ErrCompactionUnavailable) {

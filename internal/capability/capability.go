@@ -54,6 +54,8 @@ const (
 	// persisted conversation record and history.
 	CapabilitySessionLookup    Capability = "session.lookup"
 	CapabilitySessionWorkspace Capability = "session.workspace"
+	CapabilityContextHistory   Capability = "context.history"
+	CapabilityContextWindow    Capability = "context.window"
 
 	// TODO / skills.
 	CapabilityTodo  Capability = "todo"
@@ -96,6 +98,8 @@ func All() []Capability {
 		CapabilityWebSearch,
 		CapabilitySessionLookup,
 		CapabilitySessionWorkspace,
+		CapabilityContextHistory,
+		CapabilityContextWindow,
 		CapabilityTodo,
 		CapabilitySkill,
 		CapabilityChat,

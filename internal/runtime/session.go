@@ -1290,6 +1290,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 		ConfigureToolkitPermissions(kit, s.Permissions)
 		kit.SetSessionID(id)
 		kit.SetSessionDir(artifactDir)
+		kit.SetSessionsDir(s.SessionDir)
 		kit.SetBrowserTabs(browserTabs)
 		kit.SetImageInputSupported(s.ModelRoles.Main.Capabilities.ImageInput)
 		kit.SetAgentIdentity(id, agentthread.RootPath)
@@ -1426,6 +1427,9 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 	runner.InferenceJournal = s.InferenceJournalForOwner(id)
 	runner.DriverCheckpointStore = sessionDriverCheckpointStore{sessDir: s.SessionDir, sessionID: id}
 	runner.CompactionNoteStore = sessionCompactionNoteStore{sessDir: s.SessionDir, sessionID: id}
+	if kit != nil {
+		kit.SetContextWindowToolsEnabled(runner.ContextWindowsAvailable())
+	}
 	// Exact model-input receipts have no production consumer and duplicate the
 	// cumulative conversation on every step. Keep the optional runner contract
 	// available for explicit diagnostics, but do not persist receipts by default.
@@ -1491,6 +1495,23 @@ func (store sessionCompactionNoteStore) StoreCompactionNote(ctx context.Context,
 		return nil
 	}
 	return err
+}
+
+func (store sessionCompactionNoteStore) CompareAndSwapCompactionNote(ctx context.Context, providerKey string, expected agent.CompactionNote, expectedExists bool, replacement agent.CompactionNote) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	stored, err := session.CompareAndSwapCompactionNote(store.sessDir, session.CompactionNote{
+		SessionID: store.sessionID, ProviderKey: providerKey, Markdown: expected.Markdown,
+		CoveredMessages: expected.CoveredMessages, CoveredHash: expected.CoveredHash,
+	}, expectedExists, session.CompactionNote{
+		SessionID: store.sessionID, ProviderKey: providerKey, Markdown: replacement.Markdown,
+		CoveredMessages: replacement.CoveredMessages, CoveredHash: replacement.CoveredHash,
+	})
+	if errors.Is(err, session.ErrSessionNotFound) {
+		return false, nil
+	}
+	return stored, err
 }
 
 type sessionModelInputReceiptStore struct {
@@ -1606,6 +1627,7 @@ func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.Too
 		ModelInputReceiptStore:      base.ModelInputReceiptStore,
 		CompactionRegistry:          base.CompactionRegistry,
 		CompactionNoteStore:         base.CompactionNoteStore,
+		ArchiveHistory:              base.ArchiveHistory,
 	}
 }
 

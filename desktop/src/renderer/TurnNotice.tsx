@@ -349,25 +349,17 @@ function isManualCompact(reason: string | undefined, text: string): boolean {
 
 function parseContextCompactionNotice(text: string): string | undefined {
   const match = text.match(
-    /^(Recovered from context overflow\s+[—-]\s+compacted|Manually compacted|Compacted)\s+history:\s*(\d+)\s*(?:→|->)\s*(\d+)\s+messages(?:\s+\(([^)]+)\))?$/i,
+    /^(?:Recovered from context overflow\s+[—-]\s+compacted|Manually compacted|Compacted|Started a fresh context window with)\s+history:\s*\d+\s*(?:→|->)\s*\d+\s+messages(?:\s+\(([^)]+)\))?$/i,
   );
   if (!match) {
     return undefined;
   }
-  const [, , before, after, tokenDetail] = match;
+  const [, tokenDetail] = match;
   const tokenRange = tokenDetail?.match(
     /^~?([\d.]+[kM]?)\s*(?:→|->)\s*~?([\d.]+[kM]?)\s+tokens$/i,
   );
   if (tokenRange) {
-    return t("compaction.summaryWithTokenRange", {
-      before,
-      after,
-      beforeTokens: tokenRange[1],
-      afterTokens: tokenRange[2],
-    });
+    return `${tokenRange[1]} → ${tokenRange[2]}`;
   }
-  const previousTokens = tokenDetail?.match(/^was\s+~?(.+)$/i)?.[1]?.trim();
-  return previousTokens
-    ? t("compaction.summaryWithTokens", { before, after, tokens: previousTokens })
-    : t("compaction.summary", { before, after });
+  return t("compaction.completeDetail");
 }

@@ -7947,7 +7947,7 @@ func TestServerFailedTurnPersistsCompactedHistoryRewrite(t *testing.T) {
 					Name:      "grep",
 					Arguments: `{"pattern":"inspect","path":"."}`,
 				}},
-				Usage: &providers.TokenUsage{InputTokens: 950, OutputTokens: 10},
+				Usage: &providers.TokenUsage{InputTokens: 4950, OutputTokens: 10},
 			},
 			{Content: "compacted before provider failure"},
 		},
@@ -7960,7 +7960,7 @@ func TestServerFailedTurnPersistsCompactedHistoryRewrite(t *testing.T) {
 		}
 	}
 	rt := newTestRuntime(t, client)
-	rt.StreamRunner.ContextWindowOverride = 1000
+	rt.StreamRunner.ContextWindowOverride = 5000
 	rt.StreamRunner.OutputReserveTokens = 100
 	kit, err := tools.New(rt.RootDir)
 	if err != nil {
@@ -7974,6 +7974,17 @@ func TestServerFailedTurnPersistsCompactedHistoryRewrite(t *testing.T) {
 		t.Fatalf("thread/start: %v", err)
 	}
 	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread.ID
+	thread := srv.thread(threadID)
+	olderHistory := []providers.ChatMessage{
+		{Role: "user", Content: strings.Repeat("older request ", 400)},
+		{Role: "assistant", Content: strings.Repeat("older answer ", 400)},
+	}
+	if err := appendChatMessages(rt.SessionDir, threadID, olderHistory); err != nil {
+		t.Fatalf("persist older history: %v", err)
+	}
+	thread.mu.Lock()
+	thread.History = append(thread.History, olderHistory...)
+	thread.mu.Unlock()
 	raw, err := json.Marshal(map[string]any{
 		"id":     "2",
 		"method": MethodTurnStart,
@@ -8480,10 +8491,10 @@ func TestServerThreadCompactStartRunsCompactOnlyTurn(t *testing.T) {
 		t.Fatal("expected loaded thread")
 	}
 	compactHistory := []providers.ChatMessage{
-		providers.ChatMessage{Role: "user", Content: "old request"},
-		providers.ChatMessage{Role: "assistant", Content: "old answer"},
-		providers.ChatMessage{Role: "user", Content: "newer request"},
-		providers.ChatMessage{Role: "assistant", Content: "newer answer"},
+		providers.ChatMessage{Role: "user", Content: strings.Repeat("old request ", 100)},
+		providers.ChatMessage{Role: "assistant", Content: strings.Repeat("old answer ", 100)},
+		providers.ChatMessage{Role: "user", Content: strings.Repeat("newer request ", 100)},
+		providers.ChatMessage{Role: "assistant", Content: strings.Repeat("newer answer ", 100)},
 	}
 	if err := appendChatMessages(rt.SessionDir, threadID, compactHistory); err != nil {
 		t.Fatalf("persist compact history: %v", err)
@@ -8624,9 +8635,9 @@ func TestServerTurnStartSlashCompactRoutesToCompactOnlyTurn(t *testing.T) {
 		t.Fatal("expected loaded thread")
 	}
 	compactHistory := []providers.ChatMessage{
-		providers.ChatMessage{Role: "user", Content: "old request"},
-		providers.ChatMessage{Role: "assistant", Content: "old answer"},
-		providers.ChatMessage{Role: "user", Content: "newer request"},
+		providers.ChatMessage{Role: "user", Content: strings.Repeat("old request ", 100)},
+		providers.ChatMessage{Role: "assistant", Content: strings.Repeat("old answer ", 100)},
+		providers.ChatMessage{Role: "user", Content: strings.Repeat("newer request ", 100)},
 	}
 	if err := appendChatMessages(rt.SessionDir, threadID, compactHistory); err != nil {
 		t.Fatalf("persist compact history: %v", err)

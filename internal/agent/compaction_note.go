@@ -44,6 +44,12 @@ type CompactionNoteStore interface {
 	StoreCompactionNote(ctx context.Context, providerKey string, note CompactionNote) error
 }
 
+// ConditionalCompactionNoteStore prevents an older background fork from
+// overwriting a checkpoint that was refreshed or re-anchored while it ran.
+type ConditionalCompactionNoteStore interface {
+	CompareAndSwapCompactionNote(ctx context.Context, providerKey string, expected CompactionNote, expectedExists bool, replacement CompactionNote) (bool, error)
+}
+
 // ForkingCompactionProvider extends the existing replacement contract with a
 // cache-friendly model fork that authors the Markdown checkpoint out of band.
 // It is generic: the host owns inference and persistence, while the provider
@@ -104,12 +110,22 @@ func generateCompactionNote(
 	if provider == nil || fork == nil {
 		return CompactionNote{}, nil, errors.New("compaction note fork is unavailable")
 	}
-	previous, ok, err := loadValidCompactionNote(ctx, store, provider.CompactionKey(), messages)
-	if err != nil {
-		return CompactionNote{}, nil, err
+	var storedPrevious CompactionNote
+	var err error
+	storedPreviousExists := false
+	if store != nil {
+		storedPrevious, storedPreviousExists, err = store.LoadCompactionNote(ctx, provider.CompactionKey())
+		if err != nil {
+			return CompactionNote{}, nil, err
+		}
+	}
+	previous := storedPrevious
+	previousExists := storedPreviousExists && validCompactionNote(storedPrevious, messages)
+	if !previousExists {
+		previous = CompactionNote{}
 	}
 	start := 0
-	if ok {
+	if previousExists {
 		start = previous.CoveredMessages
 	}
 	delta := messages[start:]
@@ -140,7 +156,15 @@ func generateCompactionNote(
 		CoveredHash:     CompactionHistoryHash(messages),
 	}
 	if store != nil {
-		if err := store.StoreCompactionNote(ctx, provider.CompactionKey(), note); err != nil {
+		if conditional, conditionalOK := store.(ConditionalCompactionNoteStore); conditionalOK {
+			stored, err := conditional.CompareAndSwapCompactionNote(ctx, provider.CompactionKey(), storedPrevious, storedPreviousExists, note)
+			if err != nil {
+				return CompactionNote{}, result.Usage, err
+			}
+			if !stored {
+				return CompactionNote{}, result.Usage, ErrCompactionNoteSuperseded
+			}
+		} else if err := store.StoreCompactionNote(ctx, provider.CompactionKey(), note); err != nil {
 			return CompactionNote{}, result.Usage, err
 		}
 	}
@@ -149,6 +173,7 @@ func generateCompactionNote(
 
 var ErrCompactionNoteNotDue = errors.New("compaction note update is not due")
 var ErrCompactionNoteUnsupported = errors.New("compaction provider does not support note forks")
+var ErrCompactionNoteSuperseded = errors.New("compaction note update was superseded")
 
 func estimateCompactionMessagesTokens(messages []providers.ChatMessage) int {
 	total := 0
@@ -162,4 +187,15 @@ func estimateCompactionMessagesTokens(messages []providers.ChatMessage) int {
 		}
 	}
 	return total
+}
+
+func annotateCompactionNoteHistorySeqs(messages []providers.ChatMessage) []providers.ChatMessage {
+	out := providers.CloneChatMessages(messages)
+	for index := range out {
+		if out[index].Seq <= 0 {
+			continue
+		}
+		out[index].Content = fmt.Sprintf("[History Seq %d]\n%s", out[index].Seq, out[index].Content)
+	}
+	return out
 }

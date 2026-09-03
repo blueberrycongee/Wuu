@@ -2138,6 +2138,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	var baseOnToolBatchRejected func(agent.ToolBatchRejectionInfo)
 	var baseOnUsage func(input, output int)
 	var baseOnTokenUsage func(providers.TokenUsage)
+	var baseArchiveHistory agent.HistoryArchiveFunc
 	restoreRunner := func() {}
 	if runner != nil {
 		baseTurnTools = runner.Tools
@@ -2151,6 +2152,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		baseOnToolBatchRejected = runner.OnToolBatchRejected
 		baseOnUsage = runner.OnUsage
 		baseOnTokenUsage = runner.OnTokenUsage
+		baseArchiveHistory = runner.ArchiveHistory
 		var restoreRunnerOnce sync.Once
 		restoreRunner = func() {
 			restoreRunnerOnce.Do(func() {
@@ -2165,12 +2167,30 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 				runner.OnToolBatchRejected = baseOnToolBatchRejected
 				runner.OnUsage = baseOnUsage
 				runner.OnTokenUsage = baseOnTokenUsage
+				runner.ArchiveHistory = baseArchiveHistory
 			})
 		}
 		if th != nil {
 			runner.ToolWaitInterrupt = th.steerWaitInterrupt
 		} else {
 			runner.ToolWaitInterrupt = nil
+		}
+		runner.ArchiveHistory = func(archiveCtx context.Context, messages []providers.ChatMessage) (agent.HistoryArchive, error) {
+			if th == nil || !th.PersistHistory {
+				return agent.HistoryArchive{}, errors.New("durable session history is unavailable")
+			}
+			seqs, endSeq, err := appendChatMessagesReturningSeqs(s.rt.SessionDir, th.ID, messages)
+			if err != nil {
+				return agent.HistoryArchive{}, err
+			}
+			if endSeq > 0 {
+				return agent.HistoryArchive{Seqs: seqs, HeadSeq: endSeq}, nil
+			}
+			page, err := session.ReadHistoryPage(archiveCtx, s.rt.SessionDir, th.ID, 1, 1)
+			if err != nil {
+				return agent.HistoryArchive{}, err
+			}
+			return agent.HistoryArchive{Seqs: seqs, HeadSeq: page.HeadSeq}, nil
 		}
 	}
 	defer restoreRunner()
@@ -4392,7 +4412,18 @@ func (s *Server) persistTurnResultLocked(th *threadState, res agent.LoopResult, 
 	}
 	indexHistory := th.History
 	if rewriteHistory {
-		if err := rewriteChatHistoryAtBaseline(s.rt.SessionDir, th.ID, th.History, historyBaselineSeq); err != nil {
+		rewriteBaselineSeq := max(historyBaselineSeq, res.HistoryArchiveHeadSeq)
+		if res.DurableMessagesTracked && len(res.DurableNewMessages) > 0 {
+			seqs, endSeq, err := appendChatMessagesReturningSeqs(s.rt.SessionDir, th.ID, res.DurableNewMessages)
+			if err != nil {
+				return err
+			}
+			th.History = applyPersistedHistorySeqs(th.History, res.DurableNewMessages, seqs)
+			if endSeq > rewriteBaselineSeq {
+				rewriteBaselineSeq = endSeq
+			}
+		}
+		if err := rewriteChatHistoryAtBaseline(s.rt.SessionDir, th.ID, th.History, rewriteBaselineSeq); err != nil {
 			return err
 		}
 		// The transaction may have merged meta tail records that arrived while
@@ -4407,7 +4438,11 @@ func (s *Server) persistTurnResultLocked(th *threadState, res agent.LoopResult, 
 			th.historyHeadSeq = committedHeadSeq
 		}
 	} else {
-		if err := appendChatMessages(s.rt.SessionDir, th.ID, res.NewMessages); err != nil {
+		messagesToAppend := res.NewMessages
+		if res.DurableMessagesTracked {
+			messagesToAppend = res.DurableNewMessages
+		}
+		if err := appendChatMessages(s.rt.SessionDir, th.ID, messagesToAppend); err != nil {
 			return err
 		}
 	}
@@ -4427,6 +4462,31 @@ func (s *Server) persistTurnResultLocked(th *threadState, res agent.LoopResult, 
 		s.invalidateChannelAgentInsights()
 	}
 	return nil
+}
+
+func applyPersistedHistorySeqs(messages, persisted []providers.ChatMessage, seqs []int) []providers.ChatMessage {
+	if len(messages) == 0 || len(persisted) == 0 || len(seqs) == 0 {
+		return messages
+	}
+	out := cloneHistory(messages)
+	searchFrom := 0
+	for persistedIndex, persistedMessage := range persisted {
+		if persistedIndex >= len(seqs) || seqs[persistedIndex] <= 0 {
+			continue
+		}
+		persistedMessage.Seq = 0
+		for messageIndex := searchFrom; messageIndex < len(out); messageIndex++ {
+			candidate := providers.CloneChatMessage(out[messageIndex])
+			candidate.Seq = 0
+			if !reflect.DeepEqual(candidate, persistedMessage) {
+				continue
+			}
+			out[messageIndex].Seq = seqs[persistedIndex]
+			searchFrom = messageIndex + 1
+			break
+		}
+	}
+	return out
 }
 
 func (s *Server) persistFailedTurnResultLocked(th *threadState, res agent.LoopResult, rewriteHistory bool, providerName, model string, historyBaselineSeq int) error {

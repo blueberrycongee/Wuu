@@ -852,12 +852,20 @@ func AppendHistoryRecordReturningSeq(sessDir, id string, rec HistoryRecord) (int
 // Tool-call declarations and their results must use this path so a crash can
 // never expose a partially projected provider message sequence.
 func AppendHistoryRecords(sessDir, id string, records []HistoryRecord) error {
+	_, _, err := AppendHistoryRecordsReturningRange(sessDir, id, records)
+	return err
+}
+
+// AppendHistoryRecordsReturningRange appends a related history segment in one
+// transaction and returns the inclusive sequence range assigned to it. An empty
+// segment returns (0, 0, nil).
+func AppendHistoryRecordsReturningRange(sessDir, id string, records []HistoryRecord) (int, int, error) {
 	if len(records) == 0 {
-		return nil
+		return 0, 0, nil
 	}
 	db, err := openStore(sessDir)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	defer db.Close()
 
@@ -866,23 +874,30 @@ func AppendHistoryRecords(sessDir, id string, records []HistoryRecord) error {
 
 	tx, err := db.Begin()
 	if err != nil {
-		return fmt.Errorf("begin history batch append: %w", err)
+		return 0, 0, fmt.Errorf("begin history batch append: %w", err)
 	}
 	defer tx.Rollback()
 	if ok, err := sessionExistsTx(tx, id); err != nil {
-		return err
+		return 0, 0, err
 	} else if !ok {
-		return fmt.Errorf("%w: %q", ErrSessionNotFound, id)
+		return 0, 0, fmt.Errorf("%w: %q", ErrSessionNotFound, id)
 	}
+	startSeq := 0
+	endSeq := 0
 	for _, rec := range records {
-		if _, err := appendHistoryRecordTx(tx, id, rec); err != nil {
-			return err
+		seq, err := appendHistoryRecordTx(tx, id, rec)
+		if err != nil {
+			return 0, 0, err
 		}
+		if startSeq == 0 {
+			startSeq = seq
+		}
+		endSeq = seq
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit history batch append: %w", err)
+		return 0, 0, fmt.Errorf("commit history batch append: %w", err)
 	}
-	return nil
+	return startSeq, endSeq, nil
 }
 
 // RewriteHistoryRecords replaces a session's durable history records.

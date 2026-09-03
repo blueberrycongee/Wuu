@@ -638,8 +638,8 @@ func TestRunToolLoop_CompactIgnoresRequestOnlyContext(t *testing.T) {
 	}
 	history := []providers.ChatMessage{
 		{Role: "system", Content: "sys"},
-		{Role: "user", Content: "old request"},
-		{Role: "assistant", Content: "old answer"},
+		{Role: "user", Content: strings.Repeat("old request ", 100)},
+		{Role: "assistant", Content: strings.Repeat("old answer ", 100)},
 		{Role: "user", Content: "latest request"},
 	}
 	pluginBlock := wuucontext.Block{
@@ -688,8 +688,8 @@ func TestRunToolLoop_ForceInitialCompactRunsBelowThreshold(t *testing.T) {
 	step := &fakeStep{results: []StepResult{{Content: "ok"}}}
 	history := []providers.ChatMessage{
 		{Role: "system", Content: "sys"},
-		{Role: "user", Content: "old request"},
-		{Role: "assistant", Content: "old answer"},
+		{Role: "user", Content: strings.Repeat("old request ", 100)},
+		{Role: "assistant", Content: strings.Repeat("old answer ", 100)},
 		{Role: "user", Content: "/compact"},
 	}
 	compactCalls := 0
@@ -730,8 +730,8 @@ func TestRunToolLoop_CompactOnlyStopsBeforeProviderRequest(t *testing.T) {
 	step := &fakeStep{results: []StepResult{{Content: "should not be requested"}}}
 	history := []providers.ChatMessage{
 		{Role: "system", Content: "sys"},
-		{Role: "user", Content: "old request"},
-		{Role: "assistant", Content: "old answer"},
+		{Role: "user", Content: strings.Repeat("old request ", 100)},
+		{Role: "assistant", Content: strings.Repeat("old answer ", 100)},
 	}
 	compactCalls := 0
 	res, err := RunToolLoop(context.Background(), history, LoopConfig{
@@ -792,6 +792,29 @@ func TestRunToolLoop_ForceInitialCompactNoopReportsUnchanged(t *testing.T) {
 	}
 	if res.HistoryRewritten {
 		t.Fatal("no-op forced compact must not mark history rewritten")
+	}
+}
+
+func TestRunToolLoopRejectsExpandingCompactionReplacement(t *testing.T) {
+	history := []providers.ChatMessage{{Role: "user", Content: "short history"}}
+	var attempts []CompactAttemptInfo
+	res, err := RunToolLoop(context.Background(), history, LoopConfig{
+		Model:               "m",
+		ForceInitialCompact: true,
+		CompactOnly:         true,
+		Compact: func(_ context.Context, _ []providers.ChatMessage) ([]providers.ChatMessage, error) {
+			return []providers.ChatMessage{{Role: "system", Content: compact.BuildSummaryContent(strings.Repeat("expanded ", 100))}}, nil
+		},
+		OnCompactAttempt: func(info CompactAttemptInfo) { attempts = append(attempts, info) },
+	}, &fakeStep{})
+	if err != nil {
+		t.Fatalf("RunToolLoop: %v", err)
+	}
+	if res.HistoryRewritten {
+		t.Fatal("expanding replacement must not rewrite history")
+	}
+	if len(attempts) != 1 || attempts[0].Status != CompactAttemptFailed || !strings.Contains(attempts[0].Error, "did not shrink") {
+		t.Fatalf("attempts = %+v", attempts)
 	}
 }
 
