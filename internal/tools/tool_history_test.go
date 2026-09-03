@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/blueberrycongee/wuu/internal/modelprofile"
 	"github.com/blueberrycongee/wuu/internal/session"
 )
 
@@ -95,4 +96,29 @@ func TestHistoryReadReportsPayloadTruncationAndContinuation(t *testing.T) {
 	if !decoded.PayloadTruncated || len(decoded.Records) != 1 || !decoded.Records[0].PayloadTruncated || decoded.Next["start_seq"] != 2 {
 		t.Fatalf("result = %+v", decoded)
 	}
+}
+
+func TestContextWindowToolsRequireRuntimeEnablement(t *testing.T) {
+	kit, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new toolkit: %v", err)
+	}
+	kit.SetActiveProfile(modelprofile.Resolve("openai", "gpt-5-codex"), true)
+	assertDefined := func(want bool) {
+		t.Helper()
+		got := map[string]bool{}
+		for _, definition := range kit.Definitions() {
+			got[definition.Name] = true
+		}
+		for _, name := range contextWindowToolNames {
+			if got[name] != want {
+				t.Fatalf("tool %q visible = %v, want %v", name, got[name], want)
+			}
+		}
+	}
+	assertDefined(false)
+	kit.SetContextWindowToolsEnabled(true)
+	assertDefined(true)
+	kit.SetContextWindowToolsEnabled(false)
+	assertDefined(false)
 }

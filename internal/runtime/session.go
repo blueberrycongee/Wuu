@@ -1290,6 +1290,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 		ConfigureToolkitPermissions(kit, s.Permissions)
 		kit.SetSessionID(id)
 		kit.SetSessionDir(artifactDir)
+		kit.SetSessionsDir(s.SessionDir)
 		kit.SetBrowserTabs(browserTabs)
 		kit.SetImageInputSupported(s.ModelRoles.Main.Capabilities.ImageInput)
 		kit.SetAgentIdentity(id, agentthread.RootPath)
@@ -1426,6 +1427,9 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 	runner.InferenceJournal = s.InferenceJournalForOwner(id)
 	runner.DriverCheckpointStore = sessionDriverCheckpointStore{sessDir: s.SessionDir, sessionID: id}
 	runner.CompactionNoteStore = sessionCompactionNoteStore{sessDir: s.SessionDir, sessionID: id}
+	if kit != nil {
+		kit.SetContextWindowToolsEnabled(runner.ContextWindowsAvailable())
+	}
 	// Exact model-input receipts have no production consumer and duplicate the
 	// cumulative conversation on every step. Keep the optional runner contract
 	// available for explicit diagnostics, but do not persist receipts by default.
@@ -1606,6 +1610,7 @@ func cloneStreamRunnerForThread(base *agent.StreamRunner, toolExecutor agent.Too
 		ModelInputReceiptStore:      base.ModelInputReceiptStore,
 		CompactionRegistry:          base.CompactionRegistry,
 		CompactionNoteStore:         base.CompactionNoteStore,
+		ArchiveHistory:              base.ArchiveHistory,
 	}
 }
 

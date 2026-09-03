@@ -43,6 +43,8 @@ const (
 	maxToolOutputBytes  = 100 * 1024 // 100 KB — general cap for other tools
 )
 
+var contextWindowToolNames = []string{newContextToolName, historyReadToolName, historySearchToolName}
+
 // Toolkit executes local coding tools for the agent. It satisfies
 // agent.ToolExecutor via Definitions() + Execute().
 //
@@ -183,8 +185,11 @@ func New(rootDir string) (*Toolkit, error) {
 		ToolSearchEnabled:  true,
 	}
 	t := &Toolkit{
-		env:               env,
-		disabledTools:     map[string]struct{}{browserToolName: {}},
+		env: env,
+		disabledTools: map[string]struct{}{
+			browserToolName:    {},
+			newContextToolName: {}, historyReadToolName: {}, historySearchToolName: {},
+		},
 		toolSearchEnabled: true,
 		boundary:          StandardBoundary(),
 	}
@@ -229,6 +234,7 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 		boundaryConfigured:          t.env.boundaryConfigured,
 		SessionID:                   t.env.SessionID,
 		SessionDir:                  t.env.SessionDir,
+		SessionsDir:                 t.env.SessionsDir,
 		AgentID:                     t.env.AgentID,
 		AgentPath:                   t.env.AgentPath,
 		ToolSearchEnabled:           t.env.ToolSearchEnabled,
@@ -313,6 +319,9 @@ func (t *Toolkit) rebuildRegistry() {
 		// back to the full conversation via this tool).
 		NewThreadGetTool(e),
 		NewSetSessionWorkspaceTool(e),
+		NewNewContextTool(),
+		NewHistoryReadTool(e),
+		NewHistorySearchTool(e),
 		// Recurring agent profiles
 		NewListAgentProfilesTool(e),
 		NewCreateAgentProfileTool(e),
@@ -459,6 +468,14 @@ func (t *Toolkit) SetSessionDir(dir string) {
 	t.env.SessionDir = dir
 }
 
+// SetSessionsDir binds session-history tools to a specific SQLite store.
+func (t *Toolkit) SetSessionsDir(dir string) {
+	if t == nil || t.env == nil {
+		return
+	}
+	t.env.SessionsDir = strings.TrimSpace(dir)
+}
+
 // SessionDir returns the session artifact directory currently bound to this toolkit.
 func (t *Toolkit) SessionDir() string {
 	if t == nil || t.env == nil {
@@ -586,6 +603,23 @@ func (t *Toolkit) SetBrowserEnabled(enabled bool) {
 		t.EnableTools(browserToolName)
 	} else {
 		t.DisableTools(browserToolName)
+	}
+	t.activeProfileMu.Lock()
+	t.publishActiveSurfaceLocked()
+	t.activeProfileMu.Unlock()
+}
+
+// SetContextWindowToolsEnabled exposes host-owned context switching and
+// current-session recovery only when the runtime has note compaction and
+// durable history wired. New toolkits keep the surface disabled.
+func (t *Toolkit) SetContextWindowToolsEnabled(enabled bool) {
+	if t == nil {
+		return
+	}
+	if enabled {
+		t.EnableTools(contextWindowToolNames...)
+	} else {
+		t.DisableTools(contextWindowToolNames...)
 	}
 	t.activeProfileMu.Lock()
 	t.publishActiveSurfaceLocked()

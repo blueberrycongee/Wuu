@@ -152,8 +152,8 @@ func TestCompactionNoteForkUsesStreamingProviderPath(t *testing.T) {
 
 func TestStreamRunnerNoteCompactionEmitsOneCompletedEvent(t *testing.T) {
 	history := []providers.ChatMessage{
-		{Role: "user", Content: "older request"},
-		{Role: "assistant", Content: "older response"},
+		{Role: "user", Content: strings.Repeat("older request ", 100)},
+		{Role: "assistant", Content: strings.Repeat("older response ", 100)},
 	}
 	store := &cancellationNoteStore{note: CompactionNote{
 		Markdown:        "# Existing note\n\nContinue the task.",
@@ -275,7 +275,7 @@ func TestStreamRunnerUsesCompactionRegistry(t *testing.T) {
 		ForceInitialCompact: true,
 		CompactOnly:         true,
 	}
-	result, err := runner.RunWithCallback(context.Background(), []providers.ChatMessage{{Role: "user", Content: "old"}}, nil)
+	result, err := runner.RunWithCallback(context.Background(), []providers.ChatMessage{{Role: "user", Content: strings.Repeat("old history ", 100)}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1321,10 +1321,10 @@ func TestStreamRunner_ReusesUsageAcrossTurnsForPreRequestCompact(t *testing.T) {
 
 	firstHistory := []providers.ChatMessage{
 		{Role: "system", Content: "sys"},
-		{Role: "user", Content: "u1"},
-		{Role: "assistant", Content: "a1"},
-		{Role: "user", Content: "u2"},
-		{Role: "assistant", Content: "a2"},
+		{Role: "user", Content: strings.Repeat("u1 ", 100)},
+		{Role: "assistant", Content: strings.Repeat("a1 ", 100)},
+		{Role: "user", Content: strings.Repeat("u2 ", 100)},
+		{Role: "assistant", Content: strings.Repeat("a2 ", 100)},
 	}
 	first, err := runner.RunWithCallback(context.Background(), firstHistory, nil)
 	if err != nil {

@@ -84,7 +84,9 @@ const (
 	// context-overflow error and the loop ran compact reactively as
 	// the recovery path.
 	CompactReasonOverflow CompactReason = "overflow"
-	// replacement context after its tool result was recorded.
+	// CompactReasonNewContext means the model requested a fresh note-backed
+	// context window. The host applies it after the complete tool batch.
+	CompactReasonNewContext CompactReason = "new_context"
 	// CompactReasonManual means the user explicitly requested a compact
 	// pass (the /compact slash command); it runs before the first model
 	// request of the turn regardless of the fill-rate threshold.
@@ -272,6 +274,16 @@ type LoopConfig struct {
 	// CompactOnly returns after the forced compact pass instead of sending a
 	// normal provider request. Used for control-plane /compact turns.
 	CompactOnly bool
+	// FreshContext installs a bounded note-backed context without a model call.
+	// ArchiveHistory must commit original in-run messages before that context is
+	// released. Both must be set before new_context or hard rollover is enabled.
+	FreshContext       FreshContextBuilder
+	ArchiveHistory     HistoryArchiveFunc
+	FreshContextTokens int
+	AcceptFreshContext func(context.Context) error
+	// OnHistoryAdvanced must return immediately. StreamRunner uses it to launch
+	// best-effort background note refreshes while the main loop continues.
+	OnHistoryAdvanced func([]providers.ChatMessage)
 	// ToolWaitInterrupt supplies a turn-scoped signal to wait-only tools that
 	// can safely return while leaving their underlying work alive.
 	ToolWaitInterrupt func() <-chan struct{}
@@ -405,6 +417,14 @@ type LoopResult struct {
 	// pass rewrote the live history mid-run, this becomes the full
 	// replacement history snapshot and HistoryRewritten is true.
 	NewMessages []providers.ChatMessage
+	// DurableNewMessages contains original messages not already archived during
+	// this run. It differs from NewMessages after a context rewrite, whose value
+	// is the active replacement snapshot.
+	DurableNewMessages     []providers.ChatMessage
+	DurableMessagesTracked bool
+	// HistoryArchiveHeadSeq is the physical transcript head after the most recent
+	// in-run archive required by a fresh-context transition.
+	HistoryArchiveHeadSeq int
 	// HistoryRewritten reports whether a compact pass replaced the
 	// live history slice mid-run. Callers that persist conversations
 	// should replace stored history instead of append-only extending

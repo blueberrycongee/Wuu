@@ -69,6 +69,10 @@ func (k SurfaceKind) includesChat() bool {
 	return k == SurfaceNamedAgent
 }
 
+func (k SurfaceKind) includesContextWindows() bool {
+	return k == SurfaceMain || k == SurfaceNamedAgent || k == SurfaceRoomAgent
+}
+
 // Compiler compiles a model profile into a built-in tool surface. Plugin-owned
 // product tools are not part of this compiler.
 type Compiler interface {
@@ -96,6 +100,9 @@ func (DefaultCompiler) Compile(p Profile, kind SurfaceKind) capability.Surface {
 	}
 	if kind.includesSessionWorkspace() {
 		addSessionWorkspaceTool(b)
+	}
+	if kind.includesContextWindows() {
+		addContextWindowTools(b)
 	}
 	if kind.includesChat() {
 		addChatTools(b)
@@ -293,6 +300,12 @@ func addSessionTools(b *surfaceBuilder) {
 
 func addSessionWorkspaceTool(b *surfaceBuilder) {
 	b.addDeferred("set_session_workspace", capability.CapabilitySessionWorkspace)
+}
+
+func addContextWindowTools(b *surfaceBuilder) {
+	b.addVisible("new_context", capability.CapabilityContextWindow)
+	b.addVisible("history_read", capability.CapabilityContextHistory)
+	b.addVisible("history_search", capability.CapabilityContextHistory)
 }
 
 func addChatTools(b *surfaceBuilder) {

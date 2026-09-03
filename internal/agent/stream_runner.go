@@ -46,8 +46,11 @@ type StreamRunner struct {
 	// CompactionRegistry resolves a generation-owned compactor for each run.
 	CompactionRegistry  *CompactionRegistry
 	CompactionNoteStore CompactionNoteStore
-	MaxSteps            int
-	Temperature         float64
+	// ArchiveHistory commits original in-run messages before a fresh context
+	// releases them. App-server installs this per turn for persisted sessions.
+	ArchiveHistory HistoryArchiveFunc
+	MaxSteps       int
+	Temperature    float64
 	// MediaInput is the admission policy for user-supplied media, resolved
 	// from the session's model capabilities. Zero value means fully
 	// unprobed (auto), preserving legacy pass-through behavior.
@@ -396,6 +399,12 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 			return filterDurableHistory(capturedBeforeStep())
 		}
 	}
+	contextWindowProvider := r.contextWindowProvider()
+	contextWindowsEnabled := contextWindowProvider != nil && r.CompactionNoteStore != nil && r.ArchiveHistory != nil && !policy.DisableCompaction
+	beforeRequestContext := r.BeforeRequestContext
+	if contextWindowsEnabled {
+		beforeRequestContext = withContextWindowGuidance(beforeRequestContext)
+	}
 	operationKind := r.InferenceOperationKind
 	if operationKind == "" {
 		operationKind = providers.InferenceOperationAgentRound
@@ -439,7 +448,7 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		ToolWaitInterrupt:        r.ToolWaitInterrupt,
 		BeforeStep:               beforeStep,
 		BeforeModelStep:          r.BeforeModelStep,
-		BeforeRequestContext:     r.BeforeRequestContext,
+		BeforeRequestContext:     beforeRequestContext,
 		BeforeRequest:            r.BeforeRequest,
 		SystemPromptSections:     systemPromptSections,
 		ForceToolFirstStep:       forceToolFirstStep,
@@ -577,6 +586,21 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		RetainedRequestContext:      r.takeRetainedRequestContext(),
 	}
 	cfg.ForkCompactionNote = r.compactionNoteFork(cfg.RetainedRequestContext)
+	if contextWindowsEnabled {
+		var pendingReanchor CompactionNote
+		cfg.ArchiveHistory = r.ArchiveHistory
+		cfg.FreshContextTokens = r.freshContextTargetTokens(compactThresholdTokens)
+		cfg.FreshContext = r.freshContextBuilder(contextWindowProvider, &pendingReanchor)
+		cfg.AcceptFreshContext = func(acceptCtx context.Context) error {
+			if strings.TrimSpace(pendingReanchor.Markdown) == "" {
+				return nil
+			}
+			if err := r.CompactionNoteStore.StoreCompactionNote(acceptCtx, contextWindowProvider.CompactionKey(), pendingReanchor); err != nil {
+				return fmt.Errorf("re-anchor fresh-context note: %w", err)
+			}
+			return nil
+		}
+	}
 	cfg.OnCompactionNote = func(status string, noteErr error) {
 		emitCompactionNoteEvent(effectiveOnEvent, status, noteErr)
 	}
@@ -592,6 +616,10 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		res.NewMessages = append(append([]providers.ChatMessage(nil), recoveredToolMessages...), res.NewMessages...)
 	}
 	res.NewMessages = filterDurableHistory(res.NewMessages)
+	res.DurableNewMessages = filterDurableHistory(res.DurableNewMessages)
+	if len(recoveredToolMessages) > 0 {
+		res.DurableNewMessages = append(append([]providers.ChatMessage(nil), recoveredToolMessages...), res.DurableNewMessages...)
+	}
 	if err != nil {
 		r.commitUsageTrackerForContract(runUsage, history[:baseHistoryLen], runUsageContract)
 		return res, err
@@ -824,6 +852,41 @@ func (r *StreamRunner) storeRetainedRequestContext(state *RetainedRequestContext
 	r.retainedContextMu.Lock()
 	defer r.retainedContextMu.Unlock()
 	r.retainedRequestContext = state
+}
+
+// ContextWindowsAvailable reports whether this runner has a note provider and
+// note store. Runtime construction uses it to expose host context tools only for
+// sessions that can install a continuation checkpoint.
+func (r *StreamRunner) ContextWindowsAvailable() bool {
+	return r != nil && r.contextWindowProvider() != nil && r.CompactionNoteStore != nil
+}
+
+func (r *StreamRunner) contextWindowProvider() ForkingCompactionProvider {
+	if r == nil || r.CompactionRegistry == nil {
+		return nil
+	}
+	provider, ok := r.CompactionRegistry.Resolve(nil).(ForkingCompactionProvider)
+	if !ok || provider == nil || !provider.CompactionNotesEnabled() {
+		return nil
+	}
+	return provider
+}
+
+func (r *StreamRunner) freshContextBuilder(provider ForkingCompactionProvider, pendingReanchor *CompactionNote) FreshContextBuilder {
+	return func(ctx context.Context, messages []providers.ChatMessage, historyHeadSeq, fixedTokens, targetTokens int) ([]providers.ChatMessage, error) {
+		note, ok, err := loadValidCompactionNote(ctx, r.CompactionNoteStore, provider.CompactionKey(), messages)
+		if err != nil {
+			return nil, fmt.Errorf("load fresh-context note: %w", err)
+		}
+		replacement, reanchored, err := buildFreshContext(messages, note, ok, historyHeadSeq, fixedTokens, targetTokens)
+		if err != nil {
+			return nil, err
+		}
+		if pendingReanchor != nil {
+			*pendingReanchor = reanchored
+		}
+		return replacement, nil
+	}
 }
 
 func (r *StreamRunner) prepareCompactionNote(ctx context.Context, history []providers.ChatMessage, fork CompactionNoteFork) (*providers.TokenUsage, error) {
@@ -1545,6 +1608,8 @@ func formatCompactNotice(info CompactInfo) string {
 		verb = "Recovered from context overflow — compacted"
 	case CompactReasonManual:
 		verb = "Manually compacted"
+	case CompactReasonNewContext:
+		verb = "Started a fresh context window with"
 	}
 	if info.TokensBefore > 0 && info.TokensAfter > 0 {
 		return fmt.Sprintf("✦ %s history: %d → %d messages (~%s → ~%s tokens)",
@@ -1568,6 +1633,8 @@ func formatCompactAttemptNotice(info CompactAttemptInfo) (string, bool) {
 		return "Context compaction failed; continuing without compacting history.", true
 	case info.Reason == CompactReasonOverflow && info.Status == CompactAttemptFailed:
 		return "Context-overflow compact failed; history is unchanged.", true
+	case info.Reason == CompactReasonNewContext && info.Status == CompactAttemptFailed:
+		return "Fresh context could not be installed; active history is unchanged.", true
 	// A user-requested /compact must report its outcome even when nothing
 	// happened — silence would read as a successful compaction.
 	case info.Reason == CompactReasonManual && info.Status == CompactAttemptFailed:

@@ -6,8 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/blueberrycongee/wuu/internal/agent"
 	"github.com/blueberrycongee/wuu/internal/compact"
 	"github.com/blueberrycongee/wuu/internal/providers"
+	"github.com/blueberrycongee/wuu/internal/runtime"
 	sessionstore "github.com/blueberrycongee/wuu/internal/session"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
@@ -71,5 +73,61 @@ func TestRewriteChatHistoryKeepsCompactSummary(t *testing.T) {
 	}
 	if loaded[0].Role != "system" || !compact.IsConversationSummaryContent(loaded[0].Content) || !strings.Contains(loaded[0].Content, "Recovered task state") {
 		t.Fatalf("expected persisted summary system message, got %+v", loaded[0])
+	}
+}
+
+func TestPersistFreshContextKeepsReleasedOriginalsAddressable(t *testing.T) {
+	sessDir := t.TempDir()
+	sess, err := sessionstore.CreateWithMetadata(sessDir, "fresh-context-history", t.TempDir())
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := appendChatMessage(sessDir, sess.ID, providers.ChatMessage{Role: "user", Content: "original request"}); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+	_, archivedHead, err := appendChatMessagesReturningRange(sessDir, sess.ID, []providers.ChatMessage{
+		{Role: "assistant", Content: "pre-switch reasoning"},
+		{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "switch", Name: "new_context", Arguments: `{}`}}},
+		{Role: "tool", ToolCallID: "switch", Name: "new_context", Content: `{"requested":true}`},
+	})
+	if err != nil {
+		t.Fatalf("archive pre-switch messages: %v", err)
+	}
+	replacement := []providers.ChatMessage{
+		{Role: "system", Content: compact.BuildSummaryContent("continue from note"), Hidden: true},
+		{Role: "assistant", Content: "post-switch answer"},
+	}
+	server := &Server{rt: &runtime.Session{SessionDir: sessDir}}
+	thread := &threadState{ID: sess.ID, PersistHistory: true, History: cloneHistory(replacement)}
+	result := agent.LoopResult{
+		NewMessages:            cloneHistory(replacement),
+		DurableNewMessages:     []providers.ChatMessage{{Role: "assistant", Content: "post-switch answer"}},
+		DurableMessagesTracked: true,
+		HistoryArchiveHeadSeq:  archivedHead,
+		HistoryRewritten:       true,
+	}
+	if err := server.persistTurnResultLocked(thread, result, true, "", "", 1); err != nil {
+		t.Fatalf("persist fresh context: %v", err)
+	}
+
+	originals, err := sessionstore.LoadHistoryRecords(sessDir, sess.ID, false)
+	if err != nil {
+		t.Fatalf("load physical transcript: %v", err)
+	}
+	postSwitchAnswers := 0
+	for _, record := range originals {
+		if record.Content == "post-switch answer" {
+			postSwitchAnswers++
+		}
+	}
+	if len(originals) != 6 || originals[1].Content != "pre-switch reasoning" || originals[4].Content != "post-switch answer" || postSwitchAnswers != 1 {
+		t.Fatalf("physical transcript = %+v", originals)
+	}
+	active, err := loadChatMessages(sessDir, sess.ID)
+	if err != nil {
+		t.Fatalf("load active history: %v", err)
+	}
+	if len(active) != 2 || !compact.IsConversationSummaryContent(active[0].Content) || active[1].Content != "post-switch answer" {
+		t.Fatalf("active history = %+v", active)
 	}
 }

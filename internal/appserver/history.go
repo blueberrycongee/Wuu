@@ -218,10 +218,45 @@ func appendChatMessage(sessDir, id string, msg providers.ChatMessage) (int, erro
 }
 
 func appendChatMessages(sessDir, id string, msgs []providers.ChatMessage) error {
-	if strings.TrimSpace(sessDir) == "" || strings.TrimSpace(id) == "" || len(msgs) == 0 {
-		return nil
+	_, _, err := appendChatMessagesReturningRange(sessDir, id, msgs)
+	return err
+}
+
+func appendChatMessagesReturningRange(sessDir, id string, msgs []providers.ChatMessage) (int, int, error) {
+	seqs, endSeq, err := appendChatMessagesReturningSeqs(sessDir, id, msgs)
+	if err != nil {
+		return 0, 0, err
 	}
-	return sessionstore.AppendHistoryRecords(sessDir, id, historyRecordsFromChatMessages(msgs))
+	for _, seq := range seqs {
+		if seq > 0 {
+			return seq, endSeq, nil
+		}
+	}
+	return 0, endSeq, nil
+}
+
+func appendChatMessagesReturningSeqs(sessDir, id string, msgs []providers.ChatMessage) ([]int, int, error) {
+	if strings.TrimSpace(sessDir) == "" || strings.TrimSpace(id) == "" || len(msgs) == 0 {
+		return make([]int, len(msgs)), 0, nil
+	}
+	records := make([]sessionstore.HistoryRecord, 0, len(msgs))
+	indexes := make([]int, 0, len(msgs))
+	for index, msg := range msgs {
+		if !shouldPersistMessage(msg) {
+			continue
+		}
+		records = append(records, historyRecordFromPersistedMessage(persistedMessageFromChatMessage(msg)))
+		indexes = append(indexes, index)
+	}
+	startSeq, endSeq, err := sessionstore.AppendHistoryRecordsReturningRange(sessDir, id, records)
+	if err != nil {
+		return nil, 0, err
+	}
+	seqs := make([]int, len(msgs))
+	for offset, index := range indexes {
+		seqs[index] = startSeq + offset
+	}
+	return seqs, endSeq, nil
 }
 
 func rewriteChatHistory(sessDir, id string, msgs []providers.ChatMessage) error {
