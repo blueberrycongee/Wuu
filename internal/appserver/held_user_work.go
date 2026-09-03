@@ -161,8 +161,11 @@ func (s *Server) pendingUserMessageSummaries(threadID string) []HeldUserMessage 
 				continue
 			}
 			turns = append(turns, queuedTurn{
-				id:     strings.TrimSpace(msg.ClientID),
-				msg:    msg,
+				id:  strings.TrimSpace(msg.ClientID),
+				msg: msg,
+				snapshot: turnRuntimeSnapshot{
+					ActiveDocument: th.steerDocumentOverrideLocked(msg.ClientID),
+				},
 				origin: session.HeldUserWorkOriginSteer,
 			})
 		}

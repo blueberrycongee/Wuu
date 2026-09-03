@@ -1,8 +1,10 @@
 package appserver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/config"
@@ -213,12 +215,78 @@ func TestTurnRequeueAtomicallyMovesPendingSteerBackToQueue(t *testing.T) {
 	}
 }
 
+func TestTurnRequeueSupersedesStaleQueueCancellation(t *testing.T) {
+	const threadID = "thread-1"
+	const steerID = "message-1"
+	out := &lockedBuffer{}
+	th := &threadState{
+		ID: threadID,
+		pendingSteers: []providers.ChatMessage{{
+			Role: "user", Content: "keep me", ClientID: steerID, Steered: true,
+		}},
+	}
+	s := &Server{
+		out:                         out,
+		threads:                     map[string]*threadState{threadID: th},
+		pendingQueuedTurns:          make(map[string][]queuedTurn),
+		claimedQueuedTurns:          make(map[string]*queuedTurnClaim),
+		cancelledPendingSubmissions: make(map[string]string),
+		drainingQueuedTurns:         make(map[string]bool),
+		activeRunByThread:           make(map[string]string),
+	}
+	s.recordCancelledPendingSubmission(threadID, steerID, session.HeldUserWorkOriginQueue)
+	params, err := json.Marshal(TurnRequeueParams{ThreadID: threadID, SteerID: steerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.handleTurnRequeue(Request{ID: json.RawMessage(`"requeue"`), Params: params}); err != nil {
+		t.Fatalf("turn/requeue: %v", err)
+	}
+
+	th.mu.Lock()
+	pendingSteers := len(th.pendingSteers)
+	th.mu.Unlock()
+	queued, ok := s.findQueuedUserTurn(threadID, steerID)
+	if pendingSteers != 0 || !ok || queued.msg.Content != "keep me" {
+		t.Fatalf("requeue lost message: pending steers=%d queued=%+v ok=%t", pendingSteers, queued, ok)
+	}
+}
+
+func TestCancelledLateQueueIsNotHeldDuringInterrupt(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	out := &lockedBuffer{}
+	s := New(rt, out)
+	if err := s.handleLine(context.Background(), []byte(`{"id":"1","method":"thread/start"}`)); err != nil {
+		t.Fatal(err)
+	}
+	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread.ID
+	th := s.thread(threadID)
+	th.mu.Lock()
+	th.interrupting = true
+	th.mu.Unlock()
+	s.recordCancelledPendingSubmission(threadID, "message-1", session.HeldUserWorkOriginQueue)
+	req := fmt.Sprintf(`{"id":"2","method":"turn/queue","params":{"thread_id":%q,"prompt":"too late","client_id":"message-1"}}`, threadID)
+	if err := s.handleLine(context.Background(), []byte(req)); err != nil {
+		t.Fatal(err)
+	}
+	held, err := s.loadHeldUserTurns(threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 0 {
+		t.Fatalf("cancelled late queue was persisted as held work: %+v", held)
+	}
+}
+
 func TestPendingUserMessageSummariesIncludeLiveQueueAndSteer(t *testing.T) {
 	const threadID = "thread-1"
 	th := &threadState{
 		ID: threadID,
 		pendingSteers: []providers.ChatMessage{{
 			Role: "user", Content: "Guide", ClientID: "guide-1", Steered: true,
+		}},
+		steerDocumentOverrides: []activeDocumentOverride{{
+			steerID: "guide-1", document: &ActiveDocument{Path: "docs/guide.md"},
 		}},
 	}
 	s := &Server{
@@ -236,6 +304,9 @@ func TestPendingUserMessageSummariesIncludeLiveQueueAndSteer(t *testing.T) {
 	}
 	if messages[0].ID != "guide-1" || messages[0].Origin != session.HeldUserWorkOriginSteer {
 		t.Fatalf("guide summary = %+v", messages[0])
+	}
+	if messages[0].ActiveDocument == nil || messages[0].ActiveDocument.Path != "docs/guide.md" {
+		t.Fatalf("guide summary lost active document: %+v", messages[0])
 	}
 	if messages[1].ID != "queue-1" || messages[1].Origin != session.HeldUserWorkOriginQueue {
 		t.Fatalf("queue summary = %+v", messages[1])

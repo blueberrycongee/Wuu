@@ -7,6 +7,7 @@ import (
 
 	"github.com/blueberrycongee/wuu/internal/agent"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
+	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
 func TestActiveDocumentRequestContext(t *testing.T) {
@@ -107,5 +108,20 @@ func TestQueuedDocumentSnapshotDoesNotPersistRequestContextBlock(t *testing.T) {
 	}
 	if strings.Contains(string(encoded), "desktop.document_focus") || strings.Contains(string(encoded), "ACTIVE_FILES") {
 		t.Fatalf("queued snapshot persisted request-only context block: %s", encoded)
+	}
+}
+
+func TestApplyingSteerDocumentOverridesPreservesQueuedSnapshot(t *testing.T) {
+	th := &threadState{steerDocumentOverrides: []activeDocumentOverride{{
+		steerID: "steer-1", document: &ActiveDocument{Path: "docs/guide.md"},
+	}}}
+	turns := queuedTurnsFromSteers([]providers.ChatMessage{{
+		Role: "user", Content: "guide", ClientID: "steer-1", Steered: true,
+	}})
+
+	th.applySteerDocumentOverridesLocked(turns)
+
+	if len(turns) != 1 || turns[0].snapshot.ActiveDocument == nil || turns[0].snapshot.ActiveDocument.Path != "docs/guide.md" {
+		t.Fatalf("queued steer snapshot = %+v", turns)
 	}
 }

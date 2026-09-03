@@ -5297,7 +5297,7 @@ func TestServerInterruptHoldsPendingUserWorkInOrderAndReleasesOne(t *testing.T) 
 		t.Fatalf("second turn/queue: %v", err)
 	}
 
-	steerReq := fmt.Sprintf(`{"id":"4","method":"turn/steer","params":{"thread_id":%q,"expected_turn_id":%q,"prompt":"guide now","client_id":"guide-1"}}`, threadID, started.Turn.ID)
+	steerReq := fmt.Sprintf(`{"id":"4","method":"turn/steer","params":{"thread_id":%q,"expected_turn_id":%q,"prompt":"guide now","client_id":"guide-1","active_document":{"path":"docs/guide.md"}}}`, threadID, started.Turn.ID)
 	if err := srv.handleLine(context.Background(), []byte(steerReq)); err != nil {
 		t.Fatalf("turn/steer: %v", err)
 	}
@@ -5330,6 +5330,9 @@ func TestServerInterruptHoldsPendingUserWorkInOrderAndReleasesOne(t *testing.T) 
 	if held[0].origin != session.HeldUserWorkOriginSteer || held[1].origin != session.HeldUserWorkOriginQueue {
 		t.Fatalf("held origins were not preserved: %+v", held)
 	}
+	if held[0].snapshot.ActiveDocument == nil || held[0].snapshot.ActiveDocument.Path != "docs/guide.md" {
+		t.Fatalf("held steer lost active document: %+v", held[0])
+	}
 
 	waitForMethod(t, out, NotificationTurnError)
 
@@ -5340,6 +5343,9 @@ func TestServerInterruptHoldsPendingUserWorkInOrderAndReleasesOne(t *testing.T) 
 	resumed := remarshal[ThreadResumeResult](t, responseByID(t, parseOutput(t, out.String()), "5b")["result"])
 	if len(resumed.HeldUserMessages) != 3 || resumed.HeldUserMessages[0].ID != "guide-1" || resumed.HeldUserMessages[2].ID != "queued-2" {
 		t.Fatalf("resume did not return held messages in order: %+v", resumed.HeldUserMessages)
+	}
+	if resumed.HeldUserMessages[0].ActiveDocument == nil || resumed.HeldUserMessages[0].ActiveDocument.Path != "docs/guide.md" {
+		t.Fatalf("resume lost held steer active document: %+v", resumed.HeldUserMessages[0])
 	}
 
 	releaseReq := fmt.Sprintf(`{"id":"5c","method":"turn/steer","params":{"thread_id":%q,"prompt":"queued follow-up","client_id":"queued-1"}}`, threadID)

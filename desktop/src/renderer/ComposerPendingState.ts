@@ -640,6 +640,9 @@ export function useComposerPendingState({
         target.message.id,
         files,
         target.message.activeDocument,
+        ...(target.message.contentParts === undefined
+          ? []
+          : ([target.message.contentParts] as const)),
       );
       updateThreadPendingComposerMessages(target.threadID, (previous) => {
         const withoutQueue = {

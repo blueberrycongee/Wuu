@@ -435,6 +435,7 @@ describe("useComposerPendingState", () => {
       "queue-1",
       [],
       undefined,
+      [],
     );
     expect(
       hook
@@ -560,6 +561,44 @@ describe("useComposerPendingState", () => {
       "queue-1",
       [],
       { path: "docs/plan.md" },
+    );
+  });
+
+  it("keeps queued content parts when converting it to a steer", async () => {
+    const steerTurn = vi.fn().mockResolvedValue({ turn_id: "turn-running" });
+    installWuuStub({ steerTurn });
+    const runningThread = thread("thread-a", true);
+    const hook = await renderComposerPendingState({
+      appState: {
+        ...initialState,
+        thread: runningThread,
+        threads: [runningThread],
+      },
+    });
+    const contentParts = [
+      { type: "pasted_text" as const, text: "Pasted text", title: "Pasted text" },
+      { type: "text" as const, text: " then revise it" },
+    ];
+    act(() => {
+      hook.get().enqueueComposerMessage("thread-a", {
+        ...message("queue-1", "Pasted text then revise it"),
+        contentParts,
+      });
+    });
+
+    await act(async () => {
+      await hook.get().guideQueuedMessage("queue-1");
+    });
+
+    expect(steerTurn).toHaveBeenCalledWith(
+      "thread-a",
+      "turn-running",
+      "Pasted text then revise it",
+      [],
+      "queue-1",
+      [],
+      undefined,
+      contentParts,
     );
   });
 
