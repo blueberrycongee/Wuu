@@ -454,6 +454,20 @@ func (s *Server) maintainSessionStoragePass(ctx context.Context) {
 	if s == nil || s.rt == nil || strings.TrimSpace(s.rt.SessionDir) == "" {
 		return
 	}
+	redundant, err := session.MaintainRedundantStorage(ctx, s.rt.SessionDir)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		providers.DebugLogf("redundant session storage maintenance: %v", err)
+	} else if redundant.ProjectedToolResultsCleared > 0 || redundant.SupersededCheckpointsDeleted > 0 || redundant.ToolMessageContentsCompacted > 0 {
+		providers.DebugLogf(
+			"redundant session storage maintenance: projected_results=%d superseded_checkpoints=%d tool_message_projections=%d",
+			redundant.ProjectedToolResultsCleared,
+			redundant.SupersededCheckpointsDeleted,
+			redundant.ToolMessageContentsCompacted,
+		)
+	}
 	result, err := session.MaintainModelInputReceipts(ctx, s.rt.SessionDir, time.Now().UTC())
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

@@ -12,8 +12,9 @@ import (
 
 const HistoryCheckpointKindProviderRewrite = "provider_rewrite"
 
-// HistoryCheckpoint is an immutable provider-history replacement. ThroughSeq
-// is the physical message head covered by Replacement.
+// HistoryCheckpoint is the current provider-history replacement. ThroughSeq is
+// the physical message head covered by Replacement. Versions remain monotonic,
+// but superseded payloads are discarded because no recovery path reads them.
 type HistoryCheckpoint struct {
 	SessionID   string          `json:"session_id"`
 	Version     int             `json:"version"`
@@ -32,8 +33,8 @@ type ProviderHistorySnapshot struct {
 	Checkpoint *HistoryCheckpoint
 }
 
-// RewriteHistoryRecordsAtBaseline stores an append-only provider-history
-// checkpoint. The durable transcript is never deleted, renumbered, or reused.
+// RewriteHistoryRecordsAtBaseline stores a provider-history checkpoint. The
+// durable transcript is never deleted, renumbered, or reused.
 func RewriteHistoryRecordsAtBaseline(sessDir, id string, records []HistoryRecord, baselineSeq int) error {
 	_, err := StoreHistoryCheckpointAtBaseline(sessDir, id, HistoryCheckpointKindProviderRewrite, records, baselineSeq)
 	return err
@@ -124,7 +125,11 @@ func StoreHistoryCheckpointAtBaseline(sessDir, id, kind string, replacement []Hi
 	}
 	records = append(records, capturedTail...)
 
-	payload, err := json.Marshal(records)
+	storedRecords := make([]HistoryRecord, len(records))
+	for i, record := range records {
+		storedRecords[i] = compactHistoryRecordForStorage(record)
+	}
+	payload, err := json.Marshal(storedRecords)
 	if err != nil {
 		return HistoryCheckpoint{}, fmt.Errorf("encode history checkpoint replacement: %w", err)
 	}
@@ -143,6 +148,11 @@ func StoreHistoryCheckpointAtBaseline(sessDir, id, kind string, replacement []Hi
 		id, version, kind, headSeq, string(payload), timeText(createdAt),
 	); err != nil {
 		return HistoryCheckpoint{}, fmt.Errorf("store history checkpoint: %w", err)
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM session_history_checkpoints
+		WHERE session_id = ? AND version < ?`, id, version); err != nil {
+		return HistoryCheckpoint{}, fmt.Errorf("remove superseded history checkpoint: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return HistoryCheckpoint{}, fmt.Errorf("commit history checkpoint: %w", err)
@@ -260,6 +270,9 @@ func scanHistoryCheckpoint(row historyCheckpointScanner, id string) (HistoryChec
 	}
 	if err := json.Unmarshal([]byte(payload), &checkpoint.Replacement); err != nil {
 		return HistoryCheckpoint{}, false, fmt.Errorf("decode history checkpoint %s@%d: %w", id, checkpoint.Version, err)
+	}
+	for i := range checkpoint.Replacement {
+		hydrateHistoryRecordFromStorage(&checkpoint.Replacement[i])
 	}
 	checkpoint.SessionID = id
 	checkpoint.CreatedAt = parseTime(createdAt)

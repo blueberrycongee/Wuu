@@ -1920,6 +1920,7 @@ func appendHistoryRecordTx(tx *sql.Tx, id string, rec HistoryRecord) (int, error
 }
 
 func insertHistoryRecordTx(tx *sql.Tx, id string, seq int, rec HistoryRecord) error {
+	storedRec := compactHistoryRecordForStorage(rec)
 	_, err := tx.Exec(`
 			INSERT INTO session_messages (
 				session_id, seq, role, content, display_content, origin, origin_id, cause, presentation_kind, related_session_id, read_only, phase, provider_item_id, provider_item_model, client_id, hidden, steered, reasoning_content,
@@ -1931,17 +1932,17 @@ func insertHistoryRecordTx(tx *sql.Tx, id string, seq int, rec HistoryRecord) er
 				?, ?, ?, ?, ?, ?,
 				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			)`,
-		id, seq, strings.ToLower(strings.TrimSpace(rec.Role)), rec.Content, rec.DisplayContent,
-		strings.TrimSpace(rec.Origin), strings.TrimSpace(rec.OriginID), strings.TrimSpace(rec.Cause), strings.TrimSpace(rec.PresentationKind), strings.TrimSpace(rec.RelatedSessionID), boolInt(rec.ReadOnly),
-		strings.TrimSpace(rec.Phase), strings.TrimSpace(rec.ProviderItemID), strings.TrimSpace(rec.ProviderItemModel), rec.ClientID, boolInt(rec.Hidden), boolInt(rec.Steered), rec.ReasoningContent,
-		rawJSONText(rec.ReasoningBlocks), rawJSONText(rec.ContentParts), rawJSONText(rec.Images), rawJSONText(rec.Files), rawJSONText(rec.ToolCalls), rawJSONText(rec.DiscoveredTools),
-		rec.ToolCallID, rec.ToolInvocationID, rec.ToolResultKind, rawJSONText(rec.ToolResult), rec.FinishReason, rec.StopReason, boolInt(rec.Truncated), rec.Name, nullableValueTimeText(rec.At), rec.InputTokens, rec.OutputTokens, rec.ContextTokens, rec.CacheCreationTokens, rec.CacheReadTokens,
-		strings.TrimSpace(rec.Provider), strings.TrimSpace(rec.Model),
+		id, seq, strings.ToLower(strings.TrimSpace(storedRec.Role)), storedRec.Content, storedRec.DisplayContent,
+		strings.TrimSpace(storedRec.Origin), strings.TrimSpace(storedRec.OriginID), strings.TrimSpace(storedRec.Cause), strings.TrimSpace(storedRec.PresentationKind), strings.TrimSpace(storedRec.RelatedSessionID), boolInt(storedRec.ReadOnly),
+		strings.TrimSpace(storedRec.Phase), strings.TrimSpace(storedRec.ProviderItemID), strings.TrimSpace(storedRec.ProviderItemModel), storedRec.ClientID, boolInt(storedRec.Hidden), boolInt(storedRec.Steered), storedRec.ReasoningContent,
+		rawJSONText(storedRec.ReasoningBlocks), rawJSONText(storedRec.ContentParts), rawJSONText(storedRec.Images), rawJSONText(storedRec.Files), rawJSONText(storedRec.ToolCalls), rawJSONText(storedRec.DiscoveredTools),
+		storedRec.ToolCallID, storedRec.ToolInvocationID, storedRec.ToolResultKind, rawJSONText(storedRec.ToolResult), storedRec.FinishReason, storedRec.StopReason, boolInt(storedRec.Truncated), storedRec.Name, nullableValueTimeText(storedRec.At), storedRec.InputTokens, storedRec.OutputTokens, storedRec.ContextTokens, storedRec.CacheCreationTokens, storedRec.CacheReadTokens,
+		strings.TrimSpace(storedRec.Provider), strings.TrimSpace(storedRec.Model),
 	)
 	if err != nil {
 		return fmt.Errorf("insert history record: %w", err)
 	}
-	if err := projectToolInvocationTx(tx, id, rec.ToolInvocationID); err != nil {
+	if err := projectToolInvocationTx(tx, id, storedRec.ToolInvocationID); err != nil {
 		return err
 	}
 	return nil
@@ -1954,7 +1955,7 @@ func projectToolInvocationTx(tx *sql.Tx, ownerID, invocationID string) error {
 	}
 	now := time.Now().UTC().UnixMilli()
 	result, err := tx.Exec(`
-UPDATE tool_invocations SET projected_at = MAX(projected_at, ?)
+UPDATE tool_invocations SET projected_at = MAX(projected_at, ?), result_json = ''
 WHERE id = ? AND state IN ('succeeded', 'failed')
   AND batch_id IN (SELECT id FROM tool_batches WHERE owner_id = ?)`, now, invocationID, ownerID)
 	if err != nil {
@@ -2030,6 +2031,7 @@ func scanHistoryRecords(rows *sql.Rows) ([]HistoryRecord, error) {
 		rec.ToolCalls = rawMessage(toolCalls)
 		rec.DiscoveredTools = rawMessage(discoveredTools)
 		rec.ToolResult = rawMessage(toolResult)
+		hydrateHistoryRecordFromStorage(&rec)
 		if at.Valid {
 			rec.At = parseTime(at.String)
 		}

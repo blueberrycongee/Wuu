@@ -263,11 +263,12 @@ func (l *Ledger) Settle(ctx context.Context, invocationID string, result toolres
 	now := time.Now().UTC().UnixMilli()
 	return l.write(ctx, func(tx *sql.Tx) error {
 		var batchID, existingState, existingResult string
-		if err := tx.QueryRowContext(ctx, `SELECT batch_id, state, result_json FROM tool_invocations WHERE id = ?`, invocationID).
-			Scan(&batchID, &existingState, &existingResult); err != nil {
+		var projectedAt int64
+		if err := tx.QueryRowContext(ctx, `SELECT batch_id, state, result_json, projected_at FROM tool_invocations WHERE id = ?`, invocationID).
+			Scan(&batchID, &existingState, &existingResult, &projectedAt); err != nil {
 			return err
 		}
-		if InvocationState(existingState) == state && existingResult == string(payload) {
+		if InvocationState(existingState) == state && (existingResult == string(payload) || projectedAt > 0) {
 			return nil
 		}
 		if InvocationState(existingState) == InvocationInterruptedUnknown {
@@ -307,7 +308,7 @@ func (l *Ledger) MarkProjected(ctx context.Context, invocationIDs []string) erro
 			if state != string(InvocationSucceeded) && state != string(InvocationFailed) {
 				return fmt.Errorf("tool invocation %q cannot project from %s", id, state)
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE tool_invocations SET projected_at = MAX(projected_at, ?) WHERE id = ?`, now, id); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE tool_invocations SET projected_at = MAX(projected_at, ?), result_json = '' WHERE id = ?`, now, id); err != nil {
 				return err
 			}
 			batches[batchID] = struct{}{}

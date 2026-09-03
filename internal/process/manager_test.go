@@ -461,7 +461,7 @@ func TestFinishWaitPreservesReconciledStoppedStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m.finishWait(record.ID, mustManagedCommand(t, "true", root), errors.New("signal: terminated"))
+	m.finishWait(record.ID, mustManagedCommand(t, "true", root), errors.New("signal: terminated"), 0)
 	got, err := m.load(record.ID)
 	if err != nil {
 		t.Fatal(err)
