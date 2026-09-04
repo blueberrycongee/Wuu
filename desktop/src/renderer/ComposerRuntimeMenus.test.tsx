@@ -129,6 +129,34 @@ describe("RuntimePicker", () => {
     expect(modelItems[0]?.getAttribute("aria-checked")).toBe("true");
   });
 
+  it("fits the model page to the visible rows instead of stretching them", () => {
+    const initialized = runtimeWithEffort();
+    initialized.providers![0].models = [
+      { id: "grok-4.6", display_name: "Grok 4.6", supported_efforts: ["low", "medium", "high"] },
+      { id: "grok-4.5", display_name: "Grok 4.5", supported_efforts: ["low", "medium", "high"] }
+    ];
+    renderPicker("model", initialized);
+    act(() => document.querySelector<HTMLButtonElement>(".runtime-panel-model")?.click());
+    const two = Number.parseInt(
+      document.querySelector<HTMLElement>(".codex-model-menu")?.style.getPropertyValue("--runtime-models-height") ?? "",
+      10
+    );
+
+    initialized.providers![0].models = [
+      { id: "grok-4.6", display_name: "Grok 4.6", supported_efforts: ["low", "medium", "high"] }
+    ];
+    renderPicker("model", initialized);
+    act(() => document.querySelector<HTMLButtonElement>(".runtime-panel-model")?.click());
+    const one = Number.parseInt(
+      document.querySelector<HTMLElement>(".codex-model-menu")?.style.getPropertyValue("--runtime-models-height") ?? "",
+      10
+    );
+
+    expect(two).toBeGreaterThan(one);
+    expect(two - one).toBe(37);
+    expect(two).toBeLessThan(320);
+  });
+
   it("presents engines as the parent navigation for the selected engine's models", () => {
     const onSelectEngine = vi.fn();
     renderPicker(

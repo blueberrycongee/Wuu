@@ -155,6 +155,14 @@ function EngineOptionsMenu({
 type RuntimePanelView = "summary" | "engines" | "providers" | "models";
 type RuntimePanelDirection = "forward" | "back";
 
+const RUNTIME_PANEL_MAX_HEIGHT = 320;
+const RUNTIME_PANEL_SEARCH_EXTRA = 38;
+
+function runtimePanelListHeight(rowCount: number, extra = 0): number {
+  const rows = Math.max(rowCount, 1);
+  return Math.min(RUNTIME_PANEL_MAX_HEIGHT, 47 + extra + rows * 37);
+}
+
 function RuntimePanelHeader({ title, onBack }: { title: string; onBack: () => void }): JSX.Element {
   const { t } = useI18n();
   return (
@@ -515,13 +523,17 @@ function EngineRuntimeMenu({
       : effectiveModel
         ? engineModelDefaultEffort(effectiveModel)
         : selectedEffort);
-  const chooserHeight = Math.min(320, 50 + engineOptions.length * 36);
+  const chooserHeight = Math.min(RUNTIME_PANEL_MAX_HEIGHT, 50 + engineOptions.length * 36);
+  const modelsHeight = runtimePanelListHeight(filteredModels.length, RUNTIME_PANEL_SEARCH_EXTRA);
 
   return (
     <div
       className={`codex-runtime-menu codex-model-menu runtime-panel is-${view}`}
       role="menu"
-      style={{ "--runtime-chooser-height": `${chooserHeight}px` } as CSSProperties}
+      style={{
+        "--runtime-chooser-height": `${chooserHeight}px`,
+        "--runtime-models-height": `${modelsHeight}px`,
+      } as CSSProperties}
     >
       <div key={`${engine?.id ?? "engine"}:${view}`} className={`runtime-panel-page is-${direction}`}>
         {view === "summary" ? (
@@ -735,7 +747,9 @@ function RuntimeModelMenu({
     .flatMap((group) => group.models)
     .find((model) => model.id === effectiveModelID);
   const chooserRows = view === "providers" ? groups.length : engineOptions.length;
-  const chooserHeight = Math.min(320, 50 + chooserRows * 36);
+  const chooserHeight = Math.min(RUNTIME_PANEL_MAX_HEIGHT, 50 + chooserRows * 36);
+  const visibleModelCount = filteredGroups.reduce((count, group) => count + group.models.length, 0);
+  const modelsHeight = runtimePanelListHeight(visibleModelCount, RUNTIME_PANEL_SEARCH_EXTRA);
 
   const selectModel = (provider: string, model: string, variant?: string): void => {
     setOptimistic({ provider, model, variant: variant ?? "" });
@@ -748,7 +762,10 @@ function RuntimeModelMenu({
     <div
       className={`codex-runtime-menu codex-model-menu runtime-panel is-${view}`}
       role="menu"
-      style={{ "--runtime-chooser-height": `${chooserHeight}px` } as CSSProperties}
+      style={{
+        "--runtime-chooser-height": `${chooserHeight}px`,
+        "--runtime-models-height": `${modelsHeight}px`,
+      } as CSSProperties}
     >
       <div key={view} className={`runtime-panel-page is-${direction}`}>
         {view === "summary" ? (

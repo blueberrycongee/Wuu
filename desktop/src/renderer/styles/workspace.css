@@ -4959,13 +4959,15 @@ html.resizing-workspace-terminal-split * {
 }
 
 /* Runtime choice is a compact overview with drill-in pages, not a settings
-   form. The fixed page heights let the popover morph in place while each new
-   level enters on the same horizontal axis. */
+   form. Heights must match the summary stack so leftover space cannot collect
+   at the bottom; the popover still morphs in place as pages change.
+   Summary stack: 8px inset, 2px gap, 22px context, 36px model.
+   With slider: +6px group gap (2px row gap + 4px slider margin) and 30px control. */
 .codex-model-menu.runtime-panel {
   position: relative;
   display: block;
   width: min(320px, calc(100vw - 16px));
-  height: 88px;
+  height: 76px;
   max-height: min(
     var(--floating-menu-available-height, 999px),
     320px,
@@ -4979,7 +4981,7 @@ html.resizing-workspace-terminal-split * {
 }
 
 .codex-model-menu.runtime-panel.is-summary:has(.codex-effort-slider) {
-  height: 126px;
+  height: 112px;
 }
 
 .codex-model-menu.runtime-panel.is-engines,
@@ -4993,6 +4995,7 @@ html.resizing-workspace-terminal-split * {
 
 .codex-model-menu.runtime-panel.is-models {
   height: min(
+    var(--runtime-models-height, 320px),
     var(--floating-menu-available-height, 999px),
     320px,
     calc(100vh - 180px)
@@ -5033,15 +5036,18 @@ html.resizing-workspace-terminal-split * {
   height: 100%;
   min-height: 0;
   flex-direction: column;
-  padding: 8px 10px 10px;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 8px;
 }
 
 .runtime-panel-context {
   display: flex;
   min-width: 0;
   height: 22px;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 1px;
+  gap: 4px;
   color: var(--ink-muted);
 }
 
@@ -5049,8 +5055,8 @@ html.resizing-workspace-terminal-split * {
   width: auto;
   height: 22px;
   flex: 0 1 auto;
-  gap: 3px;
-  padding: 0 3px;
+  gap: 4px;
+  padding: 0 4px;
   color: var(--ink-tertiary);
   font-size: 11px;
   font-weight: var(--weight-medium);
@@ -5064,13 +5070,14 @@ html.resizing-workspace-terminal-split * {
 
 .runtime-panel-context-separator {
   flex: 0 0 auto;
-  padding: 0 1px;
+  padding: 0;
   color: var(--ink-muted);
 }
 
 .codex-runtime-menu .runtime-panel-model {
-  height: 38px;
-  gap: 7px;
+  height: 36px;
+  flex: 0 0 auto;
+  gap: 8px;
   padding: 0 4px;
   border-radius: 8px;
   font-size: 14px;
@@ -5107,7 +5114,7 @@ html.resizing-workspace-terminal-split * {
 .codex-runtime-menu .runtime-panel-back {
   position: absolute;
   top: 4px;
-  left: 5px;
+  left: 8px;
   width: 32px;
   height: 32px;
   justify-content: center;
@@ -5117,8 +5124,8 @@ html.resizing-workspace-terminal-split * {
 
 .codex-model-menu.runtime-panel .select-menu-search {
   height: 32px;
-  margin: 0 8px 5px;
-  padding: 0 9px;
+  margin: 0 8px 6px;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--ink-overlay-4);
@@ -5128,8 +5135,9 @@ html.resizing-workspace-terminal-split * {
 .runtime-panel .codex-model-groups {
   min-height: 0;
   flex: 1 1 auto;
+  align-content: start;
   overflow-y: auto;
-  padding: 1px 5px 7px;
+  padding: 0 8px 8px;
 }
 
 .runtime-panel .runtime-engine-options,
@@ -5166,6 +5174,8 @@ html.resizing-workspace-terminal-split * {
 
 .runtime-panel .codex-model-group {
   display: grid;
+  align-content: start;
+  grid-auto-rows: 36px;
   gap: 1px;
 }
 
