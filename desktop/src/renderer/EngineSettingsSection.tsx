@@ -102,16 +102,14 @@ export function EngineSettingsSection({
 
   return (
     <section
-      className="settings-section"
+      className="settings-section settings-agent-section"
       data-wuu-component="settings-section"
       data-testid="settings-agent-engines"
     >
       <header className="settings-section-header">
         <h2 className="settings-section-title">{t("settings.agentEngines")}</h2>
-        <p className="settings-section-description">
-          {t("settings.agentEnginesDescription")}
-        </p>
       </header>
+      <div className="settings-engine-body">
       {result === undefined ? (
         <div
           className="settings-group settings-engine-skeleton"
@@ -134,9 +132,6 @@ export function EngineSettingsSection({
             <div className="settings-row-label">
               <span className="settings-row-label-title">
                 {t("settings.defaultEngine")}
-              </span>
-              <span className="settings-row-label-description">
-                {t("settings.defaultEngineDescription")}
               </span>
             </div>
             <div className="settings-row-control">
@@ -171,12 +166,11 @@ export function EngineSettingsSection({
                 <div
                   key={id}
                   className="settings-engine-status"
-                  data-tone={flag.tone}
+                  aria-label={`${ENGINE_LABELS[id]} · ${flag.text}`}
                   data-testid={`settings-engine-${id}-status`}
                 >
-                  <span className="settings-engine-status-dot" aria-hidden="true" />
                   <span className="settings-engine-status-name">{ENGINE_LABELS[id]}</span>
-                  <span className="settings-engine-status-label">{flag.text}</span>
+                  {flag.tone !== "success" ? <span className="settings-engine-status-label">{flag.text}</span> : null}
                 </div>
               );
             })}
@@ -215,6 +209,7 @@ export function EngineSettingsSection({
             </button>
           ) : null}
         </div>
+      </div>
       </div>
       {advancedOpen && result !== undefined ? (
         <div className="settings-group" data-wuu-component="settings-group">

@@ -364,6 +364,45 @@ describe("RuntimePicker", () => {
     expect(slider.getAttribute("aria-valuetext")).toBe("High");
   });
 
+  it("maps pointer spans and cancels a drag without saving", () => {
+    const onSelectEffort = vi.fn();
+    renderPicker("model", runtimeWithEffort(), vi.fn(), onSelectEffort);
+    const slider = document.querySelector<HTMLInputElement>('.codex-effort-slider input[type="range"]')!;
+    slider.setPointerCapture = vi.fn();
+    vi.spyOn(slider.parentElement!, "getBoundingClientRect").mockReturnValue({
+      left: 100, width: 400, top: 0, right: 500, bottom: 30, height: 30, x: 100, y: 0, toJSON: () => ({})
+    });
+    const pointer = (type: string, clientX: number): void => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      act(() => slider.dispatchEvent(event));
+    };
+    pointer("pointerdown", 110);
+    expect(slider.value).toBe("0");
+    pointer("pointermove", 490);
+    expect(slider.value).toBe("3");
+    expect(onSelectEffort).not.toHaveBeenCalled();
+    pointer("pointercancel", 490);
+    expect(slider.value).toBe("2");
+    expect(onSelectEffort).not.toHaveBeenCalled();
+    pointer("pointerdown", 210);
+    pointer("pointerup", 210);
+    expect(onSelectEffort).toHaveBeenCalledExactlyOnceWith("low");
+  });
+
+  it("commits keyboard changes once and ignores unrelated key releases", () => {
+    const onSelectEffort = vi.fn();
+    renderPicker("model", runtimeWithEffort(), vi.fn(), onSelectEffort);
+    const slider = document.querySelector<HTMLInputElement>('.codex-effort-slider input[type="range"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(slider, "3");
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      slider.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true }));
+      slider.dispatchEvent(new KeyboardEvent("keyup", { key: "Tab", bubbles: true }));
+    });
+    expect(onSelectEffort).toHaveBeenCalledExactlyOnceWith("high");
+  });
+
   it("flips the model menu below the trigger when the window top has too little room", () => {
     const initialized = runtimeWithEffort();
     const anchorRef = createRef<HTMLDivElement>();

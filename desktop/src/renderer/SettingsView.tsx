@@ -38,7 +38,6 @@ import {
   useSyncExternalStore
 } from "react";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
-import { AppModeSwitch } from "./AppModeSwitch";
 import { useSidebarDrawerState } from "./SidebarDrawerState";
 import { SIDEBAR_DRAWER_EXIT_MS, SIDEBAR_MOTION_MS } from "./AppLayoutState";
 import { SelectMenu } from "./SelectMenu";
@@ -212,7 +211,7 @@ export function SettingsView({
   const [providerDraft, setProviderDraft] = useState(initialized?.provider ?? "");
   const [modelDraft, setModelDraft] = useState(initialized?.model ?? "");
   const [variantDraft, setVariantDraft] = useState(initialized?.variant ?? initialized?.effort ?? "");
-  const [baseURLDraft, setBaseURLDraft] = useState("");
+  const [baseURLDraft, setBaseURLDraft] = useState(initialized?.providers?.find((item) => item.name === initialized.provider)?.base_url ?? "");
   const [apiKeyDraft, setAPIKeyDraft] = useState("");
   // Draft for the protocol type of a brand-new provider (only used while
   // addingProvider is true). Defaults to "openai-compatible" to preserve
@@ -345,15 +344,17 @@ export function SettingsView({
   const providerNameTaken = addingProvider && providers.some((item) => item.name === providerDraft.trim());
 
   useEffect(() => {
-    setProviderDraft(initialized?.provider ?? "");
-    setModelDraft(initialized?.model ?? "");
-    setVariantDraft(initialized?.variant ?? initialized?.effort ?? "");
-    const summary = initialized?.providers?.find((item) => item.name === initialized.provider);
+    // Inventory refreshes and session notifications must not reset the editor.
+    if (addingProvider || providers.some((item) => item.name === providerDraft)) return;
+    const summary = providers.find((item) => item.name === initialized?.provider) ?? providers[0];
+    setProviderDraft(summary?.name ?? "");
+    setModelDraft(summary?.model ?? "");
+    setVariantDraft(normalizedVariantForProviderModel("", summary, summary?.model ?? ""));
     setBaseURLDraft(summary?.base_url ?? "");
     setAPIKeyDraft("");
     setAddingProvider(false);
     setError("");
-  }, [initialized?.provider, initialized?.model, initialized?.variant, initialized?.effort, initialized?.providers]);
+  }, [initialized?.provider, initialized?.model, initialized?.variant, initialized?.effort, initialized?.providers, addingProvider, providerDraft]);
 
   useEffect(() => {
     const advanced = initialized?.advanced_settings;
@@ -376,12 +377,8 @@ export function SettingsView({
     setAdvancedError("");
   }, [initialized?.advanced_settings, initialized?.provider, initialized?.model]);
 
-  // Selection is activation: picking a tile or a name in the select
-  // switches the runtime to that provider through the same instant path
-  // the composer runtime menus use. A provider without a model cannot
-  // activate — the form opens for editing, and committing a model name
-  // activates it.
-  async function activateProvider(provider: string): Promise<void> {
+  // Browsing providers is local UI state; it never changes a session or defaults.
+  function selectProvider(provider: string): void {
     setAddingProvider(false);
     // Reset the type draft: it is only meaningful when creating a provider,
     // and leaving add mode via card click should drop any pending type pick.
@@ -401,15 +398,6 @@ export function SettingsView({
     setVariantDraft(variant);
     setBaseURLDraft(summary.base_url ?? "");
     setAPIKeyDraft("");
-    if (!summary.model.trim()) {
-      return;
-    }
-    try {
-      await onSave(provider, summary.model, undefined, undefined, variant);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
-      cancelAddingProvider();
-    }
   }
 
   function startAddingProvider(): void {
@@ -919,7 +907,6 @@ export function SettingsView({
           */}
         <div className="sidebar-content">
           <div className="traffic-spacer" />
-          <AppModeSwitch mode="harness" collaborationEnabled readOnly />
           <button className="settings-back-button" type="button" onClick={onBack}>
             <ArrowLeft className="icon" />
             <span>{t("settings.backToApp")}</span>
@@ -1039,7 +1026,7 @@ export function SettingsView({
         </div>
         <div ref={settingsScrollRef} className="settings-scroll">
           <div
-            className={`settings-page${activePage === "archive" ? " settings-page-archive" : ""}`}
+            className={`settings-page${activePage === "archive" ? " settings-page-archive" : ""}${activePage === "providers" ? " settings-page-providers" : ""}`}
             data-wuu-component="settings-page"
             data-wuu-page={activePage}
             key={activePage}
@@ -1083,7 +1070,7 @@ export function SettingsView({
                   connectionLocked={connectionLocked}
                   variantOptions={variantOptions}
                   providerNameTaken={Boolean(providerNameTaken)}
-                  onProviderChange={activateProvider}
+                  onProviderChange={selectProvider}
                   onStartAddingProvider={startAddingProvider}
                   onCancelAddingProvider={cancelAddingProvider}
                   onProviderDraftChange={setProviderDraft}
@@ -1396,13 +1383,13 @@ function SettingsProvidersPage({
     };
   return (
     <SettingsSection testID="settings-providers">
-      <SettingsCard>
-        <SettingsRow
-          title={t("settings.modelCatalog")}
-          description={t("settings.modelCatalogDescription")}
-        >
+      <header className="settings-services-header">
+        <div>
+          <h2 className="settings-section-title">{t("settings.providerServices")}</h2>
+        </div>
+        <div className="settings-services-actions">
           <button
-            className="settings-button"
+            className="settings-button settings-button-ghost"
             type="button"
             data-testid="settings-model-catalog-refresh"
             disabled={catalogRefreshing}
@@ -1412,26 +1399,36 @@ function SettingsProvidersPage({
             }}
           >
             <RefreshCw className={`icon${catalogRefreshing ? " settings-spin" : ""}`} />
-            {catalogRefreshing
-              ? t("settings.modelCatalogUpdating")
-              : t("settings.modelCatalogUpdate")}
+            {catalogRefreshing ? t("settings.modelCatalogUpdating") : t("settings.modelCatalogUpdate")}
           </button>
-        </SettingsRow>
-      </SettingsCard>
+          <button
+            className="settings-button"
+            type="button"
+            data-testid="settings-provider-add-card"
+            disabled={running || addingProvider}
+            onClick={onStartAddingProvider}
+          >
+            <Plus className="icon" />
+            {t("provider.add")}
+          </button>
+        </div>
+      </header>
+      <div className="settings-services-layout">
       {providers.length > 0 ? (
-        <div className="settings-provider-overview" data-testid="settings-provider-overview">
+        <div className="settings-provider-overview" data-testid="settings-provider-overview" role="group" aria-label={t("settings.providerServices")}>
           {providers.map((provider) => (
             <div className="settings-provider-card" key={provider.name}>
               <button
                 className={`settings-provider-button${!addingProvider && providerDraft === provider.name ? " active" : ""}`}
                 type="button"
+                aria-pressed={!addingProvider && providerDraft === provider.name}
                 disabled={running}
                 onClick={() => onProviderChange(provider.name)}
               >
-                <strong>{providerServiceLabel(provider, t)}</strong>
-                <small>{provider.name}</small>
-                <small>{provider.model || t("provider.noModel")}</small>
-                <small>{providerConnectionStatus(provider, t)}</small>
+                <span className="settings-provider-copy">
+                  <strong>{providerLabels.get(provider.name) ?? providerServiceLabel(provider, t)}</strong>
+                  <small>{provider.model || t("provider.noModel")}</small>
+                </span>
               </button>
               {onRemoveProvider && !provider.auto_discovered && (!provider.connection_locked || isXAISubscriptionType(provider.type) || isGrokBuildType(provider.type)) ? (
                 <button
@@ -1463,53 +1460,15 @@ function SettingsProvidersPage({
               ) : null}
             </div>
           ))}
-          {onStartAddingProvider ? (
-            <button
-              className="settings-provider-add-card"
-              type="button"
-              data-testid="settings-provider-add-card"
-              disabled={running || addingProvider}
-              onClick={onStartAddingProvider}
-            >
-              <Plus className="icon-lg" />
-              <span>{t("provider.add")}</span>
-            </button>
-          ) : null}
         </div>
-      ) : onStartAddingProvider ? (
-        <button
-          className="settings-provider-add-card settings-provider-add-card-empty"
-          type="button"
-          data-testid="settings-provider-add-card"
-          disabled={running || addingProvider}
-          onClick={onStartAddingProvider}
-        >
-          <Plus className="icon-lg" />
-          <span>{t("provider.add")}</span>
-        </button>
-      ) : null}
-      <form className="settings-group" onSubmit={onSubmit}>
-        <SettingsRow title={addingProvider ? t("provider.add") : t("provider.current")}>
-          <div className="settings-row-control-block">
-            {addingProvider ? (
-              <span className="settings-inline-flag">{t("provider.new")}</span>
-            ) : providers.length > 0 ? (
-              <SelectMenu
-                triggerClassName="settings-select-trigger"
-                ariaLabel={t("provider.selectCurrent")}
-                value={providerDraft}
-                onChange={onProviderChange}
-                disabled={running}
-                options={providers.map((provider) => ({
-                  value: provider.name,
-                  label: providerLabels.get(provider.name) ?? provider.name
-                }))}
-              />
-            ) : (
-              <span className="settings-inline-flag">{t("provider.none")}</span>
-            )}
+      ) : <p className="settings-muted-line">{t("provider.none")}</p>}
+      <form className="settings-provider-editor" onSubmit={onSubmit}>
+        <header className="settings-provider-editor-header">
+          <div>
+            <h3>{addingProvider ? t("provider.add") : selectedProvider ? providerServiceLabel(selectedProvider, t) : t("provider.none")}</h3>
+            {selectedProvider && !addingProvider ? <p>{providerConnectionStatus(selectedProvider, t)}</p> : null}
           </div>
-        </SettingsRow>
+        </header>
         {addingProvider ? (
           <SettingsRow title={t("provider.type")}>
             <SelectMenu
@@ -1535,19 +1494,19 @@ function SettingsProvidersPage({
           >
             <input
               className="settings-input"
+              aria-label={t("provider.identifier")}
               value={providerDraft}
               onChange={(event) => onProviderDraftChange(event.target.value)}
               disabled={running}
             />
           </SettingsRow>
-        ) : selectedProvider ? (
-          <SettingsRow title={t("provider.identifier")} description={providerTypeLabel(selectedProvider, t)}>
-            <span className="settings-row-control-value">{selectedProvider.name}</span>
-          </SettingsRow>
         ) : null}
+        <section className="settings-provider-form-section">
+          <div className="settings-provider-model-fields">
         <SettingsRow title={t("provider.modelName")} block>
           <input
             className="settings-input"
+            aria-label={t("provider.modelName")}
             value={modelDraft}
             onChange={(event) => onModelDraftChange(event.target.value)}
             onBlur={() => onCommitModel()}
@@ -1572,21 +1531,19 @@ function SettingsProvidersPage({
             }))}
           />
         </SettingsRow>
+          </div>
+        </section>
+        <section className="settings-provider-form-section">
         <SettingsRow
           title={t("settings.baseURL")}
-          description={
-            oauthLocked
-              ? xaiType
-                ? t("provider.xaiOAuthManaged")
-                : grokBuildType
-                  ? t("provider.grokBuildManaged")
-                  : t("provider.oauthManaged")
-              : undefined
-          }
           block
         >
+          {oauthLocked ? (
+            <span className="settings-managed-value">{baseURLDraft || (xaiType ? t("provider.xaiOAuthManaged") : grokBuildType ? t("provider.grokBuildManaged") : t("provider.oauthManaged"))}</span>
+          ) : (
           <input
             className="settings-input"
+            aria-label={t("settings.baseURL")}
             value={baseURLDraft}
             placeholder={oauthLocked ? (xaiType ? t("provider.xaiOAuthManaged") : grokBuildType ? t("provider.grokBuildManaged") : t("provider.oauthManaged")) : "https://api.openai.com/v1"}
             onChange={(event) => onBaseURLDraftChange(event.target.value)}
@@ -1594,6 +1551,7 @@ function SettingsProvidersPage({
             onKeyDown={commitOnEnter(onCommitBaseURL)}
             disabled={running || oauthLocked}
           />
+          )}
         </SettingsRow>
         {xaiType ? (
           <SettingsRow title={t("provider.xaiLogin")} description={t("provider.xaiLoginHint")} block>
@@ -1614,15 +1572,14 @@ function SettingsProvidersPage({
             </div>
           </SettingsRow>
         ) : grokBuildType ? (
-          <SettingsRow title={t("provider.grokBuildLogin")} description={t("provider.grokBuildLoginHint")} block>
-            <p className="settings-hint">
-              {!addingProvider && selectedProvider?.api_key_configured ? t("provider.grokBuildLoggedIn") : t("provider.grokBuildLoginRequired")}
-            </p>
-          </SettingsRow>
-        ) : (
+          addingProvider || !selectedProvider?.api_key_configured ? (
+            <p className="settings-hint">{t("provider.grokBuildLoginHint")}</p>
+          ) : null
+        ) : connectionLocked ? null : (
         <SettingsRow title={authFieldLabel} block>
           <input
             className="settings-input"
+            aria-label={authFieldLabel}
             value={apiKeyDraft}
             type="password"
             autoComplete="new-password"
@@ -1642,6 +1599,7 @@ function SettingsProvidersPage({
           />
         </SettingsRow>
         )}
+        </section>
         {addingProvider ? (
           <div className="settings-row settings-row-footer">
             {error ? <div className="settings-error">{error}</div> : null}
@@ -1667,6 +1625,7 @@ function SettingsProvidersPage({
           </div>
         ) : null}
       </form>
+      </div>
     </SettingsSection>
   );
 }
@@ -3173,14 +3132,6 @@ function providerConnectionStatus(provider: ProviderSummary, t: Translate): stri
     : t("provider.authMissing", { field: label });
 }
 
-function providerTypeLabel(provider: ProviderSummary, t: Translate): string {
-  const type = provider.type.trim() || "openai-compatible";
-  if (isGrokBuildType(type)) {
-    return t("provider.grokBuildManaged");
-  }
-  return provider.connection_locked ? t("provider.oauthManagedService") : type;
-}
-
 function isAnthropicProviderType(type: string | undefined): boolean {
   const normalized = (type ?? "").trim().toLowerCase().replaceAll("_", "-");
   return normalized === "anthropic" || normalized === "claude" || normalized === "anthropic-official";
@@ -3474,7 +3425,7 @@ function providerDisplayLabels(providers: ProviderSummary[], t: Translate): Map<
   const baseLabels = new Map<string, string>();
   const counts = new Map<string, number>();
   providers.forEach((provider) => {
-    const label = providerBaseLabel(provider, t);
+    const label = providerServiceLabel(provider, t);
     baseLabels.set(provider.name, label);
     counts.set(label, (counts.get(label) ?? 0) + 1);
   });
@@ -3496,12 +3447,6 @@ function nextCustomProviderName(providers: ProviderSummary[]): string {
     index += 1;
   }
   return `custom-${index}`;
-}
-
-function providerBaseLabel(provider: ProviderSummary, t: Translate): string {
-  const service = providerServiceLabel(provider, t);
-  const model = provider.model.trim();
-  return model ? `${service} · ${model}` : service;
 }
 
 function providerServiceLabel(provider: ProviderSummary, t: Translate): string {

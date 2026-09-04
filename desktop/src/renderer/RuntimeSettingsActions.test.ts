@@ -204,6 +204,34 @@ function buildActions({
 }
 
 describe("createRuntimeSettingsActions", () => {
+  it("saves provider defaults without targeting or patching running sessions", async () => {
+    const api = installWuuApi();
+    const primary = thread();
+    const secondary = thread("thread-2");
+    const harness = buildActions({ initial: {
+      ...initialState, initialized: initialized(), thread: primary,
+      secondaryThread: secondary, threads: [primary, secondary], running: true, status: "running",
+    } });
+    await harness.actions.updateProviderSettings("codex", "gpt-5.1");
+    expect(api.updateRuntimeSettings).toHaveBeenCalledWith("codex", "gpt-5.1", undefined, undefined, undefined, undefined, undefined);
+    expect(harness.getAppState().thread).toBe(primary);
+    expect(harness.getAppState().secondaryThread).toBe(secondary);
+    expect(harness.getAppState().running).toBe(true);
+    expect(harness.getAppState().status).toBe("running");
+    expect(harness.getAppState().initialized?.model).toBe("gpt-5.1");
+  });
+
+  it("leaves session status alone when saving provider settings fails", async () => {
+    const api = installWuuApi();
+    api.updateRuntimeSettings.mockRejectedValue(new Error("save failed"));
+    const harness = buildActions({ initial: {
+      ...initialState, initialized: initialized(), thread: thread(), running: true, status: "running",
+    } });
+    await expect(harness.actions.updateProviderSettings("codex", "gpt-5.1")).rejects.toThrow("save failed");
+    expect(harness.getAppState().status).toBe("running");
+    expect(harness.getAppState().running).toBe(true);
+  });
+
   it("saves trimmed runtime settings and patches initialized runtime state", async () => {
     const api = installWuuApi();
     const primary = thread("thread-1");

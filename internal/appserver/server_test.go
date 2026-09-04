@@ -1614,6 +1614,62 @@ func TestServerConfigModelUpdateRejectsRunningTargetThread(t *testing.T) {
 	}
 }
 
+func TestServerConfigModelUpdateWorkspaceDefaultsPreserveRunningSession(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	rt.Permissions = config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}
+	if err := os.WriteFile(rt.ConfigPath, []byte(`{
+  "default_provider": "fake-provider",
+  "agent": {"permission_mode": "read_only"},
+  "providers": {
+    "fake-provider": {
+      "type": "openai-compatible",
+      "base_url": "https://example.test/v1",
+      "api_key": "test-key",
+      "model": "fake-model"
+    }
+  }
+}
+`), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	now := time.Now().UTC()
+
+	running := newThreadState("running-thread", nil, rt.ProviderName, rt.Model, rt.RootDir, true, now)
+	running.PermissionMode = config.PermissionModeReadOnly
+	running.startTurnLocked("running-turn", providers.ChatMessage{Role: "user", Content: "keep running"}, now)
+	srv.threads[running.ID] = running
+
+	if _, err := session.CreateWithMetadata(rt.SessionDir, running.ID, rt.RootDir); err != nil {
+		t.Fatalf("create running session: %v", err)
+	}
+	if _, err := session.SetRuntimeSelection(rt.SessionDir, running.ID, session.RuntimeSelection{
+		Provider:       rt.ProviderName,
+		Model:          rt.Model,
+		PermissionMode: config.PermissionModeReadOnly,
+	}); err != nil {
+		t.Fatalf("pin running selection: %v", err)
+	}
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"model":"new-model"}}`)); err != nil {
+		t.Fatalf("config/model/update: %v", err)
+	}
+	response := responseByID(t, parseOutput(t, out.String()), "1")
+	if response["error"] != nil {
+		t.Fatalf("workspace update failed: %+v", response["error"])
+	}
+	if rt.Model != "new-model" || running.Model != "fake-model" {
+		t.Fatalf("workspace/session selections were not isolated: workspace=%q session=%q", rt.Model, running.Model)
+	}
+	metadata, ok, err := session.Find(rt.SessionDir, running.ID)
+	if err != nil || !ok {
+		t.Fatalf("find running session: ok=%v err=%v", ok, err)
+	}
+	if metadata.Model != "fake-model" || metadata.PermissionMode != config.PermissionModeReadOnly {
+		t.Fatalf("failed update changed running session: %+v", metadata)
+	}
+}
+
 func TestServerConfigModelUpdateRejectsTargetOwnedByAnotherServer(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	if err := os.WriteFile(rt.ConfigPath, []byte(`{

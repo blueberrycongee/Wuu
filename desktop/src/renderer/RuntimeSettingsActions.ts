@@ -48,6 +48,7 @@ export type RuntimeSettingsActions = {
     variant?: string,
     permissionMode?: string,
   ) => Promise<void>;
+  updateProviderSettings: RuntimeSettingsActions["updateRuntimeSettings"];
   updateAdvancedSettings: (
     settings: RuntimeAdvancedSettingsUpdate,
   ) => Promise<void>;
@@ -97,12 +98,13 @@ export function createRuntimeSettingsActions(
   // unchanged thread values here would rewrite the workspace defaults.
   async function sendRuntimeSelection(
     update: RuntimeSelectionUpdate,
+    scope: "session" | "workspace" = "session",
   ): Promise<void> {
     const state = deps.getAppState();
     if (!state.initialized) {
       return;
     }
-    const targetThread = activeThreadForState(state);
+    const targetThread = scope === "session" ? activeThreadForState(state) : undefined;
     let nextProvider = update.provider?.trim() || undefined;
     let nextModel = update.model?.trim() || undefined;
     const nextEffort =
@@ -236,11 +238,11 @@ export function createRuntimeSettingsActions(
         );
         return {
           ...next,
-          status: next.status === "ready" ? next.status : "ready",
+          status: scope === "workspace" ? current.status : "ready",
         };
       });
     } catch (error) {
-      deps.setAppState((current) => ({
+      if (scope === "session") deps.setAppState((current) => ({
         ...current,
         status:
           error instanceof Error
@@ -272,6 +274,19 @@ export function createRuntimeSettingsActions(
       variant,
       permissionMode,
     });
+  }
+
+  // Settings edit workspace defaults and connection configuration. Never send
+  // the active conversation ID or patch its pinned runtime selection.
+  async function updateProviderSettings(
+    provider: string,
+    model: string,
+    effort?: string,
+    connection?: RuntimeConnectionUpdate,
+    variant?: string,
+  ): Promise<void> {
+    if (!provider.trim() || !model.trim()) return;
+    await sendRuntimeSelection({ provider, model, effort, connection, variant }, "workspace");
   }
 
   async function updateAdvancedSettings(
@@ -536,6 +551,7 @@ export function createRuntimeSettingsActions(
 
   return {
     updateRuntimeSettings,
+    updateProviderSettings,
     updateAdvancedSettings,
     updateGeneralSettings,
     removeProvider,

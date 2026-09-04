@@ -2,7 +2,7 @@
    Light-theme values; the dark theme overrides these in base.css theme blocks. */
 :root {
   --shell-process-control-color: var(--wuu-color-text-muted, #BCBCBD);
-  --shell-session-tab-active-bg: color-mix(in srgb, var(--wuu-color-accent, var(--wuu-accent)) 8%, var(--wuu-color-canvas, var(--paper)));
+  --shell-session-tab-active-bg: var(--selection-surface);
   --shell-session-tab-main-focus-shadow: var(--focus-ring);
   --shell-session-tab-status-default: rgba(17, 19, 21, 0.22);
   --shell-session-tab-status-running-notch: rgba(17, 19, 21, 0.18);
@@ -329,7 +329,7 @@
   max-width: 100%;
   flex: 1 1 0%;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -342,16 +342,16 @@
 .session-tab {
   display: flex;
   position: relative;
-  min-width: 56px;
+  min-width: 88px;
   max-width: 236px;
-  height: 30px;
+  height: 32px;
   flex: 1 1 0%;
   align-items: center;
   box-sizing: border-box;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink-tertiary);
+  color: var(--ink-soft);
   overflow: hidden;
   transition:
     background-color var(--motion-fast) var(--ease-out),
@@ -446,12 +446,9 @@
 .session-tab.active,
 .session-tab.active:hover,
 .session-tab.active:focus-within {
-  /* Warm wash of the product accent, not a gray patch. --surface-3 is
-     the hairline/divider gray; filling the 30px tab with it reads dirty
-     against white chrome. Keep it fill-only so the chip stays a location
-     marker, not an input. */
+  /* A filled surface and stronger title distinguish selection from hover. */
   background: var(--shell-session-tab-active-bg);
-  color: var(--ink);
+  color: var(--ink-strong);
 }
 
 .session-tab.pending-switch {

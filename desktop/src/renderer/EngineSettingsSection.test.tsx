@@ -41,7 +41,7 @@ describe("EngineSettingsSection", () => {
     });
 
     expect(container.querySelector('[data-testid="settings-default-engine"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="settings-engine-codex-status"]')?.textContent).toContain("已就绪");
+    expect(container.querySelector('[data-testid="settings-engine-codex-status"]')?.getAttribute("aria-label")).toContain("已就绪");
     expect(onRefresh).not.toHaveBeenCalled();
   });
 

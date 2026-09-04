@@ -1,54 +1,5 @@
-/* =========================================================================
- * Settings page — flat grouped list on the shared paper chassis
- *
- * The surface uses one paper canvas; grouping is carried by structure — a group label,
- * hairlines between rows, whitespace between groups. Enclosure signals
- * (fill steps, borders, radii on grouped lists) are banned: one grouping
- * reads from one signal, and the signal is label-plus-whitespace.
- *
- * Color budget: paper canvas, the --ink-* text ramp, editable controls on
- * paper (surface-1 on hover, the shared accessible focus ring on focus),
- * and surface-1 reserved for disabled controls. Semantic colors otherwise
- * only carry state (success/danger/accent). No
- * local hex values — the usage heatmap is the sanctioned data-viz
- * exception.
- *
- * Line budget: the only content lines are the hairlines between rows,
- * running the full column width. Chrome separators (titlebar, rail) and
- * focus/state rings are structure and state, not decoration. To add a
- * line, first remove one.
- *
- * Rhythm — the 4/8/24/40 ladder, one role each; do not introduce new
- * values:
- *   4px   micro: label title ↔ description, icon ↔ text
- *   8px   row beat: row vertical padding, group label → first row
- *   24px  frame: page margin on all sides, page title → first group
- *   40px  inter-group: ≈ one control row tall, reads as an empty line
- * Type stays on the global ramp: page title --font-heading semibold;
- * group labels --font-sm muted regular — always quieter than the rows
- * they name; row titles --font-ui medium; row descriptions --font-sm.
- *
- * Alignment: one left axis. Page title, group labels, and row text all
- * start at x=0 of the content column (640px; archive keeps 1088px for
- * its wide lists); controls end at the column's right edge.
- *
- * Data modules (usage stats, heatmap, module-level empty states) are
- * content, not group containers: they may carry one quiet --surface-1
- * fill with --radius-sm, never a border.
- *
- * Primitives:
- *   .settings-shell                  full-bleed grid (sidebar + main)
- *   .settings-sidebar                left navigation rail
- *   .settings-main                   scrollable content surface
- *   .settings-page                   content column
- *   .settings-page-header            page title
- *   .settings-section                a logical group (label + rows)
- *   .settings-group                  structural group wrapper — paints nothing
- *   .settings-row                    one label/control pair
- *   .settings-input / .settings-select   shared form controls
- *   .settings-switch                 boolean toggle
- *   .settings-status-pill            semantic status badge
- * ========================================================================= */
+/* Settings use readable section headings and grouped rows. Neutral fills
+ * distinguish editable controls; selection uses fill, never a border. */
 
 :root {
   --settings-heatmap-level-1: #bad0f0;
@@ -110,19 +61,11 @@
     box-shadow var(--sidebar-motion-duration) var(--sidebar-motion-ease);
 }
 
-/* Settings-only rhythm detail for the brand → back-button → nav stack (the
+/* Settings-only rhythm for the back-button and navigation stack (the
  * main sidebar uses internal group gaps instead — see
  * `--sidebar-functional-group-gap`). */
 .settings-sidebar .sidebar-content {
   gap: 4px;
-}
-
-/* The container `gap` above also inserts 4px between the traffic-spacer and
- * the brand, which would push the settings wordmark lower than the main
- * sidebar's. Counter-shift the brand back so the two `wuu` wordmarks stay on
- * the same baseline when toggling between main and settings. */
-.settings-sidebar .sidebar-brand {
-  margin-top: -4px;
 }
 
 .settings-sidebar .traffic-spacer {
@@ -207,7 +150,7 @@
 }
 
 .settings-nav-item.active {
-  background: var(--ink-overlay-8);
+  background: var(--selection-surface);
   color: var(--ink-strong);
   font-weight: var(--weight-medium);
 }
@@ -295,10 +238,7 @@
   scrollbar-gutter: stable;
 }
 
-/* Content column. Two spacing values only: --settings-pad is the gap
- * between the content and the frame, --settings-gap the gap between
- * groups. Every spacing decision below derives from the 4/8/24/40 ladder
- * documented at the top of this file. */
+/* Page inset and section spacing share a 32px rhythm. */
 .settings-page {
   display: flex;
   min-height: 100%;
@@ -308,9 +248,9 @@
    * hundreds of px of slack left in the column. */
   container-name: settings-page;
   container-type: inline-size;
-  --settings-page-max-width: 640px;
-  --settings-pad: 24px;
-  --settings-gap: 40px;
+  --settings-page-max-width: 880px;
+  --settings-pad: 32px;
+  --settings-gap: 32px;
   width: min(var(--settings-page-max-width), 100%);
   /* flex-shrink: 0 keeps the bottom padding inside the scrollable area
    * when content exceeds the viewport height. */
@@ -344,17 +284,12 @@
   line-height: 1.3;
 }
 
-/* --- Section + rows ---------------------------------------------------------
- * A section is a quiet 12px label above a run of rows — no box. The label
- * must read quieter than the row titles it names, so it stays one ramp
- * step below them and regular weight. Groups separate by whitespace
- * (--settings-gap), rows by full-width hairlines.
- * ------------------------------------------------------------------------- */
+/* Sections separate by 32px; headings sit 16px above grouped rows. */
 
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
 }
 
 .settings-section-header {
@@ -365,9 +300,9 @@
 
 .settings-section-title {
   margin: 0;
-  color: var(--ink-muted);
-  font-size: var(--font-sm);
-  font-weight: 400;
+  color: var(--ink-strong);
+  font-size: var(--font-body);
+  font-weight: var(--weight-semibold);
   line-height: 1.3;
 }
 
@@ -379,12 +314,16 @@
   line-height: 1.5;
 }
 
-/* The card is a structural grouping only: it paints nothing. Enclosure
- * signals (fill, border, radius) are banned from grouped lists — one
- * grouping, one signal, and the signal is the label-plus-whitespace. */
+/* A single quiet enclosure groups related settings; children do not get cards. */
 .settings-group {
   display: flex;
   flex-direction: column;
+}
+
+.settings-section > .settings-group {
+  padding: 0 16px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-sm);
 }
 
 .settings-group .settings-row:last-child {
@@ -406,7 +345,7 @@
   align-items: center;
   gap: 24px;
   border-bottom: 1px solid var(--hairline-soft);
-  padding: 8px 0;
+  padding: 16px 0;
 }
 
 .settings-row-block {
@@ -468,6 +407,8 @@
  * one control family. */
 .settings-row .settings-select-trigger {
   min-width: 160px;
+  border: 1px solid var(--hairline);
+  box-shadow: none;
 }
 
 .settings-row-control-value {
@@ -487,9 +428,9 @@
 .settings-select {
   width: 100%;
   height: 32px;
-  border: 1px solid var(--control-boundary);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
-  background: var(--wuu-control-field-background, var(--paper));
+  background: var(--field-bg);
   color: var(--ink);
   font-size: var(--font-ui);
   font-weight: 400;
@@ -506,17 +447,18 @@
 
 .settings-input:hover:not(:disabled),
 .settings-select:hover:not(:disabled) {
-  background: var(--wuu-control-field-background, var(--surface-1));
+  background: var(--field-hover-bg);
 }
 
-.settings-input:focus,
-.settings-input:focus-visible,
+.settings-input:focus {
+  outline: 0;
+}
+
 .settings-select:focus,
 .settings-select:focus-visible {
   outline: 0;
-  background: var(--paper);
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 2px var(--focus-ring);
+  background: var(--field-hover-bg);
+  box-shadow: none;
 }
 
 .settings-input:disabled,
@@ -782,12 +724,25 @@
  * one compact scan line; resolved paths belong to the advanced controls.
  * ----------------------------------------------------------------------------- */
 
+.settings-engine-body {
+  padding: 0 16px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-sm);
+}
+
+.settings-engine-body .settings-row {
+  padding: 16px 0;
+  border: 0;
+}
+
 .settings-engine-overview {
   display: flex;
-  min-height: 32px;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid var(--hairline-soft);
 }
 
 .settings-engine-statuses {
@@ -808,18 +763,6 @@
   line-height: 1.4;
 }
 
-.settings-engine-status-dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border-radius: var(--radius-pill);
-  background: var(--ink-tertiary);
-}
-
-.settings-engine-status[data-tone="success"] .settings-engine-status-dot {
-  background: var(--success);
-}
-
 .settings-engine-status-name {
   color: var(--ink);
   font-weight: var(--weight-medium);
@@ -833,7 +776,7 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 4px;
 }
@@ -905,169 +848,262 @@
   transform: rotate(90deg);
 }
 
-/* --- Provider overview tiles ---------------------------------------------------
- * Selectable grid — the one place where selection needs an enclosure.
- * Tiles keep a resting hairline border on the paper canvas; the active
- * tile marks itself with a strong border instead of a fill.
- * ----------------------------------------------------------------------------- */
+/* Service selection and editing are separate tasks within one workspace. */
+.settings-page-providers {
+  --settings-page-max-width: 1040px;
+}
+
+.settings-services-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-services-header > div:first-child {
+  min-width: 0;
+}
+
+.settings-services-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.settings-services-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr);
+  gap: 24px;
+  align-items: start;
+}
 
 .settings-provider-overview {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 8px;
+  min-width: 0;
 }
 
 .settings-provider-card {
   position: relative;
-  display: flex;
-}
-
-.settings-provider-card .settings-provider-button {
-  width: 100%;
+  min-width: 0;
 }
 
 .settings-provider-button {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 76px;
-  border: 1px solid var(--hairline);
+  width: 100%;
+  min-height: 64px;
+  align-items: center;
+  border: 1px solid var(--hairline-soft);
   border-radius: var(--radius-sm);
-  background: var(--paper);
+  background: transparent;
   color: var(--ink);
-  padding: 12px 14px;
+  padding: 16px 48px 16px 16px;
   text-align: left;
-  transition:
-    border-color var(--motion-fast) var(--menu-enter-easing),
-    box-shadow var(--motion-fast) var(--menu-enter-easing),
-    transform var(--motion-fast) var(--menu-enter-easing);
+  transition: background var(--motion-fast);
 }
 
 .settings-provider-button:hover:not(:disabled) {
-  border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-soft);
+  background: var(--surface-1);
 }
 
-.settings-provider-button:active:not(:disabled) {
-  transform: scale(0.985);
+.settings-provider-button.active,
+.settings-provider-button.active:hover:not(:disabled) {
+  background: var(--selection-surface);
 }
 
-.settings-provider-button.active {
-  border-color: var(--gray-800);
-  box-shadow: inset 0 0 0 1px var(--gray-800);
+.settings-provider-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
 }
 
-.settings-provider-button strong {
-  color: var(--ink);
+.settings-provider-copy strong,
+.settings-provider-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-provider-copy strong {
+  line-height: 1.4;
   font-size: var(--font-ui);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
 }
 
-.settings-provider-button small {
-  color: var(--ink-muted);
+.settings-provider-copy small {
+  line-height: 1.5;
+  color: var(--ink-soft);
   font-size: var(--font-sm);
-  font-weight: 400;
+}
+
+.settings-provider-button.active strong {
+  font-weight: var(--weight-semibold);
 }
 
 .settings-provider-remove {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  top: 14px;
+  right: 12px;
+  display: grid;
+  place-items: center;
   width: 24px;
   height: 24px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
+  border: 0;
+  border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--ink-muted);
-  cursor: pointer;
-  /* Always visible so the delete affordance is discoverable; hover sharpens it. */
-  opacity: 0.55;
-  transition:
-    opacity var(--motion-fast) var(--menu-enter-easing),
-    background var(--motion-fast) var(--menu-enter-easing),
-    color var(--motion-fast) var(--menu-enter-easing),
-    border-color var(--motion-fast) var(--menu-enter-easing);
-}
-
-.settings-provider-card:hover .settings-provider-remove,
-.settings-provider-card:focus-within .settings-provider-remove,
-.settings-provider-remove:hover:not(:disabled),
-.settings-provider-remove:focus-visible {
-  opacity: 1;
+  color: var(--ink-tertiary);
 }
 
 .settings-provider-remove:hover:not(:disabled) {
-  background: var(--surface-2);
-  color: var(--ink-strong);
-  border-color: var(--ink-overlay-18);
+  background: var(--ink-overlay-8);
+  color: var(--danger);
 }
 
+.settings-provider-button:disabled,
 .settings-provider-remove:disabled {
-  cursor: not-allowed;
-  opacity: 0.4;
+  opacity: 0.5;
+  cursor: default;
 }
 
-.settings-provider-add {
+.settings-provider-editor {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-sm);
+}
+
+.settings-provider-editor-header {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.settings-provider-editor-header h3 {
+  margin: 0;
+  font-size: var(--font-body);
+  line-height: 1.4;
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.settings-provider-editor-header p {
+  margin: 4px 0 0;
   color: var(--ink-soft);
   font-size: var(--font-sm);
-  font-weight: var(--weight-medium);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.settings-provider-add:hover:not(:disabled) {
-  color: var(--ink);
+.settings-provider-form-section {
+  margin-top: 24px;
 }
 
-.settings-provider-add-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.settings-provider-form-section + .settings-provider-form-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline-soft);
+  margin-top: 16px;
+}
+
+.settings-provider-editor .settings-row {
+  border: 0;
+  padding: 0;
+  margin: 0;
   gap: 8px;
-  min-height: 76px;
-  border: 1px dashed var(--gray-350);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--ink-muted);
-  padding: 12px 14px;
+}
+
+.settings-provider-editor > .settings-row {
+  margin-top: 16px;
+}
+
+.settings-provider-form-section > .settings-row + .settings-row {
+  margin-top: 16px;
+}
+
+.settings-provider-model-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.6fr);
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  row-gap: 8px;
+}
+
+/* Shared label/control rows keep adjacent inputs aligned when help text wraps. */
+.settings-provider-model-fields > .settings-row {
+  display: grid;
+  grid-row: span 2;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: subgrid;
+  align-items: start;
+}
+
+.settings-provider-editor .settings-row-label-title {
+  color: var(--ink-soft);
   font-size: var(--font-sm);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-  text-align: center;
-  transition:
-    border-color var(--motion-fast) var(--menu-enter-easing),
-    background var(--motion-fast) var(--menu-enter-easing),
-    color var(--motion-fast) var(--menu-enter-easing),
-    transform var(--motion-fast) var(--menu-enter-easing);
 }
 
-.settings-provider-add-card:hover:not(:disabled) {
-  border-color: var(--gray-600);
-  background: var(--paper);
-  color: var(--ink);
+.settings-provider-editor .settings-input,
+.settings-provider-editor .settings-select-trigger {
+  min-height: 36px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  box-shadow: none;
+  background: var(--field-bg);
 }
 
-.settings-provider-add-card:active:not(:disabled) {
-  transform: scale(0.985);
+.settings-provider-editor .settings-row-control-block {
+  display: block;
 }
 
-.settings-provider-add-card:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+.settings-provider-editor .settings-row-control-block > .settings-input {
+  width: 100%;
 }
 
-.settings-provider-add-card-empty {
-  border-style: solid;
+.settings-managed-value {
+  color: var(--ink-soft);
+  font-size: var(--font-ui);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.settings-provider-editor .settings-row-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@container settings-page (max-width: 700px) {
+  .settings-services-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .settings-provider-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container settings-page (max-width: 420px) {
+  .settings-services-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .settings-services-actions {
+    justify-content: flex-start;
+  }
+
+  .settings-provider-model-fields,
+  .settings-provider-overview {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* --- Theme picker ------------------------------------------------------------
  * Visual radio cards, same selection language as the provider tiles: a
- * resting hairline, a strong border on the active card instead of a fill.
+ * resting hairline and a neutral fill on the active option.
  * Each preview is a tiny window mockup of the theme. "System" uses the same
  * geometry as the other options and splits its surfaces into light/dark, so
  * there are no overlapping sidebars or clipped layers. Preview colors are
@@ -1089,7 +1125,8 @@
   flex: 0 0 120px;
   min-width: 0;
   background: transparent;
-  padding: 0;
+  padding: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .settings-theme-preview {
@@ -1109,9 +1146,8 @@
   border-color: var(--hairline-strong);
 }
 
-.settings-theme-card.active .settings-theme-preview {
-  border-color: var(--gray-800);
-  box-shadow: inset 0 0 0 1px var(--gray-800);
+.settings-theme-card.active {
+  background: var(--selection-surface);
 }
 
 .settings-theme-card-label {
@@ -2058,7 +2094,7 @@
 
 /* Archive toolbar controls share the settings input chrome: a surface-1
  * box with a functional boundary at rest, one step deeper on hover, and the
- * shared focus ring on focus. */
+ * stable appearance while editing. */
 .settings-archive-search {
   display: flex;
   min-width: 0;
@@ -2066,9 +2102,9 @@
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  border: 1px solid var(--control-boundary);
+  border: 1px solid var(--field-border);
   border-radius: var(--radius-sm);
-  background: var(--wuu-control-field-background, var(--surface-1));
+  background: var(--field-bg);
   color: var(--ink-tertiary);
   transition:
     background var(--motion-fast) var(--menu-enter-easing),
@@ -2078,12 +2114,6 @@
 
 .settings-archive-search:hover {
   background: var(--wuu-control-field-background, var(--surface-2));
-}
-
-.settings-archive-search:focus-within {
-  background: var(--paper);
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .settings-archive-search input {
@@ -2105,7 +2135,7 @@
   height: 32px;
   border-color: var(--control-boundary);
   border-radius: var(--radius-sm);
-  background: var(--wuu-control-field-background, var(--surface-1));
+  background: var(--field-bg);
 }
 
 .select-menu-trigger.settings-archive-filter-trigger:hover:not(:disabled) {
@@ -2383,7 +2413,7 @@
   height: 32px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink-muted);
   cursor: pointer;

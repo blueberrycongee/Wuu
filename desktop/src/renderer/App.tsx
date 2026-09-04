@@ -3586,6 +3586,7 @@ export function App(): JSX.Element {
 
   const {
     updateRuntimeSettings,
+    updateProviderSettings,
     updateAdvancedSettings,
     updateGeneralSettings,
     removeProvider,
@@ -4704,7 +4705,7 @@ export function App(): JSX.Element {
         {checkoutErrorTipNode}
         {modelCatalogTipNode}
         <SettingsShellRenderer
-          initialized={sessionRuntime}
+          initialized={state.initialized}
           initialPage={settingsInitialPage}
           running={viewContextSwitchPending}
           runningProviderNames={runningProviderNames}
@@ -4732,7 +4733,7 @@ export function App(): JSX.Element {
           onBack={() => {
             setSettingsOpen(false);
           }}
-          onSave={updateRuntimeSettings}
+          onSave={updateProviderSettings}
           onRemoveProvider={removeProvider}
           onRefreshModelCatalog={refreshModelCatalog}
           onRefreshEngineInventory={() => refreshEngineInventory(true)}

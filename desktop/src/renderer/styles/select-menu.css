@@ -206,14 +206,14 @@
 .select-menu-trigger.settings-select-trigger {
   height: 32px;
   padding: 0 12px;
-  border-color: var(--control-boundary);
+  border-color: var(--hairline);
   background: var(--wuu-control-field-background, var(--paper));
   font-weight: 400;
 }
 
 .select-menu-trigger.settings-select-trigger:hover:not(:disabled) {
   background: var(--wuu-control-field-background, var(--surface-1));
-  border-color: var(--control-boundary);
+  border-color: var(--hairline);
 }
 
 .select-menu-trigger.settings-select-trigger:disabled {
@@ -222,8 +222,9 @@
 
 .select-menu-trigger.settings-select-trigger:focus-visible,
 .select-menu-trigger.settings-select-trigger[aria-expanded="true"] {
-  background: var(--paper);
-  border-color: var(--focus-ring);
+  background: var(--field-hover-bg);
+  border-color: var(--hairline);
+  box-shadow: none;
 }
 
 /* ---- panel (the open option list) ---------------------------------- */

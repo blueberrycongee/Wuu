@@ -899,54 +899,97 @@ function EffortSelector({
   onSelectEffort: (variant: string) => void;
 }): JSX.Element {
   const selectedIndex = Math.max(0, options.indexOf(selectedVariant));
-  const [previewIndex, setPreviewIndex] = useState(selectedIndex);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const pendingIndex = useRef<number | null>(null);
+  const activePointer = useRef<number | null>(null);
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const displayIndex = previewIndex ?? selectedIndex;
 
   useEffect(() => {
-    setPreviewIndex(selectedIndex);
+    setPreviewIndex(null);
+    pendingIndex.current = null;
   }, [selectedIndex]);
 
-  const commit = (index: number): void => {
-    if (disabled) return;
+  const previewTo = (index: number): void => {
+    pendingIndex.current = index;
+    setPreviewIndex(index);
+    onPreviewEffort?.(options[index] ?? selectedVariant);
+  };
+  const cancel = (): void => {
+    activePointer.current = null;
+    pendingIndex.current = null;
+    setPreviewIndex(null);
+    onPreviewEffort?.(options[selectedIndex] ?? selectedVariant);
+  };
+  const commit = (): void => {
+    activePointer.current = null;
+    const index = pendingIndex.current;
+    pendingIndex.current = null;
+    if (disabled || index === null) return;
     const next = options[index];
     if (next !== undefined && index !== selectedIndex) onSelectEffort(next);
   };
-  const preview = (index: number): void => {
-    setPreviewIndex(index);
-    const next = options[index];
-    if (next !== undefined) onPreviewEffort?.(next);
+
+  // The capsule assigns an equal span to each discrete level. Handle pointer
+  // coordinates directly so the hit regions match the visible segments;
+  // native range events continue to provide keyboard interaction.
+  const previewPointer = (clientX: number): void => {
+    const rect = sliderRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    const ratio = (clientX - rect.left) / rect.width;
+    if (!Number.isFinite(ratio)) return;
+    previewTo(Math.min(options.length - 1, Math.max(0, Math.floor(ratio * options.length))));
   };
-  const resetPreview = (): void => {
-    setPreviewIndex(selectedIndex);
-    onPreviewEffort?.(options[selectedIndex] ?? selectedVariant);
-  };
-  const progress = options.length > 1 ? previewIndex / (options.length - 1) : 0;
+  const progress = `${((displayIndex + 1) / options.length) * 100}%`;
 
   return (
     <div
+      ref={sliderRef}
       className={`codex-effort-slider${disabled ? " is-disabled" : ""}`}
-      style={{ "--effort-progress": `${progress * 100}%` } as CSSProperties}
+      style={{ "--effort-progress": progress } as CSSProperties}
     >
       <span className="codex-effort-track" aria-hidden="true" />
       <span className="codex-effort-fill" aria-hidden="true" />
       <span className="codex-effort-stops" aria-hidden="true">
-        {options.map((variant, index) => (
-          <span className={index <= previewIndex ? "is-filled" : ""} key={variant || `default-${index}`} />
+        {options.slice(0, -1).map((variant, index) => (
+          <span
+            key={variant || `default-${index}`}
+            className={index < displayIndex ? "is-filled" : ""}
+            style={{ left: `${((index + 1) / options.length) * 100}%` }}
+          />
         ))}
       </span>
+      <span className="codex-effort-knob" aria-hidden="true" />
       <input
         type="range"
         min={0}
         max={options.length - 1}
         step={1}
-        value={previewIndex}
+        value={displayIndex}
         disabled={disabled}
         aria-label={translate("runtime.reasoningEffort")}
-        aria-valuetext={variantLabel(options[previewIndex] ?? selectedVariant)}
-        onChange={(event) => preview(Number(event.currentTarget.value))}
-        onPointerUp={(event) => commit(Number(event.currentTarget.value))}
-        onPointerCancel={resetPreview}
-        onKeyUp={(event) => commit(Number(event.currentTarget.value))}
-        onBlur={resetPreview}
+        aria-valuetext={variantLabel(options[displayIndex] ?? selectedVariant)}
+        onPointerDown={(event) => {
+          if (disabled || event.button !== 0) return;
+          event.preventDefault();
+          event.currentTarget.focus();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          activePointer.current = event.pointerId;
+          previewPointer(event.clientX);
+        }}
+        onPointerMove={(event) => {
+          if (activePointer.current === event.pointerId) previewPointer(event.clientX);
+        }}
+        onPointerUp={commit}
+        onPointerCancel={cancel}
+        onLostPointerCapture={() => {
+          if (activePointer.current !== null) cancel();
+        }}
+        onChange={(event) => previewTo(Number(event.currentTarget.value))}
+        onKeyUp={(event) => {
+          if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) commit();
+        }}
+        onBlur={cancel}
       />
     </div>
   );

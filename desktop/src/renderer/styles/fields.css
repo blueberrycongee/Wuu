@@ -1,0 +1,22 @@
+/* Text entry keeps a stable surface while editing; the caret identifies focus.
+ * Search and form fields share a restrained hover treatment without a focus halo. */
+.codex-model-menu.runtime-panel .select-menu-search:hover,
+.catalog-search:hover,
+.project-search:hover,
+.conversation-search-input-wrap:hover {
+  background: var(--field-hover-bg);
+}
+
+.catalog-search input::placeholder,
+.project-search input::placeholder,
+.conversation-search-input-wrap input::placeholder {
+  color: var(--ink-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .catalog-search,
+  .project-search,
+  .conversation-search-input-wrap {
+    transition: none;
+  }
+}

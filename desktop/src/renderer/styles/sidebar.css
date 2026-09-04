@@ -33,9 +33,8 @@
   --sidebar-resizer-hover-ring: rgba(255, 255, 255, 0.4);
   --sidebar-nav-item-hover-ring: var(--wuu-nav-item-hover-ring, rgba(255, 255, 255, 0.42));
   --sidebar-nav-item-focus-shadow: var(--focus-ring);
-  /* One step deeper than the old overlay-6: the brighter frost fill washed
-   * the 6% selection out. */
-  --sidebar-row-selected-bg: var(--ink-overlay-8);
+  /* Location uses the same neutral surface as tabs and settings navigation. */
+  --sidebar-row-selected-bg: var(--selection-surface);
   --sidebar-project-row-pending-bg: rgba(255, 255, 255, 0.24);
   --sidebar-project-loading-notch: rgba(95, 126, 104, 0.22);
   --sidebar-row-icon-hover-bg-default: var(--ink-overlay-6);
@@ -74,7 +73,7 @@
  * surface instead; the dark value lives in theme.css with the other dark
  * overrides. */
 :root[data-platform="win32"] {
-  --sidebar-material-fill: #ededeb;
+  --sidebar-material-fill: rgba(255, 255, 255, 0.62);
 }
 
 .app-shell {
@@ -1406,6 +1405,7 @@
 }
 
 .nav-item[aria-current="page"] {
+  box-shadow: none;
   background: var(--sidebar-row-selected-bg);
   color: var(--ink);
 }
@@ -1417,7 +1417,8 @@
 
 .thread-row.active {
   background: var(--sidebar-row-selected-bg);
-  color: var(--ink);
+  color: var(--ink-strong);
+  font-weight: var(--weight-semibold);
   transform: none;
 }
 

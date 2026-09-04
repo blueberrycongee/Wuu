@@ -359,18 +359,16 @@
   line-height: 1.5;
 }
 
-/* Inputs share the settings control chrome: a quiet field fill, a
- * transparent resting border, and focus that lifts the field onto the
- * canvas with a hairline plus halo. */
+/* Text fields share a stable fill and boundary with settings inputs. */
 .plugin-ui-input {
   width: 100%;
   min-width: 0;
   height: 32px;
-  border: 1px solid transparent;
+  border: 1px solid var(--field-border);
   border-radius: var(--wuu-radius-control, var(--radius-sm));
   padding: 0 calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
   color: var(--wuu-color-text, var(--ink));
-  background: var(--wuu-control-field-background, var(--surface-1));
+  background: var(--field-bg);
   font: inherit;
   font-size: var(--font-ui);
   transition:
@@ -381,21 +379,12 @@
 
 .plugin-ui-input::placeholder,
 .plugin-ui-textarea::placeholder {
-  color: var(--ink-faint, var(--wuu-color-text-muted));
+  color: var(--ink-tertiary);
 }
 
 .plugin-ui-input:not(:disabled):hover,
 .plugin-ui-textarea:not(:disabled):hover {
-  background: var(--wuu-control-field-background, var(--surface-2));
-}
-
-.plugin-ui-input:focus,
-.plugin-ui-input:focus-visible,
-.plugin-ui-textarea:focus,
-.plugin-ui-textarea:focus-visible {
-  border-color: var(--wuu-color-border-strong, var(--gray-350));
-  background: var(--wuu-color-canvas, var(--paper));
-  box-shadow: 0 0 0 3px var(--ink-overlay-8, rgba(127, 127, 127, 0.18));
+  background: var(--field-hover-bg);
 }
 
 .plugin-ui-textarea {
@@ -404,11 +393,11 @@
   min-width: 0;
   min-height: 112px;
   resize: vertical;
-  border: 1px solid transparent;
+  border: 1px solid var(--field-border);
   border-radius: var(--wuu-radius-control, var(--radius-sm));
   padding: calc(var(--wuu-space-unit, 4px) * 2 * var(--wuu-space-density, 1)) calc(var(--wuu-space-unit, 4px) * 3 * var(--wuu-space-density, 1));
   color: var(--wuu-color-text, var(--ink));
-  background: var(--wuu-control-field-background, var(--surface-1));
+  background: var(--field-bg);
   font: inherit;
   font-size: var(--font-ui);
   line-height: var(--wuu-line-height-body, 1.5);

@@ -37,6 +37,7 @@ export const zhCN = {
   "settings.verificationModelDescription": "用于在具体任务交付前进行独立上下文检查。留空时继承 Wuu 默认模型。",
   "settings.collaborationInheritDefault": "继承 Wuu 默认模型",
   "settings.collaborationUsageNotice": "群聊可能产生额外的协调调用；具体任务还会产生交付前检查调用，未通过时可能继续调用模型改进结果。",
+  "settings.providerServices": "已连接的服务",
   "settings.modelCatalog": "模型目录",
   "settings.modelCatalogDescription": "无需更新 Wuu 即可获取最新服务商和模型定义，不会修改你的配置。",
   "settings.modelCatalogUpdate": "更新模型目录",

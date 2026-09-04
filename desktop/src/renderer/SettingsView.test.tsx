@@ -192,7 +192,7 @@ function renderSettings(props: {
     />
   );
   act(() => {
-    root = createRoot(container);
+    root ??= createRoot(container);
     root!.render(props.locale ? <I18nProvider>{view}</I18nProvider> : view);
   });
   const about = container.querySelector("[data-testid=\"settings-about\"]");
@@ -218,30 +218,6 @@ describe("SettingsView shell", () => {
     expect(remoteButton).toBeUndefined();
     expect(container.querySelector('[data-testid="settings-remote-page"]')).toBeNull();
     expect(container.querySelector(".settings-page-title")?.textContent).toBe("模型服务");
-  });
-
-  it("renders the brand lockup at the top of the settings sidebar", () => {
-    installBuildInfoStub({
-      core: undefined,
-      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
-    });
-    renderSettings({ initialized: baseInitialized() });
-
-    const sidebar = container.querySelector(".settings-sidebar");
-    const trafficSpacer = sidebar?.querySelector(".traffic-spacer");
-    const brand = sidebar?.querySelector(".sidebar-brand");
-    const backButton = sidebar?.querySelector(".settings-back-button");
-
-    expect(brand).not.toBeNull();
-    expect(brand?.querySelector(".sidebar-brand-wordmark")?.textContent).toBe("wuu");
-    expect(brand?.querySelector(".sidebar-brand-descriptor")?.textContent).toBe("harness");
-    expect(brand?.textContent).toContain("collaboration");
-    expect(brand?.querySelector(".sidebar-mode-switch")).not.toBeNull();
-    expect(brand?.querySelector("button")).toBeNull();
-    expect(brand?.querySelectorAll(".sidebar-mode-option-static")).toHaveLength(2);
-    expect(brand?.previousElementSibling).toBe(trafficSpacer);
-    expect(brand?.nextElementSibling).toBe(backButton);
-    expect(brand?.textContent?.trim()).toBe("wuucollaborationharness");
   });
 
   it("uses the same transparent-until-hover sidebar toggle as the conversation titlebar", () => {
@@ -432,10 +408,57 @@ describe("SettingsView provider configuration", () => {
     });
     expect(container.querySelector("[data-testid=\"settings-providers\"]")).not.toBeNull();
     expect(rootText()).toContain("模型服务");
-    expect(rootText()).toContain("openrouter");
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Base URL"]')?.value).toBe("https://openrouter.ai/api/v1");
     expect(rootText()).toContain("Base URL");
     expect(rootText()).toContain("API key 已配置");
     expect(rootText()).toContain("新增服务");
+  });
+
+  it("edits the provider selected from the service list", async () => {
+    installBuildInfoStub({ core: undefined, desktop: { version: "test", date: "1970-01-01" } });
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    renderSettings({
+      initialPage: "providers",
+      onSave,
+      initialized: baseInitialized({
+        provider: "first",
+        model: "first-model",
+        providers: [
+          { name: "first", type: "openai-compatible", model: "first-model", base_url: "https://api.openai.com/v1" },
+          { name: "second", type: "openai-compatible", model: "second-model", base_url: "https://api.deepseek.com/v1" },
+        ],
+      }),
+    });
+    const options = container.querySelectorAll<HTMLButtonElement>(".settings-provider-button");
+    await act(async () => { options[1].click(); });
+    expect(onSave).not.toHaveBeenCalled();
+    expect(options[1].getAttribute("aria-pressed")).toBe("true");
+    expect(options[0].getAttribute("aria-pressed")).toBe("false");
+    const model = container.querySelector<HTMLInputElement>('input[aria-label="模型名称"]')!;
+    expect(model.value).toBe("second-model");
+    await act(async () => { setInputValue(model, "updated-model"); });
+    await act(async () => { model.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+    expect(onSave.mock.calls.at(-1)?.slice(0, 2)).toEqual(["second", "updated-model"]);
+  });
+
+  it("keeps the service editor selected across runtime inventory refreshes", async () => {
+    installBuildInfoStub({ core: undefined, desktop: { version: "test", date: "1970-01-01" } });
+    const onSave = vi.fn();
+    const initial = baseInitialized({
+      provider: "grok", model: "grok-4.6",
+      providers: [
+        { name: "grok", type: "grok-build", model: "grok-4.6" },
+        { name: "kimi", type: "anthropic", model: "k3" },
+      ],
+    });
+    renderSettings({ initialized: initial, initialPage: "providers", onSave, runningProviderNames: ["grok"] });
+    await act(async () => { container.querySelectorAll<HTMLButtonElement>(".settings-provider-button")[1].click(); });
+    const model = container.querySelector<HTMLInputElement>('input[aria-label="模型名称"]')!;
+    await act(async () => { setInputValue(model, "draft-model"); });
+    renderSettings({ initialized: { ...initial, providers: initial.providers?.map((p) => ({ ...p })) }, initialPage: "providers", onSave, runningProviderNames: ["grok"] });
+    expect(container.querySelectorAll(".settings-provider-button")[1].getAttribute("aria-pressed")).toBe("true");
+    expect(model.value).toBe("draft-model");
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it("refreshes the model catalog with a button-only loading state", async () => {
@@ -593,12 +616,13 @@ describe("SettingsView provider configuration", () => {
     expect(option).toBeDefined();
     await act(async () => option?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 
-    expect(container.textContent).toContain("请先运行 `grok login`");
+    expect(container.textContent).toContain("grok login");
     expect(container.querySelector("input[type='password']")).toBeNull();
     const inputs = Array.from(container.querySelectorAll<HTMLInputElement>("input"));
     expect(inputs.map((input) => input.value)).toEqual([
-      "grok-build", "grok-4.5", "https://cli-chat-proxy.grok.com/v1",
+      "grok-build", "grok-4.5",
     ]);
+    expect(container.querySelector(".settings-managed-value")?.textContent).toBe("https://cli-chat-proxy.grok.com/v1");
     const submit = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
       .find((button) => button.textContent?.includes("添加服务"));
     expect(submit?.disabled).toBe(false);
