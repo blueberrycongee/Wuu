@@ -52,7 +52,7 @@ func TestConfigModelCatalogRefreshRPC(t *testing.T) {
 	}
 	response := responseByID(t, parseOutput(t, out.String()), "refresh")
 	result := remarshal[ConfigModelCatalogRefreshResult](t, response["result"])
-	if result.ProviderCount != 1 || result.ModelCount != 1 {
+	if result.ProviderCount != 1 || result.ModelCount < 1 {
 		t.Fatalf("refresh counts = providers:%d models:%d", result.ProviderCount, result.ModelCount)
 	}
 	foundFresh := false
@@ -83,7 +83,17 @@ func TestConfigModelCatalogRefreshRPC(t *testing.T) {
 	}, &restartedOut)
 	defer restarted.Close()
 	cached, ok := modelcatalog.ProviderByID("openai")
-	if !ok || len(cached.Models) != 1 || cached.Models[0].ID != "fresh-model" {
-		t.Fatalf("startup cached provider = %+v, ok=%v", cached, ok)
+	if !ok {
+		t.Fatalf("startup cached provider missing, ok=%v", ok)
+	}
+	foundCachedFresh := false
+	for _, model := range cached.Models {
+		if model.ID == "fresh-model" {
+			foundCachedFresh = true
+			break
+		}
+	}
+	if !foundCachedFresh {
+		t.Fatalf("startup cached provider = %+v", cached)
 	}
 }

@@ -936,7 +936,7 @@ func Default() Config {
 				Type:                  "openai-codex",
 				BaseURL:               defaultCodexSubscriptionBaseURL,
 				WireAPI:               "responses",
-				Model:                 "gpt-5.5",
+				Model:                 "gpt-6-astra",
 				ReuseCodexCredentials: true,
 				NativeCompaction:      &nativeCompaction,
 			},

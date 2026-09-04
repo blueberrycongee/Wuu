@@ -203,7 +203,7 @@ func TestResolveCodexSubscriptionImageInput(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"openai-codex": {
 				Type:  "openai-codex",
-				Model: "gpt-5.6-sol",
+				Model: "gpt-6-astra",
 			},
 		},
 	}

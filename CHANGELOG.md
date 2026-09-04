@@ -10,6 +10,8 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ### Changed
 
+- Defaulted new Codex subscription configs to GPT-6 Astra and kept the 1.05M
+  catalog window on live Codex discovery instead of the GPT-5 400k clamp.
 - Asked the Agent to skip tool-call preambles unless it has a finding,
   interpretation, or blocker to add.
 

@@ -3428,7 +3428,7 @@ func TestCachedCodexModelsReplaceCatalogOnlyReasoningLevels(t *testing.T) {
 	if _, ok := model.Variants["ultra"]; ok {
 		t.Fatalf("client-only ultra mode leaked into reasoning variants: %#v", model.Variants)
 	}
-	if model.ContextWindow != 400_000 || model.Limit == nil || model.Limit.Context != 400_000 || model.Limit.Input != 272_000 || model.Limit.Output != 128_000 {
+	if model.ContextWindow != 1_050_000 || model.Limit == nil || model.Limit.Context != 1_050_000 || model.Limit.Input != 272_000 || model.Limit.Output != 128_000 {
 		t.Fatalf("live Codex model did not receive subscription limits: %+v", model)
 	}
 	summaries := providerSummariesFromConfig(config.Config{
@@ -3438,7 +3438,7 @@ func TestCachedCodexModelsReplaceCatalogOnlyReasoningLevels(t *testing.T) {
 		},
 	}, t.TempDir())
 	summary := providerModelByID(t, summaries[0], "gpt-5.6-sol")
-	if summary.Capabilities.ContextWindow != 400_000 || summary.Capabilities.InputLimit != 272_000 {
+	if summary.Capabilities.ContextWindow != 1_050_000 || summary.Capabilities.InputLimit != 272_000 {
 		t.Fatalf("Codex model summary exposed API limits instead of subscription limits: %+v", summary.Capabilities)
 	}
 	merged.ContextWindow = 922_000
@@ -3451,6 +3451,38 @@ func TestCachedCodexModelsReplaceCatalogOnlyReasoningLevels(t *testing.T) {
 	overridden := providerModelByID(t, overriddenSummaries[0], "gpt-5.6-sol")
 	if overridden.Capabilities.ContextWindow != 922_000 || overridden.Capabilities.InputLimit != 0 {
 		t.Fatalf("explicit Codex context override was clamped in model summary: %+v", overridden.Capabilities)
+	}
+}
+
+func TestCachedCodexModelsKeepGPT5SubscriptionWindow(t *testing.T) {
+	srv := &Server{}
+	srv.cacheCodexModels("openai-codex", []codex.ModelInfo{{
+		Slug:               "gpt-5.5",
+		DisplayName:        "GPT-5.5",
+		SupportedReasoning: []string{"low", "medium", "high", "xhigh"},
+	}})
+	merged := srv.withCachedCodexModels("openai-codex", config.ProviderConfig{Type: "openai-codex"})
+	model := merged.Models["gpt-5.5"]
+	if model.ContextWindow != 400_000 || model.Limit == nil || model.Limit.Context != 400_000 || model.Limit.Input != 272_000 || model.Limit.Output != 128_000 {
+		t.Fatalf("live GPT-5.5 model should keep the GPT-5 subscription window: %+v", model)
+	}
+}
+
+func TestCachedCodexModelsKeepAstraCatalogWindow(t *testing.T) {
+	srv := &Server{}
+	srv.cacheCodexModels("openai-codex", []codex.ModelInfo{{
+		Slug:               "gpt-6-astra",
+		DisplayName:        "GPT-6 Astra",
+		SupportedReasoning: []string{"low", "medium", "high", "xhigh", "max"},
+	}})
+	merged := srv.withCachedCodexModels("openai-codex", config.ProviderConfig{Type: "openai-codex"})
+	model := merged.Models["gpt-6-astra"]
+	if model.ContextWindow != 1_050_000 || model.Limit == nil || model.Limit.Context != 1_050_000 || model.Limit.Input != 272_000 || model.Limit.Output != 128_000 {
+		t.Fatalf("live Astra model did not keep the GPT-6 subscription window: %+v", model)
+	}
+	fast := merged.Models["gpt-6-astra-fast"]
+	if fast.ID != "gpt-6-astra" || fast.Name != "GPT-6 Astra Fast" || fast.ContextWindow != 1_050_000 {
+		t.Fatalf("live Astra Fast alias missing GPT-6 subscription metadata: %+v", fast)
 	}
 }
 

@@ -2749,14 +2749,15 @@ func applyCodexSubscriptionLimit(modelID string, cfg *config.ProviderModelConfig
 	if inputCap <= 0 {
 		return
 	}
-	contextWindow := 400_000
-	inputLimit := inputCap
-	outputLimit := 128_000
-	if cfg.ContextWindow > 0 && cfg.ContextWindow < contextWindow {
+	contextCap := modelbudget.CodexSubscriptionContextWindow(modelID, "openai-codex")
+	contextWindow := 0
+	if cfg.ContextWindow > 0 {
 		contextWindow = cfg.ContextWindow
 	}
+	inputLimit := inputCap
+	outputLimit := 128_000
 	if cfg.Limit != nil {
-		if cfg.Limit.Context > 0 && cfg.Limit.Context < contextWindow {
+		if cfg.Limit.Context > 0 && (contextWindow <= 0 || cfg.Limit.Context < contextWindow) {
 			contextWindow = cfg.Limit.Context
 		}
 		if cfg.Limit.Input > 0 && cfg.Limit.Input < inputLimit {
@@ -2765,6 +2766,15 @@ func applyCodexSubscriptionLimit(modelID string, cfg *config.ProviderModelConfig
 		if cfg.Limit.Output > 0 && cfg.Limit.Output < outputLimit {
 			outputLimit = cfg.Limit.Output
 		}
+	}
+	if contextWindow <= 0 {
+		contextWindow = contextCap
+	}
+	if contextCap > 0 && (contextWindow <= 0 || contextWindow > contextCap) {
+		contextWindow = contextCap
+	}
+	if contextWindow <= 0 {
+		return
 	}
 	cfg.ContextWindow = contextWindow
 	cfg.Limit = &config.ProviderModelLimitConfig{

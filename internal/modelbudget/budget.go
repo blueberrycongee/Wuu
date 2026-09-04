@@ -23,6 +23,14 @@ const CodexSubscriptionGPT5InputCap = 272_000
 // family models. Codex currently advertises the same 272k input ceiling as GPT-5.
 const CodexSubscriptionGPT6InputCap = 272_000
 
+// CodexSubscriptionGPT5ContextWindow is the ChatGPT/Codex advertised window for
+// GPT-5 family models that are not in the 1.05M GPT-5.6 generation.
+const CodexSubscriptionGPT5ContextWindow = 400_000
+
+// CodexSubscriptionGPT6ContextWindow is the ChatGPT/Codex advertised window for
+// GPT-6 and GPT-5.6 family models.
+const CodexSubscriptionGPT6ContextWindow = 1_050_000
+
 // compactOutputReserveCapTokens caps how much of the prompt ceiling is held
 // back for the response when deriving the compact threshold. Real answers and
 // compact summaries rarely exceed ~20k even when the model's output limit is
@@ -199,18 +207,46 @@ func CodexSubscriptionInputCap(model, providerType string) int {
 	if !isCodexSubscriptionProviderType(providerType) {
 		return 0
 	}
-	id := strings.ToLower(strings.TrimSpace(model))
-	if idx := strings.LastIndex(id, "/"); idx >= 0 {
-		id = id[idx+1:]
-	}
 	switch {
-	case strings.Contains(id, "gpt-6"):
+	case isCodexSubscriptionGPT6Model(model):
 		return CodexSubscriptionGPT6InputCap
-	case strings.Contains(id, "gpt-5"):
+	case isCodexSubscriptionGPT5Model(model):
 		return CodexSubscriptionGPT5InputCap
 	default:
 		return 0
 	}
+}
+
+func CodexSubscriptionContextWindow(model, providerType string) int {
+	if !isCodexSubscriptionProviderType(providerType) {
+		return 0
+	}
+	switch {
+	case isCodexSubscriptionGPT6Model(model):
+		return CodexSubscriptionGPT6ContextWindow
+	case isCodexSubscriptionGPT5Model(model):
+		return CodexSubscriptionGPT5ContextWindow
+	default:
+		return 0
+	}
+}
+
+func isCodexSubscriptionGPT6Model(model string) bool {
+	id := codexSubscriptionModelID(model)
+	return strings.Contains(id, "gpt-6") || strings.Contains(id, "gpt-5.6")
+}
+
+func isCodexSubscriptionGPT5Model(model string) bool {
+	id := codexSubscriptionModelID(model)
+	return strings.Contains(id, "gpt-5")
+}
+
+func codexSubscriptionModelID(model string) string {
+	id := strings.ToLower(strings.TrimSpace(model))
+	if idx := strings.LastIndex(id, "/"); idx >= 0 {
+		id = id[idx+1:]
+	}
+	return id
 }
 
 func codexSubscriptionInputCapForModels(model, apiModel, providerType string) int {

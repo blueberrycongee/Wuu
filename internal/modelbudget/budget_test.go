@@ -172,6 +172,18 @@ func TestResolveAliasUsesAPIModelCodexCap(t *testing.T) {
 	}
 }
 
+func TestCodexSubscriptionContextWindowUsesGPT6Window(t *testing.T) {
+	if got := CodexSubscriptionContextWindow("gpt-6-astra", "openai-codex"); got != CodexSubscriptionGPT6ContextWindow {
+		t.Fatalf("gpt-6-astra window = %d, want %d", got, CodexSubscriptionGPT6ContextWindow)
+	}
+	if got := CodexSubscriptionContextWindow("gpt-5.6-sol", "openai-codex"); got != CodexSubscriptionGPT6ContextWindow {
+		t.Fatalf("gpt-5.6-sol window = %d, want %d", got, CodexSubscriptionGPT6ContextWindow)
+	}
+	if got := CodexSubscriptionContextWindow("gpt-5.5", "openai-codex"); got != CodexSubscriptionGPT5ContextWindow {
+		t.Fatalf("gpt-5.5 window = %d, want %d", got, CodexSubscriptionGPT5ContextWindow)
+	}
+}
+
 func TestEffectiveContextWindowUsesCodexInputCapForGPT6Astra(t *testing.T) {
 	budget := Resolve("gpt-6-astra", config.ProviderConfig{
 		Type:  "openai-codex",

@@ -213,6 +213,22 @@ func TestCatalogCarriesGPT6AstraMetadata(t *testing.T) {
 	}
 }
 
+func TestCodexSubscriptionCatalogExposesAstraFastAlias(t *testing.T) {
+	codexProvider, ok := CodexSubscriptionCatalogProvider("gpt-6-astra")
+	if !ok {
+		t.Fatal("expected Codex subscription catalog metadata for gpt-6-astra")
+	}
+	var hasFast bool
+	for _, model := range codexProvider.Models {
+		if model.ID == "gpt-6-astra-fast" && model.APIID == "gpt-6-astra" {
+			hasFast = true
+		}
+	}
+	if !hasFast {
+		t.Fatalf("Codex subscription catalog did not expose gpt-6-astra-fast alias: %+v", codexProvider.Models)
+	}
+}
+
 func TestCatalogSnapshotMatchesOpenCodeDefaultVisibleCounts(t *testing.T) {
 	providers, err := Providers()
 	if err != nil {

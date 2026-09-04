@@ -462,6 +462,16 @@ func TestLoadFrom_AgentName(t *testing.T) {
 	}
 }
 
+func TestDefaultCodexSubscriptionUsesGPT6Astra(t *testing.T) {
+	provider, ok := Default().Providers["openai-codex"]
+	if !ok {
+		t.Fatal("expected openai-codex starter provider")
+	}
+	if provider.Model != "gpt-6-astra" {
+		t.Fatalf("openai-codex default model = %q, want gpt-6-astra", provider.Model)
+	}
+}
+
 func TestTemplateJSONDoesNotSerializeBuiltInSystemPrompt(t *testing.T) {
 	cfg := Default()
 	if cfg.Agent.SystemPrompt != "" {
