@@ -61,7 +61,7 @@ import {
   OrganizationThreadList,
   ProjectGroup,
 } from "./ThreadSidebar";
-import { SidebarSection } from "./SidebarSection";
+import { SidebarCollapseBody, SidebarSection } from "./SidebarSection";
 import { SidebarNameDialog } from "./SidebarNameDialog";
 import { ThreadContextMenu } from "./ThreadContextMenu";
 import {
@@ -1652,26 +1652,28 @@ export function AppSidebar({
               <div className="sidebar-functional-heading">
                 <span className="sidebar-functional-heading-label">{t("skills.sectionPlugins")}</span>
               </div>
-              <div className="sidebar-functional-group-body">
-                {pluginNavigationEntries.map((entry) => {
-                  const active = activePluginMainView?.pluginId === entry.pluginId
-                    && activePluginMainView.viewTypeId === entry.view;
-                  return (
-                    <button
-                      key={`${entry.pluginId}:${entry.id}`}
-                      type="button"
-                      className={`nav-item plugin-navigation-item${active ? " active" : ""}`}
-                      data-wuu-component="plugin-navigation-item"
-                      data-wuu-plugin={entry.pluginId}
-                      aria-current={active ? "page" : undefined}
-                      title={entry.description || entry.title}
-                      onClick={() => openPluginNavigation(entry.pluginId, entry.view)}
-                    >
-                      <PluginIcon icon={entry.icon} pluginId={entry.pluginId} fingerprint={entry.generation} className="icon-lg" />
-                      <span>{entry.title}</span>
-                    </button>
-                  );
-                })}
+              <div className="sidebar-functional-group-collapse">
+                <div className="sidebar-functional-group-body">
+                  {pluginNavigationEntries.map((entry) => {
+                    const active = activePluginMainView?.pluginId === entry.pluginId
+                      && activePluginMainView.viewTypeId === entry.view;
+                    return (
+                      <button
+                        key={`${entry.pluginId}:${entry.id}`}
+                        type="button"
+                        className={`nav-item plugin-navigation-item${active ? " active" : ""}`}
+                        data-wuu-component="plugin-navigation-item"
+                        data-wuu-plugin={entry.pluginId}
+                        aria-current={active ? "page" : undefined}
+                        title={entry.description || entry.title}
+                        onClick={() => openPluginNavigation(entry.pluginId, entry.view)}
+                      >
+                        <PluginIcon icon={entry.icon} pluginId={entry.pluginId} fingerprint={entry.generation} className="icon-lg" />
+                        <span>{entry.title}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </section>
           ) : null}
@@ -2166,7 +2168,12 @@ function SortableFunctionalGroup({
           </div>
         ) : null}
       </div>
-      {!collapsed ? children : null}
+      <SidebarCollapseBody
+        className="sidebar-functional-group-collapse"
+        expanded={!collapsed}
+      >
+        {children}
+      </SidebarCollapseBody>
     </section>
   );
 }

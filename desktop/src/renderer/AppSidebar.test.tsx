@@ -1,6 +1,6 @@
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ChannelRoom, DesktopProject, InitializeResult } from "../shared/protocol";
 import { AppSidebar } from "./AppSidebar";
@@ -25,6 +25,7 @@ afterEach(() => {
   desktopPluginHost.unload("test:app-sidebar-navigation");
   root = null;
   container.remove();
+  vi.useRealTimers();
 });
 
 function initialized(): InitializeResult {
@@ -254,5 +255,37 @@ describe("AppSidebar layout", () => {
       SCRATCH_PSEUDO_PROJECT_ID,
       "project-1",
     ]);
+  });
+
+  it("keeps workspace rows mounted through the shared collapse motion", () => {
+    vi.useFakeTimers();
+    renderSidebar();
+
+    const workspaceToggle = container.querySelector<HTMLButtonElement>(
+      '[aria-label="收起工作区"]',
+    );
+    expect(workspaceToggle).not.toBeNull();
+    expect(
+      container.querySelector('[data-functional-group-id="workspace"] .thread-list-collapse'),
+    ).not.toBeNull();
+
+    act(() => {
+      workspaceToggle?.click();
+    });
+
+    const collapsingBody = container.querySelector(
+      '[data-functional-group-id="workspace"] .thread-list-collapse',
+    );
+    expect(collapsingBody?.getAttribute("data-state")).toBe("closing");
+    expect(container.querySelector(".sidebar-functional-group-body > section[data-section-id]")).not.toBeNull();
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(
+      container.querySelector('[data-functional-group-id="workspace"] .thread-list-collapse'),
+    ).toBeNull();
+    expect(container.querySelector('[aria-label="展开工作区"]')).not.toBeNull();
   });
 });
