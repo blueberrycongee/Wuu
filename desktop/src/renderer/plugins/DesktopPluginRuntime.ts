@@ -50,6 +50,18 @@ export const desktopPluginHost = new PluginHost({
       activeWorkspaceId: result.active_project_id,
     };
   },
+  listThreads: async (workspaceRoot) => {
+    const result = await window.wuu?.listThreads?.(workspaceRoot);
+    if (!result) throw new Error("Thread listing is unavailable");
+    return result.threads
+      .filter((thread) => thread.ephemeral !== true && thread.archived !== true)
+      .map((thread) => ({
+        id: thread.id,
+        title: thread.title || thread.preview || thread.id,
+        updatedAt: thread.updated_at,
+        pinned: thread.pinned === true,
+      }));
+  },
 });
 export const desktopCompositionRoot = createDesktopCompositionRoot();
 void desktopCompositionRoot.plugin(PluginHostService, desktopPluginHost);

@@ -79,6 +79,44 @@ describe("PluginHost", () => {
     expect(host.getActiveConversationThreadId()).toBeUndefined();
   });
 
+  it("lists threads through the host capability while the generation is active", async () => {
+    const seen: string[] = [];
+    const host = new PluginHost({
+      react: React,
+      listThreads: async (root) => {
+        seen.push(root);
+        return [{ id: "t-1", title: "Daily brief", updatedAt: "2026-09-01T00:00:00Z" }];
+      },
+    });
+    let api: PluginGenerationApi | undefined;
+    const disposable = await host.activateGeneration({
+      pluginId: "zeta",
+      generation: "one",
+      register(generationApi) {
+        api = generationApi;
+      },
+    });
+    await expect(api?.listThreads("/tmp/ws")).resolves.toEqual([
+      { id: "t-1", title: "Daily brief", updatedAt: "2026-09-01T00:00:00Z" },
+    ]);
+    expect(seen).toEqual(["/tmp/ws"]);
+    disposable.dispose();
+    await expect(api?.listThreads("/tmp/ws")).rejects.toThrow("no longer active");
+  });
+
+  it("rejects thread listing when the host provides no thread lister", async () => {
+    const host = new PluginHost({ react: React });
+    let api: PluginGenerationApi | undefined;
+    await host.activateGeneration({
+      pluginId: "zeta",
+      generation: "one",
+      register(generationApi) {
+        api = generationApi;
+      },
+    });
+    await expect(api?.listThreads("/tmp/ws")).rejects.toThrow("Thread listing is unavailable");
+  });
+
   it("records replace conflicts, preserves the default winner, and applies a user preference", async () => {
     const host = new PluginHost({ react: React });
     for (const pluginId of ["alpha", "zeta"]) {

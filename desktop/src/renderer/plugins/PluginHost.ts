@@ -166,6 +166,10 @@ export interface PluginGenerationApi {
   readonly generation: string;
   invokeRuntime(method: string, input?: unknown, options?: PluginRuntimeInvokeOptions): Promise<unknown>;
   listWorkspaces(): Promise<PluginWorkspaceSnapshot>;
+  /** List live threads inside a workspace, addressed by its root path (the
+   * `root` value returned by listWorkspaces). Read-only kernel session state;
+   * ephemeral and archived threads are excluded by the host. */
+  listThreads(workspaceRoot: string): Promise<readonly PluginThreadSummary[]>;
   onHostEvent(handler: (event: unknown) => void): Disposable;
   registerSlot(slotId: PluginSlotId, contribution: PluginSlotRegistration): Disposable;
   registerSurface(surfaceId: PluginSurfaceId, contribution: PluginSurfaceRegistration): Disposable;
@@ -212,6 +216,13 @@ export interface PluginWorkspace {
 export interface PluginWorkspaceSnapshot {
   readonly workspaces: readonly PluginWorkspace[];
   readonly activeWorkspaceId?: string;
+}
+
+export interface PluginThreadSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly updatedAt?: string;
+  readonly pinned?: boolean;
 }
 
 export interface ActivatePluginGenerationOptions {
@@ -349,6 +360,7 @@ export interface PluginHostOptions {
     workspaceId?: string;
   }>) => Promise<unknown>;
   listWorkspaces?: () => Promise<PluginWorkspaceSnapshot>;
+  listThreads?: (workspaceRoot: string) => Promise<readonly PluginThreadSummary[]>;
 }
 
 interface OrderedRecord {
@@ -511,6 +523,7 @@ export class PluginHost {
   private readonly styleContainer?: PluginHostOptions["styleContainer"];
   private readonly runtimeInvoker?: PluginHostOptions["invokeRuntime"];
   private readonly workspaceLister?: PluginHostOptions["listWorkspaces"];
+  private readonly threadLister?: PluginHostOptions["listThreads"];
   private readonly activeGenerations = new Map<string, GenerationState>();
   private readonly pendingActivations = new Map<string, PendingActivation>();
   private readonly slotSnapshots = new Map<PluginSlotId, readonly RegisteredPluginSlotContribution[]>();
@@ -548,6 +561,7 @@ export class PluginHost {
     this.styleContainer = options.styleContainer;
     this.runtimeInvoker = options.invokeRuntime;
     this.workspaceLister = options.listWorkspaces;
+    this.threadLister = options.listThreads;
   }
 
   async activateGeneration(options: ActivatePluginGenerationOptions): Promise<Disposable> {
@@ -906,6 +920,15 @@ export class PluginHost {
           throw new Error("Plugin generation is no longer active");
         }
         return this.workspaceLister();
+      },
+      listThreads: async (workspaceRoot: string) => {
+        if (!this.threadLister) {
+          throw new Error("Thread listing is unavailable");
+        }
+        if (this.activeGenerations.get(state.pluginId) !== state || state.disposed) {
+          throw new Error("Plugin generation is no longer active");
+        }
+        return this.threadLister(requireNonEmpty(workspaceRoot, "workspace root"));
       },
       onHostEvent: (handler: (event: unknown) => void) => {
         this.assertUsable(state);
