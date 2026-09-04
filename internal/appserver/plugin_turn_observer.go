@@ -90,6 +90,10 @@ func (s *Server) persistPluginTurnLifecycle(pluginID string, input pluginhost.Ag
 	if err := session.PutPluginTurnLifecycleOutbox(s.rt.SessionDir, pluginID, input.RequestID, payload); err != nil {
 		return true, err
 	}
+	// Wake inspect callers only after the terminal record is durable. They can
+	// then re-read the retained lifecycle state without depending on plugin
+	// callback delivery or its outbox acknowledgement.
+	s.pluginTurnWaiters.notify(pluginID, input.RequestID)
 	return true, nil
 }
 

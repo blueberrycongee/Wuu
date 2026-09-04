@@ -38,7 +38,7 @@ type taskRecord struct {
 
 const taskIndexKey = "tasks.v2"
 const maxTaskRecords = 128
-const foregroundAwaitBudgetMS = 5 * 60 * 1000
+const foregroundAwaitBudgetMS = 10 * 60 * 1000
 
 type spawnAgentOutput struct {
 	SessionID       string `json:"session_id"`
@@ -732,7 +732,7 @@ func objectSchema(properties map[string]any, required ...string) map[string]any 
 	return map[string]any{"type": "object", "properties": properties, "required": required}
 }
 func spawnSchema() map[string]any {
-	return objectSchema(map[string]any{"description": stringField("Short 3-5 word summary of what the agent will do."), "prompt": stringField("Concrete, self-contained task brief with scope, constraints, acceptance criteria, and deliverable."), "subagent_type": stringField("Optional specialized agent type."), "name": stringField("Optional addressable task name using lowercase letters, digits, and underscores."), "model": stringField("Optional configured model alias or host capability model such as @verification."), "context": map[string]any{"type": "string", "enum": []string{"fresh", "fork"}, "description": "Optional conversation context source. Defaults to fresh; fork inherits the parent conversation."}, "isolation": map[string]any{"type": "string", "enum": []string{"worktree"}}, "run_in_background": map[string]any{"type": "boolean", "default": true, "description": "Return immediately when true. Set false when the parent must wait for this result before continuing; a foreground wait automatically becomes background after five minutes."}}, "description", "prompt")
+	return objectSchema(map[string]any{"description": stringField("Short 3-5 word summary of what the agent will do."), "prompt": stringField("Concrete, self-contained task brief with scope, constraints, acceptance criteria, and deliverable."), "subagent_type": stringField("Optional specialized agent type."), "name": stringField("Optional addressable task name using lowercase letters, digits, and underscores."), "model": stringField("Optional configured model alias or host capability model such as @verification."), "context": map[string]any{"type": "string", "enum": []string{"fresh", "fork"}, "description": "Optional conversation context source. Defaults to fresh; fork inherits the parent conversation."}, "isolation": map[string]any{"type": "string", "enum": []string{"worktree"}}, "run_in_background": map[string]any{"type": "boolean", "default": true, "description": "Return immediately when true. Set false when the parent must wait for this result before continuing; a foreground wait automatically becomes background after ten minutes."}}, "description", "prompt")
 }
 
 func workerInstructions(workerType string) string {
@@ -749,7 +749,7 @@ A completed subagent task does not mean the overall task is complete. Integrate 
 
 # Delegation
 
-The main agent owns the user conversation, final synthesis, and decision about whether delegation is worth the overhead. Keep tightly coupled or trivial work local. Delegate bounded research, verification, or disjoint implementation when separate context materially improves the result. Set run_in_background=false when your next step depends on the result so it returns in the current tool call. Use background mode for independent work you can overlap. A foreground wait that exceeds five minutes automatically becomes background and completes through the normal notification path.
+The main agent owns the user conversation, final synthesis, and decision about whether delegation is worth the overhead. Keep tightly coupled or trivial work local. Delegate bounded research, verification, or disjoint implementation when separate context materially improves the result. Set run_in_background=false when your next step depends on the result so it returns in the current tool call. Use background mode for independent work you can overlap. A foreground wait that exceeds ten minutes automatically becomes background and completes through the normal notification path.
 
 The Subagent plugin owns its task records, cancellation propagation, concurrency policy, and recovery. Use the public Session services to build whatever task topology fits the work; the host does not impose a delegation tree or a global child limit.
 

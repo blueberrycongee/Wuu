@@ -26,6 +26,8 @@ type pluginTurnReference struct {
 	QueueID   string
 }
 
+const maxPluginSessionInspectTimeout = 15 * time.Minute
+
 func clonePluginTurnReference(reference *pluginTurnReference) *pluginTurnReference {
 	if reference == nil {
 		return nil
@@ -180,8 +182,9 @@ func (s *Server) inspectPluginSession(ctx context.Context, pluginID string, para
 	if params.Wait != pluginhost.SessionInspectWaitNone && params.Wait != pluginhost.SessionInspectWaitTerminal {
 		return pluginhost.SessionInspectResult{}, errors.New("wait must be none or terminal")
 	}
-	if params.TimeoutMS < 0 || params.TimeoutMS > 300000 {
-		return pluginhost.SessionInspectResult{}, errors.New("timeout_ms must be between 0 and 300000")
+	maxTimeoutMS := int(maxPluginSessionInspectTimeout / time.Millisecond)
+	if params.TimeoutMS < 0 || params.TimeoutMS > maxTimeoutMS {
+		return pluginhost.SessionInspectResult{}, fmt.Errorf("timeout_ms must be between 0 and %d", maxTimeoutMS)
 	}
 	inspect := func() (pluginhost.SessionInspectResult, error) {
 		return s.inspectPluginSessionOnce(pluginID, params)
@@ -194,23 +197,40 @@ func (s *Server) inspectPluginSession(ctx context.Context, pluginID string, para
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
+	requestID := params.RequestID
+	if requestID == "" {
+		requestID = strings.TrimSpace(result.Turn.RequestID)
+	}
+	if requestID == "" {
+		return pluginhost.SessionInspectResult{}, errors.New("terminal wait requires a resolvable request_id")
+	}
+	params.RequestID = requestID
+	ready, unsubscribe := s.pluginTurnWaiters.subscribe(pluginID, requestID)
+	defer unsubscribe()
+
+	// Re-inspect after registering to close the race where terminal state is
+	// persisted between the initial read and waiter registration.
+	result, err = inspect()
+	if err != nil || result.Turn == nil || terminalPluginTurnState(result.Turn.State) {
+		return result, err
+	}
+
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
-	ticker := time.NewTicker(25 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return pluginhost.SessionInspectResult{}, ctx.Err()
-		case <-timer.C:
-			result.TimedOut = true
-			return result, nil
-		case <-ticker.C:
-			result, err = inspect()
-			if err != nil || result.Turn == nil || terminalPluginTurnState(result.Turn.State) {
-				return result, err
-			}
+	select {
+	case <-ctx.Done():
+		return pluginhost.SessionInspectResult{}, ctx.Err()
+	case <-ready:
+		return inspect()
+	case <-timer.C:
+		// Prefer a terminal result that landed on the timeout boundary. Otherwise
+		// return the freshest non-terminal snapshot with TimedOut set.
+		result, err = inspect()
+		if err != nil || result.Turn == nil || terminalPluginTurnState(result.Turn.State) {
+			return result, err
 		}
+		result.TimedOut = true
+		return result, nil
 	}
 }
 

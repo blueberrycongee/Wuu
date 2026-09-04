@@ -80,7 +80,7 @@ the background:
 The main agent chooses this per task with `run_in_background`. Background is the
 default. When the next step depends on a child, the main agent sets it to `false`; the
 current tool call then waits and receives the child's terminal state, final output, and
-error directly. A foreground wait becomes background after five minutes so a slow or
+error directly. A foreground wait becomes background after ten minutes so a slow or
 stuck child cannot block the parent indefinitely.
 
 The Subagent plugin contributes subtask state for the current parent session above the

@@ -161,6 +161,9 @@ func (h *captureHost) CallHost(_ context.Context, method string, params, result 
 
 func TestHandlerOwnsSubagentToolsAndPrompt(t *testing.T) {
 	handler := Handler()
+	if foregroundAwaitBudgetMS != 10*60*1000 {
+		t.Fatalf("foreground wait budget = %d, want ten minutes", foregroundAwaitBudgetMS)
+	}
 	if len(handler.Definition.Tools) != 3 {
 		t.Fatalf("tools = %+v", handler.Definition.Tools)
 	}
@@ -181,6 +184,13 @@ func TestHandlerOwnsSubagentToolsAndPrompt(t *testing.T) {
 	raw, err := handler.InvokeCapability(context.Background(), &captureHost{}, pluginapi.CapabilityCall{Capability: capabilityPrompt})
 	if err != nil || len(raw) == 0 {
 		t.Fatalf("prompt capability = %s, %v", raw, err)
+	}
+	if !strings.Contains(string(raw), "ten minutes") || strings.Contains(string(raw), "five minutes") {
+		t.Fatalf("prompt does not describe the ten-minute foreground budget: %s", raw)
+	}
+	schema, err := json.Marshal(handler.Definition.Tools[0].InputSchema)
+	if err != nil || !strings.Contains(string(schema), "ten minutes") || strings.Contains(string(schema), "five minutes") {
+		t.Fatalf("spawn schema does not describe the ten-minute foreground budget: %s, %v", schema, err)
 	}
 }
 

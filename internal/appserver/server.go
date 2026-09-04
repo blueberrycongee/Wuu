@@ -229,6 +229,7 @@ type Server struct {
 	heldUserWorkMu              sync.Mutex
 
 	pluginTurnUnbind   func()
+	pluginTurnWaiters  pluginTurnWaitHub
 	userQuestionUnbind func()
 	userQuestionStop   chan struct{}
 	userQuestionDone   chan struct{}
