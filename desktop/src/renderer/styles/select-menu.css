@@ -26,9 +26,9 @@
   justify-content: space-between;
   gap: 8px;
   padding: 0 10px;
-  border: 1px solid var(--control-boundary);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
-  background: var(--paper);
+  background: var(--field-bg);
   color: var(--ink);
   font: inherit;
   font-size: var(--font-ui);
@@ -42,6 +42,7 @@
 }
 
 .select-menu-trigger:hover:not(:disabled) {
+  background: var(--field-hover-bg);
   border-color: var(--hairline-strong);
 }
 
@@ -202,17 +203,17 @@
   color: var(--paper);
 }
 
-/* Settings-page variant: match .settings-select's paper field. */
+/* Settings inputs and dropdown triggers share the same field material. */
 .select-menu-trigger.settings-select-trigger {
   height: 32px;
   padding: 0 12px;
   border-color: var(--hairline);
-  background: var(--wuu-control-field-background, var(--paper));
+  background: var(--field-bg);
   font-weight: 400;
 }
 
 .select-menu-trigger.settings-select-trigger:hover:not(:disabled) {
-  background: var(--wuu-control-field-background, var(--surface-1));
+  background: var(--field-hover-bg);
   border-color: var(--hairline);
 }
 

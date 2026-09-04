@@ -322,8 +322,8 @@
 
 .settings-section > .settings-group {
   padding: 0 16px;
-  border: 1px solid var(--hairline-soft);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--session-composer-radius);
 }
 
 .settings-group .settings-row:last-child {
@@ -726,8 +726,8 @@
 
 .settings-engine-body {
   padding: 0 16px;
-  border: 1px solid var(--hairline-soft);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--session-composer-radius);
 }
 
 .settings-engine-body .settings-row {
@@ -895,8 +895,8 @@
   width: 100%;
   min-height: 64px;
   align-items: center;
-  border: 1px solid var(--hairline-soft);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--session-composer-radius);
   background: transparent;
   color: var(--ink);
   padding: 16px 48px 16px 16px;
@@ -970,8 +970,8 @@
 .settings-provider-editor {
   min-width: 0;
   padding: 16px;
-  border: 1px solid var(--hairline-soft);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--session-composer-radius);
 }
 
 .settings-provider-editor-header {

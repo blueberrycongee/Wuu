@@ -35,8 +35,8 @@
    * Component CSS must reach for these steps (or the semantic aliases
    * below) instead of inventing local hex values. The ramp is anchored
    * to the message-flow neutrals, which are the reference appearance:
-   * surfaces run slightly warm, inks slightly cool — that temperature
-   * split between background and text is intentional, do not "fix" it.
+   * surfaces use neutral grays so fields, navigation and prose share
+   * one temperature; contrast comes from their semantic roles.
    *
    * Slots 400-650 are text grays, 0-350 surfaces/hairlines, 800-900 the
    * strong text pair. Dark theme re-declares the same slots in
@@ -44,13 +44,13 @@
    * in both themes.
    * ------------------------------------------------------------------ */
   --gray-0: #ffffff;
-  --gray-50: #f7f7f5;
-  --gray-100: #f1f2ef;
-  --gray-150: #ececea;
-  --gray-200: #e5e5e1;
-  --gray-250: #e4e4df;
-  --gray-300: #dedfdd;
-  --gray-350: #d9d9d5;
+  --gray-50: #fafafa;
+  --gray-100: #f3f3f3;
+  --gray-150: #eeeeee;
+  --gray-200: #e5e5e5;
+  --gray-250: #e2e2e2;
+  --gray-300: #dddddd;
+  --gray-350: #d5d5d5;
   --gray-400: #b0b6bb;
   --gray-450: #9ca1a5;
   --gray-500: #8a8f94;
@@ -139,10 +139,11 @@
   --control-boundary: var(--wuu-color-border-strong, var(--gray-500));
   /* Navigation and reading surfaces stay neutral; only the slider uses color. */
   --interaction-accent: var(--wuu-color-accent, #496d93);
-  --selection-surface: var(--ink-overlay-12);
+  /* Selection is opaque so sidebar material cannot tint or darken it. */
+  --selection-surface: var(--wuu-color-surface-elevated, var(--gray-200));
   --slider-thumb-bg: var(--wuu-color-surface-elevated, var(--paper));
-  --field-bg: var(--wuu-control-field-background, var(--surface-1));
-  --field-hover-bg: var(--wuu-control-field-background, var(--surface-2));
+  --field-bg: var(--wuu-control-field-background, var(--paper));
+  --field-hover-bg: var(--wuu-control-field-background, var(--surface-1));
   --field-border: var(--hairline-strong);
   --accent-warm: var(--wuu-color-accent, #ef5b18);
   --selection-bg: rgba(64, 133, 216, 0.3);
@@ -163,10 +164,11 @@
 
                                                                   
                                                                         
-  --radius-xs: 4px;                                                  
-  --radius-sm: var(--wuu-radius-control, 8px);
-  --radius-md: var(--wuu-radius-panel, 12px);
-  --radius-lg: 16px;                                  
+  /* One rounded family: compact details, controls, then composer-sized panels. */
+  --radius-xs: 6px;
+  --radius-sm: var(--wuu-radius-control, 12px);
+  --radius-md: var(--wuu-radius-panel, 22px);
+  --radius-lg: var(--radius-md);
   --radius-pill: 999px;                                                
 
                                                                   

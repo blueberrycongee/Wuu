@@ -29,13 +29,9 @@
   --diff-delete-color: var(--wuu-color-danger, #cf2e2e);
   --rich-link-color: var(--wuu-color-link, #0969da);
   --rich-link-hover-color: var(--wuu-color-link-hover, #0550ae);
-  /* Cards embedded in assistant prose share one material recipe. Code blocks
-   * and turn-output summaries differ in content, not visual hierarchy. One
-   * quiet hairline frames all of them so the flow does not grow a second
-   * outline weight. The card background deliberately skips --surface-1:
-   * --gray-50 leans warm (B channel below R/G) and reads dirty against the
-   * white message flow, so cards use a lighter, neutral-cool gray. */
-  --message-flow-card-bg: #f8f9fa;
+  /* Prose surfaces share the neutral ramp: blocks recede, inline code
+   * gets a small contrast step without resembling a selected control. */
+  --message-flow-card-bg: var(--surface-1);
   --message-flow-card-border: var(--hairline-soft);
   --message-flow-card-divider: var(--hairline-soft);
   --message-flow-card-header-bg: var(--message-flow-card-bg);
@@ -45,7 +41,7 @@
    * every card in the message flow read as one rounded material family.
    * Short single-row cards become capsules at this radius — intentional. */
   --message-flow-card-radius: var(--session-composer-radius, var(--radius-lg));
-  --surface-chip: #E9EAEA;
+  --surface-chip: var(--surface-2);
   --fork-worktree-copy-bg: rgba(255, 255, 255, 0.84);
   --fork-worktree-focus-ring: var(--focus-ring);
   --rich-blockquote-color: var(--wuu-color-text-muted, var(--gray-650));

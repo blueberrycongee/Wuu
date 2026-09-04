@@ -60,7 +60,9 @@
   --control-boundary: var(--wuu-color-border-strong, var(--gray-450));
   --slider-thumb-bg: var(--wuu-color-text, var(--gray-900));
   --interaction-accent: var(--wuu-color-accent, #a1bedb);
-  --selection-surface: var(--ink-overlay-18);
+  --selection-surface: var(--wuu-color-surface-elevated, var(--gray-200));
+  --field-bg: var(--wuu-control-field-background, var(--surface-1));
+  --field-hover-bg: var(--wuu-control-field-background, var(--surface-2));
 
   /* Ink overlays flip to white-based veils. */
   --ink-overlay-4: rgba(220, 228, 235, 0.05);
@@ -404,11 +406,11 @@
   --diff-delete-color: var(--wuu-color-danger, #ef6a5e);
   --rich-link-color: var(--wuu-color-link, #60a5fa);
   --rich-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
-  --message-flow-card-bg: var(--wuu-color-surface-elevated, var(--surface-3));
+  --message-flow-card-bg: var(--surface-1);
   --message-flow-card-border: var(--hairline-soft);
   --message-flow-card-divider: var(--hairline-soft);
   --message-flow-card-hover-bg: var(--wuu-color-surface, var(--surface-1));
-  --surface-chip: var(--surface-4);
+  --surface-chip: var(--surface-2);
   --fork-worktree-copy-bg: rgba(38, 42, 46, 0.9);
   --fork-worktree-focus-ring: var(--focus-ring);
   --rich-blockquote-color: var(--wuu-color-text-muted, #a3a9ae);

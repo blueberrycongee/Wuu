@@ -29,7 +29,7 @@
     var(--session-outer-width) - var(--session-outer-padding-inline) -
       var(--session-outer-padding-inline)
   );
-  --session-composer-radius: 22px;
+  --session-composer-radius: var(--radius-md);
 }
 
 /* Shared outer rhythm + 12-col grid for the session views.
