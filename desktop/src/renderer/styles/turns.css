@@ -32,14 +32,19 @@
   /* Cards embedded in assistant prose share one material recipe. Code blocks
    * and turn-output summaries differ in content, not visual hierarchy. One
    * quiet hairline frames all of them so the flow does not grow a second
-   * outline weight. */
-  --message-flow-card-bg: var(--surface-1);
+   * outline weight. The card background deliberately skips --surface-1:
+   * --gray-50 leans warm (B channel below R/G) and reads dirty against the
+   * white message flow, so cards use a lighter, neutral-cool gray. */
+  --message-flow-card-bg: #f8f9fa;
   --message-flow-card-border: var(--hairline-soft);
   --message-flow-card-divider: var(--hairline-soft);
   --message-flow-card-header-bg: var(--message-flow-card-bg);
   --message-flow-card-hover-bg: var(--wuu-color-surface, var(--surface-1));
   --message-flow-card-shadow: var(--shadow-soft);
-  --message-flow-card-radius: var(--radius-md);
+  /* Cards echo the composer dialog's corner radius so the input box and
+   * every card in the message flow read as one rounded material family.
+   * Short single-row cards become capsules at this radius — intentional. */
+  --message-flow-card-radius: var(--session-composer-radius, var(--radius-lg));
   --surface-chip: #E9EAEA;
   --fork-worktree-copy-bg: rgba(255, 255, 255, 0.84);
   --fork-worktree-focus-ring: var(--focus-ring);
@@ -3157,7 +3162,6 @@
   display: flex;
   align-items: center;
   padding: 6px 8px 6px 12px;
-  border-bottom: 1px solid var(--message-flow-card-divider);
   background: var(--message-flow-card-header-bg);
 }
 
