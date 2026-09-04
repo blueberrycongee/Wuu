@@ -18,6 +18,9 @@ export async function activate(api) {
     "automation.next": "Next", "automation.run.completed": "Completed", "automation.run.failed": "Failed",
     "automation.run.running": "Running", "automation.run.queued": "Queued", "automation.run.interrupted": "Interrupted", "automation.run.never": "No runs yet",
     "automation.schedule.daily": "Daily", "automation.schedule.weekdays": "Weekdays", "automation.schedule.weekly": "Weekly",
+    "automation.close": "Close", "automation.group.details": "Details", "automation.group.schedule": "Frequency",
+    "automation.field.target": "Runs in", "automation.field.project": "Project", "automation.field.time": "Time", "automation.field.isolation": "Isolated run",
+    "automation.target.new": "New chat each run", "automation.target.thread": "Existing chat",
     "automation.placeholder.prompt": "e.g. Summarize yesterday's progress at 9am…", "automation.placeholder.schedule": "0 9 * * 1-5",
   }});
   api.registerLocale({ id: "automation-zh", locale: "zh-CN", entries: {
@@ -35,6 +38,9 @@ export async function activate(api) {
     "automation.next": "下次", "automation.run.completed": "已完成", "automation.run.failed": "失败",
     "automation.run.running": "运行中", "automation.run.queued": "排队中", "automation.run.interrupted": "已中断", "automation.run.never": "暂无运行",
     "automation.schedule.daily": "每天", "automation.schedule.weekdays": "工作日", "automation.schedule.weekly": "每周",
+    "automation.close": "关闭", "automation.group.details": "详情", "automation.group.schedule": "频率",
+    "automation.field.target": "运行于", "automation.field.project": "项目", "automation.field.time": "时间", "automation.field.isolation": "隔离运行",
+    "automation.target.new": "每次新会话", "automation.target.thread": "指定会话",
     "automation.placeholder.prompt": "例如：每天早上 9 点整理昨天的进展…", "automation.placeholder.schedule": "0 9 * * 1-5",
   }});
   api.registerStyle({ id: "automation-catalog", css: `
@@ -92,11 +98,12 @@ export async function activate(api) {
     .plugin-automation-item-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--wuu-color-text, var(--ink)); font-size:var(--font-ui,13px); font-weight:var(--weight-semibold,600); line-height:1.4; }
     .plugin-automation-badge { flex:none; padding:1px 8px; border-radius:var(--radius-pill,999px); background:var(--wuu-color-surface-muted, var(--surface-2)); color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:11px; font-weight:var(--weight-medium,500); line-height:1.7; }
     .plugin-automation-item-meta { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); line-height:1.5; }
+    .plugin-automation-item { cursor:pointer; }
+    .plugin-automation-item[data-selected="true"] { background:var(--wuu-color-surface-muted, var(--surface-1)); }
+    .plugin-automation-item:focus-visible { outline:2px solid var(--wuu-color-border-strong, var(--gray-350)); outline-offset:-2px; }
     .plugin-automation-item-side { flex:none; display:flex; align-items:center; gap:10px; }
     .plugin-automation-item-next { color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); white-space:nowrap; }
     .plugin-automation-item-next .plugin-automation-status-label { color:var(--wuu-color-text-muted, var(--ink-faint)); }
-    .plugin-automation-item-actions { display:flex; align-items:center; gap:2px; opacity:0; transition:opacity var(--motion-fast,120ms) ease; }
-    .plugin-automation-item:hover .plugin-automation-item-actions, .plugin-automation-item-actions:focus-within { opacity:1; }
     .plugin-automation-filtered-empty { margin:0; padding:calc(var(--wuu-space-unit,4px) * 8 * var(--wuu-space-density,1)) 0; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-ui,13px); text-align:center; }
 
     /* When nothing is scheduled the empty state owns the page: it fills the
@@ -104,6 +111,35 @@ export async function activate(api) {
     .plugin-automation-empty { min-height:min(52vh, 480px); }
     .plugin-automation-error { color:var(--wuu-color-danger, var(--danger, #b42318)); font-size:var(--font-ui,13px); }
     .plugin-automation-sr { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+    /* With a task selected the page splits in two: the catalog keeps its
+     * column on the left and the detail panel docks at the right edge,
+     * separated by a hairline instead of a card box. */
+    .plugin-automation-body { display:flex; align-items:flex-start; gap:calc(var(--wuu-space-unit,4px) * 8 * var(--wuu-space-density,1)); min-width:0; }
+    .plugin-automation-main { flex:1; min-width:0; }
+    .plugin-automation-detail-backdrop { display:none; }
+    .plugin-automation-detail { flex:none; box-sizing:border-box; width:min(380px, 40cqi); display:flex; flex-direction:column; gap:calc(var(--wuu-space-unit,4px) * 4 * var(--wuu-space-density,1)); border-left:1px solid var(--wuu-color-border-subtle, var(--hairline)); padding-left:calc(var(--wuu-space-unit,4px) * 8 * var(--wuu-space-density,1)); }
+    .plugin-automation-detail-head { display:flex; align-items:center; gap:6px; min-width:0; }
+    .plugin-automation-detail-status { flex:1; min-width:0; display:flex; align-items:center; gap:8px; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); }
+    .plugin-automation-detail-close { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; flex:none; border:0; border-radius:8px; padding:0; background:transparent; color:var(--wuu-color-text-muted, var(--ink-muted)); cursor:pointer; transition:background-color var(--motion-fast,120ms) ease, color var(--motion-fast,120ms) ease; }
+    .plugin-automation-detail-close:hover { background:var(--wuu-color-surface-muted, var(--surface-2)); color:var(--wuu-color-text, var(--ink)); }
+    .plugin-automation-detail-close svg { width:14px; height:14px; }
+    .plugin-automation-detail-title { margin:0; color:var(--wuu-color-text-strong, var(--ink-strong, var(--ink))); font-size:16px; font-weight:var(--weight-semibold,600); line-height:1.35; overflow-wrap:anywhere; }
+    .plugin-automation-detail-prompt { max-height:220px; overflow:auto; border-radius:12px; background:var(--wuu-color-surface-muted, var(--surface-1)); padding:12px 14px; color:var(--wuu-color-text, var(--ink)); font-size:var(--font-ui,13px); line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .plugin-automation-detail-group { display:grid; gap:1px; }
+    .plugin-automation-detail-group-title { margin:0 0 4px; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); font-weight:400; line-height:1.3; }
+    .plugin-automation-detail-row { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:32px; }
+    .plugin-automation-detail-row-label { flex:none; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-ui,13px); }
+    .plugin-automation-detail-row-value { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; color:var(--wuu-color-text, var(--ink)); font-size:var(--font-ui,13px); }
+    .plugin-automation-detail-row .plugin-ui-checkbox { flex:1; min-width:0; min-height:32px; flex-direction:row-reverse; align-items:center; justify-content:space-between; }
+    .plugin-automation-detail-row .plugin-ui-field-label { color:var(--wuu-color-text-muted, var(--ink-muted)); font-weight:400; }
+
+    /* Below 900px the panel leaves the flow and floats over the page as a
+     * right-hand sheet on a dimmed backdrop. */
+    @container (max-width: 899px) {
+      .plugin-automation-detail-backdrop { display:block; position:fixed; inset:0; z-index:60; background:var(--ink-overlay-24, rgba(18,18,18,0.32)); }
+      .plugin-automation-detail { position:fixed; top:0; right:0; bottom:0; z-index:61; width:min(400px, 94vw); overflow:auto; background:var(--wuu-color-canvas, var(--paper, #fff)); padding:calc(var(--wuu-space-unit,4px) * 5 * var(--wuu-space-density,1)); box-shadow:-24px 0 48px var(--ink-overlay-12, rgba(18,18,18,0.14)); }
+    }
 
     @container (max-width: 640px) {
       .plugin-automation-head { flex-direction:column; }
@@ -190,6 +226,11 @@ export async function activate(api) {
       h("path", { d: "m13.5 13.5-3-3", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round" }));
   }
 
+  function CloseIcon() {
+    return h("svg", { viewBox: "0 0 16 16", fill: "none", "aria-hidden": true },
+      h("path", { d: "m4 4 8 8m0-8-8 8", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round" }));
+  }
+
   function Catalog(props) {
     const tr = props.translate;
     const [tasks, setTasks] = React.useState([]);
@@ -201,6 +242,7 @@ export async function activate(api) {
     const [error, setError] = React.useState("");
     const [query, setQuery] = React.useState("");
     const [filter, setFilter] = React.useState("all");
+    const [selectedID, setSelectedID] = React.useState(null);
     const [draft, setDraft] = React.useState({ title: "", prompt: "", schedule: "0 9 * * 1-5", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", mode: "new_thread", recurring: true, workspace: "shared" });
     const refreshEpoch = React.useRef(0);
     const availableWorkspaces = workspaces.filter((candidate) => candidate.available !== false);
@@ -250,6 +292,17 @@ export async function activate(api) {
     }, []);
     React.useEffect(() => { void loadWorkspaces(); }, [loadWorkspaces]);
     React.useEffect(() => { void refresh(selectedWorkspaceID); }, [refresh, selectedWorkspaceID]);
+    // The detail panel follows the task list: a task that disappears (deleted
+    // here or elsewhere, or filtered out by a workspace switch) closes it.
+    React.useEffect(() => {
+      if (selectedID && !tasks.some((task) => task.id === selectedID)) setSelectedID(null);
+    }, [tasks, selectedID]);
+    React.useEffect(() => {
+      if (!selectedID) return undefined;
+      const onKeyDown = (event) => { if (event.key === "Escape") setSelectedID(null); };
+      document.addEventListener("keydown", onKeyDown);
+      return () => document.removeEventListener("keydown", onKeyDown);
+    }, [selectedID]);
     const act = async (method, input) => {
       if (!selectedWorkspace) {
         setError(tr("automation.workspaceNone"));
@@ -285,12 +338,15 @@ export async function activate(api) {
       }
       return true;
     });
+    const selectedTask = tasks.find((task) => task.id === selectedID) || null;
     return h("main", { className: "plugin-automation" }, h(Page, null, h(Stack, { gap: "large" },
       h(Row, { className: "plugin-automation-head" },
         h("div", { className: "plugin-automation-heading" },
           h("h1", { className: "plugin-automation-title" }, tr("automation.title")),
           h("p", { className: "plugin-automation-subtitle" }, tr("automation.subtitle"))),
         h(Button, { className: "plugin-automation-new", variant: "primary", disabled: busy || creating || !selectedWorkspace, onClick: () => setCreating(true) }, tr("automation.new"))),
+      h("div", { className: "plugin-automation-body" },
+        h(Stack, { gap: "large", className: "plugin-automation-main" },
       h(Row, { className: "plugin-automation-toolbar" },
         tasks.length > 0
           ? h("label", { className: "plugin-automation-search" },
@@ -340,7 +396,23 @@ export async function activate(api) {
                 task.workspace_mode === "worktree" ? tr("automation.mode.worktree") : null,
                 shortTimezone(task.timezone),
               ].filter(Boolean).join(" · ");
-              return h("article", { className: "plugin-automation-item", key: task.id, "data-paused": task.paused ? "true" : "false" },
+              const selected = task.id === selectedID;
+              return h("article", {
+                className: "plugin-automation-item",
+                key: task.id,
+                role: "button",
+                tabIndex: 0,
+                "aria-pressed": selected ? "true" : "false",
+                "data-paused": task.paused ? "true" : "false",
+                "data-selected": selected ? "true" : "false",
+                onClick: () => setSelectedID(task.id),
+                onKeyDown: (event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedID(task.id);
+                  }
+                },
+              },
                 h("span", { className: "plugin-automation-item-dot", "data-run": status || undefined, title: status ? tr("automation.run." + status) : tr("automation.run.never") }),
                 h("div", { className: "plugin-automation-item-main" },
                   h("div", { className: "plugin-automation-item-title-row" },
@@ -348,12 +420,57 @@ export async function activate(api) {
                     task.paused ? h("span", { className: "plugin-automation-badge" }, tr("automation.paused")) : null),
                   h("div", { className: "plugin-automation-item-meta", title: task.cron }, meta)),
                 h("div", { className: "plugin-automation-item-side" },
-                  next ? h("span", { className: "plugin-automation-item-next" }, h("span", { className: "plugin-automation-status-label" }, tr("automation.next")), " ", next) : null,
-                  h("div", { className: "plugin-automation-item-actions" },
-                    h(Button, { variant: "ghost", disabled: busy, onClick: () => act("automation.update", { ...task, paused: !task.paused }) }, tr(task.paused ? "automation.resume" : "automation.pause")),
-                    h(Button, { variant: "danger", disabled: busy, onClick: () => act("automation.remove", { id: task.id }) }, tr("automation.remove")))));
+                  next ? h("span", { className: "plugin-automation-item-next" }, h("span", { className: "plugin-automation-status-label" }, tr("automation.next")), " ", next) : null));
             }))
-    )));
+        ),
+        selectedTask ? h(React.Fragment, null,
+          h("div", { className: "plugin-automation-detail-backdrop", onClick: () => setSelectedID(null) }),
+          h("aside", { className: "plugin-automation-detail", "aria-label": selectedTask.title || selectedTask.prompt },
+            h("div", { className: "plugin-automation-detail-head" },
+              h("span", { className: "plugin-automation-detail-status" },
+                h("span", { className: "plugin-automation-item-dot", "data-run": runStatus(lastRunFor(selectedTask)) || undefined }),
+                selectedTask.paused ? tr("automation.paused") : tr("automation.filter.active")),
+              h(Button, { variant: "ghost", disabled: busy, onClick: () => act("automation.update", { ...selectedTask, paused: !selectedTask.paused }) }, tr(selectedTask.paused ? "automation.resume" : "automation.pause")),
+              h(Button, { variant: "danger", disabled: busy, onClick: async () => { if (await act("automation.remove", { id: selectedTask.id })) setSelectedID(null); } }, tr("automation.remove")),
+              h("button", { type: "button", className: "plugin-automation-detail-close", "aria-label": tr("automation.close"), onClick: () => setSelectedID(null) }, h(CloseIcon))),
+            h("h2", { className: "plugin-automation-detail-title" }, selectedTask.title || selectedTask.prompt),
+            h("div", { className: "plugin-automation-detail-prompt" }, selectedTask.prompt),
+            h("section", { className: "plugin-automation-detail-group" },
+              h("h3", { className: "plugin-automation-detail-group-title" }, tr("automation.group.details")),
+              h("div", { className: "plugin-automation-detail-row" },
+                h("span", { className: "plugin-automation-detail-row-label" }, tr("automation.field.target")),
+                h("span", { className: "plugin-automation-detail-row-value" }, selectedTask.mode === "thread_heartbeat" ? tr("automation.target.thread") : tr("automation.target.new"))),
+              h("div", { className: "plugin-automation-detail-row" },
+                h("span", { className: "plugin-automation-detail-row-label" }, tr("automation.field.project")),
+                h("span", { className: "plugin-automation-detail-row-value" }, selectedWorkspace ? selectedWorkspace.name || workspaceName(selectedWorkspace.root) : "—")),
+              h("div", { className: "plugin-automation-detail-row" },
+                h(Checkbox, {
+                  label: tr("automation.field.isolation"),
+                  title: tr("automation.isolationHelp"),
+                  checked: selectedTask.workspace_mode === "worktree",
+                  disabled: busy || selectedTask.mode === "thread_heartbeat",
+                  onChange: (event) => act("automation.update", { ...selectedTask, workspace: event.target.checked ? "worktree" : "shared" }),
+                }))),
+            h("section", { className: "plugin-automation-detail-group" },
+              h("h3", { className: "plugin-automation-detail-group-title" }, tr("automation.group.schedule")),
+              h("div", { className: "plugin-automation-detail-row" },
+                h(Checkbox, {
+                  label: tr("automation.recurring"),
+                  checked: selectedTask.recurring === true,
+                  disabled: busy,
+                  onChange: (event) => act("automation.update", { ...selectedTask, recurring: event.target.checked }),
+                })),
+              h("div", { className: "plugin-automation-detail-row" },
+                h("span", { className: "plugin-automation-detail-row-label" }, tr("automation.field.time")),
+                h("span", { className: "plugin-automation-detail-row-value", title: selectedTask.cron }, describeSchedule(selectedTask.cron, selectedTask.timezone, tr) || selectedTask.cron)),
+              h("div", { className: "plugin-automation-detail-row" },
+                h("span", { className: "plugin-automation-detail-row-label" }, tr("automation.timezone")),
+                h("span", { className: "plugin-automation-detail-row-value" }, selectedTask.timezone || "—")),
+              h("div", { className: "plugin-automation-detail-row" },
+                h("span", { className: "plugin-automation-detail-row-label" }, tr("automation.next")),
+                h("span", { className: "plugin-automation-detail-row-value" }, selectedTask.paused ? "—" : formatDateTime(selectedTask.next_run_at, selectedTask.timezone) || "—")))))
+          : null))
+    ));
   }
 
   api.registerViewType({ id: "automation.catalog", title: "Automations", icon: "clock", defaultRegion: "primary", persistence: "durable", render: (props) => h(Catalog, props) });
