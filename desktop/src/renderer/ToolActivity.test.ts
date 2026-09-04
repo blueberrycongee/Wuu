@@ -265,6 +265,46 @@ describe("readableToolActivityCommand", () => {
 });
 
 describe("buildToolActivityProcessSegments", () => {
+  it("labels fresh-window and history tools by their actual operation", () => {
+    const items = [
+      {
+        id: "new-context",
+        type: "tool_call",
+        name: "new_context",
+        status: "completed",
+        arguments: "{}",
+        display: { capability: "context.window" },
+      },
+      {
+        id: "history-read",
+        type: "tool_call",
+        name: "history_read",
+        status: "completed",
+        arguments: JSON.stringify({ start_seq: 10 }),
+        display: { capability: "context.history" },
+      },
+      {
+        id: "history-search",
+        type: "tool_call",
+        name: "history_search",
+        status: "completed",
+        arguments: JSON.stringify({ query: "decision" }),
+        display: { capability: "context.history" },
+      },
+    ] satisfies ThreadItem[];
+
+    expect(buildToolActivitySections(items).map((section) => section.title)).toEqual([
+      "开启新上下文窗口",
+      "读取会话历史",
+      "搜索会话历史",
+    ]);
+    expect(buildToolActivityProcessSegments(items).map((segment) => segment.text)).toEqual([
+      "开启新上下文窗口",
+      "读取会话历史",
+      "搜索会话历史",
+    ]);
+  });
+
   it("groups Claude Code Bash and Read calls by their actual activity", () => {
     const items = [
       {

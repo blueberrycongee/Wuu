@@ -329,6 +329,15 @@ function displaySectionKey(kind: string | undefined): string | undefined {
 }
 
 function toolActivitySectionKey(item: ThreadItem): string {
+  const name = canonicalToolName((item.name ?? "").trim());
+  switch (name) {
+    case "new_context":
+      return "context-window";
+    case "history_read":
+      return "history-read";
+    case "history_search":
+      return "history-search";
+  }
   const capabilityKey = capabilitySectionKey(item.display?.capability);
   if (capabilityKey) {
     return capabilityKey;
@@ -337,7 +346,6 @@ function toolActivitySectionKey(item: ThreadItem): string {
   if (displayKey) {
     return displayKey;
   }
-  const name = canonicalToolName((item.name ?? "").trim());
   switch (name) {
     case "read_file":
     case "list_files":
@@ -495,8 +503,35 @@ function toolActivitySectionFromItems(
       return {
         id: key,
         kind: "context",
-        title: t("toolActivity.contextDive"),
+        title: t("toolActivity.manageContext"),
         detail: compactDetailText(compactContextAnchors(items)),
+        status: combinedToolStatus(items),
+        commands: toolCommands(items),
+        error: firstToolError(items),
+      };
+    case "context-window":
+      return {
+        id: key,
+        kind: "context",
+        title: t("toolActivity.startNewContext"),
+        status: combinedToolStatus(items),
+        commands: toolCommands(items),
+        error: firstToolError(items),
+      };
+    case "history-read":
+      return {
+        id: key,
+        kind: "context",
+        title: t("toolActivity.readSessionHistory"),
+        status: combinedToolStatus(items),
+        commands: toolCommands(items),
+        error: firstToolError(items),
+      };
+    case "history-search":
+      return {
+        id: key,
+        kind: "context",
+        title: t("toolActivity.searchSessionHistory"),
         status: combinedToolStatus(items),
         commands: toolCommands(items),
         error: firstToolError(items),
@@ -668,7 +703,31 @@ function toolActivityProcessSegmentFromItems(
         kind: "context",
         status,
         error,
-        text: t("toolActivity.contextDive"),
+        text: t("toolActivity.manageContext"),
+      };
+    case "context-window":
+      return {
+        id: key,
+        kind: "context",
+        status,
+        error,
+        text: t("toolActivity.startNewContext"),
+      };
+    case "history-read":
+      return {
+        id: key,
+        kind: "context",
+        status,
+        error,
+        text: t("toolActivity.readSessionHistory"),
+      };
+    case "history-search":
+      return {
+        id: key,
+        kind: "context",
+        status,
+        error,
+        text: t("toolActivity.searchSessionHistory"),
       };
     default: {
       const names = uniqueStrings(
