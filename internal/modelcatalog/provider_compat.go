@@ -121,6 +121,8 @@ func applyOfficialCatalogCorrections(data *catalogData) {
 	for i := range data.Providers {
 		provider := &data.Providers[i]
 		switch normalizeID(provider.ID) {
+		case "openai":
+			applyOpenAIGPT6AstraCatalog(provider)
 		case "deepseek":
 			upsertOfficialModel(provider, Model{
 				ID:               "deepseek-v4-pro",
@@ -189,6 +191,87 @@ func applyOfficialCatalogCorrections(data *catalogData) {
 			})
 		}
 	}
+}
+
+func applyOpenAIGPT6AstraCatalog(provider *Provider) {
+	if provider == nil {
+		return
+	}
+	limit := &Limit{Context: 1_050_000, Input: 922_000, Output: 128_000}
+	modalities := &Modalities{Input: []string{"text", "image"}, Output: []string{"text"}}
+	efforts := []string{"low", "medium", "high", "xhigh", "max"}
+	cost := map[string]any{
+		"input":       10,
+		"cache_read":  1,
+		"cache_write": 12.5,
+		"output":      50,
+		"tiers": []any{
+			map[string]any{
+				"cache_read":  2,
+				"cache_write": 25,
+				"input":       20,
+				"output":      75,
+				"tier": map[string]any{
+					"size": 272000,
+					"type": "context",
+				},
+			},
+		},
+	}
+	fastCost := map[string]any{
+		"input":       20,
+		"cache_read":  2,
+		"cache_write": 25,
+		"output":      100,
+		"tiers": []any{
+			map[string]any{
+				"cache_read":  4,
+				"cache_write": 50,
+				"input":       40,
+				"output":      150,
+				"tier": map[string]any{
+					"size": 272000,
+					"type": "context",
+				},
+			},
+		},
+	}
+	upsertOfficialModel(provider, Model{
+		ID:               "gpt-6-astra",
+		Name:             "GPT-6 Astra",
+		Family:           "gpt-astra",
+		ReleaseDate:      "2026-09-03",
+		Reasoning:        true,
+		ReasoningOptions: officialEffortOptions(false, efforts...),
+		Attachment:       officialBool(true),
+		ToolCall:         officialBool(true),
+		StructuredOutput: officialBool(true),
+		Temperature:      officialBool(false),
+		Modalities:       modalities,
+		Cost:             cost,
+		Limit:            limit,
+		SupportedEfforts: append([]string(nil), efforts...),
+		DefaultVariant:   "low",
+	})
+	upsertOfficialModel(provider, Model{
+		ID:               "gpt-6-astra-fast",
+		APIID:            "gpt-6-astra",
+		Name:             "GPT-6 Astra Fast",
+		Family:           "gpt-astra",
+		ReleaseDate:      "2026-09-03",
+		Reasoning:        true,
+		ReasoningOptions: officialEffortOptions(false, efforts...),
+		Attachment:       officialBool(true),
+		ToolCall:         officialBool(true),
+		StructuredOutput: officialBool(true),
+		Temperature:      officialBool(false),
+		Modalities:       modalities,
+		Cost:             fastCost,
+		Limit:            limit,
+		Options:          map[string]any{"serviceTier": "priority"},
+		SupportedEfforts: append([]string(nil), efforts...),
+		DefaultVariant:   "low",
+	})
 }
 
 func upsertOfficialModel(provider *Provider, correction Model) {

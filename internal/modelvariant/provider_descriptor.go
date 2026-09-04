@@ -120,6 +120,7 @@ func compatReasoningEnabled(desc compatModelDescriptor, configured *bool) bool {
 		return true
 	}
 	if compatGPT5FamilyRE.MatchString(apiID) || compatGPT5FamilyRE.MatchString(id) ||
+		strings.Contains(apiID, "gpt-6") || strings.Contains(id, "gpt-6") ||
 		strings.Contains(apiID, "o1") || strings.Contains(apiID, "o3") || strings.Contains(apiID, "o4") ||
 		strings.Contains(id, "o1") || strings.Contains(id, "o3") || strings.Contains(id, "o4") {
 		return true

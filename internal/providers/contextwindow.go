@@ -136,6 +136,9 @@ var contextWindowRegistry = []contextWindowEntry{
 	{"claude-haiku", 200_000},
 	{"claude", 200_000},
 
+	// --- OpenAI GPT-6 -----------------------------------------------
+	{"gpt-6", 1_050_000},
+
 	// --- OpenAI GPT-5 -----------------------------------------------
 	{"gpt-5", 400_000},
 
@@ -245,6 +248,7 @@ var maxOutputTokensRegistry = []contextWindowEntry{
 	// Generic Claude fallback
 	{"claude", 16_000},
 	// OpenAI
+	{"gpt-6", 128_000},
 	{"gpt-5", 32_000},
 	{"gpt-4o", 16_384},
 	{"gpt-4.1", 32_768},

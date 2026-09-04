@@ -198,6 +198,18 @@ func TestSummariesIncludeMaxForGPT56OpenAIFallback(t *testing.T) {
 	}
 }
 
+func TestSummariesIncludeAstraOpenAIFallback(t *testing.T) {
+	provider := config.ProviderConfig{Type: "openai", Model: "gpt-6-astra"}
+	variants := Summaries(provider, provider.Model)
+	if got := strings.Join(variantIDs(variants), ","); got != "low,medium,high,xhigh,max" {
+		t.Fatalf("variants = %q", got)
+	}
+	options, ok := Options(provider, provider.Model, "low")
+	if !ok || options["reasoningEffort"] != "low" {
+		t.Fatalf("low options = %#v, ok=%v", options, ok)
+	}
+}
+
 func TestSummariesUseDeclaredGPT56OpenAIEfforts(t *testing.T) {
 	reasoning := true
 	provider := config.ProviderConfig{
@@ -1257,6 +1269,22 @@ func TestResolveMatchesProviderCompatForGPT5BaseOptionEdges(t *testing.T) {
 				"include":          []any{"reasoning.encrypted_content"},
 			},
 			wantAbsent: []string{"textVerbosity"},
+		},
+		{
+			name: "openai gpt-6-astra defaults",
+			provider: config.ProviderConfig{
+				Type:  "openai",
+				NPM:   "@ai-sdk/openai",
+				Model: "gpt-6-astra",
+			},
+			want: map[string]any{
+				"store":            false,
+				"reasoningEffort":  "low",
+				"reasoningSummary": "auto",
+				"include":          []any{"reasoning.encrypted_content"},
+				"textVerbosity":    "low",
+			},
+			wantAbsent: []string{"temperature", "topP", "topK"},
 		},
 		{
 			name: "azure gpt-5.5 omits reasoning effort",

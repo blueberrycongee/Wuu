@@ -138,9 +138,13 @@ func BaseOptionsForProvider(providerName string, provider config.ProviderConfig,
 		setOptionDefault(result, "reasoningSummary", "auto")
 		return nilIfEmpty(result)
 	}
-	if strings.Contains(desc.APIID, "gpt-5") && !strings.Contains(desc.APIID, "gpt-5-chat") {
-		if !strings.Contains(desc.APIID, "gpt-5-pro") {
-			setOptionDefault(result, "reasoningEffort", "medium")
+	if gptFamily := compatOpenAIGPTFamily(desc.APIID); gptFamily != 0 && !strings.Contains(desc.APIID, "gpt-5-chat") && !strings.Contains(desc.APIID, "gpt-6-chat") {
+		defaultEffort := "medium"
+		if gptFamily >= 6 {
+			defaultEffort = "low"
+		}
+		if !compatOpenAIGPTProModel(desc.APIID) {
+			setOptionDefault(result, "reasoningEffort", defaultEffort)
 			if desc.APINPM == compatNPMOpenAI || desc.APINPM == compatNPMAzure || desc.APINPM == compatNPMGithubCopilot || desc.APINPM == compatNPMBedrockMantle {
 				setOptionDefault(result, "reasoningSummary", "auto")
 			}
@@ -148,10 +152,10 @@ func BaseOptionsForProvider(providerName string, provider config.ProviderConfig,
 				setOptionDefault(result, "include", []any{"reasoning.encrypted_content"})
 			}
 		}
-		if strings.Contains(desc.APIID, "gpt-5.") &&
-			!strings.Contains(desc.APIID, "codex") &&
+		if !strings.Contains(desc.APIID, "codex") &&
 			!strings.Contains(desc.APIID, "-chat") &&
-			desc.ProviderID != "azure" {
+			desc.ProviderID != "azure" &&
+			(gptFamily >= 6 || strings.Contains(desc.APIID, "gpt-5.")) {
 			setOptionDefault(result, "textVerbosity", "low")
 		}
 		if strings.HasPrefix(desc.ProviderID, "opencode") {
@@ -291,7 +295,7 @@ func inferredOptionsForProvider(providerName string, provider config.ProviderCon
 		efforts := append([]string{}, compatWidelySupportedEfforts()...)
 		if strings.Contains(id, "5.1-codex-max") || strings.Contains(id, "5.2") || strings.Contains(id, "5.3") {
 			efforts = append(efforts, "xhigh")
-		} else if strings.Contains(id, "gpt-5") && desc.ReleaseDate >= compatXHighEffortRelease {
+		} else if (strings.Contains(id, "gpt-5") || strings.Contains(id, "gpt-6")) && desc.ReleaseDate >= compatXHighEffortRelease {
 			efforts = append(efforts, "xhigh")
 		}
 		return compatVariantsFromEfforts(efforts, compatOpenAIProviderVariantOptions)

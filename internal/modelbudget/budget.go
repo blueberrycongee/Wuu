@@ -19,6 +19,10 @@ const (
 
 const CodexSubscriptionGPT5InputCap = 272_000
 
+// CodexSubscriptionGPT6InputCap is the ChatGPT/Codex prompt cap for GPT-6
+// family models. Codex currently advertises the same 272k input ceiling as GPT-5.
+const CodexSubscriptionGPT6InputCap = 272_000
+
 // compactOutputReserveCapTokens caps how much of the prompt ceiling is held
 // back for the response when deriving the compact threshold. Real answers and
 // compact summaries rarely exceed ~20k even when the model's output limit is
@@ -199,10 +203,14 @@ func CodexSubscriptionInputCap(model, providerType string) int {
 	if idx := strings.LastIndex(id, "/"); idx >= 0 {
 		id = id[idx+1:]
 	}
-	if strings.Contains(id, "gpt-5") {
+	switch {
+	case strings.Contains(id, "gpt-6"):
+		return CodexSubscriptionGPT6InputCap
+	case strings.Contains(id, "gpt-5"):
 		return CodexSubscriptionGPT5InputCap
+	default:
+		return 0
 	}
-	return 0
 }
 
 func codexSubscriptionInputCapForModels(model, apiModel, providerType string) int {

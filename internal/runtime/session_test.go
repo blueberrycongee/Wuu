@@ -26,6 +26,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/harness"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/mcp"
+	"github.com/blueberrycongee/wuu/internal/modelbudget"
 	"github.com/blueberrycongee/wuu/internal/modelroles"
 	pluginpkg "github.com/blueberrycongee/wuu/internal/plugin"
 	"github.com/blueberrycongee/wuu/internal/process"
@@ -3033,6 +3034,16 @@ func TestResolveInputWindow_CapsCodexSubscriptionGPT5(t *testing.T) {
 	})
 	if got != codexSubscriptionGPT5InputCap {
 		t.Fatalf("ResolveInputWindow = %d, want %d", got, codexSubscriptionGPT5InputCap)
+	}
+}
+
+func TestResolveInputWindow_CapsCodexSubscriptionGPT6Astra(t *testing.T) {
+	got := ResolveInputWindow("gpt-6-astra", config.ProviderConfig{
+		Type:  "openai-codex",
+		Model: "gpt-6-astra",
+	})
+	if got != modelbudget.CodexSubscriptionGPT6InputCap {
+		t.Fatalf("ResolveInputWindow = %d, want %d", got, modelbudget.CodexSubscriptionGPT6InputCap)
 	}
 }
 

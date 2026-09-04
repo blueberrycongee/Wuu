@@ -172,6 +172,17 @@ func TestResolveAliasUsesAPIModelCodexCap(t *testing.T) {
 	}
 }
 
+func TestEffectiveContextWindowUsesCodexInputCapForGPT6Astra(t *testing.T) {
+	budget := Resolve("gpt-6-astra", config.ProviderConfig{
+		Type:  "openai-codex",
+		Model: "gpt-6-astra",
+	}, 0)
+	got, source := budget.EffectiveContextWindow()
+	if got != CodexSubscriptionGPT6InputCap || source != SourceProviderInputLimit {
+		t.Fatalf("EffectiveContextWindow = %d, %q; want %d, %q", got, source, CodexSubscriptionGPT6InputCap, SourceProviderInputLimit)
+	}
+}
+
 func TestEffectiveContextWindowUsesCodexInputCapWhenModelWindowUnknown(t *testing.T) {
 	budget := Resolve("gpt-5.5", config.ProviderConfig{
 		Type:  "openai-codex",

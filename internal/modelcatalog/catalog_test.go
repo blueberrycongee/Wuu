@@ -174,6 +174,45 @@ func TestCatalogCarriesGPT56FamilyMetadata(t *testing.T) {
 	}
 }
 
+func TestCatalogCarriesGPT6AstraMetadata(t *testing.T) {
+	provider, ok := MatchProvider("openai", config.ProviderConfig{Type: "openai"})
+	if !ok {
+		t.Fatal("expected OpenAI provider match")
+	}
+
+	models := make(map[string]Model, len(provider.Models))
+	for _, model := range provider.Models {
+		models[model.ID] = model
+	}
+	astra, ok := models["gpt-6-astra"]
+	if !ok {
+		t.Fatal("missing gpt-6-astra from OpenAI catalog")
+	}
+	if astra.Name != "GPT-6 Astra" || astra.Family != "gpt-astra" || astra.ReleaseDate != "2026-09-03" {
+		t.Fatalf("unexpected Astra identity: %+v", astra)
+	}
+	if astra.Limit == nil || astra.Limit.Context != 1_050_000 || astra.Limit.Input != 922_000 || astra.Limit.Output != 128_000 {
+		t.Fatalf("unexpected Astra limits: %+v", astra.Limit)
+	}
+	if astra.Temperature == nil || *astra.Temperature {
+		t.Fatalf("Astra should reject temperature: %+v", astra.Temperature)
+	}
+	if got := reasoningEfforts(astra); !equalStrings(got, []string{"low", "medium", "high", "xhigh", "max"}) {
+		t.Fatalf("unexpected Astra efforts: %v", got)
+	}
+	if astra.DefaultVariant != "low" {
+		t.Fatalf("Astra default variant = %q, want low", astra.DefaultVariant)
+	}
+
+	fast, ok := models["gpt-6-astra-fast"]
+	if !ok {
+		t.Fatal("missing gpt-6-astra-fast from OpenAI catalog")
+	}
+	if fast.APIID != "gpt-6-astra" || fast.Options["serviceTier"] != "priority" {
+		t.Fatalf("unexpected Astra Fast metadata: %+v", fast)
+	}
+}
+
 func TestCatalogSnapshotMatchesOpenCodeDefaultVisibleCounts(t *testing.T) {
 	providers, err := Providers()
 	if err != nil {
@@ -199,8 +238,8 @@ func TestCatalogSnapshotMatchesOpenCodeDefaultVisibleCounts(t *testing.T) {
 			}
 		}
 	}
-	if modelCount != 5824 {
-		t.Fatalf("model count = %d, want 5824", modelCount)
+	if modelCount != 5826 {
+		t.Fatalf("model count = %d, want 5826", modelCount)
 	}
 }
 
@@ -314,14 +353,18 @@ func reasoningEfforts(model Model) []string {
 		if option["type"] != "effort" {
 			continue
 		}
-		values, _ := option["values"].([]any)
-		out := make([]string, 0, len(values))
-		for _, value := range values {
-			if effort, ok := value.(string); ok {
-				out = append(out, effort)
+		switch values := option["values"].(type) {
+		case []string:
+			return append([]string(nil), values...)
+		case []any:
+			out := make([]string, 0, len(values))
+			for _, value := range values {
+				if effort, ok := value.(string); ok {
+					out = append(out, effort)
+				}
 			}
+			return out
 		}
-		return out
 	}
 	return nil
 }

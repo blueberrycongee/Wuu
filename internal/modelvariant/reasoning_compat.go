@@ -11,6 +11,9 @@ var (
 	compatGPT5VersionRE      = regexp.MustCompile(`(?:^|/)gpt-5[.-](\d+)(?:[.-]|$)`)
 	compatGPT5ProRE          = regexp.MustCompile(`(?:^|/)gpt-5[.-]?pro(?:[.-]|$)`)
 	compatGPT5VersionedProRE = regexp.MustCompile(`(?:^|/)gpt-5[.-]\d+[.-]pro(?:[.-]|$)`)
+	compatGPT6FamilyRE       = regexp.MustCompile(`(?:^|/)gpt-6(?:$|[.-])`)
+	compatGPT6VersionRE      = regexp.MustCompile(`(?:^|/)gpt-6[.-](\d+)(?:[.-]|$)`)
+	compatGPT6ProRE          = regexp.MustCompile(`(?:^|/)gpt-6[.-]?pro(?:[.-]|$)`)
 	compatAnthropicOpusRE    = regexp.MustCompile(`(?i)opus-(\d+)[.-](\d+)(?:[.@-]|$)|claude-(\d+)[.-](\d+)-opus(?:[.@-]|$)`)
 	compatSAPReasoningRE     = regexp.MustCompile(`\bo[1-9]`)
 )
@@ -52,10 +55,13 @@ func compatReasoningEfforts(apiID, releaseDate string) []string {
 	if efforts, ok := compatGPT5ChatReasoningEfforts(id); ok {
 		return efforts
 	}
-	if compatGPT5ProRE.MatchString(id) {
+	if compatGPT5ProRE.MatchString(id) || compatGPT6ProRE.MatchString(id) {
 		return []string{"high"}
 	}
 	if efforts, ok := compatGPT5CodexReasoningEfforts(id); ok {
+		return efforts
+	}
+	if efforts, ok := compatVersionedGPT6ReasoningEfforts(id); ok {
 		return efforts
 	}
 	if efforts, ok := compatVersionedGPT5ReasoningEfforts(id); ok {
@@ -79,10 +85,13 @@ func compatCompatibleReasoningEfforts(id string) []string {
 	if efforts, ok := compatGPT5ChatReasoningEfforts(apiID); ok {
 		return efforts
 	}
-	if compatGPT5ProRE.MatchString(apiID) {
+	if compatGPT5ProRE.MatchString(apiID) || compatGPT6ProRE.MatchString(apiID) {
 		return []string{"high"}
 	}
 	if efforts, ok := compatGPT5CodexReasoningEfforts(apiID); ok {
+		return efforts
+	}
+	if efforts, ok := compatVersionedGPT6ReasoningEfforts(apiID); ok {
 		return efforts
 	}
 	if efforts, ok := compatVersionedGPT5ReasoningEfforts(apiID); ok {
@@ -101,6 +110,28 @@ func compatGPT5Version(apiID string) int {
 		return 99
 	}
 	return version
+}
+
+func compatGPT6Version(apiID string) int {
+	if !compatGPT6FamilyRE.MatchString(apiID) && !strings.Contains(strings.ToLower(apiID), "gpt-6") {
+		return 0
+	}
+	match := compatGPT6VersionRE.FindStringSubmatch(apiID)
+	if len(match) != 2 {
+		return 1
+	}
+	version, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 99
+	}
+	return version
+}
+
+func compatVersionedGPT6ReasoningEfforts(apiID string) ([]string, bool) {
+	if compatGPT6Version(apiID) == 0 {
+		return nil, false
+	}
+	return []string{"low", "medium", "high", "xhigh", "max"}, true
 }
 
 func compatVersionedGPT5ReasoningEfforts(apiID string) ([]string, bool) {
@@ -182,4 +213,20 @@ func compatVersionNumber(value string) int {
 		return 0
 	}
 	return version
+}
+
+func compatOpenAIGPTFamily(apiID string) int {
+	id := strings.ToLower(apiID)
+	if strings.Contains(id, "gpt-6") {
+		return 6
+	}
+	if compatGPT5FamilyRE.MatchString(id) || strings.Contains(id, "gpt-5") {
+		return 5
+	}
+	return 0
+}
+
+func compatOpenAIGPTProModel(apiID string) bool {
+	id := strings.ToLower(apiID)
+	return compatGPT5ProRE.MatchString(id) || compatGPT6ProRE.MatchString(id)
 }
