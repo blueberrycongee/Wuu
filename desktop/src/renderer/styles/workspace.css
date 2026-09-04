@@ -4757,50 +4757,57 @@ html.resizing-workspace-terminal-split * {
   padding: 6px;
 }
 
-.runtime-agent-section {
-  flex: 0 0 auto;
-  margin: 0 -6px 6px;
-  padding: 2px 8px 9px;
-  border-bottom: 1px solid var(--menu-border);
-}
-
-.runtime-agent-heading {
-  padding: 2px 2px 7px;
-}
-
-.runtime-agent-options {
-  display: grid;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
+.runtime-engine-options {
+  display: flex;
   gap: 2px;
-  padding: 2px;
-  border-radius: calc(var(--radius-sm) + 2px);
-  background: var(--ink-overlay-6);
 }
 
-.codex-runtime-menu .runtime-agent-option {
-  height: 32px;
-  justify-content: center;
+.codex-runtime-menu .runtime-engine-option {
+  position: relative;
+  width: auto;
+  height: 38px;
+  min-width: 0;
+  align-items: center;
+  flex: 0 1 auto;
   border-radius: var(--radius-sm);
   color: var(--ink-secondary);
-  font-size: var(--font-sm);
-  padding: 0 8px;
-  text-align: center;
+  padding: 0 10px;
+  text-align: left;
 }
 
-.codex-runtime-menu .runtime-agent-option[aria-checked="true"] {
-  background: var(--menu-bg);
-  box-shadow: 0 1px 3px var(--shadow-color-medium);
+.codex-runtime-menu .runtime-engine-option[aria-checked="true"] {
+  background: var(--ink-overlay-5);
   color: var(--ink);
+}
+
+.codex-runtime-menu .runtime-engine-option:hover:not(:disabled) {
+  background: var(--menu-hover);
+}
+
+.codex-runtime-menu .runtime-engine-option:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.codex-runtime-menu .runtime-engine-option:disabled:not([aria-checked="true"]) {
+  opacity: 0.52;
+}
+
+.runtime-engine-option .runtime-engine-option-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font-size: var(--font-sm);
   font-weight: var(--weight-semibold);
 }
 
-.codex-runtime-menu .runtime-agent-option:hover:not(:disabled) {
-  background: var(--menu-bg);
-}
-
-.codex-runtime-menu .runtime-agent-option:disabled:not([aria-checked="true"]) {
-  opacity: 0.5;
+.runtime-engine-option > svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
 }
 
 .codex-model-menu .select-menu-search {
@@ -4818,188 +4825,89 @@ html.resizing-workspace-terminal-split * {
   padding-bottom: 2px;
 }
 
-.codex-model-group-label {
-  padding: 8px 9px 4px;
-}
-
 .codex-model-item[aria-checked="true"] {
   background: var(--menu-hover);
 }
 
-/* ---- reasoning-effort slider (fixed footer of the model panel) -------- */
-
-.codex-effort-section {
-  flex: 0 0 auto;
-  margin: 6px -6px -6px;
-  padding: 10px 15px 12px;
-  border-top: 1px solid var(--menu-border);
-  background: var(--menu-bg);
-}
-
-.codex-effort-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 0 0 6px;
-}
-
-.codex-effort-current {
-  color: var(--ink);
-  font-weight: var(--weight-semibold);
-}
-
-/* The capsule: a chunky pill with a small dot at each discrete stop. The
-   inked fill ends at the current level, and an oversized paper pearl sits on
-   the current stop —
-   taller than the capsule itself, so the control reads as draggable at a
-   glance. The pill itself carries no level text: the heading above
-   live-shows the current level while dragging. */
-.codex-effort-capsule {
+.codex-effort-slider {
   position: relative;
-  height: 22px;
-  margin: 5px 15px 0 0;
-  border-radius: 999px;
-  background: var(--ink-overlay-6);
+  height: 24px;
 }
 
-.codex-effort-capsule:focus-within {
-  box-shadow: 0 0 0 2px var(--focus-ring);
-}
-
-.codex-effort-capsule-fill {
+.codex-effort-track,
+.codex-effort-fill {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 10px;
   left: 0;
-  width: var(--effort-slider-fill, 0%);
+  height: 4px;
   border-radius: 999px;
-  background: var(--ink);
-  transition: width var(--motion-fast) var(--menu-enter-easing);
+}
+
+.codex-effort-track {
+  right: 0;
+  background: var(--ink-overlay-8);
+}
+
+.codex-effort-fill {
+  width: var(--effort-progress);
+  background: var(--ink-secondary);
 }
 
 .codex-effort-stops {
   position: absolute;
-  inset: 0;
+  top: 10px;
+  right: 0;
+  left: 0;
+  display: flex;
+  justify-content: space-between;
   pointer-events: none;
 }
 
-.codex-effort-stop {
-  position: absolute;
-  top: 50%;
+.codex-effort-stops > span {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--paper);
-  box-shadow: 0 0 0 1px var(--ink-overlay-12);
-  transform: translate(-50%, -50%);
+  background: var(--ink-tertiary);
 }
 
-/* The drag affordance: a paper pearl on the current stop, overhanging
-   the capsule top and bottom. */
-.codex-effort-knob {
+.codex-effort-stops > span.is-filled {
+  background: var(--ink-secondary);
+}
+
+.codex-effort-slider input[type="range"] {
   position: absolute;
-  z-index: 2;
-  top: 50%;
-  left: var(--effort-slider-pos, 0%);
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--menu-border);
-  border-radius: 50%;
-  background: var(--paper);
-  box-shadow:
-    0 1px 4px var(--ink-overlay-18),
-    0 0 0 0.5px var(--ink-overlay-6);
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  transition:
-    left var(--motion-fast) var(--menu-enter-easing),
-    scale var(--motion-fast) var(--menu-enter-easing);
-}
-
-.codex-effort-capsule:active .codex-effort-knob {
-  scale: 1.08;
-}
-
-/* Reserved for the top level: a slow band of light sweeping the fill, so
-   "max" reads as charged rather than just fully filled. */
-.codex-effort-capsule-sheen {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  overflow: hidden;
-  border-radius: 999px;
-  pointer-events: none;
-}
-
-.codex-effort-capsule-sheen::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 45%;
-  background: linear-gradient(
-    100deg,
-    transparent 0%,
-    var(--codex-effort-sheen-soft) 30%,
-    var(--codex-effort-sheen) 50%,
-    var(--codex-effort-sheen-soft) 70%,
-    transparent 100%
-  );
-  animation: codex-effort-max-sheen 3.4s ease-in-out infinite;
-}
-
-@keyframes codex-effort-max-sheen {
-  0% {
-    transform: translateX(-110%);
-  }
-  55%,
-  100% {
-    transform: translateX(260%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .codex-effort-capsule-sheen::before {
-    animation: none;
-  }
-}
-
-/* The real control, stretched over the capsule: invisible but fully
-   interactive, so pointer drags, clicks and arrow keys all land here. */
-.codex-effort-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  position: absolute;
-  z-index: 3;
   inset: 0;
   width: 100%;
-  height: 100%;
-  margin: 0;
-  background: transparent;
-  cursor: grab;
-  opacity: 0;
-}
-
-.codex-effort-slider:active {
-  cursor: grabbing;
-}
-
-.codex-effort-slider:focus-visible {
-  outline: 0;
-}
-
-.codex-effort-slider::-webkit-slider-runnable-track {
-  height: 100%;
-  background: transparent;
-}
-
-.codex-effort-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
+  height: 24px;
   appearance: none;
-  width: 24px;
-  height: 100%;
+  border: 0;
   background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+
+.codex-effort-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+}
+
+.codex-effort-slider input[type="range"]::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  appearance: none;
+  border: 1px solid var(--menu-border);
+  border-radius: 50%;
+  background: var(--menu-bg);
+  box-shadow: 0 1px 4px var(--shadow-color-medium);
+  margin-top: -6px;
+}
+
+.codex-effort-slider input[type="range"]:focus-visible {
+  outline: none;
+}
+
+.codex-effort-slider input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 1px var(--menu-bg), 0 0 0 3px var(--focus-ring);
 }
 
 .hero-composer-wrap .codex-runtime-menu {
@@ -5048,6 +4956,284 @@ html.resizing-workspace-terminal-split * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Runtime choice is a compact overview with drill-in pages, not a settings
+   form. The fixed page heights let the popover morph in place while each new
+   level enters on the same horizontal axis. */
+.codex-model-menu.runtime-panel {
+  position: relative;
+  display: block;
+  width: min(320px, calc(100vw - 16px));
+  height: 88px;
+  max-height: min(
+    var(--floating-menu-available-height, 999px),
+    320px,
+    calc(100vh - 180px)
+  );
+  overflow: hidden;
+  padding: 0;
+  border-color: color-mix(in srgb, var(--menu-border) 72%, transparent);
+  box-shadow: 0 8px 24px var(--shadow-color-subtle), 0 1px 2px var(--shadow-color-subtle);
+  transition: height 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.codex-model-menu.runtime-panel.is-summary:has(.codex-effort-slider) {
+  height: 126px;
+}
+
+.codex-model-menu.runtime-panel.is-engines,
+.codex-model-menu.runtime-panel.is-providers {
+  height: min(
+    var(--runtime-chooser-height, 194px),
+    var(--floating-menu-available-height, 320px),
+    calc(100vh - 180px)
+  );
+}
+
+.codex-model-menu.runtime-panel.is-models {
+  height: min(
+    var(--floating-menu-available-height, 999px),
+    320px,
+    calc(100vh - 180px)
+  );
+}
+
+.runtime-panel-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  will-change: opacity, transform;
+}
+
+.runtime-panel-page.is-forward {
+  animation: runtime-panel-forward 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.runtime-panel-page.is-back {
+  animation: runtime-panel-back 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes runtime-panel-forward {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes runtime-panel-back {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.runtime-panel-summary {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  padding: 8px 10px 10px;
+}
+
+.runtime-panel-context {
+  display: flex;
+  min-width: 0;
+  height: 22px;
+  align-items: center;
+  gap: 1px;
+  color: var(--ink-muted);
+}
+
+.codex-runtime-menu .runtime-panel-context button {
+  width: auto;
+  height: 22px;
+  flex: 0 1 auto;
+  gap: 3px;
+  padding: 0 3px;
+  color: var(--ink-tertiary);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+}
+
+.runtime-panel-context button > svg {
+  width: 11px;
+  height: 11px;
+  color: var(--ink-tertiary);
+}
+
+.runtime-panel-context-separator {
+  flex: 0 0 auto;
+  padding: 0 1px;
+  color: var(--ink-muted);
+}
+
+.codex-runtime-menu .runtime-panel-model {
+  height: 38px;
+  gap: 7px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: var(--weight-medium);
+}
+
+.runtime-panel-model-name {
+  flex: 1 1 auto !important;
+}
+
+.runtime-panel-effort-value {
+  flex: 0 0 auto !important;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+}
+
+.runtime-panel-model > svg:last-child {
+  color: var(--ink-tertiary);
+}
+
+.runtime-panel-header {
+  position: relative;
+  display: flex;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 40px;
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+}
+
+.codex-runtime-menu .runtime-panel-back {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+  padding: 0;
+  color: var(--ink-secondary);
+}
+
+.codex-model-menu.runtime-panel .select-menu-search {
+  height: 32px;
+  margin: 0 8px 5px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--ink-overlay-4);
+}
+
+.runtime-panel-list,
+.runtime-panel .codex-model-groups {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 1px 5px 7px;
+}
+
+.runtime-panel .runtime-engine-options,
+.runtime-provider-options {
+  display: grid;
+  align-content: start;
+  grid-auto-rows: 36px;
+  gap: 1px;
+}
+
+.codex-runtime-menu .runtime-engine-option,
+.codex-runtime-menu .runtime-provider-option,
+.runtime-panel .codex-model-item {
+  width: 100%;
+  height: 36px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+}
+
+.codex-runtime-menu .runtime-engine-option[aria-checked="true"],
+.codex-runtime-menu .runtime-provider-option[aria-checked="true"],
+.runtime-panel .codex-model-item[aria-checked="true"] {
+  background: var(--ink-overlay-5);
+}
+
+.runtime-panel .runtime-engine-option[aria-checked="true"] > svg,
+.runtime-panel .runtime-provider-option[aria-checked="true"] > svg,
+.runtime-panel .codex-model-item[aria-checked="true"] > svg {
+  color: var(--ink-secondary);
+}
+
+.runtime-panel .codex-model-group {
+  display: grid;
+  gap: 1px;
+}
+
+.runtime-panel .codex-effort-slider {
+  position: relative;
+  height: 30px;
+  flex: 0 0 auto;
+  margin: 4px 4px 0;
+  background: transparent;
+}
+
+.runtime-panel .codex-effort-slider.is-disabled {
+  opacity: 0.45;
+}
+
+.runtime-panel .codex-effort-track {
+  top: 3px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--ink-overlay-5);
+}
+
+.runtime-panel .codex-effort-fill {
+  top: 3px;
+  width: var(--effort-progress);
+  height: 24px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--wuu-accent) 88%, var(--menu-bg));
+}
+
+.runtime-panel .codex-effort-stops {
+  top: 13px;
+  right: 14px;
+  left: 14px;
+}
+
+.runtime-panel .codex-effort-stops > span {
+  width: 3px;
+  height: 3px;
+  background: var(--ink-overlay-18);
+}
+
+.runtime-panel .codex-effort-stops > span.is-filled {
+  background: color-mix(in srgb, var(--ink-on-accent) 45%, transparent);
+}
+
+.runtime-panel .codex-effort-slider input[type="range"] {
+  height: 30px;
+}
+
+.runtime-panel .codex-effort-slider input[type="range"]::-webkit-slider-thumb {
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--menu-border) 78%, transparent);
+  background: var(--menu-bg);
+  box-shadow: 0 2px 5px var(--shadow-color-medium), 0 1px 1px var(--shadow-color-subtle);
+  margin-top: -12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-model-menu.runtime-panel {
+    transition: none;
+  }
+
+  .runtime-panel-page.is-forward,
+  .runtime-panel-page.is-back {
+    animation: none;
+  }
 }
 
 .scroll-region {

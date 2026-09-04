@@ -1,4 +1,4 @@
-import { act, createRef } from "react";
+import { act, createRef, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InitializeResult } from "../shared/protocol";
@@ -31,7 +31,18 @@ describe("RuntimePicker", () => {
     onToggleMenu = vi.fn(),
     onSelectEffort = vi.fn(),
     onSelectModel = vi.fn(),
-    anchorRef = createRef<HTMLDivElement>()
+    anchorRef = createRef<HTMLDivElement>(),
+    engineProps: Pick<
+      ComponentProps<typeof RuntimePicker>,
+      | "engines"
+      | "activeEngine"
+      | "engineLocked"
+      | "engineModel"
+      | "engineEffort"
+      | "onSelectEngine"
+      | "onSelectEngineModel"
+      | "onSelectEngineEffort"
+    > = {}
   ): void {
     act(() => {
       root ??= createRoot(container);
@@ -46,6 +57,7 @@ describe("RuntimePicker", () => {
           onToggleMenu={onToggleMenu}
           onSelectModel={onSelectModel}
           onSelectEffort={onSelectEffort}
+          {...engineProps}
         />
       );
     });
@@ -89,7 +101,7 @@ describe("RuntimePicker", () => {
     expect(onToggleMenu).toHaveBeenCalledWith("model");
   });
 
-  it("opens the model panel directly with search, provider groups, and the effort slider", () => {
+  it("opens as a compact summary and drills into the model list", () => {
     renderPicker("model", runtimeWithEffort());
 
     const menu = document.querySelector<HTMLElement>(".codex-model-menu");
@@ -97,37 +109,106 @@ describe("RuntimePicker", () => {
     // The intermediate main menu is gone.
     expect(document.querySelector(".codex-main-menu")).toBeNull();
 
-    const search = menu?.querySelector<HTMLInputElement>(".select-menu-search input");
-    expect(search).not.toBeNull();
-    expect(search?.placeholder).toBe("搜索模型");
+    expect(menu?.classList.contains("is-summary")).toBe(true);
+    expect(menu?.textContent).toContain("Wuu");
+    expect(menu?.textContent).toContain("work");
+    expect(menu?.textContent).toContain("Claude Sonnet");
+    expect(menu?.textContent).toContain("Medium");
+    expect(menu?.querySelector(".select-menu-search input")).toBeNull();
+    const effortSlider = menu?.querySelector<HTMLInputElement>('.codex-effort-slider input[type="range"]');
+    expect(effortSlider?.value).toBe("2");
+    expect(effortSlider?.getAttribute("aria-valuetext")).toBe("Medium");
+    expect(menu?.querySelector(".codex-effort-slider")?.textContent).toBe("");
 
-    const groupLabels = Array.from(menu?.querySelectorAll<HTMLElement>(".codex-model-group-label") ?? []);
-    expect(groupLabels.map((label) => label.textContent)).toEqual(["work"]);
+    act(() => menu?.querySelector<HTMLButtonElement>(".runtime-panel-model")?.click());
+
+    const search = menu?.querySelector<HTMLInputElement>(".select-menu-search input");
+    expect(search?.placeholder).toBe("搜索模型");
     const modelItems = Array.from(menu?.querySelectorAll<HTMLButtonElement>(".codex-model-item") ?? []);
     expect(modelItems.map((item) => item.textContent?.trim())).toEqual(["Claude Sonnet"]);
     expect(modelItems[0]?.getAttribute("aria-checked")).toBe("true");
+  });
 
-    const slider = menu?.querySelector<HTMLInputElement>(".codex-effort-slider");
-    expect(slider?.type).toBe("range");
-    expect(slider?.min).toBe("0");
-    expect(slider?.max).toBe("3");
-    expect(slider?.value).toBe("2");
-    expect(menu?.textContent).toContain("Medium");
+  it("presents engines as the parent navigation for the selected engine's models", () => {
+    const onSelectEngine = vi.fn();
+    renderPicker(
+      "model",
+      runtimeWithEffort(),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      createRef<HTMLDivElement>(),
+      {
+        engines: [
+          { id: "wuu", enabled: true, binary_ok: true },
+          {
+            id: "codex",
+            enabled: true,
+            binary_ok: true,
+            models: [
+              {
+                id: "gpt-5.6-sol",
+                display_name: "GPT-5.6-Sol",
+                supported_efforts: ["low", "medium", "high"]
+              }
+            ]
+          }
+        ],
+        activeEngine: "codex",
+        engineModel: "gpt-5.6-sol",
+        engineEffort: "low",
+        onSelectEngine,
+        onSelectEngineModel: vi.fn(),
+        onSelectEngineEffort: vi.fn()
+      }
+    );
 
-    // The capsule is a bare pill: no level text on it — the heading above
-    // live-shows the current level, and small dots mark the available stops.
-    expect(menu?.querySelector(".codex-effort-marks")).toBeNull();
-    expect(menu?.querySelector(".codex-effort-mark")).toBeNull();
-    expect(menu?.querySelector(".codex-effort-current")?.textContent).toBe("Medium");
-    expect(menu?.querySelectorAll(".codex-effort-stop")).toHaveLength(3);
-    const wrap = menu?.querySelector<HTMLElement>(".codex-effort-slider-wrap");
-    expect(wrap?.style.getPropertyValue("--effort-slider-fill")).toBe("75%");
-    expect(wrap?.style.getPropertyValue("--effort-slider-pos")).toBe("75%");
-    // The drag pearl sits on the current stop; mid-scale is not charged.
-    const capsule = menu?.querySelector<HTMLElement>(".codex-effort-capsule");
-    expect(capsule?.querySelector(".codex-effort-knob")).not.toBeNull();
-    expect(capsule?.classList.contains("maxed")).toBe(false);
-    expect(capsule?.querySelector(".codex-effort-capsule-sheen")).toBeNull();
+    const engineContext = Array.from(document.querySelectorAll<HTMLButtonElement>(".runtime-panel-context button"))
+      .find((button) => button.textContent?.includes("Codex"));
+    act(() => engineContext?.click());
+    const engineRail = document.querySelector<HTMLElement>('.runtime-engine-options[role="group"]');
+    expect(engineRail?.getAttribute("aria-label")).toBe("运行引擎");
+    expect(engineRail?.textContent).not.toContain("Agent");
+    const engineChoices = Array.from(
+      engineRail?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []
+    );
+    expect(engineChoices.map((choice) => choice.querySelector(".runtime-engine-option-name")?.textContent)).toEqual([
+      "Wuu",
+      "Codex"
+    ]);
+    expect(engineChoices[1]?.getAttribute("aria-checked")).toBe("true");
+    act(() => engineChoices[0]?.click());
+    expect(onSelectEngine).toHaveBeenCalledWith("wuu");
+  });
+
+  it("keeps every engine visible when the current conversation locks engine switching", () => {
+    renderPicker(
+      "model",
+      runtimeWithEffort(),
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      createRef<HTMLDivElement>(),
+      {
+        engines: [
+          { id: "wuu", enabled: true, binary_ok: true },
+          { id: "codex", enabled: true, binary_ok: true }
+        ],
+        activeEngine: "codex",
+        engineLocked: true
+      }
+    );
+
+    const engineContext = document.querySelector<HTMLButtonElement>(".runtime-panel-context button");
+    act(() => engineContext?.click());
+    const choices = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".runtime-engine-option")
+    );
+    expect(choices.map((choice) => choice.querySelector(".runtime-engine-option-name")?.textContent)).toEqual([
+      "Wuu",
+      "Codex"
+    ]);
+    expect(choices.every((choice) => choice.disabled)).toBe(true);
   });
 
   it("builds permission labels in the active language", () => {
@@ -154,7 +235,7 @@ describe("RuntimePicker", () => {
     },
   );
 
-  it("hides the effort slider when the model does not expose reasoning levels", () => {
+  it("hides effort choices when the model does not expose reasoning levels", () => {
     const initialized = runtimeWithEffort();
     initialized.variant = "";
     initialized.providers![0].models = [{ id: "claude-sonnet", display_name: "Claude Sonnet" }];
@@ -162,6 +243,7 @@ describe("RuntimePicker", () => {
     renderPicker("model", initialized);
 
     expect(document.querySelector(".codex-effort-slider")).toBeNull();
+    act(() => document.querySelector<HTMLButtonElement>(".runtime-panel-model")?.click());
     const menu = document.querySelector<HTMLElement>(".codex-model-menu");
     expect(menu?.querySelectorAll(".codex-model-item")).toHaveLength(1);
   });
@@ -173,6 +255,8 @@ describe("RuntimePicker", () => {
       { id: "claude-opus", display_name: "Claude Opus", supported_efforts: ["low", "medium", "high"] }
     ];
     renderPicker("model", initialized);
+
+    act(() => document.querySelector<HTMLButtonElement>(".runtime-panel-model")?.click());
 
     const search = document.querySelector<HTMLInputElement>(".select-menu-search input")!;
     const setSearchValue = (value: string): void => {
@@ -192,28 +276,64 @@ describe("RuntimePicker", () => {
     expect(document.querySelector(".composer-menu-empty")?.textContent).toBe("没有匹配的模型");
   });
 
-  it("previews the dragged effort in the heading and commits once on release", () => {
+  it("makes every Wuu provider directly selectable without burying its models in one long list", () => {
+    const initialized = runtimeWithEffort();
+    initialized.provider = "tokenhub";
+    initialized.model = "gpt-5.6-sol";
+    initialized.providers = [
+      {
+        name: "deepseek",
+        type: "openai-compatible",
+        model: "deepseek-chat",
+        models: [{ id: "deepseek-chat", display_name: "DeepSeek Chat" }]
+      },
+      {
+        name: "tokenhub",
+        type: "openai-compatible",
+        model: "gpt-5.6-sol",
+        models: [
+          { id: "gpt-5.6-sol", display_name: "GPT-5.6 Sol" },
+          { id: "gpt-5.6-terra", display_name: "GPT-5.6 Terra" },
+          { id: "gpt-5.6-luna", display_name: "GPT-5.6 Luna" }
+        ]
+      }
+    ];
+
+    renderPicker("model", initialized);
+
+    const providerContext = Array.from(document.querySelectorAll<HTMLButtonElement>(".runtime-panel-context button"))
+      .find((button) => button.textContent?.includes("tokenhub"));
+    act(() => providerContext?.click());
+
+    const providerOptions = Array.from(document.querySelectorAll<HTMLButtonElement>(".runtime-provider-option"));
+    expect(providerOptions.map((option) => option.textContent?.trim())).toEqual(["deepseek", "tokenhub"]);
+    expect(providerOptions[1]?.getAttribute("aria-checked")).toBe("true");
+
+    act(() => providerOptions[0]?.click());
+    expect(document.querySelector(".runtime-panel-context")?.textContent).toContain("deepseek");
+    act(() => document.querySelector<HTMLButtonElement>(".runtime-panel-model")?.click());
+    expect(document.querySelector(".codex-model-item-name")?.textContent).toBe("DeepSeek Chat");
+  });
+
+  it("selects a discrete effort by dragging the unlabeled slider", () => {
     const onSelectEffort = vi.fn();
     renderPicker("model", runtimeWithEffort(), vi.fn(), onSelectEffort);
 
-    const slider = document.querySelector<HTMLInputElement>(".codex-effort-slider")!;
+    const slider = document.querySelector<HTMLInputElement>('.codex-effort-slider input[type="range"]')!;
     act(() => {
-      const valueSetter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "value",
-      )?.set;
-      valueSetter?.call(slider, "3");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(slider, "3");
       slider.dispatchEvent(new Event("input", { bubbles: true }));
-      slider.dispatchEvent(new Event("pointerup", { bubbles: true }));
     });
+
+    expect(document.querySelector(".runtime-panel-effort-value")?.textContent).toBe("High");
+    expect(onSelectEffort).not.toHaveBeenCalled();
+
+    act(() => slider.dispatchEvent(new Event("pointerup", { bubbles: true })));
 
     expect(onSelectEffort).toHaveBeenCalledTimes(1);
     expect(onSelectEffort).toHaveBeenCalledWith("high");
-    expect(document.querySelector(".codex-effort-current")?.textContent).toBe("High");
-    // Landing on the top level switches on the charged state.
-    const capsule = document.querySelector(".codex-effort-capsule");
-    expect(capsule?.classList.contains("maxed")).toBe(true);
-    expect(capsule?.querySelector(".codex-effort-capsule-sheen")).not.toBeNull();
+    expect(slider.value).toBe("3");
+    expect(slider.getAttribute("aria-valuetext")).toBe("High");
   });
 
   it("flips the model menu below the trigger when the window top has too little room", () => {
@@ -238,7 +358,7 @@ describe("RuntimePicker", () => {
       '[data-floating-menu-owner="codex-runtime"]'
     );
     expect(layer?.classList.contains("floating-menu-below")).toBe(true);
-    expect(layer?.style.left).toBe("620px");
+    expect(layer?.style.left).toBe("560px");
     expect(layer?.style.top).toBe("78px");
     expect(layer?.style.bottom).toBe("");
     expect(layer?.style.getPropertyValue("--floating-menu-available-height")).toBe(
@@ -269,6 +389,8 @@ describe("RuntimePicker", () => {
 
     renderPicker("model", initialized, vi.fn(), vi.fn(), onSelectModel);
 
+    act(() => document.querySelector<HTMLButtonElement>(".runtime-panel-model")?.click());
+
     const choices = Array.from(
       document.querySelectorAll<HTMLButtonElement>(".codex-model-menu .codex-model-item")
     );
@@ -276,10 +398,10 @@ describe("RuntimePicker", () => {
     act(() => modelB?.click());
 
     expect(onSelectModel).toHaveBeenCalledWith("work", "model-b", "medium");
-    // Optimistic in-panel state: the clicked row highlights and the slider
-    // snaps to the target model's default before the stream round-trip.
-    expect(modelB.getAttribute("aria-checked")).toBe("true");
-    const slider = document.querySelector<HTMLInputElement>(".codex-effort-slider");
-    expect(slider?.value).toBe("1");
+    // The picker returns to the compact summary and previews the target
+    // model's own default before the stream round-trip.
+    expect(document.querySelector(".runtime-panel-model-name")?.textContent).toBe("Model B");
+    const selectedEffort = document.querySelector<HTMLInputElement>('.codex-effort-slider input[type="range"]');
+    expect(selectedEffort?.getAttribute("aria-valuetext")).toBe("Medium");
   });
 });

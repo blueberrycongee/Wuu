@@ -1250,6 +1250,9 @@ export function App(): JSX.Element {
     model: "",
     effort: "",
   });
+  // Switching the parent engine in the picker must not discard that engine's
+  // child model/effort choice when the user switches back within the draft.
+  const draftEngineRuntimeByID = useRef<Record<string, EngineRuntimeSelection>>({});
   const [draftPermissionMode, setDraftPermissionMode] = useState<PermissionMode | "">("");
   const draftEngineSeed = useRef<{ threadID?: string; done: boolean }>({
     threadID: activeThreadID,
@@ -1277,18 +1280,24 @@ export function App(): JSX.Element {
     draftEngineSeed.current.done = true;
     setDraftEngine(remembered.engine);
     setDraftEngineRuntime({ model: remembered.model, effort: remembered.effort });
+    draftEngineRuntimeByID.current[remembered.engine] = {
+      model: remembered.model,
+      effort: remembered.effort,
+    };
     setDraftPermissionMode(remembered.engine === "wuu" ? "" : "unconfined");
   }, [activeThreadID, engineInventory]);
   const selectDraftEngine = useCallback((id: string) => {
-    const runtime = id === "wuu"
-      ? { model: "", effort: "" }
-      : defaultEngineRuntimeSelection(
-          engineInventory?.engines.find((engine) => engine.id === id),
-        );
+    const runtime = draftEngineRuntimeByID.current[id]
+      ?? (id === "wuu"
+        ? { model: "", effort: "" }
+        : defaultEngineRuntimeSelection(
+            engineInventory?.engines.find((engine) => engine.id === id),
+          ));
     draftEngineSeed.current.done = true;
     setDraftEngine(id);
     setDraftPermissionMode(id === "wuu" ? "" : "unconfined");
     setDraftEngineRuntime(runtime);
+    draftEngineRuntimeByID.current[id] = runtime;
     writeDraftEngineMemory({ engine: id, ...runtime });
   }, [engineInventory]);
   useEffect(() => {
@@ -2881,7 +2890,9 @@ export function App(): JSX.Element {
         engineEffort={effectiveEngineRuntime.effort}
         onSelectEngine={selectDraftEngine}
         onSelectEngineModel={(model, effort) => {
-          setDraftEngineRuntime({ model, effort });
+          const runtime = { model, effort };
+          setDraftEngineRuntime(runtime);
+          draftEngineRuntimeByID.current[effectiveEngine] = runtime;
           // Only a new conversation writes the memory: for an existing thread
           // the engine is already bound and the picker is locked.
           if (!activeThread) {
@@ -2889,7 +2900,11 @@ export function App(): JSX.Element {
           }
         }}
         onSelectEngineEffort={(effort) => {
-          setDraftEngineRuntime((current) => ({ ...current, effort }));
+          setDraftEngineRuntime((current) => {
+            const runtime = { ...current, effort };
+            draftEngineRuntimeByID.current[effectiveEngine] = runtime;
+            return runtime;
+          });
           if (!activeThread) {
             writeDraftEngineMemory({
               engine: effectiveEngine,

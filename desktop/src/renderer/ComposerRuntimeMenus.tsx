@@ -2,6 +2,8 @@ import {
   Bug,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleHelp,
   Cpu,
   Eye,
@@ -18,6 +20,7 @@ import {
   GitCompare,
   GitPullRequest,
   Hammer,
+  Lock,
   MessageSquarePlus,
   Paperclip,
   PieChart,
@@ -33,7 +36,7 @@ import {
   Zap,
   type LucideIcon
 } from "lucide-react";
-import { type CSSProperties, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type RefObject, useEffect, useRef, useState } from "react";
 import type {
   CodexModelSummary,
   DesktopProject,
@@ -70,8 +73,8 @@ import { Tooltip } from "./Tooltip";
 
 type ChipTone = "neutral" | "danger";
 
-// Agent engine display names. The engine abstraction stays out of the UI:
-// to the user these are agent choices on the same level as models.
+// Runtime engine display names. Models and effort remain subordinate to the
+// selected engine because each engine owns a different runtime contract.
 const ENGINE_LABELS: Record<string, string> = {
   wuu: "Wuu",
   codex: "Codex",
@@ -121,31 +124,111 @@ function EngineOptionsMenu({
 }): JSX.Element {
   const { t } = useI18n();
   return (
-    <div className="runtime-agent-section">
-      <div className="codex-menu-label runtime-agent-heading">{t("runtime.agent")}</div>
-      {locked && lockedDescription ? (
-        <div className="composer-menu-note">{lockedDescription}</div>
-      ) : null}
-      <div className="runtime-agent-options">
-        {options.map((option) => {
-          const isSelected = option.id === selected;
-          return (
-            <button
-              className="runtime-agent-option"
-              key={option.id}
-              role="menuitemradio"
-              type="button"
-              disabled={locked || running}
-              aria-checked={isSelected}
-              onClick={() => {
-                if (!isSelected) onSelect(option.id);
-              }}
-            >
-              <span>{option.label}</span>
+    <div
+      className={`runtime-engine-options${locked ? " is-locked" : ""}`}
+      role="group"
+      aria-label={locked && lockedDescription ? lockedDescription : t("runtime.engine")}
+    >
+      {options.map((option) => {
+        const isSelected = option.id === selected;
+        return (
+          <button
+            className="runtime-engine-option"
+            key={option.id}
+            role="menuitemradio"
+            type="button"
+            disabled={locked || running}
+            aria-checked={isSelected}
+            onClick={() => {
+              if (!isSelected) onSelect(option.id);
+            }}
+          >
+            <span className="runtime-engine-option-name">{option.label}</span>
+            {locked && isSelected ? <Lock aria-hidden="true" /> : isSelected ? <Check aria-hidden="true" /> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+type RuntimePanelView = "summary" | "engines" | "providers" | "models";
+type RuntimePanelDirection = "forward" | "back";
+
+function RuntimePanelHeader({ title, onBack }: { title: string; onBack: () => void }): JSX.Element {
+  const { t } = useI18n();
+  return (
+    <div className="runtime-panel-header">
+      <button type="button" className="runtime-panel-back" aria-label={t("common.back")} onClick={onBack}>
+        <ChevronLeft aria-hidden="true" />
+      </button>
+      <span>{title}</span>
+    </div>
+  );
+}
+
+function RuntimePanelSummary({
+  engine,
+  provider,
+  engineLocked,
+  model,
+  effortOptions,
+  selectedEffort,
+  effortDisabled,
+  onOpenEngines,
+  onOpenProviders,
+  onOpenModels,
+  onSelectEffort
+}: {
+  engine: string;
+  provider?: string;
+  engineLocked: boolean;
+  model: string;
+  effortOptions: string[];
+  selectedEffort: string;
+  effortDisabled: boolean;
+  onOpenEngines: () => void;
+  onOpenProviders?: () => void;
+  onOpenModels: () => void;
+  onSelectEffort: (effort: string) => void;
+}): JSX.Element {
+  const [previewEffort, setPreviewEffort] = useState(selectedEffort);
+
+  useEffect(() => {
+    setPreviewEffort(selectedEffort);
+  }, [selectedEffort]);
+
+  return (
+    <div className="runtime-panel-summary">
+      <div className="runtime-panel-context">
+        <button type="button" onClick={onOpenEngines}>
+          <span>{engineLabel(engine)}</span>
+          {engineLocked ? <Lock aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+        </button>
+        {provider && onOpenProviders ? (
+          <>
+            <span className="runtime-panel-context-separator" aria-hidden="true">/</span>
+            <button type="button" onClick={onOpenProviders}>
+              <span>{provider}</span>
+              <ChevronRight aria-hidden="true" />
             </button>
-          );
-        })}
+          </>
+        ) : null}
       </div>
+      <button type="button" className="runtime-panel-model" onClick={onOpenModels}>
+        <span className="runtime-panel-model-name">{model}</span>
+        <span className="runtime-panel-effort-value">{variantLabel(previewEffort)}</span>
+        <ChevronRight aria-hidden="true" />
+      </button>
+      {effortOptions.length > 1 ? (
+        <EffortSelector
+          options={effortOptions}
+          selectedVariant={selectedEffort}
+          disabled={effortDisabled}
+          onPreviewEffort={setPreviewEffort}
+          onSelectEffort={onSelectEffort}
+        />
+      ) : null}
     </div>
   );
 }
@@ -302,7 +385,7 @@ export function RuntimePicker({
           <span>
             {externalEngine
               ? `${engineLabel(externalEngine)} · ${externalModelInfo?.display_name || engineModel || t("runtime.selectModel")}`
-              : runtimeTriggerLabel(initialized, currentProviderModel, currentCodexModel)}
+              : `${engineLabel("wuu")} · ${runtimeTriggerLabel(initialized, currentProviderModel, currentCodexModel)}`}
           </span>
           <span className="codex-runtime-effort">
             {variantLabel(externalEngine ? engineEffort ?? "" : currentVariant)}
@@ -316,7 +399,7 @@ export function RuntimePicker({
           owner="codex-runtime"
           placement={placement}
           align="right"
-          width={260}
+          width={320}
           flip
         >
           {externalEngine ? (
@@ -327,16 +410,12 @@ export function RuntimePicker({
               disabled={running || Boolean(engineLocked)}
               onSelectModel={(model, effort) => onSelectEngineModel?.(model, effort)}
               onSelectEffort={(effort) => onSelectEngineEffort?.(effort)}
-              header={
-                <EngineOptionsMenu
-                  options={engineOptions}
-                  selected={selectedEngine}
-                  locked={Boolean(engineLocked)}
-                  running={running}
-                  lockedDescription={engineLocked ? t("runtime.agentLockedDescription") : undefined}
-                  onSelect={(id) => onSelectEngine?.(id)}
-                />
-              }
+              engineOptions={engineOptions}
+              selectedEngine={selectedEngine}
+              engineLocked={Boolean(engineLocked)}
+              running={running}
+              lockedDescription={engineLocked ? t("runtime.engineLockedDescription") : undefined}
+              onSelectEngine={(id) => onSelectEngine?.(id)}
             />
           ) : (
             <RuntimeModelMenu
@@ -347,18 +426,12 @@ export function RuntimePicker({
               selectedVariant={currentVariant}
               onSelectModel={onSelectModel}
               onSelectEffort={onSelectEffort}
-              header={
-                engineOptions.length > 1 ? (
-                  <EngineOptionsMenu
-                    options={engineOptions}
-                    selected={selectedEngine}
-                    locked={Boolean(engineLocked)}
-                    running={running}
-                    lockedDescription={engineLocked ? t("runtime.agentLockedDescription") : undefined}
-                    onSelect={(id) => onSelectEngine?.(id)}
-                  />
-                ) : null
-              }
+              engineOptions={engineOptions}
+              selectedEngine={selectedEngine}
+              engineLocked={Boolean(engineLocked)}
+              running={running}
+              lockedDescription={engineLocked ? t("runtime.engineLockedDescription") : undefined}
+              onSelectEngine={(id) => onSelectEngine?.(id)}
             />
           )}
         </FloatingMenuPortal>
@@ -383,7 +456,12 @@ function EngineRuntimeMenu({
   disabled,
   onSelectModel,
   onSelectEffort,
-  header
+  engineOptions,
+  selectedEngine,
+  engineLocked,
+  running,
+  lockedDescription,
+  onSelectEngine
 }: {
   engine?: EngineInfo;
   selectedModel: string;
@@ -391,16 +469,35 @@ function EngineRuntimeMenu({
   disabled: boolean;
   onSelectModel: (model: string, effort: string) => void;
   onSelectEffort: (effort: string) => void;
-  header?: ReactNode;
+  engineOptions: EngineOption[];
+  selectedEngine: string;
+  engineLocked: boolean;
+  running: boolean;
+  lockedDescription?: string;
+  onSelectEngine: (id: string) => void;
 }): JSX.Element {
   const { t } = useI18n();
+  const [view, setView] = useState<RuntimePanelView>("summary");
+  const [direction, setDirection] = useState<RuntimePanelDirection>("forward");
   const [query, setQuery] = useState("");
   const [optimistic, setOptimistic] = useState<{ model: string; effort: string } | null>(null);
-  const [previewEffort, setPreviewEffort] = useState<string | null>(null);
   useEffect(() => {
     setOptimistic(null);
-    setPreviewEffort(null);
   }, [selectedModel, selectedEffort]);
+  useEffect(() => {
+    setQuery("");
+    setDirection("back");
+    setView("summary");
+  }, [engine?.id]);
+
+  const openView = (nextView: RuntimePanelView): void => {
+    setDirection("forward");
+    setView(nextView);
+  };
+  const showSummary = (): void => {
+    setDirection("back");
+    setView("summary");
+  };
 
   const models = engine?.models ?? [];
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -418,81 +515,103 @@ function EngineRuntimeMenu({
       : effectiveModel
         ? engineModelDefaultEffort(effectiveModel)
         : selectedEffort);
+  const chooserHeight = Math.min(320, 50 + engineOptions.length * 36);
 
   return (
-    <div className="codex-runtime-menu codex-model-menu" role="menu">
-      {header ?? null}
-      <label className="select-menu-search">
-        <Search className="select-menu-search-icon icon-lg" />
-        <input
-          type="search"
-          value={query}
-          placeholder={t("runtime.searchModels")}
-          aria-label={t("runtime.searchModels")}
-          onChange={(event) => setQuery(event.currentTarget.value)}
-        />
-      </label>
-      <div className="codex-model-groups">
-        {engine?.models_error ? (
-          <div className="composer-menu-note warning">
-            <strong>{t("runtime.modelsLoadFailed")}</strong>
-            <span>{engine.models_error}</span>
-          </div>
-        ) : null}
-        {models.length === 0 ? <div className="composer-menu-empty">{t("runtime.noModels")}</div> : null}
-        {models.length > 0 && filteredModels.length === 0 ? (
-          <div className="composer-menu-empty">{t("runtime.noMatchingModels")}</div>
-        ) : null}
-        {filteredModels.length > 0 ? (
-          <div className="codex-model-group">
-            <div className="codex-menu-label codex-model-group-label">
-              {t("runtime.model")}
-            </div>
-            {filteredModels.map((model) => {
-              const selected = model.id === effectiveModelID;
-              return (
-                <button
-                  className="codex-model-item"
-                  role="menuitemradio"
-                  type="button"
-                  key={model.id}
-                  disabled={disabled}
-                  aria-checked={selected}
-                  onClick={() => {
-                    const effort = engineModelDefaultEffort(model);
-                    setOptimistic({ model: model.id, effort });
-                    onSelectModel(model.id, effort);
-                  }}
-                >
-                  <span className="codex-model-item-name">{model.display_name || model.id}</span>
-                  {selected ? <Check className="icon-lg" /> : null}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-      {effortOptions.length > 1 && !disabled ? (
-        <div className="codex-effort-section">
-          <div className="codex-menu-label codex-effort-heading">
-            <span>{t("runtime.reasoningEffort")}</span>
-            <span className="codex-effort-current">{variantLabel(previewEffort ?? effectiveEffort)}</span>
-          </div>
-          <EffortSlider
-            options={effortOptions}
-            selectedVariant={effectiveEffort}
-            onPreviewEffort={setPreviewEffort}
+    <div
+      className={`codex-runtime-menu codex-model-menu runtime-panel is-${view}`}
+      role="menu"
+      style={{ "--runtime-chooser-height": `${chooserHeight}px` } as CSSProperties}
+    >
+      <div key={`${engine?.id ?? "engine"}:${view}`} className={`runtime-panel-page is-${direction}`}>
+        {view === "summary" ? (
+          <RuntimePanelSummary
+            engine={selectedEngine}
+            engineLocked={engineLocked}
+            model={effectiveModel?.display_name || effectiveModelID || t("runtime.selectModel")}
+            effortOptions={effortOptions}
+            selectedEffort={effectiveEffort}
+            effortDisabled={disabled}
+            onOpenEngines={() => openView("engines")}
+            onOpenModels={() => openView("models")}
             onSelectEffort={(effort) => {
-              setPreviewEffort(null);
-              setOptimistic((current) => ({
-                model: current?.model ?? selectedModel,
-                effort
-              }));
+              setOptimistic((current) => ({ model: current?.model ?? selectedModel, effort }));
               onSelectEffort(effort);
             }}
           />
-        </div>
-      ) : null}
+        ) : null}
+        {view === "engines" ? (
+          <>
+            <RuntimePanelHeader title={t("runtime.engine")} onBack={showSummary} />
+            <div className="runtime-panel-list">
+              <EngineOptionsMenu
+                options={engineOptions}
+                selected={selectedEngine}
+                locked={engineLocked}
+                running={running}
+                lockedDescription={lockedDescription}
+                onSelect={(id) => {
+                  onSelectEngine(id);
+                  showSummary();
+                }}
+              />
+            </div>
+          </>
+        ) : null}
+        {view === "models" ? (
+          <>
+            <RuntimePanelHeader title={t("runtime.model")} onBack={showSummary} />
+            <label className="select-menu-search">
+              <Search className="select-menu-search-icon icon-lg" />
+              <input
+                type="search"
+                value={query}
+                placeholder={t("runtime.searchModels")}
+                aria-label={t("runtime.searchModels")}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+              />
+            </label>
+            <div className="codex-model-groups">
+              {engine?.models_error ? (
+                <div className="composer-menu-note warning">
+                  <strong>{t("runtime.modelsLoadFailed")}</strong>
+                  <span>{engine.models_error}</span>
+                </div>
+              ) : null}
+              {models.length === 0 ? <div className="composer-menu-empty">{t("runtime.noModels")}</div> : null}
+              {models.length > 0 && filteredModels.length === 0 ? (
+                <div className="composer-menu-empty">{t("runtime.noMatchingModels")}</div>
+              ) : null}
+              {filteredModels.length > 0 ? (
+                <div className="codex-model-group">
+                  {filteredModels.map((model) => {
+                    const selected = model.id === effectiveModelID;
+                    return (
+                      <button
+                        className="codex-model-item"
+                        role="menuitemradio"
+                        type="button"
+                        key={model.id}
+                        disabled={disabled}
+                        aria-checked={selected}
+                        onClick={() => {
+                          const effort = engineModelDefaultEffort(model);
+                          setOptimistic({ model: model.id, effort });
+                          onSelectModel(model.id, effort);
+                          showSummary();
+                        }}
+                      >
+                        <span className="codex-model-item-name">{model.display_name || model.id}</span>
+                        {selected ? <Check className="icon-lg" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -505,7 +624,12 @@ function RuntimeModelMenu({
   selectedVariant,
   onSelectModel,
   onSelectEffort,
-  header
+  engineOptions,
+  selectedEngine,
+  engineLocked,
+  running,
+  lockedDescription,
+  onSelectEngine
 }: {
   initialized: InitializeResult;
   state: CodexModelLoadState;
@@ -514,9 +638,16 @@ function RuntimeModelMenu({
   selectedVariant: string;
   onSelectModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
   onSelectEffort: (variant: string) => void | Promise<boolean>;
-  header?: ReactNode;
+  engineOptions: EngineOption[];
+  selectedEngine: string;
+  engineLocked: boolean;
+  running: boolean;
+  lockedDescription?: string;
+  onSelectEngine: (id: string) => void;
 }): JSX.Element {
   const { t } = useI18n();
+  const [view, setView] = useState<RuntimePanelView>("summary");
+  const [direction, setDirection] = useState<RuntimePanelDirection>("forward");
   const [query, setQuery] = useState("");
   // The panel stays open while a selection commits through the app-server
   // stream, so the highlighted row and the effort pills follow the click
@@ -524,13 +655,18 @@ function RuntimeModelMenu({
   // confirms, the external props become the source of truth again and the
   // optimistic state is dropped.
   const [optimistic, setOptimistic] = useState<{ provider: string; model: string; variant: string } | null>(null);
-  // The effort heading follows the slider thumb while dragging, so the level
-  // being aimed at is readable before the commit lands on release.
-  const [previewVariant, setPreviewVariant] = useState<string | null>(null);
   useEffect(() => {
     setOptimistic(null);
-    setPreviewVariant(null);
   }, [selectedProvider, selectedModel, selectedVariant]);
+
+  const openView = (nextView: RuntimePanelView): void => {
+    setDirection("forward");
+    setView(nextView);
+  };
+  const showSummary = (): void => {
+    setDirection("back");
+    setView("summary");
+  };
 
   const providers = initialized.providers ?? [];
   const configuredModels = providers
@@ -567,9 +703,15 @@ function RuntimeModelMenu({
     }
   }
 
+  const effectiveProviderName = optimistic?.provider ?? selectedProvider;
+  const effectiveModelID = optimistic?.model ?? selectedModel;
+  const effectiveVariant = optimistic?.variant ?? selectedVariant;
+  const effectiveProvider = providers.find((provider) => provider.name === effectiveProviderName);
+  const scopedGroups = groups.filter((group) => group.provider.name === effectiveProviderName);
+
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredGroups = normalizedQuery
-    ? groups
+    ? scopedGroups
         .map((group) => ({
           ...group,
           models: group.models.filter(
@@ -580,14 +722,8 @@ function RuntimeModelMenu({
           )
         }))
         .filter((group) => group.models.length > 0)
-    : groups;
+    : scopedGroups;
 
-  // The effort pills act on the model the picker is about to run — the
-  // optimistic target when one is pending, otherwise the committed selection.
-  const effectiveProviderName = optimistic?.provider ?? selectedProvider;
-  const effectiveModelID = optimistic?.model ?? selectedModel;
-  const effectiveVariant = optimistic?.variant ?? selectedVariant;
-  const effectiveProvider = providers.find((provider) => provider.name === effectiveProviderName);
   const effectiveCodex = providerIsCodex(initialized, effectiveProviderName);
   const effectiveCodexModel = effectiveCodex
     ? state.models.find((model) => model.slug === effectiveModelID)
@@ -595,209 +731,206 @@ function RuntimeModelMenu({
   const effortOptions = effectiveCodex
     ? codexEffortOptions(effectiveCodexModel, effectiveVariant)
     : providerModelVariantOptions(effectiveProvider, effectiveModelID, effectiveVariant);
-  const showEffort = effortOptions.length > 1;
+  const effectiveModel = scopedGroups
+    .flatMap((group) => group.models)
+    .find((model) => model.id === effectiveModelID);
+  const chooserRows = view === "providers" ? groups.length : engineOptions.length;
+  const chooserHeight = Math.min(320, 50 + chooserRows * 36);
+
+  const selectModel = (provider: string, model: string, variant?: string): void => {
+    setOptimistic({ provider, model, variant: variant ?? "" });
+    void Promise.resolve(onSelectModel(provider, model, variant)).then((committed) => {
+      if (committed === false) setOptimistic(null);
+    });
+  };
 
   return (
-    <div className="codex-runtime-menu codex-model-menu" role="menu">
-      {header ?? null}
-      <label className="select-menu-search">
-        <Search className="select-menu-search-icon icon-lg" />
-        <input
-          type="search"
-          value={query}
-          placeholder={t("runtime.searchModels")}
-          aria-label={t("runtime.searchModels")}
-          onChange={(event) => setQuery(event.currentTarget.value)}
-        />
-      </label>
-      <div className="codex-model-groups">
-        {effectiveCodex && state.loading ? <div className="composer-menu-empty">{t("runtime.loadingCodexModels")}</div> : null}
-        {effectiveCodex && state.error ? (
-          <div className="composer-menu-note warning">
-            <strong>{t("runtime.codexLoginUnavailable")}</strong>
-            <span>{state.error}</span>
-          </div>
-        ) : null}
-        {!state.loading && providers.length === 0 ? (
-          <div className="composer-menu-empty">{t("runtime.noModels")}</div>
-        ) : null}
-        {filteredGroups.length === 0 ? (
-          <div className="composer-menu-empty">{t("runtime.noMatchingModels")}</div>
-        ) : null}
-        {filteredGroups.map((group) => (
-          <div className="codex-model-group" key={group.provider.name}>
-            <div className="codex-menu-label codex-model-group-label">{group.provider.name}</div>
-            {group.models.map((model) => (
-              <RuntimeModelMenuItem
-                key={`${group.provider.name}/${model.id}`}
-                provider={group.provider}
-                model={model}
-                selected={group.provider.name === effectiveProviderName && model.id === effectiveModelID}
-                selectedVariant={effectiveVariant}
-                onSelectModel={(provider, model, variant) => {
-                  setOptimistic({ provider, model, variant: variant ?? "" });
-                  // A rejected switch (for example the thread still has a
-                  // background agent running) never produces a server
-                  // confirmation, so clear the optimistic highlight
-                  // explicitly instead of leaving a selection that did
-                  // not take effect.
-                  void Promise.resolve(onSelectModel(provider, model, variant)).then((committed) => {
-                    if (committed === false) {
-                      setOptimistic(null);
-                    }
-                  });
-                }}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
-      {showEffort ? (
-        <div className="codex-effort-section">
-          <div className="codex-menu-label codex-effort-heading">
-            <span>{t("runtime.reasoningEffort")}</span>
-            <span className="codex-effort-current">{variantLabel(previewVariant ?? effectiveVariant)}</span>
-          </div>
-          <EffortSlider
-            options={effortOptions}
-            selectedVariant={effectiveVariant}
-            onPreviewEffort={setPreviewVariant}
+    <div
+      className={`codex-runtime-menu codex-model-menu runtime-panel is-${view}`}
+      role="menu"
+      style={{ "--runtime-chooser-height": `${chooserHeight}px` } as CSSProperties}
+    >
+      <div key={view} className={`runtime-panel-page is-${direction}`}>
+        {view === "summary" ? (
+          <RuntimePanelSummary
+            engine={selectedEngine}
+            provider={effectiveProviderName}
+            engineLocked={engineLocked}
+            model={effectiveModel ? providerModelDisplayName(effectiveModel) : effectiveModelID || t("runtime.selectModel")}
+            effortOptions={effortOptions}
+            selectedEffort={effectiveVariant}
+            effortDisabled={false}
+            onOpenEngines={() => openView("engines")}
+            onOpenProviders={() => openView("providers")}
+            onOpenModels={() => openView("models")}
             onSelectEffort={(variant) => {
-              setPreviewVariant(null);
               setOptimistic((current) =>
-                current
-                  ? { ...current, variant }
-                  : { provider: selectedProvider, model: selectedModel, variant }
+                current ? { ...current, variant } : { provider: selectedProvider, model: selectedModel, variant }
               );
               void Promise.resolve(onSelectEffort(variant)).then((committed) => {
-                if (committed === false) {
-                  setOptimistic(null);
-                }
+                if (committed === false) setOptimistic(null);
               });
             }}
           />
-        </div>
-      ) : null}
+        ) : null}
+        {view === "engines" ? (
+          <>
+            <RuntimePanelHeader title={t("runtime.engine")} onBack={showSummary} />
+            <div className="runtime-panel-list">
+              <EngineOptionsMenu
+                options={engineOptions}
+                selected={selectedEngine}
+                locked={engineLocked}
+                running={running}
+                lockedDescription={lockedDescription}
+                onSelect={(id) => {
+                  onSelectEngine(id);
+                  showSummary();
+                }}
+              />
+            </div>
+          </>
+        ) : null}
+        {view === "providers" ? (
+          <>
+            <RuntimePanelHeader title={t("runtime.provider")} onBack={showSummary} />
+            <div className="runtime-panel-list runtime-provider-options" role="group" aria-label={t("runtime.provider")}>
+              {groups.map((group) => {
+                const selected = group.provider.name === effectiveProviderName;
+                return (
+                  <button
+                    type="button"
+                    className="runtime-provider-option"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    key={group.provider.name}
+                    onClick={() => {
+                      const model = group.models[0];
+                      if (model && !selected) {
+                        selectModel(group.provider.name, model.id, defaultVariantForRuntimeModel(group.provider, model));
+                      }
+                      showSummary();
+                    }}
+                  >
+                    <span>{group.provider.name}</span>
+                    {selected ? <Check aria-hidden="true" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+        {view === "models" ? (
+          <>
+            <RuntimePanelHeader title={t("runtime.model")} onBack={showSummary} />
+            <label className="select-menu-search">
+              <Search className="select-menu-search-icon icon-lg" />
+              <input
+                type="search"
+                value={query}
+                placeholder={t("runtime.searchModels")}
+                aria-label={t("runtime.searchModels")}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+              />
+            </label>
+            <div className="codex-model-groups">
+              {effectiveCodex && state.loading ? <div className="composer-menu-empty">{t("runtime.loadingCodexModels")}</div> : null}
+              {effectiveCodex && state.error ? (
+                <div className="composer-menu-note warning">
+                  <strong>{t("runtime.codexLoginUnavailable")}</strong>
+                  <span>{state.error}</span>
+                </div>
+              ) : null}
+              {!state.loading && providers.length === 0 ? <div className="composer-menu-empty">{t("runtime.noModels")}</div> : null}
+              {filteredGroups.length === 0 ? <div className="composer-menu-empty">{t("runtime.noMatchingModels")}</div> : null}
+              {filteredGroups.map((group) => (
+                <div className="codex-model-group" key={group.provider.name}>
+                  {group.models.map((model) => (
+                    <RuntimeModelMenuItem
+                      key={`${group.provider.name}/${model.id}`}
+                      provider={group.provider}
+                      model={model}
+                      selected={group.provider.name === effectiveProviderName && model.id === effectiveModelID}
+                      selectedVariant={effectiveVariant}
+                      onSelectModel={(provider, model, variant) => {
+                        selectModel(provider, model, variant);
+                        showSummary();
+                      }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-// Draggable reasoning-effort slider rendered as a bare capsule: the inked
-// fill ends at the current stop, small dots mark the discrete levels, and the
-// pill carries no level text — the heading above live-shows the current
-// level while dragging. The thumb snaps to the discrete levels the model
-// supports, and the commit fires once on release (or on a keyboard step)
-// instead of once per intermediate position, so tuning never spams the
-// runtime stream.
-function EffortSlider({
+function EffortSelector({
   options,
   selectedVariant,
+  disabled = false,
   onPreviewEffort,
   onSelectEffort
 }: {
   options: string[];
   selectedVariant: string;
-  onPreviewEffort: (variant: string | null) => void;
+  disabled?: boolean;
+  onPreviewEffort?: (variant: string) => void;
   onSelectEffort: (variant: string) => void;
 }): JSX.Element {
   const selectedIndex = Math.max(0, options.indexOf(selectedVariant));
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-  const pendingIndex = useRef(selectedIndex);
-  const pointerX = useRef<number | null>(null);
-  const capsuleRef = useRef<HTMLDivElement>(null);
-  const displayIndex = previewIndex ?? selectedIndex;
+  const [previewIndex, setPreviewIndex] = useState(selectedIndex);
 
   useEffect(() => {
-    setPreviewIndex(null);
-  }, [selectedVariant]);
+    setPreviewIndex(selectedIndex);
+  }, [selectedIndex]);
 
-  const previewTo = (index: number | null): void => {
+  const commit = (index: number): void => {
+    if (disabled) return;
+    const next = options[index];
+    if (next !== undefined && index !== selectedIndex) onSelectEffort(next);
+  };
+  const preview = (index: number): void => {
     setPreviewIndex(index);
-    onPreviewEffort(index === null ? null : options[index]);
+    const next = options[index];
+    if (next !== undefined) onPreviewEffort?.(next);
   };
-
-  const commit = (): void => {
-    pointerX.current = null;
-    onPreviewEffort(null);
-    onSelectEffort(options[pendingIndex.current]);
+  const resetPreview = (): void => {
+    setPreviewIndex(selectedIndex);
+    onPreviewEffort?.(options[selectedIndex] ?? selectedVariant);
   };
-
-  // Each option owns one equal span; the knob and marker sit on that span's
-  // right edge rather than in its center.
-  const stopFromPointer = (): number | null => {
-    const capsule = capsuleRef.current;
-    if (pointerX.current === null || !capsule) {
-      return null;
-    }
-    const rect = capsule.getBoundingClientRect();
-    if (rect.width <= 0) {
-      return null;
-    }
-    const ratio = (pointerX.current - rect.left) / rect.width;
-    if (!Number.isFinite(ratio)) {
-      return null;
-    }
-    return Math.min(options.length - 1, Math.max(0, Math.floor(ratio * options.length)));
-  };
-
-  const stopPosition = ((displayIndex + 1) / options.length) * 100;
-  const capsuleStyle = {
-    "--effort-slider-fill": `${stopPosition}%`,
-    "--effort-slider-pos": `${stopPosition}%`
-  } as CSSProperties;
-  // The top level reads as a charged state: a slow sheen sweeps the fill as
-  // long as the thumb (or the committed value) sits on it.
-  const maxed = displayIndex === options.length - 1;
+  const progress = options.length > 1 ? previewIndex / (options.length - 1) : 0;
 
   return (
-    <div className="codex-effort-slider-wrap" style={capsuleStyle}>
-      <div ref={capsuleRef} className={`codex-effort-capsule${maxed ? " maxed" : ""}`}>
-        <span className="codex-effort-capsule-fill" aria-hidden="true" />
-        <div className="codex-effort-stops" aria-hidden="true">
-          {options.slice(0, -1).map((variant, index) => (
-            <span
-              key={variant || `default-${index}`}
-              className="codex-effort-stop"
-              style={{ left: `${((index + 1) / options.length) * 100}%` }}
-            />
-          ))}
-        </div>
-        {maxed ? <span className="codex-effort-capsule-sheen" aria-hidden="true" /> : null}
-        <span className="codex-effort-knob" aria-hidden="true" />
-        <input
-          className="codex-effort-slider"
-          type="range"
-          min={0}
-          max={options.length - 1}
-          step={1}
-          value={displayIndex}
-          aria-label={translate("runtime.reasoningEffort")}
-          aria-valuetext={variantLabel(options[displayIndex])}
-          onPointerDown={(event) => {
-            pointerX.current = event.clientX;
-          }}
-          onPointerMove={(event) => {
-            pointerX.current = event.clientX;
-          }}
-          onChange={(event) => {
-            const next = stopFromPointer() ?? Number(event.currentTarget.value);
-            pendingIndex.current = next;
-            previewTo(next);
-          }}
-          onPointerUp={commit}
-          onPointerCancel={commit}
-          onKeyDown={() => {
-            // Keyboard takes over from the pointer: drop any hovered/dragged
-            // position so arrows step from the committed value instead.
-            pointerX.current = null;
-          }}
-          onKeyUp={commit}
-          onBlur={() => {
-            pointerX.current = null;
-            previewTo(null);
-          }}
-        />
-      </div>
+    <div
+      className={`codex-effort-slider${disabled ? " is-disabled" : ""}`}
+      style={{ "--effort-progress": `${progress * 100}%` } as CSSProperties}
+    >
+      <span className="codex-effort-track" aria-hidden="true" />
+      <span className="codex-effort-fill" aria-hidden="true" />
+      <span className="codex-effort-stops" aria-hidden="true">
+        {options.map((variant, index) => (
+          <span className={index <= previewIndex ? "is-filled" : ""} key={variant || `default-${index}`} />
+        ))}
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={options.length - 1}
+        step={1}
+        value={previewIndex}
+        disabled={disabled}
+        aria-label={translate("runtime.reasoningEffort")}
+        aria-valuetext={variantLabel(options[previewIndex] ?? selectedVariant)}
+        onChange={(event) => preview(Number(event.currentTarget.value))}
+        onPointerUp={(event) => commit(Number(event.currentTarget.value))}
+        onPointerCancel={resetPreview}
+        onKeyUp={(event) => commit(Number(event.currentTarget.value))}
+        onBlur={resetPreview}
+      />
     </div>
   );
 }
