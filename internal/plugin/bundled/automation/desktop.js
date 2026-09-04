@@ -21,6 +21,7 @@ export async function activate(api) {
     "automation.close": "Close", "automation.group.details": "Details", "automation.group.schedule": "Frequency",
     "automation.field.target": "Runs in", "automation.field.project": "Project", "automation.field.time": "Time", "automation.field.isolation": "Isolated run",
     "automation.target.new": "New chat each run", "automation.target.thread": "Existing chat",
+    "automation.target.search": "Search chats", "automation.target.chats": "Chats", "automation.target.pinned": "Pinned", "automation.target.empty": "No matching chats",
     "automation.placeholder.prompt": "e.g. Summarize yesterday's progress at 9am…", "automation.placeholder.schedule": "0 9 * * 1-5",
   }});
   api.registerLocale({ id: "automation-zh", locale: "zh-CN", entries: {
@@ -41,6 +42,7 @@ export async function activate(api) {
     "automation.close": "关闭", "automation.group.details": "详情", "automation.group.schedule": "频率",
     "automation.field.target": "运行于", "automation.field.project": "项目", "automation.field.time": "时间", "automation.field.isolation": "隔离运行",
     "automation.target.new": "每次新会话", "automation.target.thread": "指定会话",
+    "automation.target.search": "搜索会话", "automation.target.chats": "会话", "automation.target.pinned": "已置顶", "automation.target.empty": "没有匹配的会话",
     "automation.placeholder.prompt": "例如：每天早上 9 点整理昨天的进展…", "automation.placeholder.schedule": "0 9 * * 1-5",
   }});
   api.registerStyle({ id: "automation-catalog", css: `
@@ -133,6 +135,31 @@ export async function activate(api) {
     .plugin-automation-detail-row-value { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; color:var(--wuu-color-text, var(--ink)); font-size:var(--font-ui,13px); }
     .plugin-automation-detail-row .plugin-ui-checkbox { flex:1; min-width:0; min-height:32px; flex-direction:row-reverse; align-items:center; justify-content:space-between; }
     .plugin-automation-detail-row .plugin-ui-field-label { color:var(--wuu-color-text-muted, var(--ink-muted)); font-weight:400; }
+
+    /* Run-target picker: a quiet value button whose menu floats beneath it,
+     * listing "new chat each run" above the workspace's live conversations. */
+    .plugin-automation-target { position:relative; display:inline-flex; min-width:0; max-width:100%; }
+    .plugin-automation-target-button { display:inline-flex; align-items:center; gap:6px; max-width:100%; min-height:28px; border:0; border-radius:8px; padding:3px 8px; background:transparent; color:var(--wuu-color-text, var(--ink)); font:inherit; font-size:var(--font-ui,13px); cursor:pointer; transition:background-color var(--motion-fast,120ms) ease; }
+    .plugin-automation-target-button:not(:disabled):hover { background:var(--wuu-color-surface-muted, var(--surface-2)); }
+    .plugin-automation-target-button:disabled { cursor:default; opacity:0.6; }
+    .plugin-automation-target-button > svg { width:12px; height:12px; flex:none; color:var(--wuu-color-text-muted, var(--ink-muted)); }
+    .plugin-automation-target-value { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .plugin-automation-target-menu { position:absolute; top:calc(100% + 6px); right:0; z-index:70; width:min(300px, 80vw); max-height:340px; overflow:auto; display:flex; flex-direction:column; gap:2px; box-sizing:border-box; border:1px solid var(--wuu-color-border-subtle, var(--hairline)); border-radius:12px; padding:6px; background:var(--wuu-color-canvas, var(--paper, #fff)); box-shadow:0 12px 32px var(--ink-overlay-12, rgba(18,18,18,0.14)); }
+    .plugin-automation-target[data-align="left"] .plugin-automation-target-menu { right:auto; left:0; }
+    .plugin-automation-target-search { display:flex; align-items:center; gap:6px; height:30px; flex:none; margin-bottom:2px; border-radius:8px; padding:0 8px; background:var(--wuu-color-surface-muted, var(--surface-1)); color:var(--wuu-color-text-muted, var(--ink-muted)); }
+    .plugin-automation-target-search svg { width:13px; height:13px; flex:none; }
+    .plugin-automation-target-search input { flex:1; min-width:0; border:0; outline:0; padding:0; background:transparent; color:var(--wuu-color-text, var(--ink)); font:inherit; font-size:var(--font-sm,12px); }
+    .plugin-automation-target-option { display:flex; align-items:center; gap:8px; width:100%; border:0; border-radius:8px; padding:7px 8px; background:transparent; color:var(--wuu-color-text, var(--ink)); font:inherit; font-size:var(--font-ui,13px); text-align:left; cursor:pointer; }
+    .plugin-automation-target-option:hover { background:var(--wuu-color-surface-muted, var(--surface-1)); }
+    .plugin-automation-target-option-main { flex:1; min-width:0; display:grid; gap:1px; }
+    .plugin-automation-target-option-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .plugin-automation-target-option[aria-selected="true"] .plugin-automation-target-option-title { font-weight:var(--weight-medium,500); }
+    .plugin-automation-target-option-meta { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:11px; }
+    .plugin-automation-target-option > svg { width:14px; height:14px; flex:none; color:var(--wuu-color-text-muted, var(--ink-muted)); }
+    .plugin-automation-target-section { padding:6px 8px 2px; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:11px; }
+    .plugin-automation-target-empty { margin:0; padding:8px; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); text-align:center; }
+    .plugin-automation-form-target { display:grid; gap:6px; justify-items:start; }
+    .plugin-automation-form-target-label { color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); }
 
     /* Below 900px the panel leaves the flow and floats over the page as a
      * right-hand sheet on a dimmed backdrop. */
@@ -231,6 +258,97 @@ export async function activate(api) {
       h("path", { d: "m4 4 8 8m0-8-8 8", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round" }));
   }
 
+  function CheckIcon() {
+    return h("svg", { viewBox: "0 0 16 16", fill: "none", "aria-hidden": true },
+      h("path", { d: "m3 8.5 3.5 3.5L13 5", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round", "stroke-linejoin": "round" }));
+  }
+
+  function ChevronIcon() {
+    return h("svg", { viewBox: "0 0 16 16", fill: "none", "aria-hidden": true },
+      h("path", { d: "m4.5 6.5 3.5 3.5 3.5-3.5", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round", "stroke-linejoin": "round" }));
+  }
+
+  // Shared "runs in" picker: "new chat each run" plus the workspace's live
+  // conversations (pinned first, then most recently updated). The host
+  // already filters ephemeral and archived threads; when thread listing is
+  // unavailable the menu simply offers the new-chat option.
+  function TargetPicker({ tr, value, threads, disabled, align, onSelect }) {
+    const [open, setOpen] = React.useState(false);
+    const [query, setQuery] = React.useState("");
+    const rootRef = React.useRef(null);
+    React.useEffect(() => {
+      if (!open) return undefined;
+      const onPointerDown = (event) => {
+        if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+      };
+      document.addEventListener("mousedown", onPointerDown);
+      return () => document.removeEventListener("mousedown", onPointerDown);
+    }, [open]);
+    const isSelected = (thread) => value.mode === "thread_heartbeat" && value.threadId === thread.id;
+    const label = value.mode === "thread_heartbeat" ? value.threadTitle || tr("automation.target.thread") : tr("automation.target.new");
+    const normalized = query.trim().toLowerCase();
+    const visible = [...threads]
+      .sort((a, b) => ((b.pinned === true) - (a.pinned === true)) || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+      .filter((thread) => !normalized || String(thread.title || "").toLowerCase().includes(normalized))
+      .slice(0, 20);
+    const pinned = visible.filter((thread) => thread.pinned === true);
+    const rest = visible.filter((thread) => thread.pinned !== true);
+    const choose = (target) => {
+      setOpen(false);
+      setQuery("");
+      onSelect(target);
+    };
+    const renderThread = (thread) => h("button", {
+      key: thread.id,
+      type: "button",
+      className: "plugin-automation-target-option",
+      "aria-selected": isSelected(thread) ? "true" : "false",
+      onClick: () => choose({ mode: "thread_heartbeat", threadId: thread.id, threadTitle: thread.title }),
+    },
+      h("span", { className: "plugin-automation-target-option-main" },
+        h("span", { className: "plugin-automation-target-option-title" }, thread.title),
+        h("span", { className: "plugin-automation-target-option-meta" }, formatDateTime(thread.updatedAt) || "")),
+      isSelected(thread) ? h(CheckIcon) : null);
+    return h("div", { className: "plugin-automation-target", ref: rootRef, "data-align": align || undefined },
+      h("button", {
+        type: "button",
+        className: "plugin-automation-target-button",
+        disabled,
+        "aria-expanded": open ? "true" : "false",
+        onClick: () => { setOpen(!open); setQuery(""); },
+      },
+        h("span", { className: "plugin-automation-target-value" }, label),
+        h(ChevronIcon)),
+      open ? h("div", {
+        className: "plugin-automation-target-menu",
+        onKeyDown: (event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            setOpen(false);
+          }
+        },
+      },
+        h("label", { className: "plugin-automation-target-search" },
+          h("span", { className: "plugin-automation-sr" }, tr("automation.target.search")),
+          h(SearchIcon),
+          h("input", { type: "search", autoFocus: true, value: query, placeholder: tr("automation.target.search"), onChange: (event) => setQuery(event.target.value) })),
+        h("button", {
+          type: "button",
+          className: "plugin-automation-target-option",
+          "aria-selected": value.mode !== "thread_heartbeat" ? "true" : "false",
+          onClick: () => choose({ mode: "new_thread" }),
+        },
+          h("span", { className: "plugin-automation-target-option-main" },
+            h("span", { className: "plugin-automation-target-option-title" }, tr("automation.target.new"))),
+          value.mode !== "thread_heartbeat" ? h(CheckIcon) : null),
+        pinned.length > 0 ? h("div", { className: "plugin-automation-target-section" }, tr("automation.target.pinned")) : null,
+        pinned.map(renderThread),
+        rest.length > 0 ? h("div", { className: "plugin-automation-target-section" }, tr("automation.target.chats")) : null,
+        rest.map(renderThread),
+        normalized && visible.length === 0 ? h("p", { className: "plugin-automation-target-empty" }, tr("automation.target.empty")) : null)
+      : null);
+  }
+
   function Catalog(props) {
     const tr = props.translate;
     const [tasks, setTasks] = React.useState([]);
@@ -243,7 +361,8 @@ export async function activate(api) {
     const [query, setQuery] = React.useState("");
     const [filter, setFilter] = React.useState("all");
     const [selectedID, setSelectedID] = React.useState(null);
-    const [draft, setDraft] = React.useState({ title: "", prompt: "", schedule: "0 9 * * 1-5", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", mode: "new_thread", recurring: true, workspace: "shared" });
+    const [draft, setDraft] = React.useState({ title: "", prompt: "", schedule: "0 9 * * 1-5", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", mode: "new_thread", heartbeat_thread_id: "", heartbeat_thread_title: "", recurring: true, workspace: "shared" });
+    const [threads, setThreads] = React.useState([]);
     const refreshEpoch = React.useRef(0);
     const availableWorkspaces = workspaces.filter((candidate) => candidate.available !== false);
     const selectedWorkspace = availableWorkspaces.find((candidate) => candidate.id === selectedWorkspaceID);
@@ -303,6 +422,19 @@ export async function activate(api) {
       document.addEventListener("keydown", onKeyDown);
       return () => document.removeEventListener("keydown", onKeyDown);
     }, [selectedID]);
+    // Live conversations of the selected workspace, for the run-target
+    // picker. Hosts without the capability (or a failing bridge) degrade
+    // to the "new chat each run" option only.
+    React.useEffect(() => {
+      let cancelled = false;
+      setThreads([]);
+      const root = selectedWorkspace?.root;
+      if (!root || typeof api.listThreads !== "function") return undefined;
+      api.listThreads(root)
+        .then((list) => { if (!cancelled) setThreads(Array.isArray(list) ? list : []); })
+        .catch(() => { if (!cancelled) setThreads([]); });
+      return () => { cancelled = true; };
+    }, [selectedWorkspace?.root]);
     const act = async (method, input) => {
       if (!selectedWorkspace) {
         setError(tr("automation.workspaceNone"));
@@ -376,8 +508,29 @@ export async function activate(api) {
         h("div", { className: "plugin-automation-form-grid" },
           h(TextInput, { label: tr("automation.schedule"), placeholder: tr("automation.placeholder.schedule"), value: draft.schedule, onChange: (event) => setDraft({ ...draft, schedule: event.target.value }) }),
           h(TextInput, { label: tr("automation.timezone"), value: draft.timezone, onChange: (event) => setDraft({ ...draft, timezone: event.target.value }) })),
+        h("div", { className: "plugin-automation-form-target" },
+          h("span", { className: "plugin-automation-form-target-label" }, tr("automation.field.target")),
+          h(TargetPicker, {
+            tr,
+            threads,
+            align: "left",
+            value: draft.mode === "thread_heartbeat"
+              ? { mode: "thread_heartbeat", threadId: draft.heartbeat_thread_id, threadTitle: draft.heartbeat_thread_title }
+              : { mode: "new_thread" },
+            onSelect: (target) => setDraft(target.mode === "thread_heartbeat"
+              ? { ...draft, mode: "thread_heartbeat", heartbeat_thread_id: target.threadId, heartbeat_thread_title: target.threadTitle, workspace: "shared" }
+              : { ...draft, mode: "new_thread", heartbeat_thread_id: "", heartbeat_thread_title: "" }),
+          })),
         h(Checkbox, { label: tr("automation.recurring"), checked: draft.recurring, onChange: (event) => setDraft({ ...draft, recurring: event.target.checked }) }),
-        h(Checkbox, { label: tr("automation.isolation"), description: tr("automation.isolationHelp"), checked: draft.workspace === "worktree", onChange: (event) => setDraft({ ...draft, workspace: event.target.checked ? "worktree" : "shared" }) }),
+        h(Checkbox, {
+          label: tr("automation.isolation"),
+          description: tr("automation.isolationHelp"),
+          checked: draft.workspace === "worktree",
+          disabled: draft.mode === "thread_heartbeat",
+          onChange: (event) => setDraft(event.target.checked
+            ? { ...draft, workspace: "worktree", mode: "new_thread", heartbeat_thread_id: "", heartbeat_thread_title: "" }
+            : { ...draft, workspace: "shared" }),
+        }),
         h(Row, { className: "plugin-automation-form-actions" },
           h(Button, { variant: "ghost", onClick: () => setCreating(false) }, tr("automation.cancel")),
           h(Button, { variant: "primary", disabled: busy || !selectedWorkspace || !draft.prompt.trim(), onClick: async () => { if (await act("automation.create", { ...draft, durable: true })) setCreating(false); } }, tr("automation.create"))))) : null,
@@ -439,7 +592,24 @@ export async function activate(api) {
               h("h3", { className: "plugin-automation-detail-group-title" }, tr("automation.group.details")),
               h("div", { className: "plugin-automation-detail-row" },
                 h("span", { className: "plugin-automation-detail-row-label" }, tr("automation.field.target")),
-                h("span", { className: "plugin-automation-detail-row-value" }, selectedTask.mode === "thread_heartbeat" ? tr("automation.target.thread") : tr("automation.target.new"))),
+                h(TargetPicker, {
+                  tr,
+                  threads,
+                  disabled: busy,
+                  value: selectedTask.mode === "thread_heartbeat"
+                    ? { mode: "thread_heartbeat", threadId: selectedTask.heartbeat_thread_id || "", threadTitle: threads.find((thread) => thread.id === selectedTask.heartbeat_thread_id)?.title || "" }
+                    : { mode: "new_thread" },
+                  onSelect: (target) => {
+                    if (target.mode === "thread_heartbeat") {
+                      // The backend rejects worktree + thread_heartbeat, so
+                      // targeting a chat also returns the task to the shared
+                      // workspace (the isolation toggle shows this as off).
+                      act("automation.update", { ...selectedTask, mode: "thread_heartbeat", heartbeat_thread_id: target.threadId, workspace: "shared" });
+                    } else {
+                      act("automation.update", { ...selectedTask, mode: "new_thread" });
+                    }
+                  },
+                })),
               h("div", { className: "plugin-automation-detail-row" },
                 h("span", { className: "plugin-automation-detail-row-label" }, tr("automation.field.project")),
                 h("span", { className: "plugin-automation-detail-row-value" }, selectedWorkspace ? selectedWorkspace.name || workspaceName(selectedWorkspace.root) : "—")),
