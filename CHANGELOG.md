@@ -8,6 +8,11 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ## [Unreleased]
 
+### Changed
+
+- Asked the Agent to skip tool-call preambles unless it has a finding,
+  interpretation, or blocker to add.
+
 ## [0.18.0] - 2026-08-16
 
 ### Added

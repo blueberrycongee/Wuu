@@ -932,12 +932,14 @@ func TestDefaultSystemPrompt_ToolUsingMainAgent(t *testing.T) {
 		"Commit only when",
 		"Write to remotes only when the user explicitly requests it",
 		"Lead with the conclusion",
+		"Visible text between tool calls is optional",
+		"Do not announce or recap searches, reads, or edits",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("default system prompt missing invariant guidance %q: %q", want, prompt)
 		}
 	}
-	if len(prompt) > 2*1024 {
+	if len(prompt) > 3*1024 {
 		t.Fatalf("default system prompt should remain a small Wuu-specific contract, got %d bytes", len(prompt))
 	}
 }

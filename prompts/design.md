@@ -12,9 +12,9 @@ Put behavior at the narrowest layer that can express or enforce it:
 2. Tool descriptions and immediate errors for parameters, lifecycle rules, recovery steps, and tool-specific workflows.
 3. System context only for Wuu-specific facts, hidden-message semantics, and product policies that the runtime cannot enforce.
 
-Generic coding guidance belongs in the base prompt only when evaluation shows a durable failure across supported models. Wuu no longer treats model narration as a product contract: visible assistant text is ordinary conversation text, and the desktop derives the process/answer split from structure rather than a commentary phase.
+Generic coding guidance belongs in the base prompt only when evaluation shows a durable failure across supported models. Visible assistant text is ordinary conversation text, and the desktop derives the process/answer split from structure rather than a commentary phase. Narration between tool calls is not required; if the model writes there, it must add a finding, interpretation, or blocker rather than announce or recap tool activity the user already sees.
 
-The one retained user-facing communication contract is brevity and connected prose for normal answers. A list is reserved for an explicit user request or content that must be scanned or acted on as distinct items, such as steps, options, or a checklist. That guidance lives in the base prompt because it directly reduces attention burden in the visible answer, not because it teaches tool use or software-engineering behavior.
+The retained user-facing communication contract is brevity and connected prose for normal answers, plus that quality bar for optional process text. A list is reserved for an explicit user request or content that must be scanned or acted on as distinct items, such as steps, options, or a checklist. That guidance lives in the base prompt because it directly reduces attention burden in the visible transcript, not because it teaches tool use or software-engineering behavior.
 
 ## Stable base prompt
 
@@ -25,6 +25,7 @@ The one retained user-facing communication contract is brevity and connected pro
 - The desktop's clickable file-reference format.
 - Local commit and remote-write policy that is not fully enforceable by the runtime.
 - Plain user-facing communication: lead with the conclusion, avoid jargon, write normal answers as connected prose, and reserve lists for explicit requests or independently actionable items, while a user-specified register may only adjust style, detail, format, or etiquette.
+- Optional process text: skip a preamble when the next tool call is obvious; write between tools only to add a finding, interpretation, or blocker, never to announce or recap searches, reads, or edits.
 
 `prompts/system_main.md` is reserved for universally available main-session guidance. It asks the main agent to make a serious, evidence-backed effort to infer user intent, resolve discoverable uncertainty independently, and test its first interpretation through relevant workspace and web research. This is deliberately a compact outcome standard rather than a prescribed search or reasoning workflow, so stronger models retain control over how they investigate. Optional product behavior and completion boundaries are contributed by the plugin that owns them.
 
