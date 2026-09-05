@@ -34,7 +34,6 @@ export function OnboardingMascotStage({
       data-onboarding-preview={preview || undefined}
       aria-hidden="true"
     >
-      <div className="onboarding-mascot-ground" />
       <div className="onboarding-mascot-pack">
         {COMPANIONS.map((color, index) => (
           <div
@@ -51,6 +50,7 @@ export function OnboardingMascotStage({
                   activity="compose"
                   accessory="none"
                   animate="hover"
+                  followPointer
                   style={{ "--mo-head": `var(--companion-${color})`, "--mo-eye": "var(--equipment-ink)" } as CSSProperties}
                 />
                 {index === 0 ? <CompanionEquipment worn={worn} preview={preview} /> : null}

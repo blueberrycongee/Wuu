@@ -281,16 +281,6 @@
   overflow: visible;
 }
 
-.onboarding-mascot-ground {
-  position: absolute;
-  bottom: 28px;
-  width: 144px;
-  height: 12px;
-  border-radius: 50%;
-  background: color-mix(in oklab, var(--equipment-ink) 8%, transparent);
-  filter: blur(4px);
-}
-
 .onboarding-mascot-pack {
   position: relative;
   width: 200px;
