@@ -407,7 +407,7 @@ export function RuntimePicker({
           owner="codex-runtime"
           placement={placement}
           align="right"
-          width={320}
+          width={224}
           flip
         >
           {externalEngine ? (
