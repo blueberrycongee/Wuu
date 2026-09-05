@@ -1671,7 +1671,7 @@ func TestUpdateProviderRuntimePersistsConnectionFields(t *testing.T) {
 
 	baseURL := "https://custom.example.com/v1"
 	apiKey := "sk-custom"
-	if err := UpdateProviderRuntime(path, "next", "custom-model", &baseURL, &apiKey, nil, nil, nil, nil); err != nil {
+	if err := UpdateProviderRuntime(path, "next", "custom-model", &baseURL, &apiKey, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateProviderRuntime: %v", err)
 	}
 
@@ -1720,7 +1720,7 @@ func TestUpdateProviderRuntimePersistsPermissionMode(t *testing.T) {
 	}
 
 	mode := PermissionModeUnconfined
-	if err := UpdateProviderRuntime(path, "old", "old-model", nil, nil, nil, nil, nil, &mode); err != nil {
+	if err := UpdateProviderRuntime(path, "old", "old-model", nil, nil, nil, nil, nil, &mode, nil); err != nil {
 		t.Fatalf("UpdateProviderRuntime: %v", err)
 	}
 
@@ -1763,7 +1763,7 @@ func TestCreateProviderRuntimePersistsNewProvider(t *testing.T) {
 
 	baseURL := "https://custom.example.com/v1"
 	apiKey := "sk-custom"
-	if err := CreateProviderRuntime(path, "custom-1", nil, "custom-model", &baseURL, &apiKey, nil, nil, nil, nil); err != nil {
+	if err := CreateProviderRuntime(path, "custom-1", nil, "custom-model", &baseURL, &apiKey, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("CreateProviderRuntime: %v", err)
 	}
 
@@ -1817,7 +1817,7 @@ func TestGrokBuildDefaultsAndRuntimeCreation(t *testing.T) {
 		t.Fatal(err)
 	}
 	providerType := "grok-build"
-	if err := CreateProviderRuntime(path, "grok-build", &providerType, "grok-4.5", nil, nil, nil, nil, nil, nil); err != nil {
+	if err := CreateProviderRuntime(path, "grok-build", &providerType, "grok-4.5", nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("CreateProviderRuntime: %v", err)
 	}
 	cfg, _, err := LoadProjectConfig(dir)
@@ -1827,6 +1827,36 @@ func TestGrokBuildDefaultsAndRuntimeCreation(t *testing.T) {
 	created := cfg.Providers["grok-build"]
 	if created.BaseURL != "https://cli-chat-proxy.grok.com/v1" || created.WireAPI != "chat" || !created.ReuseGrokCredentials || len(created.Models) != 2 {
 		t.Fatalf("created provider = %+v", created)
+	}
+}
+
+func TestUpdateProviderRuntimePersistsExplicitCodexCredentialReuse(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".wuu.json")
+	orig := `{
+  "default_provider": "openai-codex",
+  "providers": {
+    "openai-codex": {
+      "type": "openai-codex",
+      "base_url": "https://chatgpt.com/backend-api/codex",
+      "model": "gpt-6-astra",
+      "reuse_codex_credentials": false
+    }
+  }
+}`
+	if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	enabled := true
+	if err := UpdateProviderRuntime(path, "openai-codex", "gpt-6-astra", nil, nil, nil, nil, nil, nil, &enabled); err != nil {
+		t.Fatalf("UpdateProviderRuntime: %v", err)
+	}
+	cfg, _, err := LoadProjectConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Providers["openai-codex"].ReuseCodexCredentials {
+		t.Fatal("expected reuse_codex_credentials to persist as true")
 	}
 }
 

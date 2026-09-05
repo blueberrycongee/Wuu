@@ -1,11 +1,13 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionInventoryRecord, WuuDesktopApi } from "../shared/protocol";
+import type { EngineListResult, ExtensionInventoryRecord, WuuDesktopApi } from "../shared/protocol";
 import {
   FirstRunOnboarding,
   bundledOnboardingPlugins,
+  discoveredCodexCredential,
   hasOnboardingProvider,
+  recommendedOnboardingEngine,
 } from "./FirstRunOnboarding";
 import { I18nProvider } from "./i18n";
 
@@ -74,6 +76,34 @@ describe("FirstRunOnboarding", () => {
     expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m" }])).toBe(false);
     expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m", api_key_configured: true }])).toBe(true);
     expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m", connection_locked: true }])).toBe(true);
+    expect(hasOnboardingProvider([{ name: "openai-codex", type: "openai-codex", model: "gpt-6-astra", connection_locked: true }])).toBe(false);
+    expect(hasOnboardingProvider([{
+      name: "openai-codex",
+      type: "openai-codex",
+      model: "gpt-6-astra",
+      connection_locked: true,
+      reuse_codex_credentials: true,
+      codex_credential_source: "codex-cli",
+    }])).toBe(true);
+  });
+
+  it("recommends Wuu even when an external engine is already installed", () => {
+    expect(recommendedOnboardingEngine([
+      { id: "wuu", enabled: true, binary_ok: true },
+      { id: "codex", enabled: true, binary_ok: true },
+    ])).toBe("wuu");
+  });
+
+  it("discovers a local Codex login without treating it as already configured", () => {
+    const providers = [{
+      name: "openai-codex",
+      type: "openai-codex",
+      model: "gpt-6-astra",
+      connection_locked: true,
+      codex_credential_source: "codex-cli",
+    }];
+    expect(discoveredCodexCredential(providers)?.name).toBe("openai-codex");
+    expect(hasOnboardingProvider(providers)).toBe(false);
   });
 
   it("uses the centered ready layout when a model provider is already configured", async () => {
@@ -92,6 +122,7 @@ describe("FirstRunOnboarding", () => {
     });
 
     await clickButton("开始设置");
+    await clickButton("继续");
     await clickButton("继续");
 
     expect(container.querySelector(".onboarding-stage-provider")).not.toBeNull();
@@ -134,9 +165,47 @@ describe("FirstRunOnboarding", () => {
     expect(container.textContent).not.toContain("正在准备随包插件");
     expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
     expect(
-      container.querySelector('[aria-pressed="true"] .onboarding-plugin-copy strong')?.textContent,
+      container.querySelector(".onboarding-plugin.is-selected .onboarding-plugin-copy strong")?.textContent,
     ).toBe("todo");
     expect(container.querySelector(".onboarding-presets .is-selected")?.textContent).toBe("推荐");
+  });
+
+  it("previews a plugin UI without changing the enablement choice", async () => {
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={[plugin("todo", false), plugin("ask-user", false)]}
+            providers={[]}
+            onUpdateExtensionPackage={vi.fn(async () => undefined)}
+            onSaveProvider={vi.fn(async () => undefined)}
+            onComplete={vi.fn(async () => undefined)}
+          />
+        </I18nProvider>,
+      );
+    });
+    await clickButton("开始设置");
+
+    expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
+    expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")).toBeNull();
+    expect(mascot()?.getAttribute("data-wuu-mascot-activity")).toBe("tool");
+
+    await clickPlugin("todo");
+    expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")?.getAttribute("data-plugin")).toBe("todo");
+    expect(container.textContent).toContain("补上首次设置预览");
+    expect(mascot()?.getAttribute("data-wuu-mascot-activity")).toBe("edit");
+    expect(mascot()?.getAttribute("data-wuu-mascot-accessory")).toBe("cap");
+    expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
+
+    await clickPlugin("ask-user");
+    expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")?.getAttribute("data-plugin")).toBe("ask-user");
+    expect(container.textContent).toContain("这次更想怎么推进？");
+    expect(mascot()?.getAttribute("data-wuu-mascot-activity")).toBe("thinking");
+    expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
+
+    await clickPluginCheck("ask-user");
+    expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(2);
+    expect(container.querySelectorAll(".onboarding-plugin-orbit")).toHaveLength(2);
   });
 
   it("loads manifest icon assets with the plugin subject ID", async () => {
@@ -202,6 +271,9 @@ describe("FirstRunOnboarding", () => {
     expect(update).toHaveBeenCalledWith({ id: "plugin:bundled:ask-user", action: "disable" });
     expect(complete).not.toHaveBeenCalled();
 
+    expect(container.textContent).toContain("先决定谁来执行任务");
+    await clickButton("继续");
+
     await clickButton("稍后配置");
     expect(container.textContent).toContain("你的 Wuu 已经准备好了");
     expect(complete).not.toHaveBeenCalled();
@@ -232,6 +304,7 @@ describe("FirstRunOnboarding", () => {
     await clickButton("开始设置");
     await clickButton("极简");
     await clickButton("继续");
+    await clickButton("继续");
 
     const type = container.querySelector("select") as HTMLSelectElement;
     await act(async () => {
@@ -248,6 +321,48 @@ describe("FirstRunOnboarding", () => {
     });
   });
 
+  it("lets the user confirm a discovered Codex login before using it", async () => {
+    const save = vi.fn(async () => undefined);
+    const updateEngines = vi.fn(async () => undefined);
+    const engines: EngineListResult = {
+      engines: [
+        { id: "wuu", enabled: true, binary_ok: true },
+        { id: "codex", enabled: true, binary_ok: true },
+      ],
+      settings: { default_engine: "wuu" },
+    };
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={[plugin("todo", true)]}
+            providers={[{
+              name: "openai-codex",
+              type: "openai-codex",
+              model: "gpt-6-astra",
+              connection_locked: true,
+              codex_credential_source: "codex-cli",
+            }]}
+            engines={engines}
+            onUpdateExtensionPackage={vi.fn(async () => undefined)}
+            onSaveProvider={save}
+            onUpdateEngines={updateEngines}
+            onComplete={vi.fn(async () => undefined)}
+          />
+        </I18nProvider>,
+      );
+    });
+    await clickButton("开始设置");
+    await clickButton("继续");
+    expect(container.textContent).toContain("使用本机 Codex 登录");
+    expect(container.querySelector<HTMLInputElement>('[data-testid="onboarding-reuse-codex"] input')?.checked).toBe(true);
+    await clickButton("继续");
+    expect(updateEngines).toHaveBeenCalledWith({ default_engine: "wuu" });
+    expect(save).toHaveBeenCalledWith("openai-codex", "gpt-6-astra", {
+      reuse_codex_credentials: true,
+    });
+  });
+
   async function clickButton(label: string): Promise<void> {
     const button = [...container.querySelectorAll("button")].find(
       (candidate) => candidate.textContent?.trim() === label,
@@ -256,5 +371,29 @@ describe("FirstRunOnboarding", () => {
     await act(async () => {
       button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
+  }
+
+  async function clickPlugin(name: string): Promise<void> {
+    const button = [...container.querySelectorAll(".onboarding-plugin-body")].find(
+      (candidate) => candidate.querySelector("strong")?.textContent === name,
+    );
+    expect(button, `missing plugin ${name}`).toBeDefined();
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+  }
+
+  async function clickPluginCheck(name: string): Promise<void> {
+    const button = [...container.querySelectorAll(".onboarding-plugin-check")].find(
+      (candidate) => candidate.getAttribute("aria-label")?.includes(name),
+    );
+    expect(button, `missing plugin check ${name}`).toBeDefined();
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+  }
+
+  function mascot(): SVGSVGElement | null {
+    return container.querySelector(".onboarding-plugin-mascot-stage [data-wuu-mascot-activity]");
   }
 });

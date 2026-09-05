@@ -1070,6 +1070,65 @@ func TestProviderHasAuthChecksCodexOAuthAvailability(t *testing.T) {
 	}
 }
 
+func TestProviderSummariesExposeDiscoveredCodexCLILogin(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	home := os.Getenv("HOME")
+	codexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	claims, err := json.Marshal(map[string]any{
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"https://api.openai.com/auth": map[string]any{
+			"chatgpt_account_id": "acct_summary",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := base64.RawURLEncoding.EncodeToString(claims)
+	token := header + "." + payload + ".sig"
+	auth := []byte(`{"auth_mode":"chatgpt","tokens":{"access_token":"` + token + `","refresh_token":"refresh-token"}}`)
+	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), auth, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", "")
+	data := []byte(`{
+  "default_provider": "openai-codex",
+  "providers": {
+    "openai-codex": {
+      "type": "openai-codex",
+      "model": "gpt-6-astra",
+      "reuse_codex_credentials": false
+    }
+  }
+}`)
+	if err := os.WriteFile(rt.ConfigPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	summaries := New(rt, &lockedBuffer{}).providerSummaries()
+	var discovered *ProviderSummary
+	for index := range summaries {
+		if summaries[index].Name == "openai-codex" {
+			discovered = &summaries[index]
+			break
+		}
+	}
+	if discovered == nil {
+		t.Fatalf("openai-codex summary missing from %+v", summaries)
+	}
+	if discovered.ReuseCodexCredentials {
+		t.Fatal("discovered Codex login must not imply reuse is already enabled")
+	}
+	if discovered.CodexCredentialSource != "codex-cli" {
+		t.Fatalf("codex credential source = %q, want codex-cli", discovered.CodexCredentialSource)
+	}
+	if !discovered.ConnectionLocked {
+		t.Fatalf("expected locked Codex connection: %+v", discovered)
+	}
+}
+
 func TestProviderSummariesExposeGrokBuildLoginAndModelDefaults(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GROK_HOME", "")

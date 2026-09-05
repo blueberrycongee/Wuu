@@ -18,7 +18,7 @@
 ## 常见选择
 
 - **OpenAI：**选择 OpenAI 兼容类型并填写 API Key。桌面端当前不能直接发起 OpenAI
-  OAuth 登录；使用 OAuth 需要已有 Wuu 凭据，或先运行 Codex CLI 完成登录，再在
+  OAuth 登录；使用 OAuth 需要已有 Wuu 凭据，或先运行 Codex CLI 完成登录，再在首次设置或
   `openai-codex` provider 配置中启用 `reuse_codex_credentials`。Codex 原生上下文压缩
   默认开启；如需继续使用 Wuu 的可移植文本摘要压缩，可将 `native_compaction` 设为
   `false`。

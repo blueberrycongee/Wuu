@@ -142,6 +142,9 @@ export function createRuntimeSettingsActions(
               ? { type: connection.type }
               : {}),
             ...(connection.create_provider ? { create_provider: true } : {}),
+            ...(connection.reuse_codex_credentials === undefined
+              ? {}
+              : { reuse_codex_credentials: connection.reuse_codex_credentials }),
           };
     const currentProvider = state.initialized.providers?.find(
       (item) => item.name === nextProvider,
@@ -151,7 +154,10 @@ export function createRuntimeSettingsActions(
       Boolean(nextConnection?.api_key) ||
       Boolean(nextConnection?.auth_token) ||
       (nextConnection?.base_url !== undefined &&
-        nextConnection.base_url !== (currentProvider?.base_url ?? ""));
+        nextConnection.base_url !== (currentProvider?.base_url ?? "")) ||
+      (nextConnection?.reuse_codex_credentials !== undefined &&
+        nextConnection.reuse_codex_credentials !==
+          (currentProvider?.reuse_codex_credentials === true));
     const providerChanged =
       nextProvider !== undefined &&
       nextProvider !==

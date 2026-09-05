@@ -107,10 +107,12 @@ func ResolveHost(kind, instanceID, workspaceID, configPath string) (runtime.Host
 
 // StarterConfig returns the local first-run configuration used by the default
 // host. It intentionally keeps only the subscription-backed provider so a new
-// shell enters the same setup flow as the official clients.
+// shell enters the same setup flow as the official clients. Local Codex CLI
+// credential reuse stays off until first-run setup confirms it.
 func StarterConfig() config.Config {
 	cfg := config.Default()
 	if provider, ok := cfg.Providers["openai-codex"]; ok {
+		provider.ReuseCodexCredentials = false
 		cfg.DefaultProvider = "openai-codex"
 		cfg.Providers = map[string]config.ProviderConfig{
 			"openai-codex": provider,
@@ -124,7 +126,7 @@ func createStarterConfig(rootDir, homeDir string) (config.Config, string, error)
 	if err != nil {
 		return config.Config{}, "", fmt.Errorf("resolve user config: %w", err)
 	}
-	data, err := json.MarshalIndent(StarterConfig(), "", "  ")
+	data, err := marshalStarterConfig(StarterConfig())
 	if err != nil {
 		return config.Config{}, "", err
 	}
@@ -135,4 +137,23 @@ func createStarterConfig(rootDir, homeDir string) (config.Config, string, error)
 		return config.Config{}, "", fmt.Errorf("write starter config: %w", err)
 	}
 	return config.LoadFrom(rootDir, homeDir)
+}
+
+func marshalStarterConfig(cfg config.Config) ([]byte, error) {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	providers, _ := raw["providers"].(map[string]any)
+	provider, _ := providers["openai-codex"].(map[string]any)
+	if provider != nil {
+		// Persist an explicit false so legacy credential-reuse defaults do not
+		// turn first-run setup into a silent Codex login import.
+		provider["reuse_codex_credentials"] = false
+	}
+	return json.MarshalIndent(raw, "", "  ")
 }

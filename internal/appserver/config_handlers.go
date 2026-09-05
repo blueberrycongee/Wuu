@@ -1304,6 +1304,15 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	if connectionLocked && (params.BaseURL != nil || strings.TrimSpace(stringValue(params.APIKey)) != "" || strings.TrimSpace(stringValue(params.AuthToken)) != "") {
 		return s.writeResponse(req.ID, nil, errors.New("connection settings are managed by OpenAI OAuth for this provider"))
 	}
+	if params.ReuseCodexCredentials != nil {
+		if !isCodexProviderType(providerCfg.Type) {
+			return s.writeResponse(req.ID, nil, errors.New("reuse_codex_credentials is only valid for openai-codex providers"))
+		}
+		if providerCfg.ReuseCodexCredentials != *params.ReuseCodexCredentials {
+			connectionChanged = true
+		}
+		providerCfg.ReuseCodexCredentials = *params.ReuseCodexCredentials
+	}
 	if params.BaseURL != nil {
 		baseURL := strings.TrimSpace(*params.BaseURL)
 		if baseURL == "" {
@@ -1447,9 +1456,9 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		if createBaseURL != nil {
 			baseURLForCreate = createBaseURL
 		}
-		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, baseURLForCreate, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
+		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, baseURLForCreate, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode, params.ReuseCodexCredentials)
 	} else {
-		err = config.UpdateProviderRuntime(s.rt.ConfigPath, resolvedName, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode)
+		err = config.UpdateProviderRuntime(s.rt.ConfigPath, resolvedName, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode, params.ReuseCodexCredentials)
 	}
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
@@ -2304,7 +2313,7 @@ func providerSummariesFromConfig(cfg config.Config, home string) []ProviderSumma
 	out := make([]ProviderSummary, 0, len(names))
 	for _, name := range names {
 		provider := cfg.Providers[name]
-		out = append(out, ProviderSummary{
+		summary := ProviderSummary{
 			Name:             name,
 			Type:             provider.Type,
 			Model:            provider.Model,
@@ -2312,7 +2321,14 @@ func providerSummariesFromConfig(cfg config.Config, home string) []ProviderSumma
 			APIKeyConfigured: providerHasAuth(name, provider, home),
 			ConnectionLocked: isCodexProviderType(provider.Type) || config.IsXAISubscriptionProvider(provider.Type) || config.IsGrokBuildProvider(provider.Type),
 			Models:           providerModelSummaries(name, provider),
-		})
+		}
+		if isCodexProviderType(provider.Type) {
+			summary.ReuseCodexCredentials = provider.ReuseCodexCredentials
+			if source, err := codex.LocalOAuthStatus(home); err == nil {
+				summary.CodexCredentialSource = source
+			}
+		}
+		out = append(out, summary)
 	}
 	return out
 }

@@ -641,6 +641,11 @@ export type ProviderSummary = {
   api_key_configured?: boolean;
   connection_locked?: boolean;
   auto_discovered?: boolean;
+  reuse_codex_credentials?: boolean;
+  // Present when a local ChatGPT/Codex OAuth session exists. "wuu-auth-store"
+  // is Wuu's own login; "codex-cli" is a read-only Codex CLI login on this
+  // machine. Discovery does not imply Wuu is allowed to use it yet.
+  codex_credential_source?: string;
   models?: ProviderModelSummary[];
 };
 
@@ -1204,6 +1209,7 @@ export type RuntimeConnectionUpdate = {
   // intentionally not listed because they require a separate connection flow.
   type?: string;
   create_provider?: boolean;
+  reuse_codex_credentials?: boolean;
 };
 
 export type AuthXAILoginStartResult = {

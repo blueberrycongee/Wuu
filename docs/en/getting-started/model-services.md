@@ -22,7 +22,7 @@ the API prefix the service requires; follow that service's own documentation.
 - **OpenAI:** choose the OpenAI-compatible type and enter the API key. The desktop
   cannot start an OpenAI OAuth login directly; using OAuth requires existing Wuu
   credentials, or signing in with Codex CLI first and enabling `reuse_codex_credentials`
-  in the `openai-codex` provider configuration. Native Codex context compaction is
+  during first-run setup or in the `openai-codex` provider configuration. Native Codex context compaction is
   enabled by default; set `native_compaction` to `false` to keep Wuu's portable
   text-summary compaction.
 - **xAI SuperGrok:** choose the xAI SuperGrok type and sign in with SuperGrok or a

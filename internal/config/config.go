@@ -1196,13 +1196,13 @@ func UpdateProviderModel(configPath, providerName, newModel string) error {
 // UpdateProviderSelection changes the default provider and the selected
 // provider's model in the config file at configPath.
 func UpdateProviderSelection(configPath, providerName, newModel string) error {
-	return updateProviderSelection(configPath, providerName, newModel, nil, nil, nil, nil, nil, nil, false, nil)
+	return updateProviderSelection(configPath, providerName, newModel, nil, nil, nil, nil, nil, nil, nil, false, nil)
 }
 
 // UpdateProviderRuntime changes the default provider and editable connection
 // fields for that provider. A nil apiKey keeps the existing key configuration.
-func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string) error {
-	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, false, nil)
+func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, reuseCodexCredentials *bool) error {
+	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, reuseCodexCredentials, false, nil)
 }
 
 // CreateProviderRuntime creates a new provider with the requested type
@@ -1210,8 +1210,8 @@ func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, a
 // editable runtime fields. A nil or empty providerType defaults to
 // "openai-compatible". The caller is responsible for whitelisting allowed
 // type values before invocation; this function writes the type verbatim.
-func CreateProviderRuntime(configPath, providerName string, providerType *string, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string) error {
-	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, true, providerType)
+func CreateProviderRuntime(configPath, providerName string, providerType *string, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, reuseCodexCredentials *bool) error {
+	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, reuseCodexCredentials, true, providerType)
 }
 
 // RemoveProvider deletes a configured provider from the config file and,
@@ -1635,7 +1635,7 @@ func setOptionalBool(target map[string]any, key string, value *bool) {
 	target[key] = true
 }
 
-func updateProviderSelection(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, createProvider bool, providerType *string) error {
+func updateProviderSelection(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, reuseCodexCredentials *bool, createProvider bool, providerType *string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
@@ -1752,6 +1752,9 @@ func updateProviderSelection(configPath, providerName, newModel string, baseURL,
 		} else {
 			agent["variant"] = strings.TrimSpace(*variant)
 		}
+	}
+	if reuseCodexCredentials != nil {
+		provider["reuse_codex_credentials"] = *reuseCodexCredentials
 	}
 	if permissionMode != nil {
 		mode := NormalizePermissionMode(*permissionMode)

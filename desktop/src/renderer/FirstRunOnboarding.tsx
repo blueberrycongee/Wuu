@@ -1,6 +1,9 @@
 import { Check, ChevronLeft, LoaderCircle, Plug, Sparkles } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type {
+  EngineInfo,
+  EngineListResult,
+  EngineUpdateParams,
   ExtensionInventoryRecord,
   ExtensionPackageUpdateParams,
   ProviderSummary,
@@ -8,14 +11,15 @@ import type {
 } from "../shared/protocol";
 import { useI18n } from "./i18n";
 import type { TranslationKey } from "./i18n/resources/zh-CN";
+import { OnboardingPluginPreview, ONBOARDING_PLUGIN_MASCOT } from "./OnboardingPluginPreview";
 import { PluginIcon } from "./PublicIcon";
 import { applyThemePreference } from "./Theme";
 import { WuuMascot } from "./WuuMascot";
 
-type OnboardingStep = "welcome" | "plugins" | "provider" | "ready";
+type OnboardingStep = "welcome" | "plugins" | "runtime" | "provider" | "ready";
 type PluginPreset = "minimal" | "recommended" | "all" | "custom";
 
-const STEP_ORDER: readonly OnboardingStep[] = ["welcome", "plugins", "provider", "ready"];
+const STEP_ORDER: readonly OnboardingStep[] = ["welcome", "plugins", "runtime", "provider", "ready"];
 const BUNDLED_PLUGIN_ORDER = [
   "ask-user",
   "todo",
@@ -66,26 +70,57 @@ export function bundledOnboardingPlugins(
 export function hasOnboardingProvider(
   providers: readonly ProviderSummary[] | undefined,
 ): boolean {
-  return providers?.some(
-    (provider) => provider.api_key_configured === true || provider.connection_locked === true,
-  ) ?? false;
+  return providers?.some((provider) => isConfiguredOnboardingProvider(provider)) ?? false;
+}
+
+export function recommendedOnboardingEngine(_engines?: readonly EngineInfo[]): string {
+  return "wuu";
+}
+
+export function discoveredCodexCredential(
+  providers: readonly ProviderSummary[] | undefined,
+): ProviderSummary | undefined {
+  return providers?.find((provider) => isCodexSubscriptionProvider(provider) && Boolean(provider.codex_credential_source));
+}
+
+function isConfiguredOnboardingProvider(provider: ProviderSummary): boolean {
+  if (provider.api_key_configured === true) return true;
+  if (isCodexSubscriptionProvider(provider)) {
+    return provider.codex_credential_source === "wuu-auth-store" || provider.reuse_codex_credentials === true;
+  }
+  return provider.connection_locked === true;
+}
+
+function isCodexSubscriptionProvider(provider: ProviderSummary): boolean {
+  const type = provider.type.trim().toLowerCase().replaceAll("_", "-");
+  return type === "openai-codex" || type === "codex-subscription" || type === "chatgpt-codex";
+}
+
+function engineLabel(id: string): string {
+  if (id === "codex") return "Codex";
+  if (id === "claude") return "Claude Code";
+  return "Wuu";
 }
 
 export function FirstRunOnboarding({
   inventory,
   providers,
+  engines,
   onUpdateExtensionPackage,
   onSaveProvider,
+  onUpdateEngines,
   onComplete,
 }: {
   inventory?: readonly ExtensionInventoryRecord[];
   providers?: readonly ProviderSummary[];
+  engines?: EngineListResult;
   onUpdateExtensionPackage: (update: ExtensionPackageUpdateParams) => Promise<void>;
   onSaveProvider: (
     provider: string,
     model: string,
     connection: RuntimeConnectionUpdate,
   ) => Promise<void>;
+  onUpdateEngines?: (params: EngineUpdateParams) => Promise<unknown>;
   onComplete: () => Promise<void>;
 }): JSX.Element {
   const { t } = useI18n();
@@ -95,6 +130,7 @@ export function FirstRunOnboarding({
     () => recommendedPluginSubjectIDs(bundledPlugins),
   );
   const initializedPluginSelection = useRef(bundledPlugins.length > 0);
+  const [previewedPluginID, setPreviewedPluginID] = useState("");
   const [applyingPlugins, setApplyingPlugins] = useState(false);
   const [providerName, setProviderName] = useState("");
   const [providerType, setProviderType] = useState("openai-compatible");
@@ -102,11 +138,27 @@ export function FirstRunOnboarding({
   const [apiKey, setApiKey] = useState("");
   const [xaiLogin, setXAILogin] = useState<{ userCode: string } | null>(null);
   const [savingProvider, setSavingProvider] = useState(false);
+  const [savingRuntime, setSavingRuntime] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState("");
+  const recommendedEngine = recommendedOnboardingEngine(engines?.engines);
+  const [selectedEngine, setSelectedEngine] = useState(recommendedEngine);
+  const discoveredCodex = discoveredCodexCredential(providers);
+  const [reuseCodexCredentials, setReuseCodexCredentials] = useState(Boolean(discoveredCodex));
   const providerReady = hasOnboardingProvider(providers);
   const preset = selectedPreset(selectedPluginIDs, bundledPlugins);
   const currentStepIndex = STEP_ORDER.indexOf(step);
+  const previewedLook = ONBOARDING_PLUGIN_MASCOT[previewedPluginID];
+  const selectedOrbitPlugins = bundledPlugins.filter((plugin) => selectedPluginIDs.has(plugin.id));
+  const selectableEngines = useMemo(
+    () => [
+      { id: "wuu", ready: true },
+      ...(engines?.engines ?? [])
+        .filter((engine) => engine.id === "codex" || engine.id === "claude")
+        .map((engine) => ({ id: engine.id, ready: engine.enabled && engine.binary_ok })),
+    ],
+    [engines],
+  );
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -122,7 +174,22 @@ export function FirstRunOnboarding({
     setSelectedPluginIDs(recommendedPluginSubjectIDs(bundledPlugins));
   }, [bundledPlugins]);
 
+  useEffect(() => {
+    setSelectedEngine((current) => {
+      const stillReady = selectableEngines.some((engine) => engine.id === current && engine.ready);
+      return stillReady ? current : recommendedEngine;
+    });
+  }, [recommendedEngine, selectableEngines]);
+
+  const initializedReuseSelection = useRef(Boolean(discoveredCodex));
+  useEffect(() => {
+    if (initializedReuseSelection.current || !discoveredCodex) return;
+    initializedReuseSelection.current = true;
+    setReuseCodexCredentials(true);
+  }, [discoveredCodex]);
+
   function choosePreset(next: Exclude<PluginPreset, "custom">): void {
+    setPreviewedPluginID("");
     if (next === "minimal") {
       setSelectedPluginIDs(new Set());
       return;
@@ -160,7 +227,7 @@ export function FirstRunOnboarding({
           });
         }
       }
-      setStep("provider");
+      setStep("runtime");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("onboarding.pluginsFailed"));
     } finally {
@@ -170,6 +237,28 @@ export function FirstRunOnboarding({
 
   const xaiSubscription = providerType === "xai-subscription";
   const grokBuild = providerType === "grok-build";
+
+  async function applyRuntimeChoices(): Promise<void> {
+    if (savingRuntime) return;
+    setSavingRuntime(true);
+    setError("");
+    try {
+      if (onUpdateEngines) {
+        await onUpdateEngines({ default_engine: selectedEngine });
+      }
+      const codexProvider = providers?.find((provider) => isCodexSubscriptionProvider(provider));
+      if (codexProvider && discoveredCodex) {
+        await onSaveProvider(codexProvider.name, codexProvider.model, {
+          reuse_codex_credentials: reuseCodexCredentials,
+        });
+      }
+      setStep("provider");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("onboarding.runtimeFailed"));
+    } finally {
+      setSavingRuntime(false);
+    }
+  }
 
   async function saveProvider(): Promise<void> {
     const name = providerName.trim();
@@ -277,7 +366,55 @@ export function FirstRunOnboarding({
                 <h1>{t("onboarding.pluginsTitle")}</h1>
                 <p>{t("onboarding.pluginsDescription")}</p>
               </div>
-              <WuuMascot className="onboarding-mascot" size={88} activity="tool" accessory="none" aria-hidden="true" />
+            </div>
+
+            <div className="onboarding-plugins-stage">
+              <div className="onboarding-plugin-mascot-stage" aria-hidden="true">
+                {selectedOrbitPlugins.map((plugin, index) => {
+                  const count = selectedOrbitPlugins.length;
+                  const angle = (index / count) * Math.PI * 2 - Math.PI / 2;
+                  const radius = count === 1 ? 78 : 92;
+                  return (
+                    <span
+                      key={plugin.id}
+                      className={`onboarding-plugin-orbit${plugin.provenance.plugin_id === previewedPluginID ? " is-previewed" : ""}`}
+                      style={{
+                        "--orbit-x": `${Math.cos(angle) * radius}px`,
+                        "--orbit-y": `${Math.sin(angle) * radius}px`,
+                      } as CSSProperties}
+                    >
+                      <PluginIcon
+                        icon={plugin.icon}
+                        pluginId={plugin.id}
+                        fingerprint={plugin.fingerprint ?? ""}
+                      />
+                    </span>
+                  );
+                })}
+                <WuuMascot
+                  className="onboarding-mascot"
+                  size={120}
+                  activity={previewedLook?.activity ?? "tool"}
+                  accessory={previewedLook?.accessory ?? "none"}
+                  aria-hidden="true"
+                />
+              </div>
+              {previewedPluginID ? (
+                <div className="onboarding-plugin-preview-frame">
+                  <div className="onboarding-plugin-preview-toolbar">
+                    <strong>
+                      {bundledPlugins.find((plugin) => plugin.provenance.plugin_id === previewedPluginID)?.name
+                        ?? previewedPluginID}
+                    </strong>
+                    <button type="button" onClick={() => setPreviewedPluginID("")}>
+                      {t("onboarding.preview.close")}
+                    </button>
+                  </div>
+                  <OnboardingPluginPreview pluginID={previewedPluginID} />
+                </div>
+              ) : (
+                <p className="onboarding-plugin-preview-hint">{t("onboarding.pluginsPreviewHint")}</p>
+              )}
             </div>
 
             <div className="onboarding-presets" aria-label={t("onboarding.presets")}> 
@@ -309,29 +446,42 @@ export function FirstRunOnboarding({
                   const selected = selectedPluginIDs.has(plugin.id);
                   const pluginID = plugin.provenance.plugin_id ?? "";
                   const descriptionKey = PLUGIN_DESCRIPTION_KEYS[pluginID];
+                  const previewed = previewedPluginID === pluginID;
                   return (
-                    <button
+                    <div
                       key={plugin.id}
-                      type="button"
-                      className={`onboarding-plugin${selected ? " is-selected" : ""}`}
-                      aria-pressed={selected}
-                      onClick={() => togglePlugin(plugin.id)}
+                      className={`onboarding-plugin${selected ? " is-selected" : ""}${previewed ? " is-previewed" : ""}`}
                     >
-                      <span className="onboarding-plugin-icon">
-                        <PluginIcon
-                          icon={plugin.icon}
-                          pluginId={plugin.id}
-                          fingerprint={plugin.fingerprint ?? ""}
-                        />
-                      </span>
-                      <span className="onboarding-plugin-copy">
-                        <strong>{plugin.name}</strong>
-                        <span>{descriptionKey ? t(descriptionKey) : plugin.description}</span>
-                      </span>
-                      <span className="onboarding-plugin-check" aria-hidden="true">
+                      <button
+                        type="button"
+                        className="onboarding-plugin-body"
+                        aria-pressed={previewed}
+                        onClick={() => setPreviewedPluginID(previewed ? "" : pluginID)}
+                      >
+                        <span className="onboarding-plugin-icon">
+                          <PluginIcon
+                            icon={plugin.icon}
+                            pluginId={plugin.id}
+                            fingerprint={plugin.fingerprint ?? ""}
+                          />
+                        </span>
+                        <span className="onboarding-plugin-copy">
+                          <strong>{plugin.name}</strong>
+                          <span>{descriptionKey ? t(descriptionKey) : plugin.description}</span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="onboarding-plugin-check"
+                        aria-pressed={selected}
+                        aria-label={selected
+                          ? t("onboarding.disablePlugin", { name: plugin.name })
+                          : t("onboarding.enablePlugin", { name: plugin.name })}
+                        onClick={() => togglePlugin(plugin.id)}
+                      >
                         {selected ? <Check /> : null}
-                      </span>
-                    </button>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -349,6 +499,85 @@ export function FirstRunOnboarding({
                 onClick={() => void applyPluginChoices()}
               >
                 {applyingPlugins ? t("onboarding.applying") : t("onboarding.continue")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {step === "runtime" ? (
+          <div className="onboarding-panel onboarding-runtime-panel">
+            <div className="onboarding-panel-heading">
+              <div>
+                <p className="onboarding-eyebrow">{t("onboarding.runtimeEyebrow")}</p>
+                <h1>{t("onboarding.runtimeTitle")}</h1>
+                <p>{t("onboarding.runtimeDescription")}</p>
+              </div>
+              <WuuMascot className="onboarding-mascot" size={88} activity="thinking" accessory="none" aria-hidden="true" />
+            </div>
+            <div className="onboarding-choice-grid" role="radiogroup" aria-label={t("onboarding.runtimeEyebrow")}>
+              {selectableEngines.map((engine) => {
+                const selected = selectedEngine === engine.id;
+                const recommended = recommendedEngine === engine.id;
+                return (
+                  <button
+                    key={engine.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    className={`onboarding-choice${selected ? " is-selected" : ""}`}
+                    data-testid={`onboarding-engine-${engine.id}`}
+                    disabled={!engine.ready && engine.id !== "wuu"}
+                    onClick={() => setSelectedEngine(engine.id)}
+                  >
+                    <span className="onboarding-choice-copy">
+                      <strong>
+                        {engineLabel(engine.id)}
+                        {recommended ? <em>{t("onboarding.recommended")}</em> : null}
+                      </strong>
+                      <span>
+                        {engine.id === "wuu"
+                          ? t("onboarding.engine.wuu")
+                          : engine.id === "codex"
+                            ? engine.ready
+                              ? t("onboarding.engine.codexReady")
+                              : t("onboarding.engine.codexMissing")
+                            : engine.ready
+                              ? t("onboarding.engine.claudeReady")
+                              : t("onboarding.engine.claudeMissing")}
+                      </span>
+                    </span>
+                    <span className="onboarding-plugin-check" aria-hidden="true">
+                      {selected ? <Check /> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {discoveredCodex ? (
+              <label className="onboarding-reuse" data-testid="onboarding-reuse-codex">
+                <input
+                  type="checkbox"
+                  checked={reuseCodexCredentials}
+                  onChange={(event) => setReuseCodexCredentials(event.currentTarget.checked)}
+                />
+                <span>
+                  <strong>{t("onboarding.reuseCodexTitle")}</strong>
+                  <span>{t("onboarding.reuseCodexDescription")}</span>
+                </span>
+              </label>
+            ) : null}
+            <OnboardingError message={error} />
+            <div className="onboarding-actions">
+              <button className="onboarding-back" type="button" onClick={() => setStep("plugins")}>
+                <ChevronLeft />{t("onboarding.back")}
+              </button>
+              <button
+                className="onboarding-primary"
+                type="button"
+                disabled={savingRuntime}
+                onClick={() => void applyRuntimeChoices()}
+              >
+                {savingRuntime ? t("onboarding.applying") : t("onboarding.continue")}
               </button>
             </div>
           </div>
@@ -415,7 +644,7 @@ export function FirstRunOnboarding({
 
             <OnboardingError message={error} />
             <div className="onboarding-actions">
-              <button className="onboarding-back" type="button" onClick={() => setStep("plugins")}>
+              <button className="onboarding-back" type="button" onClick={() => setStep("runtime")}>
                 <ChevronLeft />{t("onboarding.back")}
               </button>
               <div className="onboarding-action-group">

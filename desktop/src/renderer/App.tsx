@@ -4770,10 +4770,12 @@ export function App(): JSX.Element {
         <FirstRunOnboarding
           inventory={state.initialized?.extension_inventory}
           providers={state.initialized?.providers}
+          engines={engineInventory}
           onUpdateExtensionPackage={updateExtensionPackage}
           onSaveProvider={async (provider, model, connection) => {
             await updateRuntimeSettings(provider, model, undefined, connection, undefined);
           }}
+          onUpdateEngines={updateEngineInventory}
           onComplete={async () => {
             if (!window.wuu?.completeOnboarding) {
               throw new Error(t("onboarding.finishFailed"));

@@ -1520,6 +1520,7 @@ app.whenReady().then(async () => {
         auth_token?: string;
         type?: string;
         create_provider?: boolean;
+        reuse_codex_credentials?: boolean;
       },
       variant?: string,
       permissionMode?: string,
@@ -1545,6 +1546,9 @@ app.whenReady().then(async () => {
           : { auth_token: connection.auth_token }),
         ...(connection?.type === undefined ? {} : { type: connection.type }),
         ...(connection?.create_provider ? { create_provider: true } : {}),
+        ...(connection?.reuse_codex_credentials === undefined
+          ? {}
+          : { reuse_codex_credentials: connection.reuse_codex_credentials }),
         ...(effort === undefined ? {} : { effort }),
         ...(variant === undefined ? {} : { variant }),
         ...(permissionMode === undefined

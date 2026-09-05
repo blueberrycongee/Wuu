@@ -584,6 +584,9 @@ func TestLoadOrCreateAppServerConfigCreatesStarterConfig(t *testing.T) {
 	if _, ok := cfg.Providers["openai-codex"]; !ok {
 		t.Fatalf("starter config missing openai-codex provider: %+v", cfg.Providers)
 	}
+	if cfg.Providers["openai-codex"].ReuseCodexCredentials {
+		t.Fatal("starter openai-codex must keep reuse_codex_credentials off until first-run setup confirms it")
+	}
 
 	loaded, loadedPath, err := config.LoadFrom(root, home)
 	if err != nil {
@@ -591,6 +594,9 @@ func TestLoadOrCreateAppServerConfigCreatesStarterConfig(t *testing.T) {
 	}
 	if loadedPath != configPath || loaded.DefaultProvider != "openai-codex" {
 		t.Fatalf("unexpected reloaded config: path=%q cfg=%+v", loadedPath, loaded)
+	}
+	if loaded.Providers["openai-codex"].ReuseCodexCredentials {
+		t.Fatal("reloaded starter openai-codex must keep reuse_codex_credentials off")
 	}
 }
 

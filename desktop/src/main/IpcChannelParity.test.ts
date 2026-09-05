@@ -123,8 +123,10 @@ describe("IPC channel parity", () => {
 
     expect(handler).toContain("auth_token?: string");
     expect(handler).toContain("type?: string");
+    expect(handler).toContain("reuse_codex_credentials?: boolean");
     expect(handler).toContain("auth_token: connection.auth_token");
     expect(handler).toContain("type: connection.type");
+    expect(handler).toContain("reuse_codex_credentials: connection.reuse_codex_credentials");
   });
 
 });

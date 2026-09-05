@@ -933,6 +933,10 @@ type ConfigModelUpdateParams struct {
 	// excluded because they require a separate connection flow.
 	Type           *string `json:"type,omitempty"`
 	CreateProvider bool    `json:"create_provider,omitempty"`
+	// ReuseCodexCredentials opts a Codex subscription provider into reading
+	// the local Codex CLI auth store. An explicit false is persisted so
+	// legacy defaults cannot re-enable reuse after the user declined it.
+	ReuseCodexCredentials *bool `json:"reuse_codex_credentials,omitempty"`
 }
 
 type AuthXAILoginStartResult struct {
@@ -1191,14 +1195,16 @@ type CodexModelSummary struct {
 }
 
 type ProviderSummary struct {
-	Name             string                 `json:"name"`
-	Type             string                 `json:"type"`
-	Model            string                 `json:"model"`
-	BaseURL          string                 `json:"base_url,omitempty"`
-	APIKeyConfigured bool                   `json:"api_key_configured,omitempty"`
-	ConnectionLocked bool                   `json:"connection_locked,omitempty"`
-	AutoDiscovered   bool                   `json:"auto_discovered,omitempty"`
-	Models           []ProviderModelSummary `json:"models,omitempty"`
+	Name                  string                 `json:"name"`
+	Type                  string                 `json:"type"`
+	Model                 string                 `json:"model"`
+	BaseURL               string                 `json:"base_url,omitempty"`
+	APIKeyConfigured      bool                   `json:"api_key_configured,omitempty"`
+	ConnectionLocked      bool                   `json:"connection_locked,omitempty"`
+	AutoDiscovered        bool                   `json:"auto_discovered,omitempty"`
+	ReuseCodexCredentials bool                   `json:"reuse_codex_credentials,omitempty"`
+	CodexCredentialSource string                 `json:"codex_credential_source,omitempty"`
+	Models                []ProviderModelSummary `json:"models,omitempty"`
 }
 
 type ProviderModelSummary struct {
