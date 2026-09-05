@@ -166,6 +166,8 @@
                                                                         
   /* One rounded family: compact details, controls, then composer-sized panels. */
   --radius-xs: 6px;
+  /* Media keeps shallow corners to preserve image content at thumbnail sizes. */
+  --radius-media: var(--radius-xs);
   --radius-sm: var(--wuu-radius-control, 12px);
   --radius-md: var(--wuu-radius-panel, 22px);
   --radius-lg: var(--radius-md);
