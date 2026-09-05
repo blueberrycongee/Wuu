@@ -680,6 +680,76 @@ func TestChat_SendsImageContentParts(t *testing.T) {
 	}
 }
 
+func TestChat_KeepsImagePartsWhenMergingAdjacentUserMessages(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		msgs, ok := body["messages"].([]any)
+		if !ok || len(msgs) != 1 {
+			t.Fatalf("unexpected messages payload: %#v", body["messages"])
+		}
+		msg, ok := msgs[0].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected message type: %#v", msgs[0])
+		}
+		content, ok := msg["content"].([]any)
+		if !ok || len(content) != 3 {
+			t.Fatalf("unexpected content payload: %#v", msg["content"])
+		}
+		first, ok := content[0].(map[string]any)
+		if !ok || first["type"] != "text" || first["text"] != "look at this" {
+			t.Fatalf("unexpected first part: %#v", content[0])
+		}
+		imagePart, ok := content[1].(map[string]any)
+		if !ok || imagePart["type"] != "image_url" {
+			t.Fatalf("unexpected image part: %#v", content[1])
+		}
+		imageURL, ok := imagePart["image_url"].(map[string]any)
+		if !ok || imageURL["url"] != "data:image/png;base64,AAA" {
+			t.Fatalf("unexpected image data url: %#v", imagePart["image_url"])
+		}
+		reminder, ok := content[2].(map[string]any)
+		if !ok || reminder["type"] != "text" || reminder["text"] != "cwd: /tmp" {
+			t.Fatalf("unexpected reminder part: %#v", content[2])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), providers.ChatRequest{
+		Model:      "gpt-test",
+		MediaInput: providers.MediaInputPolicy{Image: true},
+		Messages: []providers.ChatMessage{
+			{
+				Role:    "user",
+				Content: "look at this",
+				Images: []providers.InputImage{
+					{MediaType: "image/png", Data: "AAA"},
+				},
+			},
+			{Role: "user", Content: "cwd: /tmp"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+}
+
 func TestChat_SendsFileContentParts(t *testing.T) {
 	t.Helper()
 
@@ -737,6 +807,72 @@ func TestChat_SendsFileContentParts(t *testing.T) {
 					{MediaType: "application/pdf", Data: "JVBERi0xLjQ=", Filename: "brief.pdf"},
 				},
 			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+}
+
+func TestChat_KeepsFilePartsWhenMergingAdjacentUserMessages(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		msgs, ok := body["messages"].([]any)
+		if !ok || len(msgs) != 1 {
+			t.Fatalf("unexpected messages payload: %#v", body["messages"])
+		}
+		msg, ok := msgs[0].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected message type: %#v", msgs[0])
+		}
+		content, ok := msg["content"].([]any)
+		if !ok || len(content) != 3 {
+			t.Fatalf("unexpected content payload: %#v", msg["content"])
+		}
+		filePart, ok := content[1].(map[string]any)
+		if !ok || filePart["type"] != "file" {
+			t.Fatalf("unexpected file part: %#v", content[1])
+		}
+		filePayload, ok := filePart["file"].(map[string]any)
+		if !ok || filePayload["filename"] != "brief.pdf" {
+			t.Fatalf("unexpected file payload: %#v", filePart["file"])
+		}
+		reminder, ok := content[2].(map[string]any)
+		if !ok || reminder["type"] != "text" || reminder["text"] != "cwd: /tmp" {
+			t.Fatalf("unexpected reminder part: %#v", content[2])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer server.Close()
+
+	client, err := New(ClientConfig{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), providers.ChatRequest{
+		Model:      "gpt-test",
+		MediaInput: providers.MediaInputPolicy{File: true},
+		Messages: []providers.ChatMessage{
+			{
+				Role:    "user",
+				Content: "read this",
+				Files: []providers.InputFile{
+					{MediaType: "application/pdf", Data: "JVBERi0xLjQ=", Filename: "brief.pdf"},
+				},
+			},
+			{Role: "user", Content: "cwd: /tmp"},
 		},
 	})
 	if err != nil {

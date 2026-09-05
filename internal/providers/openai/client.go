@@ -844,36 +844,81 @@ func mapMessage(model string, msg providers.ChatMessage) chatMessage {
 	return mapped
 }
 
-// mergeContent combines two chatMessage Content values. Content can
-// be a plain string or a []chatContentPart array; this normalizes
-// both to text and concatenates with a newline separator.
+// mergeContent combines two chatMessage Content values. Adjacent same-role
+// messages are collapsed because some Chat Completions endpoints reject
+// consecutive user turns. Text-only payloads stay strings. If either side
+// already has image_url or file parts, keep a part list so those media
+// parts are not flattened away.
 func mergeContent(existing, incoming any) any {
-	a := contentToString(existing)
-	b := contentToString(incoming)
-	if a == "" {
-		return b
+	left := contentParts(existing)
+	right := contentParts(incoming)
+	if len(left) == 0 {
+		return incoming
 	}
-	if b == "" {
-		return a
+	if len(right) == 0 {
+		return existing
 	}
-	return a + "\n" + b
+	if !contentHasMedia(left) && !contentHasMedia(right) {
+		a := contentText(left)
+		b := contentText(right)
+		if a == "" {
+			return b
+		}
+		if b == "" {
+			return a
+		}
+		return a + "\n" + b
+	}
+	return append(left, right...)
 }
 
-func contentToString(v any) string {
+func contentParts(v any) []chatContentPart {
 	switch c := v.(type) {
+	case nil:
+		return nil
 	case string:
-		return c
-	case []chatContentPart:
-		var parts []string
-		for _, p := range c {
-			if p.Text != "" {
-				parts = append(parts, p.Text)
-			}
+		if c == "" {
+			return nil
 		}
-		return strings.Join(parts, "\n")
+		return []chatContentPart{{Type: "text", Text: c}}
+	case []chatContentPart:
+		out := make([]chatContentPart, 0, len(c))
+		for _, part := range c {
+			if part.Type == "" && part.Text == "" && part.ImageURL == nil && part.File == nil {
+				continue
+			}
+			if part.Type == "text" && part.Text == "" {
+				continue
+			}
+			out = append(out, part)
+		}
+		return out
 	default:
-		return fmt.Sprintf("%v", v)
+		text := fmt.Sprintf("%v", v)
+		if text == "" {
+			return nil
+		}
+		return []chatContentPart{{Type: "text", Text: text}}
 	}
+}
+
+func contentHasMedia(parts []chatContentPart) bool {
+	for _, part := range parts {
+		if part.ImageURL != nil || part.File != nil || part.Type == "image_url" || part.Type == "file" {
+			return true
+		}
+	}
+	return false
+}
+
+func contentText(parts []chatContentPart) string {
+	texts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part.Text != "" {
+			texts = append(texts, part.Text)
+		}
+	}
+	return strings.Join(texts, "\n")
 }
 
 func parseContent(raw json.RawMessage) (string, error) {
