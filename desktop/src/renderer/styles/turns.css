@@ -2481,6 +2481,7 @@
   margin: 0;
   padding: 0;
   border: 0;
+  overflow: visible;
   background: transparent;
   color: var(--conversation-process-control-color, var(--process-control-color-fallback));
   cursor: default;
@@ -2517,8 +2518,10 @@
   min-width: 0;
   align-items: center;
   gap: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Hats, ears, and activity props paint past the 28px mascot box.
+   * Ellipsis lives on `.process-surface-summary-text`; clipping this
+   * flex row would shave those accessories off the round blobatar. */
+  overflow: visible;
   white-space: nowrap;
 }
 
@@ -2528,7 +2531,7 @@
   width: 28px;
   height: 28px;
   align-self: center;
-  border-radius: 50%;
+  overflow: visible;
   transform-origin: center;
 }
 

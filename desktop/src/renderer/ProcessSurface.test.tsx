@@ -12,6 +12,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ProcessSurface } from "./ProcessSurface";
 import type { ThreadItem } from "../shared/protocol";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
+import { modelMascotAccessory } from "./WuuMascot";
 
 beforeAll(() => {
   // jsdom does not lay out real heights. Stub getBoundingClientRect so
@@ -595,6 +596,24 @@ describe("ProcessSurface", () => {
     expect(
       container.querySelector(".process-surface-summary-line .process-surface-blobatar"),
     ).toBeNull();
+  });
+
+  it("keeps model accessories on the blobatar sibling, not inside the text clip", () => {
+    const model = "claude-sonnet-4";
+    const { container } = render({
+      processItems: [makeReadFile("tool-1", "a.ts", "in_progress")],
+      streaming: true,
+      model,
+    });
+
+    const line = container.querySelector(".process-surface-summary-line");
+    const blobatar = line?.querySelector("svg.process-surface-blobatar");
+    const text = line?.querySelector(".process-surface-summary-text");
+    expect(blobatar).not.toBeNull();
+    expect(blobatar?.nextElementSibling).toBe(text);
+    expect(text?.querySelector(".process-surface-blobatar")).toBeNull();
+    expect(modelMascotAccessory(model)).toBe("top-hat");
+    expect(blobatar?.getAttribute("data-wuu-mascot-accessory")).toBe("top-hat");
   });
 
   it("anchors the text sweep to the text wrapper so the blobatar does not offset it", () => {

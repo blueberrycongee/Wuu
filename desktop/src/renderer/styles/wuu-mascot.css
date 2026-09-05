@@ -140,8 +140,9 @@
   overflow: visible;
 }
 
-/* Activity props can reach the same canvas edge. The surrounding process row
- * still owns text overflow and ellipsis. */
+/* Activity props can reach the same canvas edge. The process summary text
+ * wrapper still owns ellipsis; the summary row itself stays overflow-visible
+ * so these parts are not clipped by the 28px layout box. */
 .process-surface-blobatar[data-wuu-mascot-activity]:not(
     [data-wuu-mascot-activity="idle"]
   ) {
@@ -162,6 +163,7 @@
   align-items: center;
   justify-content: center;
   margin-right: 6px;
+  overflow: visible;
 }
 
 .process-surface-summary-line .context-compaction-mascot .process-surface-blobatar {
