@@ -27,20 +27,28 @@ afterEach(() => {
   container.remove();
 });
 
+function render(result: EngineListResult | undefined, onUpdate = vi.fn(), onRefresh = vi.fn()) {
+  act(() => {
+    root.render(
+      <EngineSettingsSection
+        result={result}
+        onRefresh={onRefresh}
+        onUpdate={onUpdate}
+      />,
+    );
+  });
+  return { onUpdate, onRefresh };
+}
+
 describe("EngineSettingsSection", () => {
   it("renders a supplied session snapshot without starting detection on mount", () => {
     const onRefresh = vi.fn();
-    act(() => {
-      root.render(
-        <EngineSettingsSection
-          result={inventory}
-          onRefresh={onRefresh}
-          onUpdate={vi.fn()}
-        />,
-      );
-    });
+    render(inventory, vi.fn(), onRefresh);
 
-    expect(container.querySelector('[data-testid="settings-default-engine"]')).not.toBeNull();
+    expect(container.querySelector('[role="radiogroup"]')).not.toBeNull();
+    expect(
+      container.querySelector<HTMLInputElement>('[data-testid="settings-engine-wuu-radio"]')?.checked,
+    ).toBe(true);
     expect(container.querySelector('[data-testid="settings-engine-codex-status"]')?.getAttribute("aria-label")).toContain("已就绪");
     expect(onRefresh).not.toHaveBeenCalled();
   });
@@ -50,15 +58,7 @@ describe("EngineSettingsSection", () => {
     const onRefresh = vi.fn(() => new Promise<EngineListResult>((resolve) => {
       resolveRefresh = resolve;
     }));
-    act(() => {
-      root.render(
-        <EngineSettingsSection
-          result={inventory}
-          onRefresh={onRefresh}
-          onUpdate={vi.fn()}
-        />,
-      );
-    });
+    render(inventory, vi.fn(), onRefresh);
 
     const refresh = container.querySelector<HTMLButtonElement>('[data-testid="settings-engine-refresh"]')!;
     await act(async () => {
@@ -67,7 +67,7 @@ describe("EngineSettingsSection", () => {
 
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(refresh.disabled).toBe(true);
-    expect(container.querySelector('[data-testid="settings-default-engine"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="settings-engine-wuu-radio"]')).not.toBeNull();
 
     await act(async () => {
       resolveRefresh?.(inventory);
@@ -76,17 +76,58 @@ describe("EngineSettingsSection", () => {
   });
 
   it("uses a stable skeleton only when no session snapshot exists", () => {
-    act(() => {
-      root.render(
-        <EngineSettingsSection
-          onRefresh={vi.fn()}
-          onUpdate={vi.fn()}
-        />,
-      );
-    });
+    render(undefined);
 
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="settings-default-engine"]')).toBeNull();
+    expect(container.querySelector('[role="radiogroup"]')).toBeNull();
     expect(container.querySelector('[data-testid="settings-engine-refresh"]')).not.toBeNull();
+  });
+
+  it("saves a new default when another detected agent is picked", async () => {
+    const onUpdate = vi.fn(() => Promise.resolve(inventory));
+    render(inventory, onUpdate);
+
+    const codexRadio = container.querySelector<HTMLInputElement>('[data-testid="settings-engine-codex-radio"]')!;
+    await act(async () => {
+      codexRadio.click();
+    });
+
+    expect(onUpdate).toHaveBeenCalledWith({ default_engine: "codex" });
+  });
+
+  it("keeps an undetected agent listed but unselectable, with the reason on the row", () => {
+    const missingClaude: EngineListResult = {
+      engines: [
+        { id: "wuu", enabled: true, binary_ok: true },
+        { id: "codex", enabled: true, binary_ok: true },
+        { id: "claude", enabled: true, binary_ok: false },
+      ],
+      settings: { default_engine: "wuu" },
+    };
+    render(missingClaude);
+
+    const claudeRadio = container.querySelector<HTMLInputElement>('[data-testid="settings-engine-claude-radio"]')!;
+    expect(claudeRadio.disabled).toBe(true);
+    expect(
+      container.querySelector('[data-testid="settings-engine-claude-status"]')?.getAttribute("aria-label"),
+    ).toContain("未安装");
+  });
+
+  it("reveals per-agent overrides from the row itself", async () => {
+    const onUpdate = vi.fn(() => Promise.resolve(inventory));
+    render(inventory, onUpdate);
+
+    expect(container.querySelector('[data-testid="settings-engine-codex-path"]')).toBeNull();
+    const toggle = container.querySelector<HTMLButtonElement>('[data-testid="settings-engine-codex-advanced-toggle"]')!;
+    await act(async () => {
+      toggle.click();
+    });
+    expect(container.querySelector('[data-testid="settings-engine-codex-path"]')).not.toBeNull();
+
+    const disable = container.querySelector<HTMLButtonElement>('[data-testid="settings-engine-codex-enabled"]')!;
+    await act(async () => {
+      disable.click();
+    });
+    expect(onUpdate).toHaveBeenCalledWith({ codex: { enabled: false } });
   });
 });

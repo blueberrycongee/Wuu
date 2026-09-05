@@ -738,9 +738,17 @@
 }
 
 /* --- Agent engines section --------------------------------------------------
- * Detection is supporting information, not another settings form. Keep it on
- * one compact scan line; resolved paths belong to the advanced controls.
+ * One row per agent: detection state sits next to the name and the row's
+ * radio is the default-agent choice. Path overrides and enable/disable live
+ * behind the row's own expand control.
  * ----------------------------------------------------------------------------- */
+
+/* The refresh control lives in the header, not on a row of its own. */
+.settings-agent-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
 
 .settings-engine-body {
   padding: 0 16px;
@@ -753,50 +761,116 @@
   border: 0;
 }
 
-.settings-engine-overview {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 0;
+.settings-engine-item + .settings-engine-item {
   border-top: 1px solid var(--hairline-soft);
 }
 
-.settings-engine-statuses {
+.settings-engine-body .settings-engine-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.settings-engine-radio {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
+.settings-engine-radio:disabled {
+  cursor: default;
+}
+
+.settings-engine-row-main {
   display: flex;
   min-width: 0;
+  flex: 1 1 auto;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 20px;
+  gap: 8px;
+  cursor: pointer;
 }
 
-.settings-engine-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
+.settings-engine-radio:disabled ~ .settings-engine-row-main {
+  cursor: default;
+}
+
+.settings-engine-radio:disabled ~ .settings-engine-row-main .settings-engine-row-icon,
+.settings-engine-radio:disabled ~ .settings-engine-row-main .settings-engine-row-name {
   color: var(--ink-muted);
-  font-size: var(--font-sm);
-  line-height: 1.4;
 }
 
-.settings-engine-status-name {
+.settings-engine-row-icon {
+  display: inline-flex;
+  width: 14px;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--ink);
+}
+
+.settings-engine-row-name {
   color: var(--ink);
   font-weight: var(--weight-medium);
 }
 
-.settings-engine-status-label {
+.settings-engine-row-status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.settings-engine-actions {
-  display: flex;
+.settings-engine-expand {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  gap: 4px;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-tertiary);
+  cursor: pointer;
+}
+
+.settings-engine-expand:hover {
+  background: var(--menu-hover);
+  color: var(--ink-muted);
+}
+
+.settings-engine-expand-chevron {
+  transition: transform var(--motion-fast) var(--menu-enter-easing);
+}
+
+.settings-engine-expand-chevron.open {
+  transform: rotate(90deg);
+}
+
+/* Indent aligns the override controls with the row content past the radio. */
+.settings-engine-advanced {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 0 12px 24px;
+}
+
+.settings-engine-advanced .settings-input {
+  flex: 1 1 auto;
+}
+
+/* Brand mark sitting next to an agent name; currentColor keeps it monochrome. */
+.engine-icon {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
 }
 
 .settings-engine-refresh {
@@ -837,33 +911,11 @@
   justify-self: end;
 }
 
-.settings-engine-skeleton-statuses {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
 .settings-xai-login {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
-}
-
-.settings-engine-advanced-toggle {
-  flex: 0 0 auto;
-  gap: 4px;
-  padding: 0 8px 0 4px;
-  color: var(--ink-muted);
-  font-size: var(--font-sm);
-}
-
-.settings-engine-advanced-chevron {
-  transition: transform var(--motion-fast) var(--menu-enter-easing);
-}
-
-.settings-engine-advanced-chevron.open {
-  transform: rotate(90deg);
 }
 
 /* Service selection and editing are separate tasks within one workspace. */

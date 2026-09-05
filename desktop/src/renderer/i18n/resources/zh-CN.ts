@@ -17,6 +17,7 @@ export const zhCN = {
   "settings.engineBinaryPathPlaceholder": "留空自动从 PATH 查找",
   "settings.engineAutoBinary": "自动检测",
   "settings.engineDisabled": "已停用",
+  "settings.engineBuiltin": "内置",
   "settings.engineEnable": "启用",
   "settings.engineDisable": "禁用",
   "slash.compact.externalEngineUnavailable": "上下文压缩由当前外部引擎管理",

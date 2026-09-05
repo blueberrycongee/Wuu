@@ -19,6 +19,7 @@ export const enUS = {
   "settings.engineBinaryPathPlaceholder": "Leave empty to look up on PATH",
   "settings.engineAutoBinary": "Auto-detected",
   "settings.engineDisabled": "Disabled",
+  "settings.engineBuiltin": "Built-in",
   "settings.engineEnable": "Enable",
   "settings.engineDisable": "Disable",
   "slash.compact.externalEngineUnavailable": "Compaction is managed by the active external engine",

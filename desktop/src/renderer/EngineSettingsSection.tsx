@@ -1,13 +1,13 @@
 import { ChevronRight, RefreshCw } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   EngineInfo,
   EngineListResult,
   EngineUpdateParams,
 } from "../shared/protocol";
 import { clearDraftEngineMemory } from "./DraftEngineMemory";
+import { EngineIcon } from "./EngineIcons";
 import { useI18n } from "./i18n";
-import { SelectMenu } from "./SelectMenu";
 
 const ENGINE_LABELS: Record<string, string> = {
   wuu: "Wuu",
@@ -15,14 +15,15 @@ const ENGINE_LABELS: Record<string, string> = {
   claude: "Claude Code",
 };
 
+const BUILTIN_ENGINE = "wuu";
 const EXTERNAL_ENGINES = ["codex", "claude"] as const;
 
 /**
- * Agent options inside the model services page. External agents (Codex,
- * Claude Code) are auto-detected and presented like model choices: they show
- * up when their CLI is installed and disappear otherwise, with no setup
- * required. Only the default selection is a first-class setting; binary path
- * overrides and explicit enable/disable live behind the advanced disclosure.
+ * Agent options inside the model services page: one row per agent, so each
+ * agent appears exactly once. External agents (Codex, Claude Code) are
+ * auto-detected and stay listed even when unavailable — the row says why —
+ * while the row's radio makes it the default. Binary path overrides and
+ * explicit enable/disable live behind the row's own expand control.
  */
 export function EngineSettingsSection({
   result,
@@ -39,7 +40,7 @@ export function EngineSettingsSection({
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -67,19 +68,41 @@ export function EngineSettingsSection({
 
   const engines = useMemo(() => result?.engines ?? [], [result]);
   const settings = result?.settings;
-  const defaultEngine = settings?.default_engine ?? "wuu";
+  const defaultEngine = settings?.default_engine ?? BUILTIN_ENGINE;
   const engineById = useCallback(
     (id: string): EngineInfo | undefined => engines.find((e) => e.id === id),
     [engines],
   );
-  const selectableIds = useMemo(
-    () => engines.filter((e) => e.enabled && e.binary_ok).map((e) => e.id),
-    [engines],
+
+  const selectDefault = useCallback(
+    (id: string) => {
+      if (id === defaultEngine) return;
+      // The composer remembers the last agent picked there. An explicit
+      // default change here is the newer decision, so drop that memory
+      // instead of letting it mask the setting.
+      clearDraftEngineMemory();
+      void save({ default_engine: id });
+    },
+    [defaultEngine, save],
   );
 
-  // One-line state shown under each auto-detected agent. The enabled/ready
-  // state itself lives in the trailing flag, so this line only carries the
-  // detail: the resolved binary path, or why detection failed.
+  // Row availability for an external agent. Unavailable agents stay listed —
+  // the status explains why — instead of silently leaving the choice set.
+  const externalState = (
+    engine: EngineInfo | undefined,
+  ): { text: string; selectable: boolean } => {
+    if (engine?.enabled && engine.binary_ok) {
+      const detail = engine.binary_path || t("settings.engineAutoBinary");
+      return { text: `${t("settings.engineReady")} · ${detail}`, selectable: true };
+    }
+    if (engine && !engine.enabled) {
+      return { text: t("settings.engineDisabled"), selectable: false };
+    }
+    return { text: t("settings.engineNotInstalled"), selectable: false };
+  };
+
+  // Placeholder detail for the path override input: the resolved binary
+  // path, or why detection failed.
   const statusLine = (engine: EngineInfo | undefined): string => {
     if (!engine) return "";
     if (!engine.binary_ok) {
@@ -88,16 +111,66 @@ export function EngineSettingsSection({
     return engine.binary_path || t("settings.engineAutoBinary");
   };
 
-  const statusFlag = (
-    engine: EngineInfo | undefined,
-  ): { text: string; tone: "success" | "muted" } => {
-    if (engine?.enabled && engine?.binary_ok) {
-      return { text: t("settings.engineReady"), tone: "success" };
-    }
-    if (!engine?.enabled) {
-      return { text: t("settings.engineDisabled"), tone: "muted" };
-    }
-    return { text: t("settings.engineNotInstalled"), tone: "muted" };
+  // One row per agent. The `advanced` panel is pre-rendered by the caller so
+  // the per-engine settings lookup keeps its literal key type.
+  const renderAgentRow = (
+    id: string,
+    state: { text: string; selectable: boolean },
+    advanced?: ReactNode,
+  ): JSX.Element => {
+    const expanded = expandedId === id;
+    const label = ENGINE_LABELS[id] ?? id;
+    return (
+      <div
+        key={id}
+        className="settings-engine-item"
+        data-testid={`settings-engine-${id}-status`}
+        aria-label={`${label} · ${state.text}`}
+      >
+        <div className="settings-row settings-engine-row">
+          <input
+            id={`settings-engine-radio-${id}`}
+            className="settings-engine-radio"
+            type="radio"
+            name="settings-default-engine"
+            checked={defaultEngine === id}
+            disabled={busy || !state.selectable}
+            data-testid={`settings-engine-${id}-radio`}
+            onChange={() => selectDefault(id)}
+          />
+          <label
+            className="settings-engine-row-main"
+            htmlFor={`settings-engine-radio-${id}`}
+          >
+            <span className="settings-engine-row-icon" aria-hidden="true">
+              <EngineIcon engine={id} />
+            </span>
+            <span className="settings-engine-row-name">{label}</span>
+            <span className="settings-engine-row-status">{state.text}</span>
+          </label>
+          {advanced ? (
+            <button
+              className="settings-engine-expand"
+              type="button"
+              aria-expanded={expanded}
+              aria-label={`${label} ${t("settings.engineAdvanced")}`}
+              data-testid={`settings-engine-${id}-advanced-toggle`}
+              onClick={() =>
+                setExpandedId((current) => (current === id ? null : id))
+              }
+            >
+              <ChevronRight
+                className={`icon settings-engine-expand-chevron${expanded ? " open" : ""}`}
+                aria-hidden="true"
+              />
+            </button>
+          ) : null}
+        </div>
+        {advanced && expanded ? (
+          <div className="settings-engine-advanced">{advanced}</div>
+        ) : null}
+      </div>
+    );
   };
 
   return (
@@ -106,132 +179,59 @@ export function EngineSettingsSection({
       data-wuu-component="settings-section"
       data-testid="settings-agent-engines"
     >
-      <header className="settings-section-header">
+      <header className="settings-section-header settings-agent-header">
         <h2 className="settings-section-title">{t("settings.agentEngines")}</h2>
+        <button
+          className="settings-button settings-icon-button settings-engine-refresh"
+          type="button"
+          disabled={busy || refreshing}
+          aria-busy={refreshing}
+          aria-label={t("settings.engineRefresh")}
+          title={t("settings.engineRefresh")}
+          data-testid="settings-engine-refresh"
+          onClick={() => void refresh()}
+        >
+          <RefreshCw className={`icon${refreshing ? " settings-spin" : ""}`} aria-hidden="true" />
+        </button>
       </header>
       <div className="settings-engine-body">
-      {result === undefined ? (
-        <div
-          className="settings-group settings-engine-skeleton"
-          data-wuu-component="settings-group"
-          role="status"
-          aria-label={t("settings.engineDetecting")}
-          aria-busy="true"
-        >
-          <div className="settings-row" aria-hidden="true">
-            <div className="settings-row-label">
-              <span className="settings-engine-skeleton-line settings-engine-skeleton-title" />
-              <span className="settings-engine-skeleton-line settings-engine-skeleton-description" />
+        {result === undefined ? (
+          <div
+            className="settings-engine-skeleton"
+            role="status"
+            aria-label={t("settings.engineDetecting")}
+            aria-busy="true"
+          >
+            <div className="settings-row" aria-hidden="true">
+              <div className="settings-row-label">
+                <span className="settings-engine-skeleton-line settings-engine-skeleton-title" />
+                <span className="settings-engine-skeleton-line settings-engine-skeleton-description" />
+              </div>
+              <span className="settings-engine-skeleton-control" />
             </div>
-            <span className="settings-engine-skeleton-control" />
-          </div>
-        </div>
-      ) : (
-        <div className="settings-group" data-wuu-component="settings-group">
-          <div className="settings-row">
-            <div className="settings-row-label">
-              <span className="settings-row-label-title">
-                {t("settings.defaultEngine")}
-              </span>
-            </div>
-            <div className="settings-row-control">
-              <SelectMenu
-                triggerClassName="settings-select-trigger"
-                ariaLabel={t("settings.defaultEngine")}
-                dataTestid="settings-default-engine"
-                value={defaultEngine}
-                disabled={busy}
-                onChange={(next) => {
-                  // The composer remembers the last agent picked there. An
-                  // explicit default change here is the newer decision, so
-                  // drop that memory instead of letting it mask the setting.
-                  clearDraftEngineMemory();
-                  void save({ default_engine: next });
-                }}
-                options={selectableIds.map((id) => ({
-                  value: id,
-                  label: ENGINE_LABELS[id] ?? id,
-                }))}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-      <div className="settings-engine-overview">
-        {result !== undefined ? (
-          <div className="settings-engine-statuses">
-            {EXTERNAL_ENGINES.map((id) => {
-              const flag = statusFlag(engineById(id));
-              return (
-                <div
-                  key={id}
-                  className="settings-engine-status"
-                  aria-label={`${ENGINE_LABELS[id]} · ${flag.text}`}
-                  data-testid={`settings-engine-${id}-status`}
-                >
-                  <span className="settings-engine-status-name">{ENGINE_LABELS[id]}</span>
-                  {flag.tone !== "success" ? <span className="settings-engine-status-label">{flag.text}</span> : null}
-                </div>
-              );
-            })}
           </div>
         ) : (
-          <div className="settings-engine-skeleton-statuses" aria-hidden="true">
-            <span className="settings-engine-skeleton-line" />
-            <span className="settings-engine-skeleton-line" />
-          </div>
-        )}
-        <div className="settings-engine-actions">
-          <button
-            className="settings-button settings-button-ghost settings-engine-refresh"
-            type="button"
-            disabled={busy || refreshing}
-            aria-busy={refreshing}
-            data-testid="settings-engine-refresh"
-            onClick={() => void refresh()}
-          >
-            <RefreshCw className={`icon${refreshing ? " settings-spin" : ""}`} aria-hidden="true" />
-            <span>{t("settings.engineRefresh")}</span>
-          </button>
-          {result !== undefined ? (
-            <button
-              className="settings-button settings-button-ghost settings-engine-advanced-toggle"
-              type="button"
-              aria-expanded={advancedOpen}
-              data-testid="settings-engine-advanced-toggle"
-              onClick={() => setAdvancedOpen((open) => !open)}
-            >
-              <ChevronRight
-                className={`icon settings-engine-advanced-chevron${advancedOpen ? " open" : ""}`}
-                aria-hidden="true"
-              />
-              <span>{t("settings.engineAdvanced")}</span>
-            </button>
-          ) : null}
-        </div>
-      </div>
-      </div>
-      {advancedOpen && result !== undefined ? (
-        <div className="settings-group" data-wuu-component="settings-group">
-          {EXTERNAL_ENGINES.map((id) => {
-            const engineSettings = settings?.[id];
-            const enabled = engineById(id)?.enabled ?? false;
-            return (
-              <div key={id} className="settings-row settings-row-block">
-                <div className="settings-row-label">
-                  <span className="settings-row-label-title">{ENGINE_LABELS[id]}</span>
-                  <span className="settings-row-label-description">
-                    {t("settings.engineBinaryPath")}
-                  </span>
-                </div>
-                <div className="settings-row-control-block">
+          <div role="radiogroup" aria-label={t("settings.defaultEngine")}>
+            {renderAgentRow(BUILTIN_ENGINE, {
+              text: t("settings.engineBuiltin"),
+              selectable: true,
+            })}
+            {EXTERNAL_ENGINES.map((id) => {
+              const engine = engineById(id);
+              const engineSettings = settings?.[id];
+              const enabled = engine?.enabled ?? false;
+              const label = ENGINE_LABELS[id] ?? id;
+              return renderAgentRow(
+                id,
+                externalState(engine),
+                <>
                   <input
                     key={`${id}-${engineSettings?.binary_path ?? ""}`}
-                    className="settings-input settings-engine-path-input"
+                    className="settings-input"
                     type="text"
-                    aria-label={`${ENGINE_LABELS[id]} ${t("settings.engineBinaryPath")}`}
+                    aria-label={`${label} ${t("settings.engineBinaryPath")}`}
                     data-testid={`settings-engine-${id}-path`}
-                    placeholder={statusLine(engineById(id)) || t("settings.engineBinaryPathPlaceholder")}
+                    placeholder={statusLine(engine) || t("settings.engineBinaryPathPlaceholder")}
                     defaultValue={engineSettings?.binary_path ?? ""}
                     disabled={busy}
                     onBlur={(event) => {
@@ -246,21 +246,19 @@ export function EngineSettingsSection({
                     type="button"
                     role="switch"
                     aria-checked={enabled}
+                    aria-label={`${label} ${enabled ? t("settings.engineDisable") : t("settings.engineEnable")}`}
                     data-testid={`settings-engine-${id}-enabled`}
                     disabled={busy}
                     onClick={() => void save({ [id]: { enabled: !enabled } })}
                   >
                     <span className="settings-switch-thumb" aria-hidden="true" />
-                    <span className="sr-only">
-                      {enabled ? t("settings.engineDisable") : t("settings.engineEnable")}
-                    </span>
                   </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
+                </>,
+              );
+            })}
+          </div>
+        )}
+      </div>
       {error || loadError ? <small className="settings-muted-line">{error || loadError}</small> : null}
     </section>
   );
