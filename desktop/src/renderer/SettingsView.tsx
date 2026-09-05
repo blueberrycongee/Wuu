@@ -1706,7 +1706,6 @@ function SettingsCollaborationPage({
           />
         </SettingsRow>
       </SettingsCard>
-      <p className="settings-section-description">{t("settings.collaborationUsageNotice")}</p>
     </SettingsSection>
   );
 }

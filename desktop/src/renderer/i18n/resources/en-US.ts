@@ -39,7 +39,6 @@ export const enUS = {
   "settings.verificationModel": "Delivery quality check model",
   "settings.verificationModelDescription": "Checks concrete task results in an independent context before delivery. Inherits the Wuu default model when unset.",
   "settings.collaborationInheritDefault": "Inherit Wuu default model",
-  "settings.collaborationUsageNotice": "Group chat can make additional coordination calls. Concrete tasks also make pre-delivery quality-check calls, and rejected results can use more calls while they are improved.",
   "settings.providerServices": "Connected services",
   "settings.modelCatalog": "Model catalog",
   "settings.modelCatalogDescription": "Fetch the latest provider and model definitions without updating Wuu. Your configuration is never changed.",
