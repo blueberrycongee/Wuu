@@ -458,16 +458,8 @@
   animation: onboarding-fold-note 1.2s ease-in-out both;
 }
 
-.onboarding-plugin-preview-frame,
-.onboarding-plugin-preview-hint {
+.onboarding-plugin-preview-frame {
   min-width: 0;
-}
-
-.onboarding-plugin-preview-hint {
-  margin: 0;
-  color: var(--onboarding-copy-description);
-  font-size: 14px;
-  line-height: 1.65;
 }
 
 .onboarding-plugin-preview-toolbar {

@@ -395,9 +395,7 @@ export function FirstRunOnboarding({
           <div className="onboarding-panel onboarding-plugins-panel">
             <div className="onboarding-panel-heading">
               <div>
-                <p className="onboarding-eyebrow">{t("onboarding.pluginsEyebrow")}</p>
                 <h1>{t("onboarding.pluginsTitle")}</h1>
-                <p>{t("onboarding.pluginsDescription")}</p>
               </div>
             </div>
 
@@ -419,9 +417,7 @@ export function FirstRunOnboarding({
                   </div>
                   <OnboardingPluginPreview pluginID={previewedPluginID} />
                 </div>
-              ) : (
-                <p className="onboarding-plugin-preview-hint">{t("onboarding.pluginsPreviewHint")}</p>
-              )}
+              ) : null}
             </div>
 
             <div className="onboarding-presets" aria-label={t("onboarding.presets")}> 
