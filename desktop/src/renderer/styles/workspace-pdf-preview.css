@@ -33,7 +33,7 @@
   min-width: 0;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--surface-3);
+  border-bottom: 1px solid var(--hairline-soft);
   background: var(--paper);
   padding: 0 10px 0 14px;
 }
@@ -100,7 +100,7 @@
 
 .pdfViewer .page {
   margin: 0 auto 18px;
-  border: 1px solid var(--surface-3);
+  border: 1px solid var(--hairline);
   background-color: var(--pdf-page-bg);
   box-shadow: var(--pdf-page-shadow);
 }

@@ -32,7 +32,7 @@
   /* Prose surfaces share the neutral ramp: blocks recede, inline code
    * gets a small contrast step without resembling a selected control. */
   --message-flow-card-bg: var(--surface-1);
-  --message-flow-card-border: var(--hairline-soft);
+  --message-flow-card-border: var(--hairline);
   --message-flow-card-divider: var(--hairline-soft);
   --message-flow-card-header-bg: var(--message-flow-card-bg);
   --message-flow-card-hover-bg: var(--wuu-color-surface, var(--surface-1));
@@ -48,15 +48,15 @@
   --rich-rule-color: var(--wuu-border-subtle, var(--gray-250));
   --pre-text-color: var(--wuu-color-text, var(--gray-700));
   --system-line-marker-color: var(--wuu-color-text-muted, var(--gray-400));
-  --empty-home-action-border: var(--wuu-border-subtle, var(--gray-200));
-  --empty-home-action-border-hover: var(--wuu-border-strong, var(--gray-350));
+  --empty-home-action-border: var(--wuu-border-subtle, var(--hairline));
+  --empty-home-action-border-hover: var(--wuu-border-strong, var(--hairline-strong));
   --empty-home-action-icon-color: var(--wuu-color-text-muted, var(--gray-500));
   /* The empty-state greeting: animated blobatar shown, serif title. */
   --empty-home-mascot-display: block;
   --empty-home-title-font: Georgia, "Iowan Old Style", Palatino,
     "Songti SC", "Noto Serif SC", "Noto Serif CJK SC", serif;
   --project-empty-content-color: var(--wuu-color-text-muted, var(--gray-600));
-  --project-empty-actions-border: var(--wuu-border-subtle, var(--gray-300));
+  --project-empty-actions-border: var(--wuu-border-subtle, var(--hairline));
   --project-empty-actions-hover-bg: var(--gray-50);
   --diff-insert-bg: rgba(18, 161, 80, 0.08);
   --diff-insert-text-color: var(--wuu-color-success, #0a6b34);
@@ -142,7 +142,7 @@
 .conversation-turn-history-loader {
   justify-self: center;
   margin: 4px 0 20px;
-  border: 1px solid var(--hairline-soft);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
   color: var(--ink-muted);
@@ -172,7 +172,7 @@
   grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  border: 1px solid var(--hairline-soft);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   background: var(--surface-1);
   color: var(--ink);
@@ -476,7 +476,7 @@
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--ink-overlay-12);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
 }
@@ -555,7 +555,7 @@
   margin: 0;
   overflow: auto;
   padding: 10px 12px 12px;
-  border-top: 1px solid var(--ink-overlay-12);
+  border-top: 1px solid var(--hairline-soft);
   color: var(--ink);
   font: inherit;
   font-size: var(--font-sm);
@@ -578,7 +578,7 @@
   gap: 8px;
   border-radius: var(--radius-lg);
   background: var(--surface-2);
-  border: 1px solid var(--hairline-soft);
+  border: 1px solid var(--hairline);
   padding: 10px 12px;
   color: var(--ink);
   transition: background-color var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out);
@@ -861,7 +861,7 @@
   width: 112px;
   max-width: 100%;
   height: 84px;
-  border: 1px solid var(--ink-overlay-12);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-media);
   object-fit: cover;
   background: var(--paper);
@@ -904,7 +904,7 @@
   max-width: min(280px, 100%);
   gap: 8px;
   padding: 8px 10px;
-  border: 1px solid var(--ink-overlay-12);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--message-file-bg);
   color: var(--message-file-fg);
@@ -1008,7 +1008,7 @@
   width: 22px;
   height: 22px;
   place-items: center;
-  border: 1px solid var(--ink-overlay-12);
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
   background: var(--paper);
   color: var(--ink);
@@ -1084,7 +1084,7 @@
 
 .plugin-conversation-card-shell {
   overflow: hidden;
-  border: 1px solid var(--ink-overlay-8);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: var(--surface-1);
 }
@@ -1096,7 +1096,7 @@
   gap: 12px;
   min-height: 44px;
   padding: 8px 10px 8px 16px;
-  border-bottom: 1px solid var(--ink-overlay-6);
+  border-bottom: 1px solid var(--hairline-soft);
 }
 
 .plugin-conversation-card-heading {
@@ -1132,7 +1132,7 @@
 .instruction-files-card-inner {
   position: relative;
   display: grid;
-  border: 1px solid var(--ink-overlay-8);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: var(--surface-1);
   padding: 16px 18px;
@@ -3095,7 +3095,7 @@
                                                               
                                                            
                                                                     
-  border: 1px solid var(--ink-overlay-6);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-media);
   background: var(--surface-1);
   object-fit: contain;
@@ -3219,7 +3219,7 @@
 .fork-worktree-card {
   display: block;
   overflow: hidden;
-  border: 1px solid var(--hairline-soft);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
 }
@@ -3334,7 +3334,7 @@
 
 .fork-worktree-code-block {
   position: relative;
-  border: 1px solid var(--ink-overlay-8);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--paper);
   overflow: hidden;
@@ -3428,7 +3428,7 @@
                                                                
                                                            
                                                                   
-  border-left: 2px solid var(--ink-overlay-18);
+  border-left: 2px solid var(--hairline-strong);
   color: var(--rich-blockquote-color);
   padding: 2px 0 2px 16px;
 }
@@ -3443,7 +3443,7 @@
 
 .rich-mermaid {
   overflow: auto;
-  border: 1px solid var(--surface-4);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--paper);
   padding: 14px;
@@ -3659,7 +3659,7 @@
 }
 
 .tool-card {
-  border: 1px solid var(--surface-4);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
   overflow: hidden;
@@ -3670,7 +3670,7 @@
   height: 40px;
   align-items: center;
   gap: 9px;
-  border-bottom: 1px solid var(--surface-3);
+  border-bottom: 1px solid var(--hairline-soft);
   padding: 0 14px;
   font-weight: var(--weight-semibold);
 }
@@ -3696,7 +3696,7 @@ pre {
   overflow: auto;
   margin: 0;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--surface-3);
+  border-bottom: 1px solid var(--hairline-soft);
   background: var(--surface-1);
   color: var(--pre-text-color);
   font-family: var(--wuu-font-family-mono, var(--font-mono, "SFMono-Regular", Consolas, monospace));
@@ -3739,7 +3739,7 @@ pre {
    
 .system-line {
   border: 0;
-  border-top: 1px solid var(--surface-3);
+  border-top: 1px solid var(--hairline-soft);
   border-radius: 0;
   background: transparent;
   color: var(--ink-tertiary);
@@ -3916,7 +3916,7 @@ pre {
   aspect-ratio: 1;
   place-items: center;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border: 1px solid var(--hairline);
   border-radius: 31%;
   background:
     radial-gradient(
@@ -4212,7 +4212,7 @@ pre {
   justify-content: space-between;
   gap: 16px;
   padding: 20px 24px 16px;
-  border-bottom: 1px solid var(--surface-3);
+  border-bottom: 1px solid var(--hairline-soft);
 }
 
 .chip-gallery-header h2 {
@@ -4293,7 +4293,7 @@ pre {
   gap: 16px;
   padding: 12px 16px;
   background: var(--surface-1);
-  border: 1px solid var(--surface-3);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
 }
 
@@ -4352,7 +4352,7 @@ pre {
 }
 
 .chip-gallery-context-frame {
-  border: 1px solid var(--surface-3);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   background: var(--surface-1);
   padding: 16px 20px;
@@ -4383,7 +4383,7 @@ pre {
   max-width: calc(100vw - 48px);
   max-height: 360px;
   overflow: hidden;
-  border: 1px solid var(--surface-3);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   background: var(--paper);
   box-shadow: 0 10px 30px var(--shadow-color-medium);
@@ -4398,7 +4398,7 @@ pre {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--surface-2);
+  border-bottom: 1px solid var(--hairline-soft);
   background: var(--surface-1);
   flex-shrink: 0;
 }
@@ -4444,7 +4444,7 @@ pre {
 
 .tool-diff-hunk + .tool-diff-hunk {
   margin-top: 12px;
-  border-top: 1px solid var(--surface-2);
+  border-top: 1px solid var(--hairline-soft);
   padding-top: 10px;
 }
 
@@ -4609,7 +4609,7 @@ pre {
   width: min(100%, 620px);
   max-height: 520px;
   padding: 0;
-  border: 1px solid var(--surface-3);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--surface-1);
@@ -4632,7 +4632,7 @@ pre {
 .turn-artifact-inline-card {
   width: min(100%, 620px);
   overflow: hidden;
-  border: 1px solid var(--surface-3);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   background: var(--paper);
 }
@@ -4701,7 +4701,7 @@ pre {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--surface-3);
+  border-bottom: 1px solid var(--hairline-soft);
   background: var(--surface-1);
 }
 

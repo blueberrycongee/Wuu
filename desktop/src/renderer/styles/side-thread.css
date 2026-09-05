@@ -78,7 +78,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--surface-3, var(--hairline-soft));
+  border-bottom: 1px solid var(--hairline-soft);
   /* The panel spans the titlebar row, so this header is the only drag
    * strip on the right of the conversation pane. Match .titlebar and
    * .workspace-panel-tabbar; interactive children opt out below. */
@@ -131,7 +131,7 @@
 .side-thread-panel__close:hover,
 .side-thread-panel__close:focus-visible {
   background: var(--surface-2, rgba(31, 35, 40, 0.04));
-  border-color: var(--surface-3, var(--hairline-soft));
+  border-color: var(--hairline-strong);
   color: var(--ink);
   outline: none;
 }
@@ -162,7 +162,7 @@
   line-height: 1.5;
   color: var(--turn-warning-text, #b1271b);
   background: var(--surface-2, rgba(177, 39, 27, 0.05));
-  border-top: 1px solid var(--surface-3, var(--hairline-soft));
+  border-top: 1px solid var(--hairline-soft);
 }
 
 .side-thread-panel__footer {

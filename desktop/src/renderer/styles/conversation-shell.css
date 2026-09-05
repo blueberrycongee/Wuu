@@ -10,7 +10,7 @@
   --shell-session-tab-active-pending-count-bg: rgba(17, 19, 21, 0.14);
   --shell-session-tab-drag-overlay-ring: rgba(255, 255, 255, 0.72);
   --shell-todo-card-bg: #fff;
-  --shell-todo-card-border: rgba(17, 19, 21, 0.12);
+  --shell-todo-card-border: var(--hairline);
   --shell-todo-card-shadow: rgba(17, 19, 21, 0.14);
   --shell-todo-card-ink: #111315;
   --shell-todo-card-soft: #3e4449;
@@ -793,7 +793,7 @@
   max-height: min(680px, calc(100vh - 88px));
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
-  border: 1px solid var(--ink-overlay-12);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   background: var(--menu-bg);
   box-shadow:
@@ -820,7 +820,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
-  border-bottom: 1px solid var(--surface-3);
+  border-bottom: 1px solid var(--hairline-soft);
   padding: 14px;
 }
 
@@ -918,7 +918,7 @@
 .run-debug-item,
 .run-debug-event {
   min-width: 0;
-  border: 1px solid var(--surface-3);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
 }
@@ -1595,7 +1595,7 @@ button.conversation-status-capsule,
   color: var(--ink-tertiary, rgba(60, 60, 67, 0.65));
   padding-bottom: 8px;
   margin-bottom: 8px;
-  border-bottom: 1px solid var(--menu-border, rgba(0, 0, 0, 0.08));
+  border-bottom: 1px solid var(--hairline-soft);
 }
 
 /* Body is the scrollable region. min-height: 0 is required so flex

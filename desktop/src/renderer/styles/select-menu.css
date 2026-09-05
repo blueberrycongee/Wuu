@@ -281,7 +281,7 @@
   height: 36px;
   margin: -1px -1px 4px;
   padding: 0 9px;
-  border-bottom: 1px solid var(--menu-border);
+  border-bottom: 1px solid var(--hairline-soft);
   background: var(--menu-bg);
   color: var(--ink-tertiary);
 }

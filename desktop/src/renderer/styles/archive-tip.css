@@ -24,7 +24,7 @@
   padding: 10px 12px 10px 14px;
   background: var(--paper, #ffffff);
   color: var(--ink, #1c2024);
-  border: 1px solid var(--hairline, rgba(20, 24, 28, 0.1));
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md, 12px);
   box-shadow: var(--shadow-pop, 0 14px 34px rgba(0, 0, 0, 0.18));
   font-size: var(--font-ui, 13px);

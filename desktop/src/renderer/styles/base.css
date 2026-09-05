@@ -79,16 +79,28 @@
   --surface-3: var(--wuu-color-surface-elevated, var(--gray-150));
   --surface-4: var(--wuu-color-surface-elevated, var(--gray-200));
 
+  /* ------------------------------------------------------------------
+   * Line-tier governance: the product's three gray line strengths.
+   * Every 1px border or divider must resolve to one of these three;
+   * the ink-overlay alpha steps below are for fills, not lines.
+   *
+   * --hairline-soft  (~6%, "divider"): separators INSIDE one surface —
+   *   table rows, card headers, section edges. Structure, no boundary.
+   * --hairline        (~12-13%, "frame"): outline of a standalone
+   *   object — cards, panels, code blocks, edit boxes, menus.
+   * --hairline-strong (~18-20%, "control"): interactive boundaries —
+   *   inputs, buttons, strong in-flow rules, hover/emphasis edges.
+   *
+   * Exceptions kept outside the ladder: focus-ring, control-boundary
+   * and semantic colors are state colors; ink/paper rings and the
+   * translucent glass rims over blurred content are contrast keylines.
+   * ------------------------------------------------------------------ */
   --hairline: var(--wuu-color-border-subtle, var(--gray-250));
   --hairline-strong: var(--wuu-color-border-strong, var(--gray-350));
   --hairline-soft: var(--wuu-border-subtle, var(--ink-overlay-6));
-  /* In-flow horizontal rules inside the conversation (turn progress
-     rule, system-event divider). One token so they read as the same
-     line everywhere. */
-  --rule: var(--wuu-color-border-subtle, var(--gray-300));                              
-
-                                                                    
-                                                    
+  /* In-flow horizontal rules (turn progress, markdown <hr>/heading
+     underlines) read as strong document rules: control tier. */
+  --rule: var(--hairline-strong);
   /* Ink-overlay alpha steps. Pre-tokenised so future opacity tweaks
      happen here, not scattered across CSS files. */
   --ink-overlay-4: rgba(31, 35, 40, 0.04);
@@ -209,7 +221,7 @@
   --line-body: var(--wuu-line-height-body, 1.55);
   --line-meta: 1.6;
   --menu-bg: var(--wuu-color-surface-elevated, rgba(255, 255, 255, 0.98));
-  --menu-border: var(--wuu-color-border-subtle, var(--ink-overlay-12));
+  --menu-border: var(--hairline);
   --menu-hover: var(--wuu-color-surface-muted, #f2f3f0);
   --menu-shadow: var(--shadow-pop);
   /* --- Motion: primitives ------------------------------------------------

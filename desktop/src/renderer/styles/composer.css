@@ -30,7 +30,7 @@
 .user-question-field + .user-question-field {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid var(--ink-overlay-6);
+  border-top: 1px solid var(--hairline-soft);
 }
 
 .user-question-prompt {
@@ -137,7 +137,7 @@
   box-sizing: border-box;
   margin-top: 10px;
   padding: 8px 12px;
-  border: 1px solid var(--ink-overlay-12);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   color: var(--ink);
   background: var(--paper);
@@ -355,7 +355,7 @@
   position: absolute;
   inset: 0;
   z-index: 2;
-  border: 1px solid var(--hairline-soft);
+  border: 1px solid var(--hairline);
   border-radius: inherit;
   pointer-events: none;
 }
@@ -519,7 +519,7 @@
   width: 58px;
   height: 58px;
   flex: 0 0 auto;
-  border: 1px solid var(--surface-4);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-media);
   background: var(--surface-1);
   box-shadow: var(--shadow-soft);
@@ -541,7 +541,7 @@
   width: 22px;
   height: 22px;
   place-items: center;
-  border: 1px solid var(--surface-4);
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
   background: var(--paper);
   color: var(--ink);
@@ -561,7 +561,7 @@
   min-height: 38px;
   gap: 8px;
   padding: 8px 34px 8px 10px;
-  border: 1px solid var(--surface-4);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
   color: var(--ink);
@@ -600,11 +600,11 @@
   --composer-input-header-inline-padding: 8px;
   --composer-input-header-row-height: 36px;
   --composer-input-header-action-size: 28px;
-  border-bottom: 1px solid var(--ink-overlay-6);
+  border-bottom: 1px solid var(--hairline-soft);
 }
 
 .composer-input-header > * + * {
-  border-top: 1px solid var(--ink-overlay-6);
+  border-top: 1px solid var(--hairline-soft);
 }
 
 .composer-input-header-actions {
@@ -675,7 +675,7 @@
 }
 
 .composer-queue-row + .composer-queue-row {
-  border-top: 1px solid var(--ink-overlay-6);
+  border-top: 1px solid var(--hairline-soft);
 }
 
 .composer-queue-row:hover .composer-queue-preview,
@@ -971,7 +971,7 @@
   min-height: 38px;
   flex: 0 1 auto;
   align-items: center;
-  border: 1px solid var(--surface-4);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
   box-shadow: var(--shadow-soft);

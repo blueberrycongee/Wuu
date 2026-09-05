@@ -319,7 +319,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--ink-overlay-8);
+  border-bottom: 1px solid var(--hairline-soft);
 }
 
 .design-tokens-title {
@@ -366,7 +366,7 @@
 
 .design-token {
   padding: 12px 0;
-  border-bottom: 1px solid var(--ink-overlay-6);
+  border-bottom: 1px solid var(--hairline-soft);
 }
 
 .design-token:last-child {
@@ -449,7 +449,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 18px;
-  border-top: 1px solid var(--ink-overlay-8);
+  border-top: 1px solid var(--hairline-soft);
 }
 
 .design-tokens-reset {
@@ -457,7 +457,7 @@
   align-items: center;
   gap: 6px;
   padding: 5px 10px;
-  border: 1px solid var(--ink-overlay-12);
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink);

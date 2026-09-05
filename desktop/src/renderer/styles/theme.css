@@ -56,7 +56,7 @@
 
   --hairline: var(--wuu-color-border-subtle, var(--gray-250));
   --hairline-strong: var(--wuu-color-border-strong, var(--gray-350));
-  --rule: var(--wuu-color-border-subtle, var(--gray-300));
+  --rule: var(--hairline-strong);
   --control-boundary: var(--wuu-color-border-strong, var(--gray-450));
   --slider-thumb-bg: var(--wuu-color-text, var(--gray-900));
   --interaction-accent: var(--wuu-color-accent, #a1bedb);
@@ -149,7 +149,7 @@
   --workspace-empty-icon-fg: var(--wuu-color-text-muted, #9aa0a5);
   --workspace-terminal-restart-hover-bg: #33383d;
   --browser-nav-disabled: var(--wuu-color-text-muted, #565c62);
-  --browser-url-border: var(--wuu-color-border-subtle, #33383d);
+  --browser-url-border: var(--wuu-color-border-subtle, var(--hairline));
   --browser-url-focus-border: var(--focus-ring);
   --browser-url-focus-ring: var(--focus-ring);
   --browser-url-error-ring: rgba(240, 112, 95, 0.3);
@@ -163,9 +163,9 @@
   --browser-error-span-text: var(--wuu-color-danger, #e59c90);
   --browser-retry-hover-bg: #c0392b;
   --browser-loading-dot-bg: var(--wuu-color-info, #58a6ff);
-  --skills-section-border: var(--wuu-color-border-subtle, #2d3135);
+  --skills-section-border: var(--wuu-color-border-subtle, var(--hairline-soft));
   --skill-row-chevron: var(--wuu-color-text-muted, #686f75);
-  --skill-artwork-border: var(--wuu-color-border-subtle, rgba(255, 255, 255, 0.08));
+  --skill-artwork-border: var(--wuu-color-border-subtle, var(--hairline-soft));
   --skill-artwork-shadow: rgba(0, 0, 0, 0.28);
   --skill-artwork-neutral-bg: var(--wuu-color-surface-muted, #24282c);
   --skill-artwork-neutral-fg: var(--wuu-color-text-muted, #a5abb0);
@@ -325,7 +325,7 @@
   --plugin-ui-panel-bg: var(--wuu-color-surface, var(--surface-1));
   --plugin-ui-card-bg: var(--wuu-color-surface-elevated, var(--surface-3));
   --task-card-bg: var(--wuu-color-surface-elevated, var(--surface-3));
-  --task-card-border: var(--wuu-color-border-strong, var(--hairline-strong));
+  --task-card-border: var(--wuu-color-border-subtle, var(--hairline));
 
   /* sidebar.css */
   /* macOS's `under-window` vibrancy material can remain light even when the
@@ -407,7 +407,7 @@
   --rich-link-color: var(--wuu-color-link, #60a5fa);
   --rich-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
   --message-flow-card-bg: var(--surface-1);
-  --message-flow-card-border: var(--hairline-soft);
+  --message-flow-card-border: var(--hairline);
   --message-flow-card-divider: var(--hairline-soft);
   --message-flow-card-hover-bg: var(--wuu-color-surface, var(--surface-1));
   --surface-chip: var(--surface-2);
@@ -417,11 +417,11 @@
   --rich-rule-color: var(--wuu-border-subtle, #33383d);
   --pre-text-color: var(--wuu-color-text, #ccd1d5);
   --system-line-marker-color: var(--wuu-color-text-muted, #565c62);
-  --empty-home-action-border: var(--wuu-border-subtle, #33383d);
-  --empty-home-action-border-hover: var(--wuu-border-strong, #40464c);
+  --empty-home-action-border: var(--wuu-border-subtle, var(--hairline));
+  --empty-home-action-border-hover: var(--wuu-border-strong, var(--hairline-strong));
   --empty-home-action-icon-color: var(--wuu-color-text-muted, #8b9196);
   --project-empty-content-color: var(--wuu-color-text-muted, #989ea3);
-  --project-empty-actions-border: var(--wuu-border-subtle, #33383d);
+  --project-empty-actions-border: var(--wuu-border-subtle, var(--hairline));
   --project-empty-actions-hover-bg: #24282c;
   --diff-insert-bg: rgba(63, 185, 112, 0.12);
   --diff-insert-text-color: var(--wuu-color-success, #4cc38a);
@@ -439,7 +439,7 @@
   --shell-session-tab-active-pending-count-bg: rgba(228, 232, 235, 0.16);
   --shell-session-tab-drag-overlay-ring: rgba(20, 22, 24, 0.72);
   --shell-todo-card-bg: var(--wuu-color-surface-elevated, var(--surface-3));
-  --shell-todo-card-border: var(--wuu-color-border-strong, var(--hairline-strong));
+  --shell-todo-card-border: var(--wuu-color-border-subtle, var(--hairline));
   --shell-todo-card-shadow: rgba(0, 0, 0, 0.44);
   --shell-todo-card-ink: var(--wuu-color-text, var(--ink-strong));
   --shell-todo-card-soft: var(--wuu-color-text, var(--ink));
