@@ -1,7 +1,7 @@
 export async function activate(api) {
   const React = api.react;
   const h = React.createElement;
-  const { Page, Panel, Stack, Row, Button, TextInput, TextArea, Select, Checkbox, EmptyState } = api.ui;
+  const { Page, Stack, Row, Button, Select, Checkbox, EmptyState } = api.ui;
 
   api.registerLocale({ id: "automation-en", locale: "en-US", entries: {
     "automation.title": "Automations", "automation.subtitle": "Scheduled prompts and recurring work.",
@@ -22,7 +22,7 @@ export async function activate(api) {
     "automation.field.target": "Runs in", "automation.field.project": "Project", "automation.field.time": "Time", "automation.field.isolation": "Isolated run",
     "automation.target.new": "New chat each run", "automation.target.thread": "Existing chat",
     "automation.target.search": "Search chats", "automation.target.chats": "Chats", "automation.target.pinned": "Pinned", "automation.target.empty": "No matching chats",
-    "automation.placeholder.prompt": "e.g. Summarize yesterday's progress at 9am…", "automation.placeholder.schedule": "0 9 * * 1-5",
+    "automation.placeholder.name": "Task title", "automation.placeholder.prompt": "What should this automation do?", "automation.placeholder.schedule": "0 9 * * 1-5",
   }});
   api.registerLocale({ id: "automation-zh", locale: "zh-CN", entries: {
     "automation.title": "自动化", "automation.subtitle": "按计划运行的提示词与周期性任务。",
@@ -31,7 +31,7 @@ export async function activate(api) {
     "automation.search": "搜索自动化", "automation.filter.all": "全部", "automation.filter.active": "已开启",
     "automation.filter.empty": "没有符合筛选的任务。",
     "automation.name": "名称", "automation.prompt": "提示词", "automation.schedule": "Cron 时间", "automation.timezone": "时区", "automation.workspace": "工作区",
-    "automation.recurring": "重复执行", "automation.workspaceHelp": "下方任务和运行记录都属于这个工作区。", "automation.workspaceNone": "没有可用的项目工作区",
+    "automation.recurring": "重复", "automation.workspaceHelp": "下方任务和运行记录都属于这个工作区。", "automation.workspaceNone": "没有可用的项目工作区",
     "automation.isolation": "在独立 git worktree 中运行", "automation.isolationHelp": "每次运行都在自己的 worktree 中执行，不直接改动当前项目目录。",
     "automation.create": "创建", "automation.cancel": "取消", "automation.pause": "暂停", "automation.resume": "继续", "automation.remove": "删除",
     "automation.paused": "已暂停",
@@ -43,7 +43,7 @@ export async function activate(api) {
     "automation.field.target": "运行于", "automation.field.project": "项目", "automation.field.time": "时间", "automation.field.isolation": "隔离运行",
     "automation.target.new": "每次新会话", "automation.target.thread": "指定会话",
     "automation.target.search": "搜索会话", "automation.target.chats": "会话", "automation.target.pinned": "已置顶", "automation.target.empty": "没有匹配的会话",
-    "automation.placeholder.prompt": "例如：每天早上 9 点整理昨天的进展…", "automation.placeholder.schedule": "0 9 * * 1-5",
+    "automation.placeholder.name": "任务标题", "automation.placeholder.prompt": "描述这次自动化要做什么", "automation.placeholder.schedule": "0 9 * * 1-5",
   }});
   api.registerStyle({ id: "automation-catalog", css: `
     .plugin-automation { height:100%; overflow:auto; container-type:inline-size; color:var(--wuu-color-text, var(--ink, #181818)); background:var(--wuu-color-canvas, var(--paper, #fff)); }
@@ -77,11 +77,32 @@ export async function activate(api) {
     .plugin-automation-filter:not(:disabled):hover { color:var(--wuu-color-text, var(--ink)); }
     .plugin-automation-filter[aria-pressed="true"] { background:var(--wuu-color-surface-muted, var(--surface-2)); color:var(--wuu-color-text, var(--ink)); }
 
-    /* The create form is the one enclosed surface on the page: a quiet
-     * hairline panel named by a 12px group label, like a settings group. */
-    .plugin-automation-form { display:flex; flex-direction:column; gap:calc(var(--wuu-space-unit,4px) * 3 * var(--wuu-space-density,1)); }
+    /* Create form: a title + prompt, then inset-grouped cards whose rows
+     * share one large radius and split on hairlines, like native settings. */
+    .plugin-automation-form { display:flex; flex-direction:column; gap:calc(var(--wuu-space-unit,4px) * 5 * var(--wuu-space-density,1)); }
     .plugin-automation-form-title { margin:0; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); font-weight:400; line-height:1.3; }
-    .plugin-automation-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:calc(var(--wuu-space-unit,4px) * 3 * var(--wuu-space-density,1)); }
+    .plugin-automation-form-identity { display:flex; flex-direction:column; gap:12px; }
+    .plugin-automation-form-name { width:100%; min-width:0; border:0; outline:0; padding:0; background:transparent; color:var(--wuu-color-text, var(--ink)); font:inherit; font-size:22px; font-weight:var(--weight-semibold,600); letter-spacing:-0.02em; line-height:1.25; }
+    .plugin-automation-form-name:focus-visible, .plugin-automation-form-cron:focus-visible, .plugin-automation-form-timezone:focus-visible { outline:0; box-shadow:none; }
+    .plugin-automation-form-name::placeholder { color:var(--wuu-color-text-muted, var(--ink-faint)); font-weight:var(--weight-semibold,600); }
+    .plugin-automation-form-prompt { box-sizing:border-box; width:100%; min-width:0; min-height:88px; resize:vertical; border:1px solid var(--wuu-color-border-subtle, var(--hairline)); border-radius:var(--wuu-radius-panel, var(--radius-md, 22px)); padding:14px 16px; background:transparent; color:var(--wuu-color-text, var(--ink)); font:inherit; font-size:var(--font-ui,13px); line-height:1.5; }
+    .plugin-automation-form-prompt::placeholder { color:var(--wuu-color-text-muted, var(--ink-faint)); }
+    .plugin-automation-form-prompt:focus-visible { outline:0; border-color:var(--wuu-color-border-strong, var(--gray-350)); box-shadow:0 0 0 3px var(--ink-overlay-8, rgba(127,127,127,0.18)); }
+    .plugin-automation-form-group { display:flex; flex-direction:column; gap:8px; }
+    .plugin-automation-form-group-title { margin:0; padding:0 4px; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); font-weight:400; line-height:1.3; }
+    .plugin-automation-form-card { display:flex; flex-direction:column; min-width:0; border:1px solid var(--wuu-color-border-subtle, var(--hairline)); border-radius:var(--wuu-radius-panel, var(--radius-md, 22px)); padding:0 16px; background:var(--wuu-color-canvas, var(--paper, #fff)); }
+    .plugin-automation-form-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:16px; min-height:48px; border-bottom:1px solid var(--hairline-soft, var(--wuu-color-border-subtle, var(--hairline))); }
+    .plugin-automation-form-row:last-child { border-bottom:0; }
+    .plugin-automation-form-row-label { color:var(--wuu-color-text, var(--ink)); font-size:var(--font-ui,13px); font-weight:var(--weight-medium,500); line-height:1.4; }
+    .plugin-automation-form-row-control { min-width:0; display:flex; justify-content:flex-end; }
+    .plugin-automation-form-row-value { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; color:var(--wuu-color-text, var(--ink)); font-size:var(--font-ui,13px); }
+    .plugin-automation-form-row-control .plugin-automation-target-button { padding-right:0; }
+    .plugin-automation-form-cron { width:min(220px, 42cqi); min-width:0; height:32px; border:0; outline:0; padding:0; background:transparent; color:var(--wuu-color-text, var(--ink)); font:inherit; font-size:var(--font-ui,13px); text-align:right; }
+    .plugin-automation-form-cron::placeholder { color:var(--wuu-color-text-muted, var(--ink-faint)); }
+    .plugin-automation-form-timezone { width:min(180px, 36cqi); min-width:0; height:32px; border:0; outline:0; padding:0; background:transparent; color:var(--wuu-color-text, var(--ink)); font:inherit; font-size:var(--font-ui,13px); text-align:right; }
+    .plugin-automation-form-row:has(.plugin-ui-checkbox) { grid-template-columns:minmax(0,1fr); }
+    .plugin-automation-form-row .plugin-ui-checkbox { width:100%; min-height:48px; gap:16px; }
+    .plugin-automation-form-row .plugin-ui-field-label { font-weight:var(--weight-medium,500); }
     .plugin-automation-form-actions { justify-content:flex-end; gap:8px; }
 
     /* Task rows are borderless and open: a status dot, a two-line text block
@@ -158,8 +179,6 @@ export async function activate(api) {
     .plugin-automation-target-option > svg { width:14px; height:14px; flex:none; color:var(--wuu-color-text-muted, var(--ink-muted)); }
     .plugin-automation-target-section { padding:6px 8px 2px; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:11px; }
     .plugin-automation-target-empty { margin:0; padding:8px; color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); text-align:center; }
-    .plugin-automation-form-target { display:grid; gap:6px; justify-items:start; }
-    .plugin-automation-form-target-label { color:var(--wuu-color-text-muted, var(--ink-muted)); font-size:var(--font-sm,12px); }
 
     /* Below 900px the panel leaves the flow and floats over the page as a
      * right-hand sheet on a dimmed backdrop. */
@@ -175,7 +194,11 @@ export async function activate(api) {
       .plugin-automation-search { flex:1 1 100%; }
       .plugin-automation-workspace-picker, .plugin-automation-workspace-picker .plugin-ui-field { flex:1; }
       .plugin-automation-workspace-picker .plugin-ui-select { flex:1; width:auto; min-width:0; }
-      .plugin-automation-form-grid { grid-template-columns:1fr; }
+      .plugin-automation-form-row { grid-template-columns:minmax(0,1fr); align-items:start; gap:6px; padding:12px 0; }
+      .plugin-automation-form-row:has(.plugin-ui-checkbox) { padding:0; }
+      .plugin-automation-form-row-control { justify-content:flex-start; width:100%; }
+      .plugin-automation-form-row-value { text-align:left; }
+      .plugin-automation-form-cron, .plugin-automation-form-timezone { width:100%; text-align:left; }
     }
   ` });
 
@@ -501,39 +524,62 @@ export async function activate(api) {
             [["all", tr("automation.filter.all")], ["active", tr("automation.filter.active")], ["paused", tr("automation.paused")]].map(([value, label]) =>
               h("button", { key: value, type: "button", className: "plugin-automation-filter", "aria-pressed": filter === value ? "true" : "false", onClick: () => setFilter(value) }, label)))
         : null,
-      creating ? h(Panel, null, h("div", { className: "plugin-automation-form" },
+      creating ? h("div", { className: "plugin-automation-form" },
         h("h2", { className: "plugin-automation-form-title" }, tr("automation.new")),
-        h(TextInput, { label: tr("automation.name"), value: draft.title, onChange: (event) => setDraft({ ...draft, title: event.target.value }) }),
-        h(TextArea, { label: tr("automation.prompt"), rows: 4, placeholder: tr("automation.placeholder.prompt"), value: draft.prompt, onChange: (event) => setDraft({ ...draft, prompt: event.target.value }) }),
-        h("div", { className: "plugin-automation-form-grid" },
-          h(TextInput, { label: tr("automation.schedule"), placeholder: tr("automation.placeholder.schedule"), value: draft.schedule, onChange: (event) => setDraft({ ...draft, schedule: event.target.value }) }),
-          h(TextInput, { label: tr("automation.timezone"), value: draft.timezone, onChange: (event) => setDraft({ ...draft, timezone: event.target.value }) })),
-        h("div", { className: "plugin-automation-form-target" },
-          h("span", { className: "plugin-automation-form-target-label" }, tr("automation.field.target")),
-          h(TargetPicker, {
-            tr,
-            threads,
-            align: "left",
-            value: draft.mode === "thread_heartbeat"
-              ? { mode: "thread_heartbeat", threadId: draft.heartbeat_thread_id, threadTitle: draft.heartbeat_thread_title }
-              : { mode: "new_thread" },
-            onSelect: (target) => setDraft(target.mode === "thread_heartbeat"
-              ? { ...draft, mode: "thread_heartbeat", heartbeat_thread_id: target.threadId, heartbeat_thread_title: target.threadTitle, workspace: "shared" }
-              : { ...draft, mode: "new_thread", heartbeat_thread_id: "", heartbeat_thread_title: "" }),
-          })),
-        h(Checkbox, { label: tr("automation.recurring"), checked: draft.recurring, onChange: (event) => setDraft({ ...draft, recurring: event.target.checked }) }),
-        h(Checkbox, {
-          label: tr("automation.isolation"),
-          description: tr("automation.isolationHelp"),
-          checked: draft.workspace === "worktree",
-          disabled: draft.mode === "thread_heartbeat",
-          onChange: (event) => setDraft(event.target.checked
-            ? { ...draft, workspace: "worktree", mode: "new_thread", heartbeat_thread_id: "", heartbeat_thread_title: "" }
-            : { ...draft, workspace: "shared" }),
-        }),
+        h("div", { className: "plugin-automation-form-identity" },
+          h("label", { className: "plugin-ui-field" },
+            h("span", { className: "plugin-automation-sr" }, tr("automation.name")),
+            h("input", { className: "plugin-automation-form-name", type: "text", placeholder: tr("automation.placeholder.name"), value: draft.title, onChange: (event) => setDraft({ ...draft, title: event.target.value }) })),
+          h("label", { className: "plugin-ui-field" },
+            h("span", { className: "plugin-automation-sr" }, tr("automation.prompt")),
+            h("textarea", { className: "plugin-automation-form-prompt", rows: 4, placeholder: tr("automation.placeholder.prompt"), value: draft.prompt, onChange: (event) => setDraft({ ...draft, prompt: event.target.value }) }))),
+        h("section", { className: "plugin-automation-form-group" },
+          h("h3", { className: "plugin-automation-form-group-title" }, tr("automation.group.details")),
+          h("div", { className: "plugin-automation-form-card" },
+            h("div", { className: "plugin-automation-form-row" },
+              h("span", { className: "plugin-automation-form-row-label" }, tr("automation.field.project")),
+              h("span", { className: "plugin-automation-form-row-value" }, selectedWorkspace ? selectedWorkspace.name || workspaceName(selectedWorkspace.root) : "—")),
+            h("div", { className: "plugin-automation-form-row" },
+              h("span", { className: "plugin-automation-form-row-label" }, tr("automation.field.target")),
+              h("div", { className: "plugin-automation-form-row-control" },
+                h(TargetPicker, {
+                  tr,
+                  threads,
+                  value: draft.mode === "thread_heartbeat"
+                    ? { mode: "thread_heartbeat", threadId: draft.heartbeat_thread_id, threadTitle: draft.heartbeat_thread_title }
+                    : { mode: "new_thread" },
+                  onSelect: (target) => setDraft(target.mode === "thread_heartbeat"
+                    ? { ...draft, mode: "thread_heartbeat", heartbeat_thread_id: target.threadId, heartbeat_thread_title: target.threadTitle, workspace: "shared" }
+                    : { ...draft, mode: "new_thread", heartbeat_thread_id: "", heartbeat_thread_title: "" }),
+                }))),
+            h("div", { className: "plugin-automation-form-row" },
+              h(Checkbox, {
+                label: tr("automation.field.isolation"),
+                title: tr("automation.isolationHelp"),
+                checked: draft.workspace === "worktree",
+                disabled: draft.mode === "thread_heartbeat",
+                onChange: (event) => setDraft(event.target.checked
+                  ? { ...draft, workspace: "worktree", mode: "new_thread", heartbeat_thread_id: "", heartbeat_thread_title: "" }
+                  : { ...draft, workspace: "shared" }),
+              })))),
+        h("section", { className: "plugin-automation-form-group" },
+          h("h3", { className: "plugin-automation-form-group-title" }, tr("automation.group.schedule")),
+          h("div", { className: "plugin-automation-form-card" },
+            h("div", { className: "plugin-automation-form-row" },
+              h(Checkbox, {
+                label: tr("automation.recurring"),
+                checked: draft.recurring,
+                onChange: (event) => setDraft({ ...draft, recurring: event.target.checked }),
+              })),
+            h("label", { className: "plugin-automation-form-row" },
+              h("span", { className: "plugin-automation-form-row-label" }, tr("automation.schedule")),
+              h("input", { className: "plugin-automation-form-cron", type: "text", placeholder: tr("automation.placeholder.schedule"), value: draft.schedule, onChange: (event) => setDraft({ ...draft, schedule: event.target.value }) })),
+            h("label", { className: "plugin-automation-form-row" },
+              h("span", { className: "plugin-automation-form-row-label" }, tr("automation.timezone")),
+              h("input", { className: "plugin-automation-form-timezone", type: "text", value: draft.timezone, onChange: (event) => setDraft({ ...draft, timezone: event.target.value }) })))),
         h(Row, { className: "plugin-automation-form-actions" },
           h(Button, { variant: "ghost", onClick: () => setCreating(false) }, tr("automation.cancel")),
-          h(Button, { variant: "primary", disabled: busy || !selectedWorkspace || !draft.prompt.trim(), onClick: async () => { if (await act("automation.create", { ...draft, durable: true })) setCreating(false); } }, tr("automation.create"))))) : null,
+          h(Button, { variant: "primary", disabled: busy || !selectedWorkspace || !draft.prompt.trim(), onClick: async () => { if (await act("automation.create", { ...draft, durable: true })) setCreating(false); } }, tr("automation.create")))) : null,
       error ? h("div", { className: "plugin-automation-error", role: "alert" }, error) : null,
       tasks.length === 0
         ? (creating ? null : h(EmptyState, { className: "plugin-automation-empty", title: tr("automation.empty"), description: selectedWorkspace ? tr("automation.emptyHelp") : tr("automation.workspaceNone") }))
