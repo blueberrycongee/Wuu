@@ -2065,7 +2065,7 @@ function SettingsGeneralPage({
           <SettingsRow title={t("settings.theme")} block>
             <ThemePreferenceControl extensionInventory={initialized?.extension_inventory} />
           </SettingsRow>
-          <SettingsRow title={t("settings.messageFontSize")} block>
+          <SettingsRow title={t("settings.messageFontSize")}>
             <MessageFlowFontSizeControl />
           </SettingsRow>
           <SettingsRow

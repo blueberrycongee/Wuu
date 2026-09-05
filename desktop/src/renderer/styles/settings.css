@@ -494,6 +494,24 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Font-size field: a short typed value, not a right-aligned quantity.
+ * Native number steppers reserve a right-hand column, so the digits
+ * sit off the box center; hide them and center the value instead. */
+.settings-input-num-center {
+  width: 72px;
+  padding: 0;
+  text-align: center;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.settings-input-num-center::-webkit-inner-spin-button,
+.settings-input-num-center::-webkit-outer-spin-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* Card footer row: feedback text left, the form's submit action right. */
 .settings-row-footer {
   display: flex;
@@ -1102,17 +1120,18 @@
 }
 
 /* --- Theme picker ------------------------------------------------------------
- * Visual radio cards, same selection language as the provider tiles: a
- * resting hairline and a neutral fill on the active option.
- * Each preview is a tiny window mockup of the theme. "System" uses the same
- * geometry as the other options and splits its surfaces into light/dark, so
- * there are no overlapping sidebars or clipped layers. Preview colors are
- * fixed local colors, never theme tokens.
+ * Visual radio cards. Selection lives on the preview window itself (a
+ * stronger hairline) so the active state does not flood the whole card
+ * with a gray fill at this compact scale. Each preview is a tiny window
+ * mockup of the theme. "System" uses the same geometry as the other
+ * options and splits its surfaces into light/dark, so there are no
+ * overlapping sidebars or clipped layers. Preview colors are fixed local
+ * colors, never theme tokens.
  * ----------------------------------------------------------------------------- */
 
 .settings-theme-options {
   display: flex;
-  gap: 8px;
+  gap: 16px;
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -1122,10 +1141,10 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  flex: 0 0 120px;
+  flex: 0 0 104px;
   min-width: 0;
   background: transparent;
-  padding: 8px;
+  padding: 0;
   border-radius: var(--radius-sm);
 }
 
@@ -1146,8 +1165,8 @@
   border-color: var(--hairline-strong);
 }
 
-.settings-theme-card.active {
-  background: var(--selection-surface);
+.settings-theme-card.active .settings-theme-preview {
+  border-color: var(--ink-soft);
 }
 
 .settings-theme-card-label {

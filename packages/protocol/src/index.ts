@@ -2411,8 +2411,8 @@ export type SettingsUsageResponse = {
 
 // Appearance preference for the desktop shell. "system" follows the OS
 // light/dark setting via prefers-color-scheme.
-// Continuous px value the user picks on the message-stream font-size
-// slider. Range mirrors the developer-only design-tokens mixer
+// Continuous px value the user picks for the message-stream font size.
+// Range mirrors the developer-only design-tokens mixer
 // (ConversationDesignTokens.ts → msg-font-size: 13–20 step 0.5 default
 // 14) so the user setting and the mixer operate in the same coordinate
 // space. The renderer clamps incoming values to this range before
@@ -2869,11 +2869,11 @@ export type WuuDesktopApi = {
   onThemePreferenceChange: (
     handler: (theme: ThemePreference) => void,
   ) => () => void;
-  // Message-stream reading size. Persists to desktop-settings.json as a
-  // fixed three-step ladder. `initialMessageFlowFontSize` is read
-  // synchronously in the preload so the first paint already has the
-  // right --conversation-message-font-size on <html>, mirroring the
-  // theme pre-paint to avoid a flash.
+  // Message-stream reading size. Persists to desktop-settings.json.
+  // `initialMessageFlowFontSize` is read synchronously in the preload
+  // so the first paint already has the right
+  // --conversation-message-font-size on <html>, mirroring the theme
+  // pre-paint to avoid a flash.
   initialMessageFlowFontSize?: MessageFlowFontSize;
   getMessageFlowFontSize: () => Promise<MessageFlowFontSize>;
   setMessageFlowFontSize: (
