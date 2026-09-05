@@ -1,5 +1,5 @@
 import { Check, ChevronLeft, LoaderCircle, Plug, Sparkles } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   EngineInfo,
   EngineListResult,
@@ -11,7 +11,8 @@ import type {
 } from "../shared/protocol";
 import { useI18n } from "./i18n";
 import type { TranslationKey } from "./i18n/resources/zh-CN";
-import { OnboardingPluginPreview, ONBOARDING_PLUGIN_MASCOT } from "./OnboardingPluginPreview";
+import { OnboardingMascotStage } from "./OnboardingMascotStage";
+import { OnboardingPluginPreview } from "./OnboardingPluginPreview";
 import { PluginIcon } from "./PublicIcon";
 import { applyThemePreference } from "./Theme";
 import { WuuMascot } from "./WuuMascot";
@@ -106,6 +107,8 @@ export function FirstRunOnboarding({
   inventory,
   providers,
   engines,
+  preview = false,
+  onDismissPreview,
   onUpdateExtensionPackage,
   onSaveProvider,
   onUpdateEngines,
@@ -114,6 +117,8 @@ export function FirstRunOnboarding({
   inventory?: readonly ExtensionInventoryRecord[];
   providers?: readonly ProviderSummary[];
   engines?: EngineListResult;
+  preview?: boolean;
+  onDismissPreview?: () => void;
   onUpdateExtensionPackage: (update: ExtensionPackageUpdateParams) => Promise<void>;
   onSaveProvider: (
     provider: string,
@@ -148,8 +153,14 @@ export function FirstRunOnboarding({
   const providerReady = hasOnboardingProvider(providers);
   const preset = selectedPreset(selectedPluginIDs, bundledPlugins);
   const currentStepIndex = STEP_ORDER.indexOf(step);
-  const previewedLook = ONBOARDING_PLUGIN_MASCOT[previewedPluginID];
-  const selectedOrbitPlugins = bundledPlugins.filter((plugin) => selectedPluginIDs.has(plugin.id));
+  const wornPluginIDs = useMemo(() => {
+    const ids = bundledPlugins
+      .filter((plugin) => selectedPluginIDs.has(plugin.id))
+      .map((plugin) => plugin.provenance.plugin_id ?? "")
+      .filter(Boolean);
+    if (previewedPluginID && !ids.includes(previewedPluginID)) ids.push(previewedPluginID);
+    return ids;
+  }, [bundledPlugins, previewedPluginID, selectedPluginIDs]);
   const selectableEngines = useMemo(
     () => [
       { id: "wuu", ready: true },
@@ -214,6 +225,10 @@ export function FirstRunOnboarding({
 
   async function applyPluginChoices(): Promise<void> {
     if (applyingPlugins || bundledPlugins.length === 0) return;
+    if (preview) {
+      setStep("runtime");
+      return;
+    }
     setApplyingPlugins(true);
     setError("");
     try {
@@ -240,6 +255,10 @@ export function FirstRunOnboarding({
 
   async function applyRuntimeChoices(): Promise<void> {
     if (savingRuntime) return;
+    if (preview) {
+      setStep("provider");
+      return;
+    }
     setSavingRuntime(true);
     setError("");
     try {
@@ -266,6 +285,10 @@ export function FirstRunOnboarding({
     const key = apiKey.trim();
     if (!name || !providerModel || savingProvider) return;
     if (!xaiSubscription && !grokBuild && !key) return;
+    if (preview) {
+      setStep("ready");
+      return;
+    }
     setSavingProvider(true);
     setError("");
     try {
@@ -330,7 +353,7 @@ export function FirstRunOnboarding({
     <main className="first-run-onboarding" data-testid="first-run-onboarding">
       <header className="onboarding-chrome">
         <span className="onboarding-wordmark">wuu</span>
-        <div className="onboarding-progress" aria-label={t("onboarding.progress")}> 
+        <div className="onboarding-progress" aria-label={t("onboarding.progress")}>
           {STEP_ORDER.map((item, index) => (
             <span
               key={item}
@@ -338,6 +361,16 @@ export function FirstRunOnboarding({
             />
           ))}
         </div>
+        {preview && onDismissPreview ? (
+          <button
+            className="onboarding-preview-exit"
+            type="button"
+            data-testid="onboarding-preview-exit"
+            onClick={onDismissPreview}
+          >
+            {t("onboarding.previewExit")}
+          </button>
+        ) : null}
       </header>
 
       <section className={`onboarding-stage onboarding-stage-${step}`}>
@@ -369,36 +402,10 @@ export function FirstRunOnboarding({
             </div>
 
             <div className="onboarding-plugins-stage">
-              <div className="onboarding-plugin-mascot-stage" aria-hidden="true">
-                {selectedOrbitPlugins.map((plugin, index) => {
-                  const count = selectedOrbitPlugins.length;
-                  const angle = (index / count) * Math.PI * 2 - Math.PI / 2;
-                  const radius = count === 1 ? 78 : 92;
-                  return (
-                    <span
-                      key={plugin.id}
-                      className={`onboarding-plugin-orbit${plugin.provenance.plugin_id === previewedPluginID ? " is-previewed" : ""}`}
-                      style={{
-                        "--orbit-x": `${Math.cos(angle) * radius}px`,
-                        "--orbit-y": `${Math.sin(angle) * radius}px`,
-                      } as CSSProperties}
-                    >
-                      <PluginIcon
-                        icon={plugin.icon}
-                        pluginId={plugin.id}
-                        fingerprint={plugin.fingerprint ?? ""}
-                      />
-                    </span>
-                  );
-                })}
-                <WuuMascot
-                  className="onboarding-mascot"
-                  size={120}
-                  activity={previewedLook?.activity ?? "tool"}
-                  accessory={previewedLook?.accessory ?? "none"}
-                  aria-hidden="true"
-                />
-              </div>
+              <OnboardingMascotStage
+                pluginIDs={wornPluginIDs}
+                previewedPluginID={previewedPluginID}
+              />
               {previewedPluginID ? (
                 <div className="onboarding-plugin-preview-frame">
                   <div className="onboarding-plugin-preview-toolbar">

@@ -203,6 +203,7 @@ import {
   ENABLE_EMBEDDED_BROWSER,
   ENABLE_GROUP_CHAT,
   ENABLE_MANAGEMENT_ASSISTANT,
+  ENABLE_ONBOARDING_PREVIEW,
 } from "./FeatureFlags";
 import { ArchiveTip } from "./ArchiveTip";
 import { TopNotice } from "./TopNotice";
@@ -585,6 +586,7 @@ export function App(): JSX.Element {
   const [onboardingComplete, setOnboardingComplete] = useState(
     () => window.wuu?.initialOnboardingComplete ?? true,
   );
+  const [onboardingPreview, setOnboardingPreview] = useState(false);
   const [appMode, setAppMode] = useState<AppMode>("harness");
   const [collaborationSection, setCollaborationSection] = useState<ChannelSection>("rooms");
   const [newRoomRequest, setNewRoomRequest] = useState(0);
@@ -4764,19 +4766,25 @@ export function App(): JSX.Element {
     );
   }
 
-  if (!onboardingComplete) {
+  if (!onboardingComplete || onboardingPreview) {
     return (
       <WuuMascotRuntimeProvider>
         <FirstRunOnboarding
           inventory={state.initialized?.extension_inventory}
           providers={state.initialized?.providers}
           engines={engineInventory}
+          preview={onboardingPreview}
+          onDismissPreview={onboardingPreview ? () => setOnboardingPreview(false) : undefined}
           onUpdateExtensionPackage={updateExtensionPackage}
           onSaveProvider={async (provider, model, connection) => {
             await updateRuntimeSettings(provider, model, undefined, connection, undefined);
           }}
           onUpdateEngines={updateEngineInventory}
           onComplete={async () => {
+            if (onboardingPreview) {
+              setOnboardingPreview(false);
+              return;
+            }
             if (!window.wuu?.completeOnboarding) {
               throw new Error(t("onboarding.finishFailed"));
             }
@@ -4869,6 +4877,10 @@ export function App(): JSX.Element {
                 setSettingsInitialPage("providers");
                 setSettingsOpen(true);
               }}
+              onReplayOnboarding={ENABLE_ONBOARDING_PREVIEW ? () => {
+                setSettingsOpen(false);
+                setOnboardingPreview(true);
+              } : undefined}
             />
           ) : (
           <AppSidebar
@@ -4975,6 +4987,13 @@ export function App(): JSX.Element {
               setSettingsInitialPage("providers");
               setSettingsOpen(true);
             }}
+            onReplayOnboarding={ENABLE_ONBOARDING_PREVIEW ? () => {
+              setProjectMenuOpen(false);
+              setRuntimeMenuOpen(false);
+              setCodexRuntimeMenu(null);
+              setSettingsOpen(false);
+              setOnboardingPreview(true);
+            } : undefined}
           />
           )}
 

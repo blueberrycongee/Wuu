@@ -44,3 +44,9 @@ export const ENABLE_EMBEDDED_BROWSER =
  */
 export const ENABLE_MANAGEMENT_ASSISTANT =
   import.meta.env.VITE_ENABLE_MANAGEMENT_ASSISTANT === "true";
+
+/**
+ * Temporary local shortcut for replaying first-run setup while iterating on
+ * the onboarding UI. Production builds never expose it.
+ */
+export const ENABLE_ONBOARDING_PREVIEW = import.meta.env.DEV;

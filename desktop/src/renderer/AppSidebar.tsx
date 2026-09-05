@@ -12,6 +12,7 @@ import {
   Plus,
   Search,
   Settings,
+  Sparkles,
 } from "lucide-react";
 import {
   type PointerEvent as ReactPointerEvent,
@@ -371,6 +372,7 @@ export function AppSidebar({
   onPointerEnter,
   onPointerLeave,
   onOpenSettings,
+  onReplayOnboarding,
   onSwitchToCollaboration,
   onMarkThreadsViewed,
   pluginHost = desktopPluginHost,
@@ -443,6 +445,7 @@ export function AppSidebar({
   onPointerEnter?: () => void;
   onPointerLeave?: (event: ReactPointerEvent<HTMLElement>) => void;
   onOpenSettings: () => void;
+  onReplayOnboarding?: () => void;
   onSwitchToCollaboration?: () => void;
   onMarkThreadsViewed: (threads: readonly ThreadSummary[]) => void;
   pluginHost?: PluginHost;
@@ -1495,6 +1498,15 @@ export function AppSidebar({
         });
       }
     }
+    if (onReplayOnboarding) {
+      nodes.push({
+        id: "command:replay-onboarding",
+        kind: "command",
+        label: t("sidebar.replayOnboarding"),
+        icon: "sparkles",
+        onActivate: () => activateNative(onReplayOnboarding),
+      });
+    }
     nodes.push({
       id: "command:settings",
       kind: "command",
@@ -1507,7 +1519,7 @@ export function AppSidebar({
   }, [
     activateNative, activeProjectID, activeThreadID,
     hasPinnedRows, hasRuntimeContext,
-    onOpenSettings, onOpenSkillsTab,
+    onOpenSettings, onOpenSkillsTab, onReplayOnboarding,
     onSelectProjectThread, onSelectProjectWorkspace, onSelectThread,
     onStartNewThread, onToggleConversationSearch,
     onTogglePinned, pendingThreadID, pinnedHasRunning,
@@ -1939,6 +1951,17 @@ export function AppSidebar({
             id="sidebar.footer"
             context={Object.freeze({ initialized: Boolean(state.initialized) })}
           />
+          {onReplayOnboarding ? (
+            <button
+              className="sidebar-settings-button"
+              type="button"
+              data-testid="sidebar-replay-onboarding"
+              onClick={() => activateNative(onReplayOnboarding)}
+            >
+              <Sparkles className="icon-lg" />
+              <span>{t("sidebar.replayOnboarding")}</span>
+            </button>
+          ) : null}
           <button
             className="sidebar-settings-button"
             type="button"

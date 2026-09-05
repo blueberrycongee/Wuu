@@ -1,26 +1,14 @@
 import { Circle, CircleDot } from "lucide-react";
 import { useState } from "react";
 import { useI18n } from "./i18n";
-import type { WuuMascotAccessory, WuuMascotActivity } from "./WuuMascot";
-
-export const ONBOARDING_PLUGIN_MASCOT: Readonly<
-  Record<string, { activity: WuuMascotActivity; accessory: WuuMascotAccessory }>
-> = {
-  "ask-user": { activity: "thinking", accessory: "headphones" },
-  todo: { activity: "edit", accessory: "cap" },
-  automation: { activity: "command", accessory: "wizard-hat" },
-  subagent: { activity: "tool", accessory: "bow-tie" },
-  memory: { activity: "read", accessory: "beanie" },
-  dream: { activity: "compose", accessory: "halo" },
-  "note-compaction": { activity: "compact", accessory: "graduation-cap" },
-};
+import { ONBOARDING_PLUGIN_ORDER } from "./OnboardingMascotStage";
 
 export function OnboardingPluginPreview({
   pluginID,
 }: {
   pluginID: string;
 }): JSX.Element | null {
-  if (!(pluginID in ONBOARDING_PLUGIN_MASCOT)) return null;
+  if (!(ONBOARDING_PLUGIN_ORDER as readonly string[]).includes(pluginID)) return null;
 
   return (
     <aside

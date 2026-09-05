@@ -10,6 +10,7 @@ import {
   recommendedOnboardingEngine,
 } from "./FirstRunOnboarding";
 import { I18nProvider } from "./i18n";
+import { ONBOARDING_PLUGIN_ORDER } from "./OnboardingMascotStage";
 
 function plugin(
   id: string,
@@ -188,24 +189,128 @@ describe("FirstRunOnboarding", () => {
 
     expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
     expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")).toBeNull();
-    expect(mascot()?.getAttribute("data-wuu-mascot-activity")).toBe("tool");
+    expect(wornCapabilities()).toEqual(["todo"]);
+    expect(visibleClones()).toHaveLength(1);
 
     await clickPlugin("todo");
     expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")?.getAttribute("data-plugin")).toBe("todo");
     expect(container.textContent).toContain("补上首次设置预览");
-    expect(mascot()?.getAttribute("data-wuu-mascot-activity")).toBe("edit");
-    expect(mascot()?.getAttribute("data-wuu-mascot-accessory")).toBe("cap");
+    expect(wornCapabilities()).toEqual(["todo"]);
     expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
 
     await clickPlugin("ask-user");
     expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")?.getAttribute("data-plugin")).toBe("ask-user");
     expect(container.textContent).toContain("这次更想怎么推进？");
-    expect(mascot()?.getAttribute("data-wuu-mascot-activity")).toBe("thinking");
+    expect(wornCapabilities()).toEqual(["ask-user", "todo"]);
     expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
 
     await clickPluginCheck("ask-user");
     expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(2);
-    expect(container.querySelectorAll(".onboarding-plugin-orbit")).toHaveLength(2);
+    expect(wornCapabilities()).toEqual(["ask-user", "todo"]);
+  });
+
+  it("splits the mascot into three colored clones that keep stacked decorations", async () => {
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={[plugin("automation", false), plugin("subagent", false)]}
+            providers={[]}
+            onUpdateExtensionPackage={vi.fn(async () => undefined)}
+            onSaveProvider={vi.fn(async () => undefined)}
+            onComplete={vi.fn(async () => undefined)}
+          />
+        </I18nProvider>,
+      );
+    });
+    await clickButton("开始设置");
+    // The recommended selection includes subagent, even before any preview.
+    expect(visibleClones()).toHaveLength(3);
+    await clickButton("极简");
+    await clickPluginCheck("automation");
+
+    expect(mascotStage()?.hasAttribute("data-onboarding-split")).toBe(false);
+    expect(visibleClones()).toHaveLength(1);
+    expect(wornCapabilities()).toEqual(["automation"]);
+
+    await clickPlugin("subagent");
+    expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")?.getAttribute("data-plugin")).toBe("subagent");
+    expect(mascotStage()?.hasAttribute("data-onboarding-split")).toBe(true);
+    expect(visibleClones()).toHaveLength(3);
+    const alarm = mascotStage()?.querySelector("[data-onboarding-capability=automation]");
+    expect(alarm).not.toBeNull();
+
+    await clickPlugin("automation");
+    expect(visibleClones()).toHaveLength(1);
+    await clickPluginCheck("subagent");
+    expect(visibleClones()).toHaveLength(3);
+    await clickPlugin("subagent");
+    await clickPluginCheck("subagent");
+    // Unchecking still leaves the active preview; closing it merges the body.
+    expect(visibleClones()).toHaveLength(3);
+    await clickPlugin("subagent");
+    expect(visibleClones()).toHaveLength(1);
+    expect(mascotStage()?.querySelector("[data-onboarding-capability=automation]")).toBe(alarm);
+  });
+
+  it("stacks every official accessory through preview, selection and dismissal without writing settings", async () => {
+    const update = vi.fn(async () => undefined);
+    const complete = vi.fn(async () => undefined);
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={ONBOARDING_PLUGIN_ORDER.map((id) => plugin(id, false))}
+            providers={[]}
+            onUpdateExtensionPackage={update}
+            onSaveProvider={vi.fn(async () => undefined)}
+            onComplete={complete}
+          />
+        </I18nProvider>,
+      );
+    });
+    await clickButton("开始设置");
+    await clickButton("极简");
+    const selected: string[] = [];
+    const rendered = new Map<string, Element>();
+    for (const id of ONBOARDING_PLUGIN_ORDER) {
+      await clickPlugin(id);
+      expect(container.querySelectorAll(".onboarding-plugin-check[aria-pressed=true]")).toHaveLength(selected.length);
+      const expected = [...selected, id].filter((pluginID) => pluginID !== "subagent");
+      expect(wornCapabilities().sort()).toEqual([...expected].sort());
+      expect(mascotStage()?.getAttribute("data-onboarding-preview")).toBe(id);
+      for (const decoration of expected) {
+        const node = mascotStage()?.querySelector(`[data-onboarding-capability="${decoration}"]`);
+        expect(node).not.toBeNull();
+        if (rendered.has(decoration)) expect(node).toBe(rendered.get(decoration));
+        else rendered.set(decoration, node!);
+      }
+      expect(visibleClones()).toHaveLength([...selected, id].includes("subagent") ? 3 : 1);
+      await clickPluginCheck(id);
+      selected.push(id);
+      await clickPlugin(id);
+      expect(wornCapabilities().sort()).toEqual([...expected].sort());
+      expect(mascotStage()?.hasAttribute("data-onboarding-preview")).toBe(false);
+    }
+    // Removing one capability leaves all the others intact.
+    await clickPluginCheck("memory");
+    expect(wornCapabilities()).not.toContain("memory");
+    expect(wornCapabilities()).toHaveLength(5);
+    await clickButton("极简");
+    expect(visibleClones()).toHaveLength(1);
+    expect(wornCapabilities()).toEqual([]);
+    await clickButton("全部");
+    expect(visibleClones()).toHaveLength(3);
+    expect(wornCapabilities().sort()).toEqual(ONBOARDING_PLUGIN_ORDER.filter((id) => id !== "subagent").sort());
+    await clickPlugin("ask-user");
+    expect(mascotStage()?.getAttribute("data-onboarding-preview")).toBe("ask-user");
+    // Presets end a temporary demonstration as well as changing the outfit.
+    await clickButton("极简");
+    expect(wornCapabilities()).toEqual([]);
+    expect(mascotStage()?.hasAttribute("data-onboarding-preview")).toBe(false);
+    expect(container.querySelector("[data-testid=onboarding-plugin-preview]")).toBeNull();
+    expect(update).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it("loads manifest icon assets with the plugin subject ID", async () => {
@@ -363,6 +468,42 @@ describe("FirstRunOnboarding", () => {
     });
   });
 
+  it("lets a local preview walk the flow without writing settings", async () => {
+    const updateExtension = vi.fn(async () => undefined);
+    const save = vi.fn(async () => undefined);
+    const updateEngines = vi.fn(async () => undefined);
+    const onComplete = vi.fn(async () => undefined);
+    const onDismissPreview = vi.fn();
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            preview
+            inventory={[plugin("todo", true)]}
+            providers={[{ name: "openai", type: "openai-compatible", model: "gpt-5", api_key_configured: true }]}
+            onDismissPreview={onDismissPreview}
+            onUpdateExtensionPackage={updateExtension}
+            onSaveProvider={save}
+            onUpdateEngines={updateEngines}
+            onComplete={onComplete}
+          />
+        </I18nProvider>,
+      );
+    });
+
+    expect(container.querySelector("[data-testid=\"onboarding-preview-exit\"]")?.textContent).toBe("退出预览");
+    await clickButton("开始设置");
+    await clickButton("继续");
+    await clickButton("继续");
+    await clickButton("继续");
+    await clickButton("开始使用 Wuu");
+
+    expect(updateExtension).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+    expect(updateEngines).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
   async function clickButton(label: string): Promise<void> {
     const button = [...container.querySelectorAll("button")].find(
       (candidate) => candidate.textContent?.trim() === label,
@@ -393,7 +534,16 @@ describe("FirstRunOnboarding", () => {
     });
   }
 
-  function mascot(): SVGSVGElement | null {
-    return container.querySelector(".onboarding-plugin-mascot-stage [data-wuu-mascot-activity]");
+  function mascotStage(): HTMLElement | null {
+    return container.querySelector("[data-testid=\"onboarding-mascot-stage\"]");
+  }
+
+  function visibleClones(): Element[] {
+    return [...mascotStage()!.querySelectorAll("[data-onboarding-companion]:not([hidden])")];
+  }
+
+  function wornCapabilities(): string[] {
+    return [...mascotStage()!.querySelectorAll("[data-onboarding-capability]")]
+      .map((node) => node.getAttribute("data-onboarding-capability")!);
   }
 });

@@ -75,6 +75,7 @@ interface RenderOptions {
   onArchiveChannelRoom?: (room: ChannelRoom) => void;
   onOpenChannelAgents?: () => void;
   onOpenChannelTasks?: () => void;
+  onReplayOnboarding?: () => void;
 }
 
 function renderSidebar({
@@ -99,6 +100,7 @@ function renderSidebar({
   onArchiveChannelRoom,
   onOpenChannelAgents,
   onOpenChannelTasks,
+  onReplayOnboarding,
 }: RenderOptions = {}): void {
   act(() => {
     root = createRoot(container);
@@ -146,12 +148,27 @@ function renderSidebar({
         onRemoveProject={() => {}}
         onRelocateProject={() => {}}
         onOpenSettings={() => {}}
+        onReplayOnboarding={onReplayOnboarding}
       />,
     );
   });
 }
 
 describe("AppSidebar layout", () => {
+  it("shows a first-run preview shortcut when provided", () => {
+    const onReplayOnboarding = vi.fn();
+    renderSidebar({ onReplayOnboarding });
+
+    const button = container.querySelector<HTMLButtonElement>(
+      "[data-testid=\"sidebar-replay-onboarding\"]",
+    );
+    expect(button?.textContent).toContain("预览首次设置");
+    act(() => {
+      button?.click();
+    });
+    expect(onReplayOnboarding).toHaveBeenCalledTimes(1);
+  });
+
   it("lets a navigation presenter replace the complete production sidebar root", async () => {
     let snapshot: NavigationSnapshotV1 | undefined;
     await desktopPluginHost.activateGeneration({
