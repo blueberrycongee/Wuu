@@ -545,10 +545,11 @@ describe("TurnView", () => {
     });
 
     // The failure row renders as a trailing row of the process stream,
-    // carrying the cause and the final retry count.
+    // announcing the stopped state and the cause without retry counts.
     const notice = container!.querySelector("aside.stream-reconnect-notice");
+    expect(notice?.textContent).toContain("已停止");
     expect(notice?.textContent).toContain("网络异常");
-    expect(notice?.textContent).toContain("第 5/5 次重试");
+    expect(notice?.textContent).not.toContain("次重试");
     expect(notice?.closest(".assistant-turn-shell")).not.toBeNull();
     // It stands in for the generic turn error notice.
     expect(

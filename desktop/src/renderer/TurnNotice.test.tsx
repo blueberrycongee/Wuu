@@ -311,7 +311,7 @@ describe("TurnNotice process row", () => {
     const notice = host.querySelector("aside.stream-reconnect-notice");
     expect(notice?.querySelectorAll(".process-surface-row")).toHaveLength(1);
     expect(notice?.textContent).toContain("429 触发限流");
-    expect(notice?.textContent).toContain("第 2/5 次重试");
+    expect(notice?.textContent).toContain("第 2 次重试");
     expect(notice?.textContent).toContain("2 秒后重试");
     // The redacted provider cause stays out of the row; the structured
     // category maps to a localized title instead.
@@ -329,7 +329,7 @@ describe("TurnNotice process row", () => {
     expect(notice?.querySelector(".process-surface-chevron")).toBeNull();
   });
 
-  it("settles a failed stream reconnect row with the final retry count", () => {
+  it("marks a failed stream reconnect row as stopped without retry counts", () => {
     const host = mount(
       <StreamReconnectNotice
         item={{
@@ -346,8 +346,9 @@ describe("TurnNotice process row", () => {
 
     const notice = host.querySelector("aside.stream-reconnect-notice");
     expect(notice?.getAttribute("role")).toBe("alert");
+    expect(notice?.textContent).toContain("已停止");
     expect(notice?.textContent).toContain("网络异常");
-    expect(notice?.textContent).toContain("第 5/5 次重试");
+    expect(notice?.textContent).not.toContain("次重试");
     expect(notice?.textContent).not.toContain("秒后重试");
   });
 
@@ -360,11 +361,13 @@ describe("TurnNotice process row", () => {
     ["deadline", undefined, "请求超时"],
     ["network", undefined, "网络异常"],
     ["incomplete_stream", undefined, "网络异常"],
+    ["context_overflow", undefined, "上下文超出模型上限"],
+    ["request_too_large", undefined, "请求超出大小限制"],
     // App-servers that predate the structured category only carry the
-    // redacted cause text; unmapped causes read as network failures.
+    // redacted cause text; unmapped causes read as a generic request failure.
     [undefined, "Authentication failed", "认证失败"],
     [undefined, "Provider is overloaded", "上游过载"],
-    [undefined, "connection reset by peer", "网络异常"],
+    [undefined, "connection reset by peer", "请求失败"],
   ])(
     "titles the reconnect row from category %s or the redacted cause",
     (reason, text, title) => {

@@ -137,16 +137,20 @@ export function StreamReconnectNotice({
   item: ThreadItem;
 }): JSX.Element {
   const inProgress = item.status === "in_progress";
+  const failed = item.status === "failed";
   const waitText = useRetryCountdown(inProgress ? item.retry_at_ms : undefined);
-  const detail =
-    [streamReconnectRetryText(item), waitText].filter(Boolean).join(" · ") ||
-    undefined;
+  // Settled failure rows must read as over ("已停止 · cause"), never as a
+  // frozen snapshot of the retry loop ("第 n/m 次重试").
+  const detail = failed
+    ? streamReconnectTitle(item)
+    : [streamReconnectRetryText(item), waitText].filter(Boolean).join(" · ") ||
+      undefined;
   return (
     <SystemEventNotice
       event={{
-        label: streamReconnectTitle(item),
+        label: failed ? t("error.cancelledTitle") : streamReconnectTitle(item),
         detail,
-        tone: item.status === "failed" ? "error" : undefined,
+        tone: failed ? "error" : undefined,
         state: inProgress ? "in_progress" : "settled",
       }}
       className="stream-reconnect-notice"
@@ -159,19 +163,14 @@ function streamReconnectRetryText(item: ThreadItem): string | undefined {
   if (retryCount <= 0) {
     return undefined;
   }
-  return item.max_retries
-    ? t("appState.retryProgress", {
-        count: formatCurrentNumber(retryCount),
-        max: formatCurrentNumber(item.max_retries),
-      })
-    : t("appState.retryOrdinal", { count: formatCurrentNumber(retryCount) });
+  return t("appState.retryOrdinal", { count: formatCurrentNumber(retryCount) });
 }
 
 /**
  * Short localized title for the failure that triggered a stream reconnect.
  * Prefers the item's structured `reason` (the provider's failure category);
  * the redacted cause text is only consulted for app-servers that predate the
- * category field, and anything unmapped reads as a network failure.
+ * category field, and anything unmapped reads as a generic request failure.
  */
 function streamReconnectTitle(item: ThreadItem): string {
   const fromCategory = streamReconnectCategoryTitle(item.reason);
@@ -191,7 +190,7 @@ function streamReconnectTitle(item: ThreadItem): string {
   if (reason.includes("timeout") || reason.includes("deadline")) {
     return t("error.requestTimeout");
   }
-  return t("error.networkTitle");
+  return t("error.requestFailedTitle");
 }
 
 function streamReconnectCategoryTitle(
@@ -209,6 +208,10 @@ function streamReconnectCategoryTitle(
       return t("error.providerTitle");
     case "deadline":
       return t("error.requestTimeout");
+    case "context_overflow":
+      return t("error.contextOverflowTitle");
+    case "request_too_large":
+      return t("error.requestTooLargeTitle");
     case "network":
     case "incomplete_stream":
       return t("error.networkTitle");
