@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/blueberrycongee/wuu/internal/modelprofile"
@@ -81,19 +82,57 @@ func TestHistoryReadReportsPayloadTruncationAndContinuation(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("append history: %v", err)
 	}
-	result, err := NewHistoryReadTool(&Env{SessionsDir: dir, SessionID: "current"}).Execute(context.Background(), `{"start_seq":1,"max_chars":5}`)
+	tool := NewHistoryReadTool(&Env{SessionsDir: dir, SessionID: "current"})
+	result, err := tool.Execute(context.Background(), `{"start_seq":1,"max_chars":5}`)
 	if err != nil {
 		t.Fatalf("history_read: %v", err)
 	}
 	var decoded struct {
 		PayloadTruncated bool                    `json:"payload_truncated"`
 		Records          []historyRecordToolView `json:"records"`
-		Next             map[string]int          `json:"next"`
+		Next             map[string]any          `json:"next"`
 	}
 	if err := json.Unmarshal([]byte(result), &decoded); err != nil {
 		t.Fatalf("decode result: %v", err)
 	}
-	if !decoded.PayloadTruncated || len(decoded.Records) != 1 || !decoded.Records[0].PayloadTruncated || decoded.Next["start_seq"] != 2 {
+	if !decoded.PayloadTruncated || len(decoded.Records) != 1 || decoded.Records[0].Content != "12345" || decoded.Next["seq"] != float64(1) {
+		t.Fatalf("result = %+v", decoded)
+	}
+	cursor, _ := decoded.Next["cursor"].(string)
+	continued, err := tool.Execute(context.Background(), fmt.Sprintf(`{"cursor":%q,"max_chars":5}`, cursor))
+	if err != nil {
+		t.Fatalf("continue history_read: %v", err)
+	}
+	if err := json.Unmarshal([]byte(continued), &decoded); err != nil {
+		t.Fatalf("decode continued: %v", err)
+	}
+	if decoded.Records[0].Content != "67890" {
+		t.Fatalf("continued = %+v", decoded)
+	}
+}
+
+func TestHistoryReadCanTargetAnotherSession(t *testing.T) {
+	dir := t.TempDir()
+	for _, id := range []string{"current", "source"} {
+		if _, err := session.CreateWithMetadata(dir, id, t.TempDir()); err != nil {
+			t.Fatalf("create %s: %v", id, err)
+		}
+	}
+	if err := session.AppendHistoryRecord(dir, "source", session.HistoryRecord{Role: "user", Content: "source fact"}); err != nil {
+		t.Fatalf("append source: %v", err)
+	}
+	result, err := NewHistoryReadTool(&Env{SessionsDir: dir, SessionID: "current"}).Execute(context.Background(), `{"session_id":"source","start_seq":1}`)
+	if err != nil {
+		t.Fatalf("history_read: %v", err)
+	}
+	var decoded struct {
+		SessionID string                  `json:"session_id"`
+		Records   []historyRecordToolView `json:"records"`
+	}
+	if err := json.Unmarshal([]byte(result), &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if decoded.SessionID != "source" || len(decoded.Records) != 1 || decoded.Records[0].Content != "source fact" {
 		t.Fatalf("result = %+v", decoded)
 	}
 }
@@ -121,4 +160,13 @@ func TestContextWindowToolsRequireRuntimeEnablement(t *testing.T) {
 	assertDefined(true)
 	kit.SetContextWindowToolsEnabled(false)
 	assertDefined(false)
+	got := map[string]bool{}
+	for _, definition := range kit.Definitions() {
+		got[definition.Name] = true
+	}
+	for _, name := range historyRecoveryToolNames {
+		if !got[name] {
+			t.Fatalf("history recovery tool %q should remain visible without note compaction", name)
+		}
+	}
 }

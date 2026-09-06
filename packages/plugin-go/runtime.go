@@ -57,6 +57,8 @@ const (
 	HostServiceSessionList            = "host.session.list"
 	HostServiceSessionCancel          = "host.session.cancel"
 	HostServiceSessionInspect         = "host.session.inspect"
+	HostServiceSessionHistoryRead     = "host.session.history.read"
+	HostServiceSessionHistorySearch   = "host.session.history.search"
 	HostServiceWorkspaceStatus        = "host.workspace.status"
 	HostServiceWorkspaceApply         = "host.workspace.apply"
 	HostServiceWorkspaceDiscard       = "host.workspace.discard"
@@ -92,6 +94,8 @@ const (
 	KernelSessionListService            = "host.session.list"
 	KernelSessionCancelService          = "host.session.cancel"
 	KernelSessionInspectService         = "host.session.inspect"
+	KernelSessionHistoryReadService     = "host.session.history.read"
+	KernelSessionHistorySearchService   = "host.session.history.search"
 	KernelWorkspaceStatusService        = "host.workspace.status"
 	KernelWorkspaceApplyService         = "host.workspace.apply"
 	KernelWorkspaceDiscardService       = "host.workspace.discard"
@@ -722,6 +726,7 @@ func kernelServiceForLegacyMethod(method string) (string, bool) {
 		HostServiceSessionCreate: KernelSessionCreateService, HostServiceSessionSend: KernelSessionSendService,
 		HostServiceSessionList: KernelSessionListService, HostServiceSessionCancel: KernelSessionCancelService,
 		HostServiceSessionInspect:  KernelSessionInspectService,
+		HostServiceSessionHistoryRead: KernelSessionHistoryReadService, HostServiceSessionHistorySearch: KernelSessionHistorySearchService,
 		HostServiceWorkspaceStatus: KernelWorkspaceStatusService, HostServiceWorkspaceApply: KernelWorkspaceApplyService,
 		HostServiceWorkspaceDiscard: KernelWorkspaceDiscardService,
 	}

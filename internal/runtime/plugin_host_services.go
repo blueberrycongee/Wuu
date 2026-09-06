@@ -143,6 +143,26 @@ func (s *pluginHostServices) invoke(ctx context.Context, method pluginhost.HostS
 			return nil, err
 		}
 		return marshalServiceResult(result)
+	case pluginhost.HostServiceSessionHistoryRead:
+		var params pluginhost.SessionHistoryReadParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := readPluginSessionHistory(ctx, s.wuuHome, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
+	case pluginhost.HostServiceSessionHistorySearch:
+		var params pluginhost.SessionHistorySearchParams
+		if err := decodeServiceParams(raw, &params); err != nil {
+			return nil, err
+		}
+		result, err := searchPluginSessionHistory(ctx, s.wuuHome, s.pluginID, params)
+		if err != nil {
+			return nil, err
+		}
+		return marshalServiceResult(result)
 	case pluginhost.HostServiceWorkspaceStatus:
 		if s.turnRouter == nil {
 			return nil, serviceError("service_unavailable", "workspace service is unavailable")
@@ -312,6 +332,7 @@ func kernelServiceReadOnly(method pluginhost.HostServiceMethod) bool {
 	case pluginhost.HostServiceStorageGet, pluginhost.HostServiceStorageKeys,
 		pluginhost.HostServiceSettingsGet, pluginhost.HostServiceSettingsList,
 		pluginhost.HostServiceSessionList, pluginhost.HostServiceSessionInspect,
+		pluginhost.HostServiceSessionHistoryRead, pluginhost.HostServiceSessionHistorySearch,
 		pluginhost.HostServiceWorkspaceStatus:
 		return true
 	default:
@@ -403,6 +424,7 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 		pluginhost.HostServiceSettingsList, pluginhost.HostServiceSessionCreate,
 		pluginhost.HostServiceSessionSend, pluginhost.HostServiceSessionList,
 		pluginhost.HostServiceSessionCancel, pluginhost.HostServiceSessionInspect,
+		pluginhost.HostServiceSessionHistoryRead, pluginhost.HostServiceSessionHistorySearch,
 		pluginhost.HostServiceWorkspaceStatus, pluginhost.HostServiceWorkspaceApply,
 		pluginhost.HostServiceWorkspaceDiscard,
 	}

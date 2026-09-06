@@ -43,7 +43,8 @@ const (
 	maxToolOutputBytes  = 100 * 1024 // 100 KB — general cap for other tools
 )
 
-var contextWindowToolNames = []string{newContextToolName, historyReadToolName, historySearchToolName}
+var contextWindowToolNames = []string{newContextToolName}
+var historyRecoveryToolNames = []string{historyReadToolName, historySearchToolName}
 
 // Toolkit executes local coding tools for the agent. It satisfies
 // agent.ToolExecutor via Definitions() + Execute().
@@ -188,7 +189,7 @@ func New(rootDir string) (*Toolkit, error) {
 		env: env,
 		disabledTools: map[string]struct{}{
 			browserToolName:    {},
-			newContextToolName: {}, historyReadToolName: {}, historySearchToolName: {},
+			newContextToolName: {},
 		},
 		toolSearchEnabled: true,
 		boundary:          StandardBoundary(),
@@ -609,9 +610,9 @@ func (t *Toolkit) SetBrowserEnabled(enabled bool) {
 	t.activeProfileMu.Unlock()
 }
 
-// SetContextWindowToolsEnabled exposes host-owned context switching and
-// current-session recovery only when the runtime has note compaction and
-// durable history wired. New toolkits keep the surface disabled.
+// SetContextWindowToolsEnabled exposes host-owned context switching only when
+// the runtime can install a continuation checkpoint. History recovery tools are
+// independent of note compaction.
 func (t *Toolkit) SetContextWindowToolsEnabled(enabled bool) {
 	if t == nil {
 		return

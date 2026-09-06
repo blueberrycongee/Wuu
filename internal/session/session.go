@@ -25,7 +25,11 @@ const (
 	dbFileName = "sessions.sqlite3"
 )
 
-var ErrSessionNotFound = errors.New("session not found")
+var (
+	ErrSessionNotFound     = errors.New("session not found")
+	ErrHistoryUnavailable  = errors.New("session history unavailable")
+	ErrHistorySnapshotGone = errors.New("history snapshot is no longer available")
+)
 
 var (
 	storeInitMu  sync.Mutex
@@ -1715,6 +1719,11 @@ func addColumnIfMissing(db *sql.DB, table, column, definition string) error {
 		return fmt.Errorf("scan %s columns: %w", table, err)
 	}
 	if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, definition)); err != nil {
+		// Multiple workspace app-servers share one sessions DB and migrate
+		// concurrently; treat a racing ADD as success when the column landed.
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil
+		}
 		return fmt.Errorf("add %s.%s column: %w", table, column, err)
 	}
 	return nil

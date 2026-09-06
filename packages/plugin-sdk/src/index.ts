@@ -524,6 +524,8 @@ export const HOST_SERVICE_METHODS = [
   "host.session.list",
   "host.session.cancel",
   "host.session.inspect",
+  "host.session.history.read",
+  "host.session.history.search",
   "host.workspace.status",
   "host.workspace.apply",
   "host.workspace.discard",
@@ -553,6 +555,8 @@ export const KERNEL_SERVICE_NAMES = {
   "host.session.list": "host.session.list",
   "host.session.cancel": "host.session.cancel",
   "host.session.inspect": "host.session.inspect",
+  "host.session.history.read": "host.session.history.read",
+  "host.session.history.search": "host.session.history.search",
   "host.workspace.status": "host.workspace.status",
   "host.workspace.apply": "host.workspace.apply",
   "host.workspace.discard": "host.workspace.discard",
@@ -1011,6 +1015,58 @@ export interface HostServiceContracts {
       };
       workspace?: { kind: "shared" | "worktree"; dirty?: boolean; changed_files?: string[] };
       timed_out?: boolean;
+    };
+  };
+  "host.session.history.read": {
+    params: {
+      session_id: string;
+      start_seq?: number;
+      end_seq?: number;
+      snapshot_seq?: number;
+      limit?: number;
+      cursor?: string;
+    };
+    result: {
+      session_id: string;
+      head_seq: number;
+      snapshot_seq: number;
+      records?: Array<{
+        seq: number;
+        role: string;
+        name?: string;
+        content?: string;
+        display_content?: string;
+        reasoning_content?: string;
+        tool_calls?: string;
+        tool_call_id?: string;
+        tool_result?: string;
+        finish_reason?: string;
+        truncated?: boolean;
+      }>;
+      has_more?: boolean;
+      budget_exhausted?: boolean;
+      next_cursor?: string;
+    };
+  };
+  "host.session.history.search": {
+    params: {
+      session_id: string;
+      query: string;
+      start_seq?: number;
+      end_seq?: number;
+      snapshot_seq?: number;
+      before_seq?: number;
+      limit?: number;
+      cursor?: string;
+    };
+    result: {
+      session_id: string;
+      head_seq: number;
+      snapshot_seq: number;
+      matches?: Array<{ seq: number; role: string; name?: string; excerpt?: string }>;
+      has_more?: boolean;
+      budget_exhausted?: boolean;
+      next_cursor?: string;
     };
   };
   "host.workspace.status": {

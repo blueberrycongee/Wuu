@@ -188,7 +188,9 @@ const (
 	HostServiceSessionSend    HostServiceMethod = "host.session.send"
 	HostServiceSessionList    HostServiceMethod = "host.session.list"
 	HostServiceSessionCancel  HostServiceMethod = "host.session.cancel"
-	HostServiceSessionInspect HostServiceMethod = "host.session.inspect"
+	HostServiceSessionInspect       HostServiceMethod = "host.session.inspect"
+	HostServiceSessionHistoryRead   HostServiceMethod = "host.session.history.read"
+	HostServiceSessionHistorySearch HostServiceMethod = "host.session.history.search"
 
 	// Workspaces. These methods operate only on an isolated workspace owned by
 	// a plugin-created session; callers never supply filesystem paths.
