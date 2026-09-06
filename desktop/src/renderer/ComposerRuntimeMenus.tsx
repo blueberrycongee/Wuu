@@ -85,7 +85,7 @@ function engineLabel(id: string): string {
   return ENGINE_LABELS[id] ?? id;
 }
 
-type EngineOption = {
+export type EngineOption = {
   id: string;
   label: string;
 };
@@ -152,7 +152,7 @@ function EngineOptionsMenu({
   );
 }
 
-type RuntimePanelView = "summary" | "engines" | "providers" | "models";
+export type RuntimePanelView = "summary" | "engines" | "providers" | "models";
 type RuntimePanelDirection = "forward" | "back";
 
 const RUNTIME_PANEL_MAX_HEIGHT = 320;
@@ -639,7 +639,7 @@ function EngineRuntimeMenu({
   );
 }
 
-function RuntimeModelMenu({
+export function RuntimeModelMenu({
   initialized,
   state,
   selectedProvider,
@@ -653,7 +653,12 @@ function RuntimeModelMenu({
   engineLocked,
   running,
   lockedDescription,
-  onSelectEngine
+  onSelectEngine,
+  filterQuery = "",
+  forcedView,
+  hideHandoff = false,
+  embedded = false,
+  onSelectProvider,
 }: {
   initialized: InitializeResult;
   state: CodexModelLoadState;
@@ -669,6 +674,11 @@ function RuntimeModelMenu({
   running: boolean;
   lockedDescription?: string;
   onSelectEngine: (id: string) => void;
+  filterQuery?: string;
+  forcedView?: RuntimePanelView;
+  hideHandoff?: boolean;
+  embedded?: boolean;
+  onSelectProvider?: (providerId: string) => void;
 }): JSX.Element {
   const { t } = useI18n();
   const [view, setView] = useState<RuntimePanelView>("summary");
@@ -683,6 +693,13 @@ function RuntimeModelMenu({
   useEffect(() => {
     setOptimistic(null);
   }, [selectedProvider, selectedModel, selectedVariant]);
+  useEffect(() => {
+    if (!forcedView) {
+      return;
+    }
+    setDirection(forcedView === "summary" ? "back" : "forward");
+    setView(forcedView);
+  }, [forcedView]);
 
   const openView = (nextView: RuntimePanelView): void => {
     setDirection("forward");
@@ -734,16 +751,23 @@ function RuntimeModelMenu({
   const effectiveProvider = providers.find((provider) => provider.name === effectiveProviderName);
   const scopedGroups = groups.filter((group) => group.provider.name === effectiveProviderName);
 
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredGroups = normalizedQuery
+  const activeFilter = (forcedView ? filterQuery : query).trim().toLocaleLowerCase();
+  const visibleProviderGroups = activeFilter
+    ? groups.filter((group) =>
+        group.provider.name.toLocaleLowerCase().includes(activeFilter)
+        || group.models.some((model) =>
+          providerModelDisplayName(model).toLocaleLowerCase().includes(activeFilter)
+          || model.id.toLocaleLowerCase().includes(activeFilter)))
+    : groups;
+  const filteredGroups = activeFilter
     ? scopedGroups
         .map((group) => ({
           ...group,
           models: group.models.filter(
             (model) =>
-              providerModelDisplayName(model).toLocaleLowerCase().includes(normalizedQuery) ||
-              model.id.toLocaleLowerCase().includes(normalizedQuery) ||
-              group.provider.name.toLocaleLowerCase().includes(normalizedQuery)
+              providerModelDisplayName(model).toLocaleLowerCase().includes(activeFilter) ||
+              model.id.toLocaleLowerCase().includes(activeFilter) ||
+              group.provider.name.toLocaleLowerCase().includes(activeFilter)
           )
         }))
         .filter((group) => group.models.length > 0)
@@ -759,10 +783,10 @@ function RuntimeModelMenu({
   const effectiveModel = scopedGroups
     .flatMap((group) => group.models)
     .find((model) => model.id === effectiveModelID);
-  const chooserRows = view === "providers" ? groups.length : engineOptions.length;
+  const chooserRows = view === "providers" ? visibleProviderGroups.length : engineOptions.length;
   const chooserHeight = Math.min(RUNTIME_PANEL_MAX_HEIGHT, 50 + chooserRows * 36);
   const visibleModelCount = filteredGroups.reduce((count, group) => count + group.models.length, 0);
-  const modelsHeight = runtimePanelListHeight(visibleModelCount, RUNTIME_PANEL_SEARCH_EXTRA);
+  const modelsHeight = runtimePanelListHeight(visibleModelCount, forcedView ? 0 : RUNTIME_PANEL_SEARCH_EXTRA);
 
   const selectModel = (provider: string, model: string, variant?: string): void => {
     setOptimistic({ provider, model, variant: variant ?? "" });
@@ -773,7 +797,7 @@ function RuntimeModelMenu({
 
   return (
     <div
-      className={`codex-runtime-menu codex-model-menu runtime-panel is-${view}`}
+      className={`codex-runtime-menu codex-model-menu runtime-panel is-${view}${embedded ? " is-embedded" : ""}`}
       role="menu"
       style={{
         "--runtime-chooser-height": `${chooserHeight}px`,
@@ -793,7 +817,7 @@ function RuntimeModelMenu({
             onOpenEngines={() => openView("engines")}
             onOpenProviders={() => openView("providers")}
             onOpenModels={() => openView("models")}
-            onHandoff={onHandoffModel ? () => onHandoffModel(effectiveProviderName, effectiveModelID) : undefined}
+            onHandoff={hideHandoff || !onHandoffModel ? undefined : () => onHandoffModel(effectiveProviderName, effectiveModelID)}
             onSelectEffort={(variant) => {
               setOptimistic((current) =>
                 current ? { ...current, variant } : { provider: selectedProvider, model: selectedModel, variant }
@@ -826,7 +850,7 @@ function RuntimeModelMenu({
           <>
             <RuntimePanelHeader title={t("runtime.provider")} onBack={showSummary} />
             <div className="runtime-panel-list runtime-provider-options" role="group" aria-label={t("runtime.provider")}>
-              {groups.map((group) => {
+              {visibleProviderGroups.map((group) => {
                 const selected = group.provider.name === effectiveProviderName;
                 return (
                   <button
@@ -836,6 +860,11 @@ function RuntimeModelMenu({
                     aria-checked={selected}
                     key={group.provider.name}
                     onClick={() => {
+                      if (onSelectProvider) {
+                        onSelectProvider(group.provider.name);
+                        openView("models");
+                        return;
+                      }
                       const model = group.models[0];
                       if (model && !selected) {
                         selectModel(group.provider.name, model.id, defaultVariantForRuntimeModel(group.provider, model));
@@ -854,16 +883,18 @@ function RuntimeModelMenu({
         {view === "models" ? (
           <>
             <RuntimePanelHeader title={t("runtime.model")} onBack={showSummary} />
-            <label className="select-menu-search">
-              <Search className="select-menu-search-icon icon-lg" />
-              <input
-                type="search"
-                value={query}
-                placeholder={t("runtime.searchModels")}
-                aria-label={t("runtime.searchModels")}
-                onChange={(event) => setQuery(event.currentTarget.value)}
-              />
-            </label>
+            {forcedView ? null : (
+              <label className="select-menu-search">
+                <Search className="select-menu-search-icon icon-lg" />
+                <input
+                  type="search"
+                  value={query}
+                  placeholder={t("runtime.searchModels")}
+                  aria-label={t("runtime.searchModels")}
+                  onChange={(event) => setQuery(event.currentTarget.value)}
+                />
+              </label>
+            )}
             <div className="codex-model-groups">
               {effectiveCodex && state.loading ? <div className="composer-menu-empty">{t("runtime.loadingCodexModels")}</div> : null}
               {effectiveCodex && state.error ? (

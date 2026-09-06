@@ -53,6 +53,7 @@ import {
   canSubmitHandoffDraft,
   emptyHandoffDraft,
   handoffPromptFromIntent,
+  handoffPromptFromSelection,
   reduceHandoffDraft,
   type HandoffCatalog,
   type HandoffDraft,
@@ -277,7 +278,7 @@ export function Composer({
   onCreateProject: () => void;
   onOpenProject: () => void;
   onStartNewThread: () => void;
-  onHandoffSession?: (input: { provider: string; model: string; intent: string }) => void;
+  onHandoffSession?: (input: { provider: string; model: string; effort?: string; intent: string }) => void;
   // Open or focus the side thread attached to the active main conversation.
   // When prompt is non-empty, also send it as the side-thread query.
   onOpenSideThread?: (prompt?: string) => void;
@@ -527,6 +528,7 @@ export function Composer({
     })),
   }), [initialized]);
   const [handoffRevision, setHandoffRevision] = useState(1);
+  const [handoffVariant, setHandoffVariant] = useState("");
   const appliedHandoffIntentRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (requestedHandoffIntent === undefined || appliedHandoffIntentRef.current === requestedHandoffIntent) {
@@ -536,12 +538,16 @@ export function Composer({
     setHandoffRevision((current) => current + 1);
     setPrompt(handoffPromptFromIntent(requestedHandoffIntent));
   }, [requestedHandoffIntent]);
-  const handoffDraft = useMemo<HandoffDraft>(() => {
+  const parsedHandoffDraft = useMemo<HandoffDraft>(() => {
     if (slashDraft?.query !== "handoff") {
       return emptyHandoffDraft(handoffRevision);
     }
     return reduceHandoffDraft(slashDraft.args, handoffCatalog, handoffRevision);
   }, [handoffCatalog, handoffRevision, slashDraft]);
+  const handoffDraft = useMemo<HandoffDraft>(() => ({
+    ...parsedHandoffDraft,
+    variant: handoffVariant,
+  }), [handoffVariant, parsedHandoffDraft]);
   const showHandoffCard = slashDraft?.query === "handoff";
   const slashQuery = slashDraft?.query ?? "";
   const slashSkillContextKey = activeContext ? composerRuntimeContextKey(activeContext) : "";
@@ -594,7 +600,12 @@ export function Composer({
     () => filterComposerSlashCommands(slashCommands, slashQuery),
     [slashCommands, slashQuery]
   );
-  const slashMenuOpen = Boolean(!readOnly && slashDraft && slashDismissedValue !== prompt);
+  const slashMenuOpen = Boolean(
+    !readOnly
+    && slashDraft
+    && slashDraft.query !== "handoff"
+    && slashDismissedValue !== prompt
+  );
   const selectedSlashCommand = slashMenuOpen ? visibleSlashCommands[selectedSlashIndex] : undefined;
   const slashMenuID = `composer-slash-commands-${variant}`;
   const { resetQueryHistoryNavigation, handleQueryHistoryKeyDown } = useComposerQueryHistory({
@@ -1021,14 +1032,25 @@ export function Composer({
   const content = (
     <div className={`composer-stack${isComposerExpanded ? " is-expanded" : ""}`} data-wuu-component="composer">
       {topAccessory ? <div className="composer-top-accessory">{topAccessory}</div> : null}
-      {showHandoffCard ? (
+      {showHandoffCard && initialized ? (
         <HandoffCard
           draft={handoffDraft}
+          initialized={initialized}
+          modelState={codexModels}
           sourceLabel={queryHistorySessionID || t("handoff.card.source")}
           workspaceLabel={activeContext?.cwd || activeProject?.path || ""}
-          onSelectCandidate={(providerId, modelId) => {
+          onSelectProvider={(providerId) => {
+            setHandoffVariant("");
             setHandoffRevision((current) => current + 1);
-            setPrompt(`/handoff model ${providerId}/${modelId}${handoffDraft.intent ? ` -- ${handoffDraft.intent}` : ""}`);
+            setPrompt(handoffPromptFromSelection(providerId, "", handoffDraft.intent));
+          }}
+          onSelectModel={(providerId, modelId, variant) => {
+            setHandoffVariant(variant ?? "");
+            setHandoffRevision((current) => current + 1);
+            setPrompt(handoffPromptFromSelection(providerId, modelId, handoffDraft.intent));
+          }}
+          onSelectEffort={(variant) => {
+            setHandoffVariant(variant);
           }}
           onSubmit={() => {
             if (!canSubmitHandoffDraft(handoffDraft)) {
@@ -1037,6 +1059,7 @@ export function Composer({
             onHandoffSession?.({
               provider: handoffDraft.providerId,
               model: handoffDraft.modelId,
+              effort: handoffDraft.variant || undefined,
               intent: handoffDraft.intent,
             });
             setPrompt("");
@@ -1335,7 +1358,7 @@ export function Composer({
                         onToggleMenu={onToggleCodexRuntimeMenu}
                         onSelectModel={onSelectRuntimeModel}
                         onHandoffModel={(provider, model) => {
-                          setPrompt(`/handoff model ${provider}/${model}`);
+                          setPrompt(handoffPromptFromSelection(provider, model, ""));
                           focusComposerAtEndSoon();
                         }}
                         onSelectEffort={onSelectRuntimeEffort}

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { canSubmitHandoffDraft, handoffPromptFromIntent, parseHandoffArgs, parseRequestedHandoffIntent, reduceHandoffDraft } from "./HandoffDraft";
+import {
+  canSubmitHandoffDraft,
+  handoffPromptFromIntent,
+  handoffPromptFromSelection,
+  parseHandoffArgs,
+  parseRequestedHandoffIntent,
+  reduceHandoffDraft,
+} from "./HandoffDraft";
 
 const catalog = {
   providers: [
@@ -25,38 +32,57 @@ describe("handoff draft", () => {
       modelPrefix: "",
       intent: "",
       complete: false,
+      hasSlash: false,
     });
   });
 
   it("parses provider/model and intent without asking a model", () => {
-    const draft = reduceHandoffDraft("model openai/gpt-5.5 -- keep the verified fix", catalog, 3);
+    const draft = reduceHandoffDraft("openai/gpt-5.5 -- keep the verified fix", catalog, 3);
     expect(draft).toMatchObject({
       providerId: "openai",
       modelId: "gpt-5.5",
       intent: "keep the verified fix",
       status: "resolved",
+      pickerView: "models",
       revision: 3,
     });
     expect(canSubmitHandoffDraft(draft)).toBe(true);
   });
 
-  it("marks custom model ids as unverified instead of inventing a provider", () => {
-    const draft = reduceHandoffDraft("model openai/my-local-gate/vision", catalog, 1);
-    expect(draft.status).toBe("unverified");
-    expect(draft.modelId).toBe("my-local-gate/vision");
-    expect(canSubmitHandoffDraft(draft)).toBe(true);
+  it("shows the runtime summary until the user starts choosing a provider", () => {
+    const draft = reduceHandoffDraft("", catalog, 1);
+    expect(draft.pickerView).toBe("summary");
+    expect(draft.status).toBe("pending");
+    expect(canSubmitHandoffDraft(draft)).toBe(false);
   });
 
-  it("does not submit while the user is still choosing a candidate", () => {
-    const draft = reduceHandoffDraft("model open", catalog, 1);
+  it("opens the provider list from a provider prefix", () => {
+    const draft = reduceHandoffDraft("open", catalog, 1);
+    expect(draft.pickerView).toBe("providers");
+    expect(draft.filterQuery).toBe("open");
     expect(draft.status).toBe("pending");
-    expect(draft.candidates.map((item) => item.modelId)).toEqual(["gpt-5.4", "gpt-5.5"]);
     expect(canSubmitHandoffDraft(draft)).toBe(false);
+  });
+
+  it("opens the model list after a unique provider is chosen", () => {
+    const draft = reduceHandoffDraft("openai/", catalog, 1);
+    expect(draft.providerId).toBe("openai");
+    expect(draft.pickerView).toBe("models");
+    expect(canSubmitHandoffDraft(draft)).toBe(false);
+  });
+
+  it("marks custom model ids as unverified instead of inventing a provider", () => {
+    const draft = reduceHandoffDraft("openai/my-local-gate/vision", catalog, 1);
+    expect(draft.status).toBe("unverified");
+    expect(draft.modelId).toBe("my-local-gate/vision");
+    expect(draft.pickerView).toBe("models");
+    expect(canSubmitHandoffDraft(draft)).toBe(true);
   });
 
   it("opens a configuration draft from an agent request without selecting a model", () => {
     expect(parseRequestedHandoffIntent(`{"awaiting_user_configuration":true,"intent":"keep the verified fix"}`)).toBe("keep the verified fix");
     expect(handoffPromptFromIntent("keep the verified fix")).toBe("/handoff -- keep the verified fix");
+    expect(handoffPromptFromSelection("openai", "gpt-5.5", "keep going")).toBe("/handoff openai/gpt-5.5 -- keep going");
     expect(parseRequestedHandoffIntent(`{"intent":"keep going"}`)).toBeNull();
   });
 });

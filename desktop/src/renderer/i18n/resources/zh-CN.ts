@@ -790,7 +790,7 @@ export const zhCN = {
   "slash.compact.title": "压缩上下文",
   "slash.handoff.title": "交接到新会话",
   "slash.handoff.description": "用有界 brief 开一个新会话，旧历史不自动携带，可按需读原文",
-  "slash.handoff.argumentHint": "model provider/model -- 接手要求",
+  "slash.handoff.argumentHint": "provider/model -- 接手要求",
   "handoff.card.title": "交接到新会话",
   "handoff.card.target": "目标",
   "handoff.card.source": "来源",

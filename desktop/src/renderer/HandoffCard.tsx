@@ -1,19 +1,30 @@
+import type { InitializeResult } from "../shared/protocol";
+import { RuntimeModelMenu } from "./ComposerRuntimeMenus";
+import type { CodexModelLoadState } from "./ComposerTypes";
 import { useI18n } from "./i18n";
 import { canSubmitHandoffDraft, type HandoffDraft } from "./HandoffDraft";
 
 export function HandoffCard({
   draft,
+  initialized,
+  modelState,
   sourceLabel,
   workspaceLabel,
   submitting,
-  onSelectCandidate,
+  onSelectProvider,
+  onSelectModel,
+  onSelectEffort,
   onSubmit,
 }: {
   draft: HandoffDraft;
+  initialized: InitializeResult;
+  modelState: CodexModelLoadState;
   sourceLabel: string;
   workspaceLabel: string;
   submitting?: boolean;
-  onSelectCandidate: (providerId: string, modelId: string) => void;
+  onSelectProvider: (providerId: string) => void;
+  onSelectModel: (providerId: string, modelId: string, variant?: string) => void;
+  onSelectEffort: (variant: string) => void;
   onSubmit: () => void;
 }): JSX.Element {
   const { t } = useI18n();
@@ -23,17 +34,13 @@ export function HandoffCard({
     unverified: t("handoff.card.unverified"),
     unavailable: t("handoff.card.unavailable"),
   }[draft.status];
+  const selectedProvider = draft.providerId || initialized.provider;
+  const selectedModel = draft.modelId || (draft.providerId ? "" : initialized.model);
+  const selectedVariant = draft.variant || (draft.providerId ? "" : initialized.variant ?? initialized.effort ?? "");
   return (
     <section className="handoff-card" aria-label={t("handoff.card.title")}>
       <header className="handoff-card-title">{t("handoff.card.title")}</header>
       <dl className="handoff-card-grid">
-        <div>
-          <dt>{t("handoff.card.target")}</dt>
-          <dd>
-            {draft.targetLabel || statusLabel}
-            <span className={`handoff-card-status is-${draft.status}`}>{statusLabel}</span>
-          </dd>
-        </div>
         <div>
           <dt>{t("handoff.card.source")}</dt>
           <dd>{sourceLabel} · {t("handoff.card.cutoffPending")}</dd>
@@ -53,29 +60,38 @@ export function HandoffCard({
           </div>
         ) : null}
       </dl>
-      {draft.candidates.length > 0 && draft.status === "pending" ? (
-        <div className="handoff-card-candidates" role="listbox" aria-label={t("handoff.card.target")}>
-          {draft.candidates.slice(0, 8).map((candidate) => (
-            <button
-              key={`${candidate.providerId}/${candidate.modelId}`}
-              type="button"
-              role="option"
-              className="handoff-card-candidate"
-              onClick={() => onSelectCandidate(candidate.providerId, candidate.modelId)}
-            >
-              {candidate.providerLabel} / {candidate.modelLabel}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <button
-        type="button"
-        className="handoff-card-submit"
-        disabled={!canSubmitHandoffDraft(draft) || submitting}
-        onClick={onSubmit}
-      >
-        {t("handoff.card.submit")}
-      </button>
+      <div className="handoff-card-picker">
+        <RuntimeModelMenu
+          initialized={initialized}
+          state={modelState}
+          selectedProvider={selectedProvider}
+          selectedModel={selectedModel}
+          selectedVariant={selectedVariant}
+          onSelectModel={onSelectModel}
+          onSelectEffort={onSelectEffort}
+          engineOptions={[{ id: "wuu", label: "Wuu" }]}
+          selectedEngine="wuu"
+          engineLocked
+          running={false}
+          onSelectEngine={() => undefined}
+          filterQuery={draft.filterQuery}
+          forcedView={draft.pickerView}
+          hideHandoff
+          embedded
+          onSelectProvider={onSelectProvider}
+        />
+      </div>
+      <div className="handoff-card-footer">
+        <span className={`handoff-card-status is-${draft.status}`}>{draft.targetLabel || statusLabel}</span>
+        <button
+          type="button"
+          className="handoff-card-submit"
+          disabled={!canSubmitHandoffDraft(draft) || submitting}
+          onClick={onSubmit}
+        >
+          {t("handoff.card.submit")}
+        </button>
+      </div>
     </section>
   );
 }

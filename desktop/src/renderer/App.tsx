@@ -3438,7 +3438,7 @@ export function App(): JSX.Element {
     );
   }
 
-  async function handoffActiveThread(input: { provider: string; model: string; intent: string }): Promise<void> {
+  async function handoffActiveThread(input: { provider: string; model: string; effort?: string; intent: string }): Promise<void> {
     const currentState = appStateRef.current;
     const source = activeThreadForState(currentState);
     const activeContext = currentState.activeContext;
@@ -3451,6 +3451,7 @@ export function App(): JSX.Element {
         await window.wuu.startThread({
           provider: input.provider,
           model: input.model,
+          effort: input.effort,
           handoff: {
             request_id: crypto.randomUUID(),
             revision: 1,

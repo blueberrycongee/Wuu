@@ -356,17 +356,28 @@
 }
 
 .handoff-card-status {
-  margin-left: 8px;
   color: var(--ink-soft);
+  font-size: 12px;
 }
 
-.handoff-card-candidates {
+.handoff-card-picker {
+  min-width: 0;
+}
+
+.handoff-card-picker .codex-model-menu.runtime-panel.is-embedded {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  box-shadow: none;
+}
+
+.handoff-card-footer {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.handoff-card-candidate,
 .handoff-card-submit,
 .runtime-panel-handoff {
   height: 28px;

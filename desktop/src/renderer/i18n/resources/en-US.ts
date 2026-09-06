@@ -793,7 +793,7 @@ export const enUS = {
   "slash.compact.description": "Summarize older conversation history to free context space",
   "slash.handoff.title": "Handoff to a new session",
   "slash.handoff.description": "Create a fresh session with a bounded brief and on-demand original history",
-  "slash.handoff.argumentHint": "model provider/model -- remaining intent",
+  "slash.handoff.argumentHint": "provider/model -- remaining intent",
   "handoff.card.title": "Handoff to a new session",
   "handoff.card.target": "Target",
   "handoff.card.source": "Source",

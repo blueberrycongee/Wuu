@@ -1201,6 +1201,76 @@ describe("Composer send control", () => {
     expect(frame?.querySelector(".composer-context-bar")).toBeNull();
   });
 
+  it("embeds the runtime picker in the handoff card instead of a slash candidate list", () => {
+    const initialized: InitializeResult = {
+      protocol_version: "wuu-app-server/v0.1",
+      provider: "work",
+      model: "grok-4.6",
+      variant: "xhigh",
+      workspace_root: "/tmp/project",
+      providers: [
+        {
+          name: "work",
+          type: "openai-compatible",
+          model: "grok-4.6",
+          models: [{ id: "grok-4.6", display_name: "Grok 4.6", supported_efforts: ["low", "medium", "high", "xhigh"] }],
+        },
+        {
+          name: "openai",
+          type: "openai-compatible",
+          model: "gpt-5.5",
+          models: [{ id: "gpt-5.5", display_name: "GPT-5.5" }],
+        },
+      ],
+    };
+    renderComposer({
+      variant: "dock",
+      prompt: "/handoff",
+      initialized,
+      activeContext: { kind: "project", project_id: "project-1", cwd: "/tmp/project" },
+    });
+
+    expect(document.body.querySelector('[data-floating-menu-owner="composer-slash"]')).toBeNull();
+    expect(container.querySelector(".handoff-card")).not.toBeNull();
+    expect(container.querySelector(".codex-model-menu.runtime-panel.is-summary")).not.toBeNull();
+    expect(container.querySelector(".runtime-panel-context")?.textContent).toContain("work");
+    expect(container.querySelector(".runtime-panel-model-name")?.textContent).toBe("Grok 4.6");
+    expect(container.querySelector(".handoff-card-candidate")).toBeNull();
+    expect(container.querySelector<HTMLButtonElement>(".handoff-card-submit")?.disabled).toBe(true);
+  });
+
+  it("drills from the embedded handoff picker into the provider list", () => {
+    const initialized: InitializeResult = {
+      protocol_version: "wuu-app-server/v0.1",
+      provider: "work",
+      model: "grok-4.6",
+      workspace_root: "/tmp/project",
+      providers: [
+        {
+          name: "work",
+          type: "openai-compatible",
+          model: "grok-4.6",
+          models: [{ id: "grok-4.6", display_name: "Grok 4.6" }],
+        },
+        {
+          name: "openai",
+          type: "openai-compatible",
+          model: "gpt-5.5",
+          models: [{ id: "gpt-5.5", display_name: "GPT-5.5" }],
+        },
+      ],
+    };
+    renderComposer({
+      variant: "dock",
+      prompt: "/handoff open",
+      initialized,
+      activeContext: { kind: "project", project_id: "project-1", cwd: "/tmp/project" },
+    });
+
+    expect(container.querySelector(".codex-model-menu.runtime-panel.is-providers")).not.toBeNull();
+    expect(Array.from(container.querySelectorAll(".runtime-provider-option")).map((item) => item.textContent?.trim())).toEqual(["openai"]);
+  });
+
   it("renders the slash command menu through the same floating panel as the plus menu", () => {
     renderComposer({
       variant: "dock",
