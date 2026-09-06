@@ -783,7 +783,7 @@ function GitChangeTreePanel({
           </span>
         </div>
       </div>
-      <label className="workspace-diff-search" data-wuu-component="workspace-review-search">
+      <label className="menu-search workspace-diff-search" data-wuu-component="workspace-review-search">
         <Search className="icon" />
         <input
           value={query}

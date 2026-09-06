@@ -235,7 +235,7 @@ function EnvironmentBranchMenu({
 
   return (
     <div className="environment-side-menu branch" role="menu">
-      <label className="environment-search">
+      <label className="menu-search environment-search">
         <Search className="icon" />
         <input value={query} placeholder={t("environment.searchBranches")} onChange={(event) => setQuery(event.target.value)} />
       </label>

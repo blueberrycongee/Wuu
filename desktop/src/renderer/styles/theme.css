@@ -246,8 +246,6 @@
   --composer-send-button-disabled-text: var(--ink-muted);
   --composer-slash-menu-bg: rgba(30, 33, 37, 0.98);
   --composer-slash-menu-shadow: var(--shadow-pop);
-  --composer-project-search-bg: var(--field-bg);
-  --composer-project-search-placeholder: var(--ink-tertiary);
   --composer-project-menu-icon: var(--wuu-color-text-muted, #9aa0a5);
   --composer-menu-note-warning-strong: var(--wuu-color-warning, #e2a04a);
   --composer-accessory-shadow: rgba(0, 0, 0, 0.4);

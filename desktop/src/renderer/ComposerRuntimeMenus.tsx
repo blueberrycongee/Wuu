@@ -585,7 +585,7 @@ function EngineRuntimeMenu({
         ) : null}
         {view === "models" ? (
           <>
-            <label className="select-menu-search">
+            <label className="menu-search select-menu-search">
               <Search className="select-menu-search-icon icon-lg" />
               <input
                 type="search"
@@ -883,7 +883,7 @@ export function RuntimeModelMenu({
         {view === "models" ? (
           <>
             {forcedView ? null : (
-              <label className="select-menu-search">
+              <label className="menu-search select-menu-search">
                 <Search className="select-menu-search-icon icon-lg" />
                 <input
                   type="search"
@@ -1421,7 +1421,7 @@ export function ProjectPickerMenu({
 
   return (
     <div className="composer-project-menu" role="menu">
-      <label className="project-search">
+      <label className="menu-search project-search">
         <Search className="icon-lg" />
         <input value={query} placeholder={t("runtime.searchProjects")} onChange={(event) => setQuery(event.target.value)} />
       </label>

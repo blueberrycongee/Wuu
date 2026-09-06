@@ -232,8 +232,6 @@
   --composer-send-button-disabled-text: rgba(255, 255, 255, 0.86);
   --composer-slash-menu-bg: rgba(255, 255, 255, 0.96);
   --composer-slash-menu-shadow: 0 14px 38px rgba(20, 24, 28, 0.08), 0 1px 4px rgba(20, 24, 28, 0.06);
-  --composer-project-search-bg: var(--field-bg);
-  --composer-project-search-placeholder: var(--ink-tertiary);
   --composer-project-menu-icon: var(--wuu-color-text-muted, #6b7176);
   --composer-menu-note-warning-strong: var(--wuu-color-warning, #b45309);
   /* Accessory drawer upward shadow. Ink-sampled in light (a soft shade);
@@ -2218,39 +2216,6 @@
   left: 12px;
   transform-origin: top left;
   --menu-enter-y: -4px;
-}
-
-.project-search {
-  display: flex;
-  height: 34px;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--field-border);
-  border-radius: var(--radius-sm);
-  background: var(--field-bg);
-  color: var(--ink-muted);
-  margin: 0 0 6px;
-  padding: 0 9px;
-  transition: background var(--motion-fast);
-}
-
-.project-search svg {
-  width: 15px;
-  height: 15px;
-  flex: 0 0 auto;
-}
-
-.project-search input {
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--ink);
-}
-
-.project-search input::placeholder {
-  color: var(--composer-project-search-placeholder);
 }
 
 .project-picker-list {

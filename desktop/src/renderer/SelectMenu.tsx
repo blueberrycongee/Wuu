@@ -324,7 +324,7 @@ export function SelectMenu({
             onKeyDown={handleMenuKeyDown}
           >
             {searchable ? (
-              <label className="select-menu-search">
+              <label className="menu-search select-menu-search">
                 <Search className="select-menu-search-icon icon" aria-hidden="true" />
                 <input
                   ref={searchInputRef}
