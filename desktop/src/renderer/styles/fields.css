@@ -1,26 +1,23 @@
 /* Text entry keeps a stable surface while editing; the caret identifies focus.
  * Search and form fields share a restrained hover treatment without a focus halo. */
-.catalog-search:hover,
-.conversation-search-input-wrap:hover {
+.catalog-search:hover {
   background: var(--field-hover-bg);
 }
 
-.catalog-search input::placeholder,
-.conversation-search-input-wrap input::placeholder {
+.catalog-search input::placeholder {
   color: var(--ink-tertiary);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .catalog-search,
-  .conversation-search-input-wrap {
+  .catalog-search {
     transition: none;
   }
 }
 
-/* Filter rows inside menus and cards stay unboxed: the card already supplies
- * the frame, so a nested field box is extra chrome. New menu searches should
- * use .menu-search. Page, sidebar, and form searches keep their own field
- * chrome. */
+/* Filter rows inside menus, cards, and command palettes stay unboxed: the
+ * outer surface already supplies the frame, so a nested field box is extra
+ * chrome. New in-card searches should use .menu-search. Page, sidebar, and
+ * form searches keep their own field chrome. */
 .menu-search {
   display: flex;
   flex: 0 0 auto;

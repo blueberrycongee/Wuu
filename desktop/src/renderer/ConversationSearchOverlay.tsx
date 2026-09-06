@@ -73,7 +73,7 @@ export function ConversationSearchOverlay({
         aria-label={t("search.conversations")}
         ref={dialogRef}
       >
-        <div className="conversation-search-input-wrap">
+        <div className="menu-search conversation-search-input-wrap">
           <Search className="icon-lg" aria-hidden="true" />
           <input
             ref={inputRef}
