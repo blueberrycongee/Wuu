@@ -61,12 +61,12 @@ describe("computeDefaultMainWindowBounds", () => {
 describe("computeOnboardingWindowBounds", () => {
   it("uses a stable first-run size on normal displays", () => {
     expect(computeOnboardingWindowBounds({ width: 2560, height: 1400 })).toEqual({
-      width: 1080,
-      height: 760,
+      width: 1120,
+      height: 840,
     });
     expect(computeOnboardingWindowBounds({ width: 1440, height: 900 })).toEqual({
-      width: 1080,
-      height: 760,
+      width: 1120,
+      height: 840,
     });
   });
 
