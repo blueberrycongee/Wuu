@@ -33,7 +33,7 @@
 .composer-context-meter:focus-visible {
   outline: 2px solid var(--composer-context-meter-focus-outline);
   outline-offset: 2px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .composer-context-meter-svg {
@@ -84,7 +84,7 @@
   padding: 8px 10px;
   background: var(--context-meter-tooltip-bg);
   border: 1px solid var(--context-meter-tooltip-border);
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   box-shadow: var(--context-meter-tooltip-shadow);
   font-size: 11px;
   line-height: 1.45;

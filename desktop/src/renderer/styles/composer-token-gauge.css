@@ -31,7 +31,7 @@
 .composer-token-gauge:focus-visible {
   outline: 2px solid var(--composer-token-gauge-focus-outline);
   outline-offset: 2px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .composer-token-gauge .composer-token-gauge-svg {
@@ -105,7 +105,7 @@
   padding: 6px 10px;
   background: var(--token-gauge-tooltip-bg);
   border: 1px solid var(--token-gauge-tooltip-border);
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   box-shadow: var(--token-gauge-tooltip-shadow);
   font-size: 11px;
   font-weight: 500;

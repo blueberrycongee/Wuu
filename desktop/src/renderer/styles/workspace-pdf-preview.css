@@ -57,7 +57,7 @@
   min-width: 26px;
   place-items: center;
   border: 0;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink-muted);
   font: inherit;

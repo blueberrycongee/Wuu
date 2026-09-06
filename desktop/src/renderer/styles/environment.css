@@ -219,7 +219,7 @@
   display: grid;
   min-width: 0;
   align-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ink);
   text-align: left;
@@ -381,7 +381,7 @@
   grid-template-columns: 22px minmax(0, 1fr) 18px;
   align-items: center;
   gap: 9px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ink);
   font-size: var(--font-title);
@@ -513,7 +513,7 @@
   max-height: min(560px, calc(100vh - 160px));
   gap: 10px;
   overflow: hidden;
-  border-radius: var(--radius-lg);
+  border-radius: var(--menu-radius);
   background: var(--menu-bg);
   box-shadow:
     0 30px 80px var(--env-shadow-dark-024),
@@ -625,7 +625,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--env-search-result-text);
   cursor: pointer;
@@ -894,7 +894,7 @@
   flex: 0 1 auto;
   max-width: 85%;
   background: var(--chat-user-message-bg);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   padding: 5px 10px;
 }
 
@@ -915,7 +915,7 @@
 
   .conversation-search-dialog {
     max-height: min(560px, calc(100vh - 92px));
-    border-radius: var(--radius-lg);
+    border-radius: var(--menu-radius);
   }
 
   .conversation-search-input-wrap input {
@@ -935,7 +935,7 @@
   max-height: 100%;
   gap: 14px;
   border: var(--wuu-border-strong, 1px solid var(--hairline));
-  border-radius: var(--wuu-radius-overlay, var(--radius-lg));
+  border-radius: var(--wuu-radius-overlay, var(--menu-radius));
   background: var(--paper);
   box-shadow: var(--wuu-elevation-overlay, 0 24px 70px var(--env-shadow-dark-024));
   overflow: auto;
@@ -1412,7 +1412,7 @@
   width: 40px;
   height: 40px;
   border: 1px dashed var(--hairline);
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--surface-2);
   color: var(--ink-tertiary);
   cursor: pointer;
@@ -1677,7 +1677,7 @@
   height: 14px;
   border: 2px solid var(--info);
   border-right-color: transparent;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   margin-left: auto;
   align-self: center;
   animation: wuu-spin var(--motion-spin) linear infinite;

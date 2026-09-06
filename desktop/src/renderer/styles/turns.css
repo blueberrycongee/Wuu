@@ -306,7 +306,7 @@
   color: var(--wuu-message-user-color, var(--ink));
   /* A small tail corner (bottom-right) marks the outgoing bubble as
      the user's own, echoing the mascot's speech-bubble language. */
-  border-radius: var(--wuu-message-user-radius, 16px 16px 4px 16px);
+  border-radius: var(--wuu-message-user-radius, var(--radius-md) var(--radius-md) 4px var(--radius-md));
 }
 
 .user-message-block {
@@ -404,7 +404,7 @@
   box-sizing: border-box;
   flex-direction: column;
   align-items: flex-start;
-  border-radius: var(--wuu-message-user-radius, calc(var(--radius-lg) + 8px));
+  border-radius: var(--wuu-message-user-radius, var(--radius-md));
   overflow: hidden;
   padding: 18px 22px 16px;
 }
@@ -1960,7 +1960,7 @@
   flex: 0 0 auto;
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--ink-muted);
   margin-right: 6px;
   vertical-align: middle;
@@ -5056,7 +5056,7 @@ button.turn-edit-summary-overview:focus-visible {
   gap: 8px;
   margin-top: 0;
   padding: 4px 10px 4px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--bg-soft, var(--turn-sources-pill-bg-fallback));
   border: 1px solid var(--border-soft, var(--turn-sources-pill-border-fallback));
   font-size: var(--font-sm, 13px);
@@ -5163,7 +5163,7 @@ button.turn-sources-pill:focus-visible {
   position: relative;
   width: 18px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1.5px solid var(--bg-soft, var(--paper));
   background: var(--bg, var(--paper));
   padding: 0;
@@ -5261,7 +5261,7 @@ button.turn-sources-pill:focus-visible {
   max-width: 320px;
   max-height: 280px;
   overflow-y: auto;
-  border-radius: 10px;
+  border-radius: var(--radius-xs);
   background: var(--bg-elevated, var(--paper));
   border: 1px solid var(--border, var(--turn-sources-pill-border-fallback));
   box-shadow: var(--shadow-pop);
@@ -5272,7 +5272,7 @@ button.turn-sources-pill:focus-visible {
   width: 100%;
   text-align: left;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   border: 0;
   cursor: pointer;

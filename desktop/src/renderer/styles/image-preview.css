@@ -63,7 +63,7 @@
   gap: 6px;
   padding: 4px;
   border: 1px solid var(--image-preview-toolbar-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--image-preview-toolbar-actions-bg);
 }
 
@@ -74,7 +74,7 @@
   height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: inherit;
   cursor: pointer;

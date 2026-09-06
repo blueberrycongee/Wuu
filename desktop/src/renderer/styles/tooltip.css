@@ -19,7 +19,7 @@
   max-width: 280px;
   padding: 5px 9px;
   border: 1px solid var(--hairline-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--surface-3);
   box-shadow: var(--shadow-pop);
   color: var(--ink);

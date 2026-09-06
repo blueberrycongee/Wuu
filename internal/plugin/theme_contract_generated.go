@@ -73,6 +73,7 @@ var allowedThemeTokens = map[string]struct{}{
 	"--wuu-skill-mark-default-a":          {},
 	"--wuu-skill-mark-default-b":          {},
 	"--wuu-skill-mark-default-c":          {},
+	"--wuu-radius-inner":                  {},
 	"--wuu-radius-control":                {},
 	"--wuu-radius-panel":                  {},
 	"--wuu-radius-overlay":                {},

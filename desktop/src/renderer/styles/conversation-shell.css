@@ -349,7 +349,7 @@
   align-items: center;
   box-sizing: border-box;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ink-soft);
   overflow: hidden;

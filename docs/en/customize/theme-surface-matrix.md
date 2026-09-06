@@ -27,7 +27,7 @@ token, so anything you do not override keeps the built-in appearance:
 
 ## Token list
 
-The contract defines **81 public tokens** (**7**
+The contract defines **82 public tokens** (**7**
 legacy compatibility aliases) and **16 syntax-highlighting
 tokens**; **74** of them are currently wired into host surfaces.
 "Wired" means host styles already reference the token and overrides take effect;
@@ -126,6 +126,7 @@ it yet, so overrides do not change anything.
 | --- | --- | --- |
 | `--wuu-message-action-radius` | Message action button radius | Not wired (reserved) |
 | `--wuu-message-user-radius` | User message bubble radius | Not wired (reserved) |
+| `--wuu-radius-inner` | Inner highlight and nested radius | Not wired (reserved) |
 | `--wuu-radius-control` | Control radius | Not wired (reserved) |
 | `--wuu-radius-panel` | Panel radius | Not wired (reserved) |
 | `--wuu-radius-overlay` | Overlay radius | Not wired (reserved) |

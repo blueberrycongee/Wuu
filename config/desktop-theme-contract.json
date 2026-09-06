@@ -102,6 +102,7 @@
     { "name": "--wuu-skill-mark-default-a", "category": "color", "description": {"zh": "默认技能标记渐变起始色", "en": "Default skill mark gradient start color"} },
     { "name": "--wuu-skill-mark-default-b", "category": "color", "description": {"zh": "默认技能标记渐变中段色", "en": "Default skill mark gradient middle color"} },
     { "name": "--wuu-skill-mark-default-c", "category": "color", "description": {"zh": "默认技能标记渐变终点色", "en": "Default skill mark gradient end color"} },
+    { "name": "--wuu-radius-inner", "category": "radius", "description": {"zh": "内层高亮与嵌套圆角", "en": "Inner highlight and nested radius"} },
     { "name": "--wuu-radius-control", "category": "radius", "description": {"zh": "控件圆角", "en": "Control radius"} },
     { "name": "--wuu-radius-panel", "category": "radius", "description": {"zh": "面板圆角", "en": "Panel radius"} },
     { "name": "--wuu-radius-overlay", "category": "radius", "description": {"zh": "浮层圆角", "en": "Overlay radius"} },

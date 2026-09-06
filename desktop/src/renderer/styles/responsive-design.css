@@ -275,7 +275,7 @@
   height: 36px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--responsive-design-toggle-bg);
   color: var(--paper);
   cursor: pointer;
@@ -430,7 +430,7 @@
   margin-top: -5.5px;
   background: var(--ink);
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   cursor: pointer;
 }
 
@@ -439,7 +439,7 @@
   height: 14px;
   background: var(--ink);
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   cursor: pointer;
 }
 

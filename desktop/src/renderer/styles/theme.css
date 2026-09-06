@@ -496,7 +496,7 @@
   font: inherit;
   font-size: var(--font-ui);
   padding: 4px 12px;
-  border-radius: calc(var(--radius-sm) - 2px);
+  border-radius: var(--radius-xs);
   cursor: pointer;
 }
 

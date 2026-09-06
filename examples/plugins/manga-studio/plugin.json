@@ -50,6 +50,7 @@
           "--wuu-line-height-body": "1.6",
           "--wuu-space-density": "1",
           "--wuu-space-unit": "4px",
+          "--wuu-radius-inner": "3px",
           "--wuu-radius-control": "3px",
           "--wuu-radius-panel": "3px",
           "--wuu-radius-overlay": "3px",

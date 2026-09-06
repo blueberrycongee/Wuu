@@ -176,14 +176,23 @@
 
                                                                   
                                                                         
-  /* One rounded family: compact details, controls, then composer-sized panels. */
-  --radius-xs: 6px;
+  /* Product radius scale. Use roles, not one-off pixels:
+   *   xs     inner hover, nested highlights, compact chips
+   *   sm     controls (buttons, fields, avatars, small cards)
+   *   md/lg  panels and composer-sized surfaces (lg is an alias of md)
+   *   overlay menus/dialogs (defaults to panel; themes may separate it)
+   *   pill   capsules, tracks, badges
+   *   circle avatars, dots, knobs
+   * Geometry that is not a product role stays explicit: 0, inherit,
+   * mixed speech-bubble tails, and parent-minus-padding concentric calcs. */
+  --radius-xs: var(--wuu-radius-inner, 8px);
   /* Media keeps shallow corners to preserve image content at thumbnail sizes. */
   --radius-media: var(--radius-xs);
   --radius-sm: var(--wuu-radius-control, 12px);
   --radius-md: var(--wuu-radius-panel, 22px);
   --radius-lg: var(--radius-md);
-  --radius-pill: 999px;                                                
+  --radius-pill: 999px;
+  --radius-circle: 50%;
 
                                                                   
   --menu-radius: var(--wuu-radius-overlay, var(--radius-md));

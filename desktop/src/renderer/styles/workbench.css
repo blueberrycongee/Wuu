@@ -22,7 +22,7 @@
   width: min(920px, calc(100vw - 48px));
   height: min(720px, calc(100vh - 48px));
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--menu-radius);
   box-shadow: var(--shadow-lg, 0 18px 60px rgba(0, 0, 0, 0.24));
 }
 
@@ -428,7 +428,7 @@
   flex: 0 0 auto;
   margin: 0;
   appearance: none;
-  border-radius: var(--radius-pill, 999px);
+  border-radius: var(--radius-pill);
   background: var(--gray-350, var(--wuu-color-border-strong));
   cursor: pointer;
   transition:
@@ -443,7 +443,7 @@
   left: 3px;
   width: 16px;
   height: 16px;
-  border-radius: var(--radius-pill, 999px);
+  border-radius: var(--radius-pill);
   background: var(--wuu-color-canvas, var(--paper));
   box-shadow: 0 1px 2px var(--shadow-color-strong, rgba(0, 0, 0, 0.3));
   transition: transform var(--wuu-motion-duration-base, var(--motion-base)) var(--wuu-motion-easing-standard, var(--ease-out));
@@ -490,7 +490,7 @@
   height: 22px;
   border: 2px solid var(--wuu-color-border-subtle, var(--hairline));
   border-top-color: var(--wuu-color-accent, var(--wuu-accent));
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   animation: plugin-ui-state-spin 800ms linear infinite;
 }
 

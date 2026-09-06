@@ -262,6 +262,7 @@ export function activate(api: PluginGenerationApi): void {
       "--wuu-font-size-body": "14px",
       "--wuu-space-density": "0.875",
       "--wuu-space-unit": "4px",
+      "--wuu-radius-inner": "6px",
       "--wuu-radius-control": "8px",
       "--wuu-border-subtle": "1px solid #374151",
       "--wuu-elevation-panel": "0 12px 32px rgb(0 0 0 / 0.28)",

@@ -43,7 +43,7 @@
   bottom: 12px;
   left: 50%;
   width: 1px;
-  border-radius: var(--radius-pill, 999px);
+  border-radius: var(--radius-pill);
   background: transparent;
   content: "";
   transform: translateX(-50%);
@@ -120,7 +120,7 @@
   color: var(--ink-muted, var(--ink));
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-control-sm, 6px);
+  border-radius: var(--radius-xs);
   cursor: pointer;
   transition:
     background-color var(--motion-fast) var(--ease-out),

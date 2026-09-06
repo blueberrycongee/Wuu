@@ -854,7 +854,7 @@
   top: 50%;
   width: 2px;
   height: 72px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--wuu-accent) 52%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--wuu-accent) 5%, transparent);
   content: "";
@@ -2565,7 +2565,7 @@ html.resizing-workspace-terminal-split * {
 .plugin-detail-dialog .environment-dialog-icon .skill-artwork {
   width: 44px;
   height: 44px;
-  border-radius: 11px;
+  border-radius: var(--radius-xs);
   box-shadow: 0 2px 6px var(--skill-artwork-shadow);
 }
 
@@ -2639,7 +2639,7 @@ html.resizing-workspace-terminal-split * {
   width: 6px;
   height: 6px;
   flex: none;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: currentColor;
 }
 
@@ -3012,7 +3012,7 @@ html.resizing-workspace-terminal-split * {
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--skill-artwork-border);
-  border-radius: 9px;
+  border-radius: var(--radius-xs);
   background: var(--skill-artwork-neutral-bg);
   box-shadow: 0 2px 8px var(--skill-artwork-shadow);
   color: var(--skill-artwork-neutral-fg);
@@ -3252,7 +3252,7 @@ html.resizing-workspace-terminal-split * {
   width: 6px;
   height: 6px;
   flex: none;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--ink-tertiary);
 }
 
@@ -3382,7 +3382,7 @@ html.resizing-workspace-terminal-split * {
   .skill-artwork {
     width: 36px;
     height: 36px;
-    border-radius: 9px;
+    border-radius: var(--radius-xs);
   }
 
   .skill-artwork svg {
@@ -3767,7 +3767,7 @@ html.resizing-workspace-terminal-split * {
   border-left: 3px solid var(--wuu-accent);
   background: color-mix(in srgb, var(--surface-2) 65%, transparent);
   color: var(--ink-soft);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
 }
 
 /* Lists (react-markdown emits standard ul/ol when no override is supplied). */
@@ -4770,7 +4770,7 @@ html.resizing-workspace-terminal-split * {
   min-width: 0;
   align-items: center;
   flex: 0 1 auto;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--ink-secondary);
   padding: 0 10px;
   text-align: left;
@@ -4935,7 +4935,7 @@ html.resizing-workspace-terminal-split * {
   min-width: 0;
   align-items: center;
   gap: 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ink);
   font-size: var(--font-ui);
@@ -5083,7 +5083,7 @@ html.resizing-workspace-terminal-split * {
   flex: 0 0 auto;
   gap: 8px;
   padding: 0 4px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   font-size: 14px;
   font-weight: var(--weight-medium);
 }
@@ -5141,7 +5141,7 @@ html.resizing-workspace-terminal-split * {
   margin: 0 8px 6px;
   padding: 0 8px;
   border: 1px solid var(--field-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--field-bg);
 }
 
