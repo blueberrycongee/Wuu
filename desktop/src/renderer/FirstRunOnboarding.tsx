@@ -512,7 +512,7 @@ export function FirstRunOnboarding({
                 <h1>{t("onboarding.runtimeTitle")}</h1>
                 <p>{t("onboarding.runtimeDescription")}</p>
               </div>
-              <WuuMascot className="onboarding-mascot" size={88} activity="thinking" accessory="none" aria-hidden="true" />
+              <WuuMascot className="onboarding-mascot" size={112} activity="thinking" accessory="none" aria-hidden="true" />
             </div>
             <div className="onboarding-choice-grid" role="radiogroup" aria-label={t("onboarding.runtimeEyebrow")}>
               {selectableEngines.map((engine) => {
