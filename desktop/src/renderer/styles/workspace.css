@@ -5103,6 +5103,16 @@ html.resizing-workspace-terminal-split * {
   color: var(--ink-tertiary);
 }
 
+.runtime-panel-handoff {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 6px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .runtime-panel-header {
   position: relative;
   display: flex;

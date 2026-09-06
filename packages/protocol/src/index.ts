@@ -1805,6 +1805,15 @@ export type ThreadStartParams = {
   model?: string;
   effort?: string;
   permission_mode?: string;
+  provider?: string;
+  handoff?: ThreadHandoffParams;
+};
+
+export type ThreadHandoffParams = {
+  request_id: string;
+  revision?: number;
+  parent_session_id: string;
+  intent?: string;
 };
 
 export type ThreadSearchResultItem = {

@@ -48,6 +48,14 @@ import {
   type ComposerSlashCommand,
   type ComposerSlashDraft
 } from "./ComposerSlashCommands";
+import { HandoffCard } from "./HandoffCard";
+import {
+  canSubmitHandoffDraft,
+  emptyHandoffDraft,
+  reduceHandoffDraft,
+  type HandoffCatalog,
+  type HandoffDraft,
+} from "./HandoffDraft";
 import { translateCurrent as translate, useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 import { TruncatedText } from "./TruncatedText";
@@ -137,6 +145,7 @@ export function Composer({
   activeProject,
   compactDisabledReason,
   sideThreadDisabledReason,
+  handoffDisabledReason,
   codexModels,
   codexRuntimeMenu,
   codexRuntimeRef,
@@ -167,6 +176,7 @@ export function Composer({
   onCreateProject,
   onOpenProject,
   onStartNewThread,
+  onHandoffSession,
   onOpenSideThread,
   onOpenWorkspaceTool,
   onOpenContextComposition = () => {},
@@ -231,6 +241,7 @@ export function Composer({
   activeProject?: DesktopProject;
   compactDisabledReason?: string;
   sideThreadDisabledReason?: string;
+  handoffDisabledReason?: string;
   codexModels: CodexModelLoadState;
   codexRuntimeMenu: CodexRuntimeMenu;
   codexRuntimeRef: RefObject<HTMLDivElement | null>;
@@ -264,6 +275,7 @@ export function Composer({
   onCreateProject: () => void;
   onOpenProject: () => void;
   onStartNewThread: () => void;
+  onHandoffSession?: (input: { provider: string; model: string; intent: string }) => void;
   // Open or focus the side thread attached to the active main conversation.
   // When prompt is non-empty, also send it as the side-thread query.
   onOpenSideThread?: (prompt?: string) => void;
@@ -500,6 +512,25 @@ export function Composer({
   const slashDraft = slashCommandsEnabled && !(textOnly && !slashCommandsOverride)
     ? parseComposerSlashDraft(prompt)
     : undefined;
+  const handoffCatalog = useMemo<HandoffCatalog>(() => ({
+    providers: (initialized?.providers ?? []).map((provider) => ({
+      id: provider.name,
+      label: provider.name,
+      models: (provider.models ?? []).map((model) => ({
+        id: model.id,
+        label: model.display_name || model.id,
+      })),
+      allowCustomModel: true,
+    })),
+  }), [initialized]);
+  const [handoffRevision, setHandoffRevision] = useState(1);
+  const handoffDraft = useMemo<HandoffDraft>(() => {
+    if (slashDraft?.query !== "handoff") {
+      return emptyHandoffDraft(handoffRevision);
+    }
+    return reduceHandoffDraft(slashDraft.args, handoffCatalog, handoffRevision);
+  }, [handoffCatalog, handoffRevision, slashDraft]);
+  const showHandoffCard = slashDraft?.query === "handoff";
   const slashQuery = slashDraft?.query ?? "";
   const slashSkillContextKey = activeContext ? composerRuntimeContextKey(activeContext) : "";
   const slashSkillCountKey = initialized?.extension_trust?.main_session?.skills?.count ?? 0;
@@ -525,10 +556,11 @@ export function Composer({
       running,
       compactDisabledReason,
       sideThreadDisabledReason,
+      handoffDisabledReason,
       skills: slashSkills,
       availablePluginRuntimeCommands,
     }),
-    [activeContext, availablePluginRuntimeCommands, compactDisabledReason, initialized, locale, running, sideThreadDisabledReason, slashSkills]
+    [activeContext, availablePluginRuntimeCommands, compactDisabledReason, handoffDisabledReason, initialized, locale, running, sideThreadDisabledReason, slashSkills]
   );
   const slashCommands = slashCommandsOverride ?? builtinSlashCommands;
   const fastModelTarget = useMemo(() => runtimeFastModelTarget(initialized), [initialized]);
@@ -842,6 +874,10 @@ export function Composer({
       case "compact":
         onCompactContext();
         break;
+      case "handoff":
+        setPrompt(composerSlashPrompt(command, draft?.args ?? ""));
+        focusComposerAtEndSoon();
+        break;
       case "instructions":
         onOpenInstructions();
         break;
@@ -973,6 +1009,28 @@ export function Composer({
   const content = (
     <div className={`composer-stack${isComposerExpanded ? " is-expanded" : ""}`} data-wuu-component="composer">
       {topAccessory ? <div className="composer-top-accessory">{topAccessory}</div> : null}
+      {showHandoffCard ? (
+        <HandoffCard
+          draft={handoffDraft}
+          sourceLabel={queryHistorySessionID || t("handoff.card.source")}
+          workspaceLabel={activeContext?.cwd || activeProject?.path || ""}
+          onSelectCandidate={(providerId, modelId) => {
+            setHandoffRevision((current) => current + 1);
+            setPrompt(`/handoff model ${providerId}/${modelId}${handoffDraft.intent ? ` -- ${handoffDraft.intent}` : ""}`);
+          }}
+          onSubmit={() => {
+            if (!canSubmitHandoffDraft(handoffDraft)) {
+              return;
+            }
+            onHandoffSession?.({
+              provider: handoffDraft.providerId,
+              model: handoffDraft.modelId,
+              intent: handoffDraft.intent,
+            });
+            setPrompt("");
+          }}
+        />
+      ) : null}
       <MemoizedComposerPluginSlot host={pluginHost} id="composer.above" context={pluginSlotContext} />
       <div className="composer-shell" ref={composerShellRef}>
         {slashMenuOpen ? (
@@ -1264,6 +1322,10 @@ export function Composer({
                         onSelectEngineEffort={onSelectEngineEffort}
                         onToggleMenu={onToggleCodexRuntimeMenu}
                         onSelectModel={onSelectRuntimeModel}
+                        onHandoffModel={(provider, model) => {
+                          setPrompt(`/handoff model ${provider}/${model}`);
+                          focusComposerAtEndSoon();
+                        }}
                         onSelectEffort={onSelectRuntimeEffort}
                       />
                     ) : (

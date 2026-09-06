@@ -322,6 +322,65 @@
   margin-bottom: 8px;
 }
 
+.handoff-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+}
+
+.handoff-card-title {
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+}
+
+.handoff-card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.handoff-card-grid dt {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.handoff-card-grid dd {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
+.handoff-card-status {
+  margin-left: 8px;
+  color: var(--ink-soft);
+}
+
+.handoff-card-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.handoff-card-candidate,
+.handoff-card-submit,
+.runtime-panel-handoff {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  font-size: 12px;
+}
+
+.handoff-card-submit:disabled {
+  opacity: 0.5;
+}
+
 /* Hero (welcome) composer inherits the same dialog width as the dock composer
    so the input box stays the same width whether or not a turn has been sent. */
 

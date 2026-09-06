@@ -30,11 +30,17 @@ func (s *Server) prepareHandoffSeed(ctx context.Context, params pluginhost.Sessi
 	if sourceID == "" {
 		return params, errors.New("handoff brief requires a source session")
 	}
+	if params.Seed.Source.SessionID == "" {
+		params.Seed.Source.SessionID = sourceID
+	}
 	page, err := session.ReadHistoryQuery(ctx, s.rt.SessionDir, session.HistoryReadQuery{
 		SessionID: sourceID, StartSeq: 1, EndSeq: params.Seed.Source.ThroughSeq, SnapshotSeq: params.Seed.Source.ThroughSeq, Limit: 50,
 	})
 	if err != nil {
 		return params, err
+	}
+	if params.Seed.Source.ThroughSeq < 1 {
+		params.Seed.Source.ThroughSeq = page.HeadSeq
 	}
 	messages := chatMessagesFromHistoryRecords(page.Records)
 	previous := agent.CompactionNote{}

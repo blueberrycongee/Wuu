@@ -21,6 +21,7 @@ export type ComposerSlashCommandAction =
   | "instructions"
   | "plugin"
   | "compact"
+  | "handoff"
   | "model"
   | "fast"
   | "effort"
@@ -89,6 +90,7 @@ export function buildComposerSlashCommands({
   running,
   compactDisabledReason,
   sideThreadDisabledReason,
+  handoffDisabledReason,
   skills = [],
   availablePluginRuntimeCommands = new Set<string>(),
 }: {
@@ -97,6 +99,7 @@ export function buildComposerSlashCommands({
   running: boolean;
   compactDisabledReason?: string;
   sideThreadDisabledReason?: string;
+  handoffDisabledReason?: string;
   skills?: SkillSummary[];
   availablePluginRuntimeCommands?: ReadonlySet<string>;
 }): ComposerSlashCommand[] {
@@ -268,6 +271,19 @@ export function buildComposerSlashCommands({
       aliases: ["compress"],
       keywords: ["compact", "context", "summary", "压缩", "上下文", "摘要", "瘦身"],
       disabledReason: needsRuntime ?? needsIdleThread ?? compactDisabledReason
+    },
+    {
+      id: "handoff",
+      name: "handoff",
+      title: t("slash.handoff.title"),
+      description: t("slash.handoff.description"),
+      tag: t("slash.tag.conversation"),
+      kind: "action",
+      action: "handoff",
+      argumentHint: t("slash.handoff.argumentHint"),
+      aliases: ["hand-off"],
+      keywords: ["handoff", "model", "交接", "换模型", "新会话"],
+      disabledReason: needsRuntime ?? needsIdleThread ?? handoffDisabledReason
     },
     {
       id: "terminal",

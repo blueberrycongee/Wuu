@@ -88,6 +88,9 @@ func (s *Server) handleThreadStart(req Request) error {
 	if engineID != agentengine.EngineWuu {
 		selection.Provider = string(engineID)
 	}
+	if provider := strings.TrimSpace(params.Provider); provider != "" {
+		selection.Provider = provider
+	}
 	if mode := strings.TrimSpace(params.PermissionMode); mode != "" {
 		selection.PermissionMode = config.NormalizePermissionMode(mode)
 	} else if engineID != agentengine.EngineWuu {
@@ -95,6 +98,23 @@ func (s *Server) handleThreadStart(req Request) error {
 		// The persisted generic mode is later mapped to each engine's native
 		// full-access setting and remains visible in the composer.
 		selection.PermissionMode = config.PermissionModeUnconfined
+	}
+	if params.Handoff != nil {
+		th, err := s.startHandoffThread(selection, params)
+		if err != nil {
+			return s.writeResponse(req.ID, nil, err)
+		}
+		th.mu.Lock()
+		thread := th.snapshotLocked()
+		th.mu.Unlock()
+		if err := s.writeResponse(req.ID, ThreadStartResult{Thread: thread}, nil); err != nil {
+			return err
+		}
+		if err := s.notifyThreadStarted(thread); err != nil {
+			return err
+		}
+		s.pruneCachedThreads(thread.ID)
+		return nil
 	}
 	workspaceKind := workspaceKindForCWD(s.rt.WuuHome, threadCWD)
 	threadSource := ""
@@ -150,6 +170,57 @@ func (s *Server) handleThreadStart(req Request) error {
 	}
 	s.pruneCachedThreads(thread.ID)
 	return nil
+}
+
+func (s *Server) startHandoffThread(selection session.RuntimeSelection, params ThreadStartParams) (*threadState, error) {
+	if params.Handoff == nil {
+		return nil, errors.New("handoff params are required")
+	}
+	if params.Ephemeral {
+		return nil, errors.New("handoff cannot create an ephemeral session")
+	}
+	parentID := strings.TrimSpace(params.Handoff.ParentSessionID)
+	if parentID == "" {
+		return nil, errors.New("handoff requires a source session")
+	}
+	if strings.TrimSpace(selection.Provider) == "" || strings.TrimSpace(selection.Model) == "" {
+		return nil, errors.New("handoff requires provider and model")
+	}
+	createParams := pluginhost.SessionCreateParams{
+		RequestID:       strings.TrimSpace(params.Handoff.RequestID),
+		Visibility:      pluginhost.SessionVisibilityUser,
+		ParentSessionID: parentID,
+		ContextSource:   pluginhost.SessionContextSourceSeed,
+		Workspace:       "shared",
+		WorkspaceID:     strings.TrimSpace(params.WorkspaceID),
+		Provider:        selection.Provider,
+		Model:           selection.Model,
+		Variant:         selection.Variant,
+		Effort:          selection.Effort,
+		PermissionMode:  selection.PermissionMode,
+		Seed: &pluginhost.SessionContextSeed{
+			Version: session.ContextSeedVersionV1,
+			Source:  pluginhost.SessionHistorySnapshot{SessionID: parentID},
+			Provenance: pluginhost.SessionSeedProvenance{
+				Producer:    "desktop:handoff",
+				SourceModel: strings.TrimSpace(s.rt.Model),
+			},
+		},
+		Launch: &pluginhost.SessionLaunchParams{
+			Revision: params.Handoff.Revision,
+			Kind:     session.SessionLaunchKindHandoff,
+			Intent:   strings.TrimSpace(params.Handoff.Intent),
+		},
+	}
+	result, err := s.createPluginSession(context.Background(), "handoff", createParams)
+	if err != nil {
+		return nil, err
+	}
+	if th := s.thread(result.SessionID); th != nil {
+		s.startThreadPrewarm(th)
+		return th, nil
+	}
+	return nil, fmt.Errorf("handoff session %q was not loaded", result.SessionID)
 }
 
 const threadPrewarmTimeout = 30 * time.Second

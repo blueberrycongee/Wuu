@@ -186,6 +186,7 @@ function RuntimePanelSummary({
   onOpenEngines,
   onOpenProviders,
   onOpenModels,
+  onHandoff,
   onSelectEffort
 }: {
   engine: string;
@@ -198,8 +199,10 @@ function RuntimePanelSummary({
   onOpenEngines: () => void;
   onOpenProviders?: () => void;
   onOpenModels: () => void;
+  onHandoff?: () => void;
   onSelectEffort: (effort: string) => void;
 }): JSX.Element {
+  const { t } = useI18n();
   const [previewEffort, setPreviewEffort] = useState(selectedEffort);
 
   useEffect(() => {
@@ -236,6 +239,11 @@ function RuntimePanelSummary({
           onPreviewEffort={setPreviewEffort}
           onSelectEffort={onSelectEffort}
         />
+      ) : null}
+      {onHandoff ? (
+        <button type="button" className="runtime-panel-handoff" onClick={onHandoff}>
+          {t("runtime.handoffToNewSession")}
+        </button>
       ) : null}
     </div>
   );
@@ -347,6 +355,7 @@ export function RuntimePicker({
   onSelectEngineEffort,
   onToggleMenu,
   onSelectModel,
+  onHandoffModel,
   onSelectEffort
 }: {
   variant: ComposerVariant;
@@ -365,6 +374,7 @@ export function RuntimePicker({
   onSelectEngineEffort?: (effort: string) => void;
   onToggleMenu: (menu: Exclude<CodexRuntimeMenu, null>) => void;
   onSelectModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
+  onHandoffModel?: (provider: string, model: string) => void;
   onSelectEffort: (variant: string) => void | Promise<boolean>;
 }): JSX.Element {
   const { t } = useI18n();
@@ -433,6 +443,7 @@ export function RuntimePicker({
               selectedModel={initialized.model}
               selectedVariant={currentVariant}
               onSelectModel={onSelectModel}
+              onHandoffModel={onHandoffModel}
               onSelectEffort={onSelectEffort}
               engineOptions={engineOptions}
               selectedEngine={selectedEngine}
@@ -635,6 +646,7 @@ function RuntimeModelMenu({
   selectedModel,
   selectedVariant,
   onSelectModel,
+  onHandoffModel,
   onSelectEffort,
   engineOptions,
   selectedEngine,
@@ -649,6 +661,7 @@ function RuntimeModelMenu({
   selectedModel: string;
   selectedVariant: string;
   onSelectModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
+  onHandoffModel?: (provider: string, model: string) => void;
   onSelectEffort: (variant: string) => void | Promise<boolean>;
   engineOptions: EngineOption[];
   selectedEngine: string;
@@ -780,6 +793,7 @@ function RuntimeModelMenu({
             onOpenEngines={() => openView("engines")}
             onOpenProviders={() => openView("providers")}
             onOpenModels={() => openView("models")}
+            onHandoff={onHandoffModel ? () => onHandoffModel(effectiveProviderName, effectiveModelID) : undefined}
             onSelectEffort={(variant) => {
               setOptimistic((current) =>
                 current ? { ...current, variant } : { provider: selectedProvider, model: selectedModel, variant }

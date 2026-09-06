@@ -2929,6 +2929,13 @@ export function App(): JSX.Element {
         sideThreadDisabledReason={
           !activeThread ? t("app.sendMessageFirst") : undefined
         }
+        handoffDisabledReason={
+          !activeThread
+            ? t("app.openConversationFirst")
+            : activeThread.engine_id && activeThread.engine_id !== "wuu"
+              ? t("slash.compact.externalEngineUnavailable")
+              : undefined
+        }
         codexModels={codexModels}
         codexRuntimeMenu={codexRuntimeMenu}
         codexRuntimeRef={codexRuntimeRef}
@@ -2996,6 +3003,7 @@ export function App(): JSX.Element {
         onCreateProject={() => void createBlankProject()}
         onOpenProject={() => void chooseProjectFolder()}
         onStartNewThread={startNewThreadWithComposerFocus}
+        onHandoffSession={handoffActiveThread}
         onOpenSideThread={openSideThreadPanel}
         onOpenWorkspaceTool={openWorkspaceTool}
         onOpenContextComposition={openContextComposition}
@@ -3417,6 +3425,59 @@ export function App(): JSX.Element {
       origin,
       (current) => sameRuntimeContext(current.activeContext, context),
     );
+  }
+
+  async function handoffActiveThread(input: { provider: string; model: string; intent: string }): Promise<void> {
+    const currentState = appStateRef.current;
+    const source = activeThreadForState(currentState);
+    const activeContext = currentState.activeContext;
+    if (!source || !activeContext) {
+      showErrorToast(t("app.openConversationFirst"));
+      return;
+    }
+    try {
+      const thread = requireThread(
+        await window.wuu.startThread({
+          provider: input.provider,
+          model: input.model,
+          handoff: {
+            request_id: crypto.randomUUID(),
+            revision: 1,
+            parent_session_id: source.id,
+            intent: input.intent,
+          },
+        }),
+        "thread/start did not return a handoff session",
+      );
+      appStateRef.current = {
+        ...setThreadForPane(appStateRef.current, "primary", thread),
+        activePane: "primary",
+        allowThreadAutoActivation: true,
+        sessionTabs: bindActiveSessionTabToThread(
+          appStateRef.current.sessionTabs,
+          appStateRef.current.activeSessionTabID,
+          thread,
+          activeContext,
+        ),
+        activeSessionTabID: threadSessionTabID(thread.id),
+        threads: upsertThread(appStateRef.current.threads, thread),
+      };
+      setState((current) => ({
+        ...setThreadForPane(current, "primary", thread),
+        activePane: "primary",
+        allowThreadAutoActivation: true,
+        sessionTabs: bindActiveSessionTabToThread(
+          current.sessionTabs,
+          current.activeSessionTabID,
+          thread,
+          activeContext,
+        ),
+        activeSessionTabID: threadSessionTabID(thread.id),
+        threads: upsertThread(current.threads, thread),
+      }));
+    } catch (error) {
+      showErrorToast(error instanceof Error ? error.message : t("handoff.card.unavailable"));
+    }
   }
 
   function trySkillFromCatalog(skill: { name: string }): void {

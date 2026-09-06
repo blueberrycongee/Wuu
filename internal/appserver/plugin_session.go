@@ -872,6 +872,11 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		return nil, err
 	}
 	cleanupWorktree = false
+	if params.ContextSource == pluginhost.SessionContextSourceSeed {
+		if loaded, err := loadChatMessages(s.rt.SessionDir, id); err == nil {
+			history = loaded
+		}
+	}
 	th := newThreadState(id, history, s.rt.ProviderName, s.rt.Model, threadCWD, true, time.Now().UTC())
 	applyThreadRuntimeSelection(th, selection)
 	th.Source = source

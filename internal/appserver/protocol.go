@@ -1260,6 +1260,17 @@ type ThreadStartParams struct {
 	Model          string `json:"model,omitempty"`
 	Effort         string `json:"effort,omitempty"`
 	PermissionMode string `json:"permission_mode,omitempty"`
+	Provider       string `json:"provider,omitempty"`
+	// Handoff creates a seed-backed session from the current conversation.
+	// The destination model is explicit; the cutoff is fixed at submit time.
+	Handoff *ThreadHandoffParams `json:"handoff,omitempty"`
+}
+
+type ThreadHandoffParams struct {
+	RequestID       string `json:"request_id"`
+	Revision        int    `json:"revision,omitempty"`
+	ParentSessionID string `json:"parent_session_id"`
+	Intent          string `json:"intent,omitempty"`
 }
 
 // EngineInfo describes one agent engine for the settings surface.
