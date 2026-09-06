@@ -455,6 +455,7 @@ type CompactPhase string
 const (
 	CompactPhaseStarted   CompactPhase = "started"
 	CompactPhaseCompleted CompactPhase = "completed"
+	CompactPhaseFailed    CompactPhase = "failed"
 )
 
 // StreamLifecyclePhase is the structured state of the live response transport.

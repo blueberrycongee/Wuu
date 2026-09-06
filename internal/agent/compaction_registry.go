@@ -34,12 +34,16 @@ type CompactionRegistry struct {
 	providers map[string]CompactionProvider
 	owners    map[string]string // key → pluginID
 	order     []string
+	lifetimes map[string]context.Context
+	cancels   map[string]context.CancelFunc
 }
 
 func NewCompactionRegistry() *CompactionRegistry {
 	return &CompactionRegistry{
 		providers: make(map[string]CompactionProvider),
 		owners:    make(map[string]string),
+		lifetimes: make(map[string]context.Context),
+		cancels:   make(map[string]context.CancelFunc),
 	}
 }
 
@@ -55,6 +59,10 @@ func (r *CompactionRegistry) RegisterWithOwner(p CompactionProvider, pluginID st
 		r.order = append(r.order, key)
 	}
 	r.providers[key] = p
+	if cancel := r.cancels[key]; cancel != nil {
+		cancel()
+	}
+	r.lifetimes[key], r.cancels[key] = context.WithCancel(context.Background())
 	if pluginID != "" {
 		r.owners[key] = pluginID
 	}
@@ -63,6 +71,7 @@ func (r *CompactionRegistry) RegisterWithOwner(p CompactionProvider, pluginID st
 func (r *CompactionRegistry) Unregister(key string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.cancelLifetime(key)
 	delete(r.providers, key)
 	delete(r.owners, key)
 	for i, k := range r.order {
@@ -93,6 +102,7 @@ func (r *CompactionRegistry) removeByOwner(owner string) {
 		}
 	}
 	for _, key := range toRemove {
+		r.cancelLifetime(key)
 		delete(r.providers, key)
 		delete(r.owners, key)
 	}
@@ -141,7 +151,25 @@ func (r *CompactionRegistry) Count() int {
 func (r *CompactionRegistry) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for key := range r.cancels {
+		r.cancelLifetime(key)
+	}
 	r.providers = make(map[string]CompactionProvider)
 	r.owners = make(map[string]string)
 	r.order = nil
+}
+
+// lifetime binds background work to one registration, not just its reusable key.
+func (r *CompactionRegistry) lifetime(key string) context.Context {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.lifetimes[key]
+}
+
+func (r *CompactionRegistry) cancelLifetime(key string) {
+	if cancel := r.cancels[key]; cancel != nil {
+		cancel()
+	}
+	delete(r.cancels, key)
+	delete(r.lifetimes, key)
 }

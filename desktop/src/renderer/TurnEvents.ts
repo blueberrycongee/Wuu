@@ -4,7 +4,6 @@ import {
   userFacingErrorForMessage,
   type UserFacingErrorDisplay,
 } from "./UserFacingErrors";
-import { translateCurrent } from "./i18n";
 
 export type TurnEventKind =
   | "user_stopped"
@@ -41,10 +40,7 @@ export type TurnEventDisplay =
       summary?: string;
     };
 
-export function turnEventForTurn(
-  turn: Turn,
-  hasAssistantOutput: boolean,
-): TurnEventDisplay | undefined {
+export function turnEventForTurn(turn: Turn): TurnEventDisplay | undefined {
   // A manual stop is an expected user action. Preserve any generated output,
   // but do not add a redundant turn-level divider after the user just clicked
   // the stop control. Preserve a non-cancellation structured error if an
@@ -80,18 +76,11 @@ export function turnEventForTurn(
     return undefined;
   }
 
-  const notice = {
-    ...baseDisplay,
-    detail: hasAssistantOutput
-      ? translateCurrent("turn.error.preservedOutput", { detail: baseDisplay.detail })
-      : baseDisplay.detail,
-  };
-
   return {
-    kind: turnEventKindForNotice(notice),
+    kind: turnEventKindForNotice(baseDisplay),
     source: "turn",
     presentation: "notice",
-    notice,
+    notice: baseDisplay,
   };
 }
 

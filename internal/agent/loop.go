@@ -383,6 +383,11 @@ func RunToolLoop(
 			resetTranscript(repaired)
 		}
 		currentSegments := requestContextSegments(cfg.BeforeRequestContext)
+		if cfg.ContextWindowStatus != nil {
+			currentSegments = append(currentSegments, RequestOnlyContextMessages([]providers.ChatMessage{
+				contextWindowReminder(cfg.ContextWindowStatus(ctx, messages)),
+			})...)
+		}
 		var freshContextFailure string
 		freshContextApplied := false
 		var freshContextAttempt *CompactAttemptInfo
@@ -425,6 +430,12 @@ func RunToolLoop(
 				newContextRequested = false
 				lowBudgetReminderSent = false
 				freshContextApplied = true
+				// The pre-reset note status described a different active prefix.
+				// This request is sent only after the checkpoint commit succeeds.
+				currentSegments = requestContextSegments(cfg.BeforeRequestContext)
+				currentSegments = append(currentSegments, RequestOnlyContextMessages([]providers.ChatMessage{
+					contextWindowReminder("The host has installed a fresh active window in this session. The continuation context describes the available note and any missing history. Recover omitted facts before repeating work; do not wait for a background note."),
+				})...)
 				afterTokens := fixedTokens + estimateFreshContextMessages(messages)
 				freshContextAttempt = &CompactAttemptInfo{
 					Reason: CompactReasonNewContext, Status: CompactAttemptSucceeded,
@@ -445,9 +456,8 @@ func RunToolLoop(
 					Reason: CompactReasonNewContext, Status: CompactAttemptFailed,
 					TokensBefore: beforeTokens, MessagesBefore: beforeMessages, Error: freshContextFailure,
 				})
-				// Storage or fixed-context failures are exceptional. Preserve the
-				// traditional compactor as the compatibility recovery path.
-				tryProactiveCompact()
+				// Never put serial note generation back on the transition path.
+				// Keep the original window and report the failed request instead.
 			}
 		}
 		// Cross-run continuity: on the first round, splice back only the
@@ -485,7 +495,7 @@ func RunToolLoop(
 			})...)
 		}
 		if freshContextEnabled && !freshContextApplied && !lowBudgetReminderSent && threshold > 0 {
-			reminderAt := max(1, threshold-freshContextReminderTokens)
+			reminderAt := max(1, threshold-min(freshContextReminderTokens, threshold/4))
 			if usage.EstimateCurrent() >= reminderAt {
 				requestSegments = append(requestSegments, RequestOnlyContextMessages([]providers.ChatMessage{
 					contextWindowReminder("The active context budget is low. At the next safe semantic breakpoint, call new_context. Do not spend time writing a summary; Wuu maintains the continuation note in a background fork."),
@@ -580,8 +590,10 @@ func RunToolLoop(
 				})
 				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), err
 			}
+			rebuildCommittedRequest := false
 			if cfg.AcceptFreshContext != nil {
-				if err := cfg.AcceptFreshContext(ctx); err != nil {
+				committed, head, err := cfg.AcceptFreshContext(ctx, providers.CloneChatMessages(messages), historyArchiveHeadSeq)
+				if err != nil {
 					messages = freshRollbackMessages
 					providerMessages = freshRollbackProviderMessages
 					historyRewritten = freshRollbackHistoryRewritten
@@ -594,12 +606,31 @@ func RunToolLoop(
 					})
 					return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), err
 				}
+				seqs := make([]int, len(messages))
+				for i := range messages {
+					seqs[i] = committed[i].Seq
+				}
+				providerMessages = applyArchivedHistorySeqs(providerMessages, messages, seqs)
+				req.Messages = applyArchivedHistorySeqs(req.Messages, messages, seqs)
+				rebuildCommittedRequest = len(committed) > len(messages)
+				providerMessages = append(providerMessages, providers.CloneChatMessages(committed[len(messages):])...)
+				messages = committed
+				historyArchiveHeadSeq = head
 			}
 			if freshContextAttempt != nil {
 				emitCompactAttempt(cfg, *freshContextAttempt)
 			}
 			if freshContextInfo != nil && cfg.OnCompact != nil {
 				cfg.OnCompact(*freshContextInfo)
+			}
+			if rebuildCommittedRequest {
+				// Concurrent steering saved during commit must be seen before
+				// another action. Reassemble and budget-check the committed window
+				// rather than sending the now-stale pre-commit request.
+				usage.Reset()
+				usage.RecordPendingMessages(messages)
+				stepIdx--
+				continue
 			}
 		}
 		cacheHint := buildCacheHint(req.Messages)
@@ -679,6 +710,8 @@ func RunToolLoop(
 			// error path below; reactive compaction is safe only before output.
 			if freshContextEnabled && providers.IsContextOverflow(err) && !overflowCompacted && stepResultHasNoPartialOutput(result) {
 				overflowCompacted = true
+				cfg.FreshContextTokens = reactiveFreshContextTarget(cfg.FreshContextTokens,
+					usage.LastSuccessfulRequestTokensForContract(requestUsageContract), estimateOutboundRequestTokens(req))
 				postToolContextSegments = consumedPostToolSegments
 				newContextRequested = true
 				continue

@@ -2139,6 +2139,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	var baseOnUsage func(input, output int)
 	var baseOnTokenUsage func(providers.TokenUsage)
 	var baseArchiveHistory agent.HistoryArchiveFunc
+	var baseCommitFreshContext agent.FreshContextCommitFunc
 	restoreRunner := func() {}
 	if runner != nil {
 		baseTurnTools = runner.Tools
@@ -2153,6 +2154,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 		baseOnUsage = runner.OnUsage
 		baseOnTokenUsage = runner.OnTokenUsage
 		baseArchiveHistory = runner.ArchiveHistory
+		baseCommitFreshContext = runner.CommitFreshContext
 		var restoreRunnerOnce sync.Once
 		restoreRunner = func() {
 			restoreRunnerOnce.Do(func() {
@@ -2168,12 +2170,47 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 				runner.OnUsage = baseOnUsage
 				runner.OnTokenUsage = baseOnTokenUsage
 				runner.ArchiveHistory = baseArchiveHistory
+				runner.CommitFreshContext = baseCommitFreshContext
 			})
 		}
 		if th != nil {
 			runner.ToolWaitInterrupt = th.steerWaitInterrupt
 		} else {
 			runner.ToolWaitInterrupt = nil
+		}
+		runner.CommitFreshContext = func(commitCtx context.Context, messages []providers.ChatMessage, head int, key string, note agent.CompactionNote) ([]providers.ChatMessage, int, error) {
+			if err := commitCtx.Err(); err != nil {
+				return nil, head, err
+			}
+			if th == nil || !th.PersistHistory {
+				return nil, head, errors.New("durable session history is unavailable")
+			}
+			records := historyRecordsFromChatMessages(messages)
+			checkpoint, err := session.StoreContextWindow(s.rt.SessionDir, th.ID, records, head, session.CompactionNote{
+				ProviderKey: key, Markdown: note.Markdown, CoveredMessages: note.CoveredMessages, CoveredHash: note.CoveredHash,
+			})
+			if err != nil {
+				return nil, head, err
+			}
+			committed := providers.CloneChatMessages(messages)
+			index := 0
+			for i := range committed {
+				if shouldPersistMessage(committed[i]) {
+					committed[i].Seq = checkpoint.Replacement[index].Seq
+					index++
+				}
+			}
+			for _, record := range checkpoint.Replacement[len(records):] {
+				if strings.EqualFold(record.Role, "meta") {
+					continue
+				}
+				persisted, err := persistedMessageFromHistoryRecord(record)
+				if err != nil {
+					return nil, head, err
+				}
+				committed = append(committed, chatMessagesFromPersistedMessages([]persistedMessage{persisted})...)
+			}
+			return committed, checkpoint.ThroughSeq, nil
 		}
 		runner.ArchiveHistory = func(archiveCtx context.Context, messages []providers.ChatMessage) (agent.HistoryArchive, error) {
 			if th == nil || !th.PersistHistory {

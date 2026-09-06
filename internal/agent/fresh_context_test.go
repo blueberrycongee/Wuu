@@ -140,6 +140,51 @@ func TestRunToolLoopSwitchesOnlyAfterNewContextToolBatch(t *testing.T) {
 	}
 }
 
+func TestRunToolLoopFreshCommitIncludesConcurrentSteeringBeforeAction(t *testing.T) {
+	history := []providers.ChatMessage{{Role: "system", Content: "instructions"}, {Role: "user", Content: "finish migration"}}
+	for range 40 {
+		history = append(history, providers.ChatMessage{Role: "assistant", Content: strings.Repeat("old progress ", 500)})
+	}
+	step := &contextSwitchStep{}
+	committed := false
+	res, err := RunToolLoop(context.Background(), history, LoopConfig{
+		Model: "test", MaxSteps: 2, Tools: contextSwitchTools{}, FreshContextTokens: 6000,
+		ArchiveHistory: func(context.Context, []providers.ChatMessage) (HistoryArchive, error) {
+			return HistoryArchive{Seqs: []int{100, 101}, HeadSeq: 101}, nil
+		},
+		FreshContext: func(_ context.Context, messages []providers.ChatMessage, head, fixed, target int) ([]providers.ChatMessage, error) {
+			replacement, _, err := buildFreshContext(messages, CompactionNote{}, false, head, fixed, target)
+			return replacement, err
+		},
+		AcceptFreshContext: func(_ context.Context, messages []providers.ChatMessage, _ int) ([]providers.ChatMessage, int, error) {
+			committed = true
+			messages[1].Seq = 103
+			return append(messages, providers.ChatMessage{Role: "user", Content: "stop before deployment", Seq: 102}), 103, nil
+		},
+		OnCompact: func(CompactInfo) {
+			if !committed {
+				t.Fatal("success emitted before durable commit")
+			}
+		},
+	}, step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(step.requests) != 2 || res.HistoryArchiveHeadSeq != 103 {
+		t.Fatalf("unexpected loop result: requests=%d head=%d", len(step.requests), res.HistoryArchiveHeadSeq)
+	}
+	seen := false
+	for _, message := range step.requests[1].Messages {
+		seen = seen || message.Seq == 102
+	}
+	if !seen {
+		t.Fatal("provider acted before seeing committed concurrent steering")
+	}
+	if len(res.DurableNewMessages) != 1 {
+		t.Fatalf("committed facts queued for duplicate persistence: %+v", res.DurableNewMessages)
+	}
+}
+
 func TestRunToolLoopContextWindowRemindersPreserveValidRequests(t *testing.T) {
 	for _, tt := range []struct {
 		name          string
@@ -149,7 +194,8 @@ func TestRunToolLoopContextWindowRemindersPreserveValidRequests(t *testing.T) {
 		wantRollover  bool
 	}{
 		{name: "first request guidance", guidance: true, wantReminders: 1},
-		{name: "low budget", inputTokens: 10_000, wantReminders: 1},
+		{name: "ample budget", inputTokens: 10_000},
+		{name: "low budget", inputTokens: 16_000, wantReminders: 1},
 		{name: "failed rollover", inputTokens: 20_000, wantReminders: 2, wantRollover: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

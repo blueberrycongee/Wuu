@@ -387,15 +387,6 @@ export function scrollToUserMessage(turnID: string, itemID: string): void {
   tryOnce();
 }
 
-export function turnHasAssistantOutput(turn: Turn): boolean {
-  return turn.items.some((item) => {
-    if (item.type !== "agent_message") {
-      return false;
-    }
-    return streamFieldValue(turn.id, item, "text").trim().length > 0;
-  });
-}
-
 export function turnProgressContent(
   turn: Turn,
   elapsedMs: number,

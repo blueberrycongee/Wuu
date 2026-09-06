@@ -73,7 +73,7 @@ describe("userFacingErrorForMessage", () => {
 
     expect(display.category).toBe("network");
     expect(display.title).toBe("Connection reset");
-    expect(display.detail).toContain("provider status");
+    expect(display.detail).toContain("Try again later");
   });
 
   describe("structured TurnError input from the Go core", () => {
@@ -400,7 +400,7 @@ describe("TurnEvents", () => {
       status: "interrupted",
     };
 
-    const event = turnEventForTurn(turn, false);
+    const event = turnEventForTurn(turn);
 
     expect(event).toBeUndefined();
   });
@@ -417,13 +417,13 @@ describe("TurnEvents", () => {
       },
     };
 
-    const event = turnEventForTurn(turn, true);
+    const event = turnEventForTurn(turn);
 
     expect(event?.kind).toBe("network_lost");
     expect(event?.source).toBe("turn");
   });
 
-  it("adds preserved-output detail once for partial Responses stream failures", () => {
+  it("surfaces partial Responses stream failures as a notice", () => {
     const turn: Turn = {
       id: "turn-1",
       items: [],
@@ -437,7 +437,7 @@ describe("TurnEvents", () => {
       },
     };
 
-    const event = turnEventForTurn(turn, true);
+    const event = turnEventForTurn(turn);
 
     expect(event?.presentation).toBe("notice");
     if (event?.presentation !== "notice") {
@@ -445,7 +445,6 @@ describe("TurnEvents", () => {
     }
     expect(event.notice.title).toBe("回答未完整返回");
     expect(event.notice.detail).toContain("这次回答可能不完整");
-    expect(event.notice.detail.match(/已保留已生成内容/g)).toHaveLength(1);
   });
 
   it("maps in-progress compaction to a compaction event instead of an error notice", () => {

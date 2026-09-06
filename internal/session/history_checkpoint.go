@@ -44,6 +44,19 @@ func RewriteHistoryRecordsAtBaseline(sessDir, id string, records []HistoryRecord
 // read through baselineSeq. Messages already committed after the baseline are
 // appended to the exact replacement inside the same write transaction.
 func StoreHistoryCheckpointAtBaseline(sessDir, id, kind string, replacement []HistoryRecord, baselineSeq int) (HistoryCheckpoint, error) {
+	return storeHistoryCheckpointAtBaseline(sessDir, id, kind, replacement, baselineSeq, nil)
+}
+
+// StoreContextWindow commits the provider checkpoint and its note anchor in one
+// transaction. An empty note is a tombstone that invalidates older fork writes.
+func StoreContextWindow(sessDir, id string, replacement []HistoryRecord, baselineSeq int, note CompactionNote) (HistoryCheckpoint, error) {
+	if strings.TrimSpace(note.ProviderKey) == "" {
+		return HistoryCheckpoint{}, errors.New("context window requires a note provider key")
+	}
+	return storeHistoryCheckpointAtBaseline(sessDir, id, "context_window", replacement, baselineSeq, &note)
+}
+
+func storeHistoryCheckpointAtBaseline(sessDir, id, kind string, replacement []HistoryRecord, baselineSeq int, note *CompactionNote) (HistoryCheckpoint, error) {
 	id = strings.TrimSpace(id)
 	kind = strings.TrimSpace(kind)
 	if baselineSeq < 0 {
@@ -153,6 +166,21 @@ func StoreHistoryCheckpointAtBaseline(sessDir, id, kind string, replacement []Hi
 		DELETE FROM session_history_checkpoints
 		WHERE session_id = ? AND version < ?`, id, version); err != nil {
 		return HistoryCheckpoint{}, fmt.Errorf("remove superseded history checkpoint: %w", err)
+	}
+	if note != nil {
+		anchor := note.CoveredHash
+		if strings.TrimSpace(note.Markdown) == "" {
+			anchor = fmt.Sprintf("checkpoint:%d", version)
+		}
+		if _, err := tx.Exec(`INSERT INTO session_compaction_notes
+			(session_id, provider_key, markdown, covered_messages, covered_hash, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT(session_id, provider_key) DO UPDATE SET
+			markdown=excluded.markdown, covered_messages=excluded.covered_messages,
+			covered_hash=excluded.covered_hash, updated_at=excluded.updated_at`,
+			id, note.ProviderKey, note.Markdown, note.CoveredMessages, anchor, timeText(createdAt)); err != nil {
+			return HistoryCheckpoint{}, fmt.Errorf("commit context note anchor: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return HistoryCheckpoint{}, fmt.Errorf("commit history checkpoint: %w", err)

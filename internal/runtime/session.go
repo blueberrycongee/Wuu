@@ -1467,6 +1467,21 @@ type sessionCompactionNoteStore struct {
 	sessionID string
 }
 
+func (store sessionCompactionNoteStore) RecordContextNoteMetric(ctx context.Context, metric agent.ContextNoteMetric) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	data, err := json.Marshal(metric)
+	if err != nil {
+		return err
+	}
+	// Separate from token_usage: turn totals already include drained background
+	// usage. This audit record also survives a fork finishing after the last turn.
+	return session.AppendHistoryRecord(store.sessDir, store.sessionID, session.HistoryRecord{
+		Role: "meta", Name: "context_note_attempt", Content: string(data),
+	})
+}
+
 func (store sessionCompactionNoteStore) LoadCompactionNote(ctx context.Context, providerKey string) (agent.CompactionNote, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return agent.CompactionNote{}, false, err

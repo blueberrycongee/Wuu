@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/compact"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -37,6 +38,10 @@ type HistoryArchive struct {
 // context is released.
 type HistoryArchiveFunc func(ctx context.Context, messages []providers.ChatMessage) (HistoryArchive, error)
 
+// FreshContextCommitFunc atomically installs a checkpoint and note anchor. The
+// returned history includes assigned addresses and any concurrently saved tail.
+type FreshContextCommitFunc func(context.Context, []providers.ChatMessage, int, string, CompactionNote) ([]providers.ChatMessage, int, error)
+
 // FreshContextBuilder constructs a bounded replacement without making a model
 // request. fixedTokens accounts for current world state and tool schemas.
 type FreshContextBuilder func(ctx context.Context, messages []providers.ChatMessage, historyHeadSeq, fixedTokens, targetTokens int) ([]providers.ChatMessage, error)
@@ -65,11 +70,31 @@ func buildFreshContext(
 		noteOK = false
 	}
 	recoveryStart := max(1, historyHeadSeq-24)
+	// Coverage is an active-history prefix, not a physical Seq count. Preserve
+	// original addresses across checkpoints; never derive one from a slice index.
+	var uncoveredStart, uncoveredEnd, taskSeq int
+	for index, message := range messages {
+		if strings.EqualFold(message.Role, "user") && !message.Hidden && message.Seq > 0 {
+			taskSeq = message.Seq
+		}
+		if index >= covered && message.Seq > 0 {
+			if uncoveredStart == 0 || message.Seq < uncoveredStart {
+				uncoveredStart = message.Seq
+			}
+			uncoveredEnd = max(uncoveredEnd, message.Seq)
+		}
+	}
 	recovery := fmt.Sprintf(`
 
 ## Durable history recovery
 
 The original conversation and tool facts remain available in this session through Seq %d. This note is working memory, not the final authority for past facts. Read a known address with history_read. For missing or uncertain details, use history_search and then history_read. If the recent workset is incomplete, begin with history_read at Seq %d.`, historyHeadSeq, recoveryStart)
+	if uncoveredStart > 0 {
+		recovery += fmt.Sprintf("\nThe note does not cover active-history records in Seq %d–%d. Only a bounded selection may be included below; recover missing progress before repeating actions.", uncoveredStart, uncoveredEnd)
+	}
+	if taskSeq > 0 {
+		recovery += fmt.Sprintf("\nThe latest user instruction is at Seq %d; read it if it is not present below.", taskSeq)
+	}
 	summary := providers.ChatMessage{
 		Role:    "system",
 		Content: compact.BuildSummaryContent(noteBody + recovery),
@@ -78,8 +103,17 @@ The original conversation and tool facts remain available in this session throug
 		Cause:   "fresh_context",
 	}
 	base := append(providers.CloneChatMessages(systemPrefix), summary)
-	messageBudget := targetTokens - fixedTokens - freshContextTransformReserveTokens
+	messageBudget := targetTokens - fixedTokens - min(freshContextTransformReserveTokens, targetTokens/10)
+	// A requested reset must release space even when the entire old workset
+	// fits the target. Otherwise adding recovery guidance makes every retry a
+	// no-op. Leave at least a quarter of the old active input behind.
+	messageBudget = min(messageBudget, estimateFreshContextMessages(messages)*3/4)
 	if messageBudget <= 0 || estimateFreshContextMessages(base) > messageBudget {
+		if noteOK {
+			// A note produced under a larger model budget must not prevent a
+			// model switch. Fall back to addresses and bounded original work.
+			return buildFreshContext(messages, CompactionNote{}, false, historyHeadSeq, fixedTokens, targetTokens)
+		}
 		return nil, CompactionNote{}, fmt.Errorf("%w: fixed context and continuation note require about %d tokens for a %d-token target", ErrFreshContextTooLarge, fixedTokens+estimateFreshContextMessages(base), targetTokens)
 	}
 	tail := freshContextRecentTail(messages, covered, base, messageBudget)
@@ -142,6 +176,36 @@ func freshContextRecentTail(messages []providers.ChatMessage, covered int, base 
 		}
 		selected = candidate
 	}
+	if len(selected) > 0 {
+		return selected
+	}
+	// A checkpoint can cover the user instruction while tools keep running for
+	// many steps. Retain the instruction when it fits, then a protocol-complete
+	// suffix instead of dropping the whole in-progress turn.
+	anchor := -1
+	for index := len(messages) - 1; index >= 0; index-- {
+		if strings.EqualFold(messages[index].Role, "user") && !messages[index].Hidden {
+			anchor = index
+			break
+		}
+	}
+	if anchor >= 0 {
+		candidate := append(providers.CloneChatMessages(base), messages[anchor])
+		if estimateFreshContextMessages(candidate) <= budget {
+			selected = providers.CloneChatMessages(messages[anchor : anchor+1])
+		}
+	}
+	anchored := append(providers.CloneChatMessages(base), selected...)
+	for start := len(messages) - 1; start >= max(covered, anchor+1); start-- {
+		candidate := messages[start:]
+		combined := append(providers.CloneChatMessages(anchored), candidate...)
+		if estimateFreshContextMessages(combined) > budget {
+			break
+		}
+		if providers.ValidateToolCallHistory(combined) == nil {
+			selected = append(providers.CloneChatMessages(anchored[len(base):]), providers.CloneChatMessages(candidate)...)
+		}
+	}
 	return selected
 }
 
@@ -193,4 +257,42 @@ func (r *StreamRunner) freshContextTargetTokens(compactThresholdTokens int) int 
 		target = inputLimit
 	}
 	return max(1, target)
+}
+
+// A rejected request is negative capacity evidence even when model metadata is
+// missing. Never repeat the same fresh-window target after an overflow.
+func reactiveFreshContextTarget(target, lastSuccessful, failed int) int {
+	if target <= 0 {
+		target = FreshContextTargetTokens
+	}
+	target = reactiveCompactTarget(target, lastSuccessful)
+	probe := min(target, failed)
+	margin := min(max(probe/observedCompactSafetyDivisor, observedCompactMinMargin), probe/2)
+	return max(1, probe-margin)
+}
+
+func (r *StreamRunner) contextWindowStatus(ctx context.Context, providerKey string, messages []providers.ChatMessage) string {
+	note, ok, err := loadValidCompactionNote(ctx, r.CompactionNoteStore, providerKey, messages)
+	state := "No usable completed continuation note is available."
+	if err != nil {
+		state = "Continuation note availability could not be verified."
+	} else if ok {
+		state = "A completed continuation note is available."
+		if note.CoveredMessages < len(messages) {
+			state += " It does not yet cover all recent work."
+		}
+		// A reanchored prefix contains synthetic records with newer Seq values;
+		// their maximum is not an original-history coverage watermark.
+		state += fmt.Sprintf(" It covers %d of %d active-history messages, not necessarily every original record.", note.CoveredMessages, len(messages))
+	}
+	r.noteMu.Lock()
+	inFlight := r.noteInFlight
+	backingOff := time.Now().Before(r.noteRetryAfter)
+	r.noteMu.Unlock()
+	if inFlight {
+		state += " A background refresh is scheduled or running."
+	} else if backingOff {
+		state += " The last background refresh failed; the host will retry at a later safe boundary."
+	}
+	return state + " Do not wait, poll, or write a note yourself. new_context requests a transition; only a host completion confirms it. A transition may use a bounded workset and history recovery without a note."
 }

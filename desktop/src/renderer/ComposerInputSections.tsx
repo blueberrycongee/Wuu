@@ -30,6 +30,7 @@ import {
 } from "./ComposerMessages";
 import { useComposerQueryHistory } from "./ComposerQueryHistory";
 import { composerStatusIsLiveProgress, composerStatusText } from "./ComposerTypes";
+import { handoffPromptFromIntent } from "./HandoffDraft";
 import { useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
 import { TruncatedText } from "./TruncatedText";
@@ -120,6 +121,7 @@ export function SplitPaneComposer({
   statusLiveProgress,
   queryHistorySessionID,
   queryHistory = [],
+  requestedHandoffIntent,
   onPasteAttachmentFiles,
   onRemoveFile,
   onRemoveImage,
@@ -139,6 +141,7 @@ export function SplitPaneComposer({
   statusLiveProgress?: boolean;
   queryHistorySessionID?: string;
   queryHistory?: string[];
+  requestedHandoffIntent?: string;
   onPasteAttachmentFiles: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
   onRemoveImage: (id: string) => void;
@@ -148,6 +151,7 @@ export function SplitPaneComposer({
   const { t } = useI18n();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const appliedHandoffIntentRef = useRef<string | undefined>(undefined);
   const [dropActive, setDropActive] = useState(false);
   const hasAttachments = images.length > 0 || files.length > 0;
   const hasDraft = prompt.trim().length > 0 || hasAttachments;
@@ -200,6 +204,14 @@ export function SplitPaneComposer({
     setPrompt,
     textareaRef
   });
+
+  useEffect(() => {
+    if (requestedHandoffIntent === undefined || appliedHandoffIntentRef.current === requestedHandoffIntent) {
+      return;
+    }
+    appliedHandoffIntentRef.current = requestedHandoffIntent;
+    setPrompt(handoffPromptFromIntent(requestedHandoffIntent));
+  }, [requestedHandoffIntent, setPrompt]);
 
   // Mirrors the dock composer: a drop carries either a workspace path
   // reference (inserted as plain text) or external files (forwarded to the

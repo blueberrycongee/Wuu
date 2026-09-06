@@ -31,6 +31,7 @@ export function ConversationSplitPane({
   draft,
   viewSwitchPending,
   queryHistory,
+  requestedHandoffIntent,
   editingMessage,
   onActivate,
   onClose,
@@ -63,6 +64,7 @@ export function ConversationSplitPane({
   draft: ComposerDraftState;
   viewSwitchPending: boolean;
   queryHistory: string[];
+  requestedHandoffIntent?: string;
   editingMessage?: { turnID: string; itemID: string; submitting: boolean };
   onActivate: () => void;
   onClose: () => void;
@@ -230,6 +232,7 @@ export function ConversationSplitPane({
           onInterrupt={onInterrupt}
           queryHistorySessionID={thread.id}
           queryHistory={queryHistory}
+          requestedHandoffIntent={requestedHandoffIntent}
         />
       )}
     </section>

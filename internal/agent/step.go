@@ -280,7 +280,10 @@ type LoopConfig struct {
 	FreshContext       FreshContextBuilder
 	ArchiveHistory     HistoryArchiveFunc
 	FreshContextTokens int
-	AcceptFreshContext func(context.Context) error
+	AcceptFreshContext func(context.Context, []providers.ChatMessage, int) ([]providers.ChatMessage, int, error)
+	// ContextWindowStatus supplies a read-only checkpoint snapshot without
+	// waiting for generation or asking the main model to manage background work.
+	ContextWindowStatus func(context.Context, []providers.ChatMessage) string
 	// OnHistoryAdvanced must return immediately. StreamRunner uses it to launch
 	// best-effort background note refreshes while the main loop continues.
 	OnHistoryAdvanced func([]providers.ChatMessage)

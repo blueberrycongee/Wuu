@@ -228,6 +228,7 @@ function renderSplitPaneComposer(props: {
 function renderStatefulSplitPaneComposer(props: {
   initialPrompt?: string;
   readOnly?: boolean;
+  requestedHandoffIntent?: string;
   onPasteAttachmentFiles?: (files: File[]) => void;
   onSend?: (prompt: string, contentParts?: MessageContentPart[]) => void;
 }): void {
@@ -243,6 +244,7 @@ function renderStatefulSplitPaneComposer(props: {
           running={false}
           readOnly={props.readOnly ?? false}
           status="ready"
+          requestedHandoffIntent={props.requestedHandoffIntent}
           onPasteAttachmentFiles={props.onPasteAttachmentFiles ?? (() => {})}
           onRemoveFile={() => {}}
           onRemoveImage={() => {}}
@@ -2816,6 +2818,14 @@ describe("composer drag and drop", () => {
     });
 
     expect(container.querySelector(".composer-frame-drop-active")).toBeNull();
+  });
+
+  it("fills a requested handoff draft in the split pane composer", () => {
+    renderStatefulSplitPaneComposer({ requestedHandoffIntent: "keep the verified fix" });
+
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(
+      "/handoff -- keep the verified fix",
+    );
   });
 
   it("appends a dragged workspace path in the split pane composer", () => {

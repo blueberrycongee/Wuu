@@ -23,7 +23,6 @@ import {
   messageFlowAgentMessageItemID,
   scrollToUserMessage,
   turnAnchorID,
-  turnHasAssistantOutput,
 } from "./TurnViewHelpers";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import { PluginSurface } from "./plugins";
@@ -189,10 +188,7 @@ function TurnContent({
     turn.id,
     rawAssistantDisplay,
   );
-  const event = turnEventForTurn(
-    turn,
-    turnHasAssistantOutput(turn),
-  );
+  const event = turnEventForTurn(turn);
 
   return (
     <section

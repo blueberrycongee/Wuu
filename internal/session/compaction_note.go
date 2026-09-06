@@ -103,7 +103,9 @@ func CompareAndSwapCompactionNote(sessDir string, expected CompactionNote, expec
 	if replacement.SessionID == "" || replacement.ProviderKey == "" || replacement.Markdown == "" || replacement.CoveredMessages < 0 || replacement.CoveredHash == "" {
 		return false, errors.New("compaction note requires session, provider, markdown, and a valid history anchor")
 	}
-	if expectedExists && (strings.TrimSpace(expected.Markdown) == "" || strings.TrimSpace(expected.CoveredHash) == "" || expected.CoveredMessages < 0) {
+	// Empty Markdown may be a checkpoint tombstone. Its anchor still acts as
+	// the compare-and-swap generation, allowing a new fork but not a stale one.
+	if expectedExists && (strings.TrimSpace(expected.CoveredHash) == "" || expected.CoveredMessages < 0) {
 		return false, errors.New("expected compaction note has an invalid history anchor")
 	}
 	if replacement.UpdatedAt.IsZero() {
