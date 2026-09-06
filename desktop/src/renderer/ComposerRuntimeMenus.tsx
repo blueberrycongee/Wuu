@@ -156,11 +156,13 @@ export type RuntimePanelView = "summary" | "engines" | "providers" | "models";
 type RuntimePanelDirection = "forward" | "back";
 
 const RUNTIME_PANEL_MAX_HEIGHT = 320;
-const RUNTIME_PANEL_SEARCH_EXTRA = 38;
+const RUNTIME_PANEL_SEARCH_EXTRA = 28;
 
 function runtimePanelListHeight(rowCount: number, extra = 0): number {
   const rows = Math.max(rowCount, 1);
-  return Math.min(RUNTIME_PANEL_MAX_HEIGHT, 47 + extra + rows * 37);
+  // 8px top + 8px bottom minus the last row gap. Model rows already return
+  // to the summary, so this page has no back header.
+  return Math.min(RUNTIME_PANEL_MAX_HEIGHT, 15 + extra + rows * 37);
 }
 
 function RuntimePanelHeader({ title, onBack }: { title: string; onBack: () => void }): JSX.Element {
@@ -583,7 +585,6 @@ function EngineRuntimeMenu({
         ) : null}
         {view === "models" ? (
           <>
-            <RuntimePanelHeader title={t("runtime.model")} onBack={showSummary} />
             <label className="select-menu-search">
               <Search className="select-menu-search-icon icon-lg" />
               <input
@@ -784,7 +785,9 @@ export function RuntimeModelMenu({
     .flatMap((group) => group.models)
     .find((model) => model.id === effectiveModelID);
   const chooserRows = view === "providers" ? visibleProviderGroups.length : engineOptions.length;
-  const chooserHeight = Math.min(RUNTIME_PANEL_MAX_HEIGHT, 50 + chooserRows * 36);
+  // Provider rows already return to the summary, so that page has no back header.
+  const chooserChrome = view === "providers" ? 16 : 50;
+  const chooserHeight = Math.min(RUNTIME_PANEL_MAX_HEIGHT, chooserChrome + chooserRows * 36);
   const visibleModelCount = filteredGroups.reduce((count, group) => count + group.models.length, 0);
   const modelsHeight = runtimePanelListHeight(visibleModelCount, forcedView ? 0 : RUNTIME_PANEL_SEARCH_EXTRA);
 
@@ -847,42 +850,38 @@ export function RuntimeModelMenu({
           </>
         ) : null}
         {view === "providers" ? (
-          <>
-            <RuntimePanelHeader title={t("runtime.provider")} onBack={showSummary} />
-            <div className="runtime-panel-list runtime-provider-options" role="group" aria-label={t("runtime.provider")}>
-              {visibleProviderGroups.map((group) => {
-                const selected = group.provider.name === effectiveProviderName;
-                return (
-                  <button
-                    type="button"
-                    className="runtime-provider-option"
-                    role="menuitemradio"
-                    aria-checked={selected}
-                    key={group.provider.name}
-                    onClick={() => {
-                      if (onSelectProvider) {
-                        onSelectProvider(group.provider.name);
-                        openView("models");
-                        return;
-                      }
-                      const model = group.models[0];
-                      if (model && !selected) {
-                        selectModel(group.provider.name, model.id, defaultVariantForRuntimeModel(group.provider, model));
-                      }
-                      showSummary();
-                    }}
-                  >
-                    <span>{group.provider.name}</span>
-                    {selected ? <Check aria-hidden="true" /> : null}
-                  </button>
-                );
-              })}
-            </div>
-          </>
+          <div className="runtime-panel-list runtime-provider-options" role="group" aria-label={t("runtime.provider")}>
+            {visibleProviderGroups.map((group) => {
+              const selected = group.provider.name === effectiveProviderName;
+              return (
+                <button
+                  type="button"
+                  className="runtime-provider-option"
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  key={group.provider.name}
+                  onClick={() => {
+                    if (onSelectProvider) {
+                      onSelectProvider(group.provider.name);
+                      openView("models");
+                      return;
+                    }
+                    const model = group.models[0];
+                    if (model && !selected) {
+                      selectModel(group.provider.name, model.id, defaultVariantForRuntimeModel(group.provider, model));
+                    }
+                    showSummary();
+                  }}
+                >
+                  <span>{group.provider.name}</span>
+                  {selected ? <Check aria-hidden="true" /> : null}
+                </button>
+              );
+            })}
+          </div>
         ) : null}
         {view === "models" ? (
           <>
-            <RuntimePanelHeader title={t("runtime.model")} onBack={showSummary} />
             {forcedView ? null : (
               <label className="select-menu-search">
                 <Search className="select-menu-search-icon icon-lg" />

@@ -124,6 +124,8 @@ describe("RuntimePicker", () => {
 
     const search = menu?.querySelector<HTMLInputElement>(".select-menu-search input");
     expect(search?.placeholder).toBe("搜索模型");
+    expect(menu?.querySelector(".runtime-panel-header")).toBeNull();
+    expect(menu?.querySelector(".runtime-panel-back")).toBeNull();
     const modelItems = Array.from(menu?.querySelectorAll<HTMLButtonElement>(".codex-model-item") ?? []);
     expect(modelItems.map((item) => item.textContent?.trim())).toEqual(["Claude Sonnet"]);
     expect(modelItems[0]?.getAttribute("aria-checked")).toBe("true");
@@ -336,6 +338,9 @@ describe("RuntimePicker", () => {
     const providerOptions = Array.from(document.querySelectorAll<HTMLButtonElement>(".runtime-provider-option"));
     expect(providerOptions.map((option) => option.textContent?.trim())).toEqual(["deepseek", "tokenhub"]);
     expect(providerOptions[1]?.getAttribute("aria-checked")).toBe("true");
+    expect(document.querySelector(".runtime-panel-header")).toBeNull();
+    expect(document.querySelector(".runtime-panel-back")).toBeNull();
+    expect(document.querySelector(".codex-model-menu")?.textContent).not.toContain("模型服务");
 
     act(() => providerOptions[0]?.click());
     expect(document.querySelector(".runtime-panel-context")?.textContent).toContain("deepseek");
