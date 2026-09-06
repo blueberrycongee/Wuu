@@ -84,6 +84,7 @@ function renderComposer(props: {
   onSteer?: (promptOverride?: string) => void;
   onQueue?: (promptOverride?: string) => void;
   onStartNewThread?: () => void;
+  onHandoffSession?: (input: { provider: string; model: string; effort?: string; intent: string }) => void;
   onOpenContextComposition?: () => void;
   onOpenSideThread?: (prompt?: string) => void;
   sideThreadDisabledReason?: string;
@@ -159,6 +160,7 @@ function renderComposer(props: {
           onCreateProject={() => {}}
           onOpenProject={() => {}}
           onStartNewThread={props.onStartNewThread ?? (() => {})}
+          onHandoffSession={props.onHandoffSession}
           onOpenSideThread={props.onOpenSideThread}
           onOpenWorkspaceTool={() => {}}
           onOpenContextComposition={props.onOpenContextComposition ?? (() => {})}
@@ -1236,7 +1238,12 @@ describe("Composer send control", () => {
     expect(container.querySelector(".runtime-panel-context")?.textContent).toContain("work");
     expect(container.querySelector(".runtime-panel-model-name")?.textContent).toBe("Grok 4.6");
     expect(container.querySelector(".handoff-card-candidate")).toBeNull();
-    expect(container.querySelector<HTMLButtonElement>(".handoff-card-submit")?.disabled).toBe(true);
+    expect(container.querySelector(".handoff-card-title")).toBeNull();
+    expect(container.querySelector(".handoff-card-submit")).toBeNull();
+    expect(container.querySelector(".handoff-card")?.textContent).not.toContain("待选择");
+    expect(container.querySelector(".handoff-card")?.textContent).not.toContain("有界 brief");
+    expect(container.querySelector(".handoff-card")?.textContent).not.toContain("截止点");
+    expect(container.querySelector(".handoff-card")?.textContent).not.toContain("交接并继续");
   });
 
   it("drills from the embedded handoff picker into the provider list", () => {
@@ -1269,6 +1276,46 @@ describe("Composer send control", () => {
 
     expect(container.querySelector(".codex-model-menu.runtime-panel.is-providers")).not.toBeNull();
     expect(Array.from(container.querySelectorAll(".runtime-provider-option")).map((item) => item.textContent?.trim())).toEqual(["openai"]);
+  });
+
+  it("starts a handoff as soon as a model is chosen", () => {
+    const onHandoffSession = vi.fn();
+    const initialized: InitializeResult = {
+      protocol_version: "wuu-app-server/v0.1",
+      provider: "work",
+      model: "grok-4.6",
+      workspace_root: "/tmp/project",
+      providers: [
+        {
+          name: "work",
+          type: "openai-compatible",
+          model: "grok-4.6",
+          models: [{ id: "grok-4.6", display_name: "Grok 4.6" }],
+        },
+        {
+          name: "openai",
+          type: "openai-compatible",
+          model: "gpt-5.5",
+          models: [{ id: "gpt-5.5", display_name: "GPT-5.5" }],
+        },
+      ],
+    };
+    renderComposer({
+      variant: "dock",
+      prompt: "/handoff openai/",
+      initialized,
+      onHandoffSession,
+      activeContext: { kind: "project", project_id: "project-1", cwd: "/tmp/project" },
+    });
+
+    act(() => container.querySelector<HTMLButtonElement>(".codex-model-item")?.click());
+
+    expect(onHandoffSession).toHaveBeenCalledWith({
+      provider: "openai",
+      model: "gpt-5.5",
+      effort: undefined,
+      intent: "",
+    });
   });
 
   it("renders the slash command menu through the same floating panel as the plus menu", () => {

@@ -5006,11 +5006,6 @@ html.resizing-workspace-terminal-split * {
   );
 }
 
-.handoff-card-picker .codex-model-menu.runtime-panel {
-  width: 100%;
-  max-width: none;
-}
-
 .runtime-panel-page {
   position: absolute;
   inset: 0;

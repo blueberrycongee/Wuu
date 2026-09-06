@@ -324,61 +324,14 @@
 
 .handoff-card {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  justify-content: flex-start;
   margin-bottom: 8px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
 }
 
-.handoff-card-title {
-  font-size: 13px;
-  font-weight: var(--weight-medium);
-}
-
-.handoff-card-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px 16px;
-  margin: 0;
-}
-
-.handoff-card-grid dt {
-  color: var(--ink-muted);
-  font-size: 11px;
-}
-
-.handoff-card-grid dd {
-  margin: 2px 0 0;
-  font-size: 12px;
-}
-
-.handoff-card-status {
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-
-.handoff-card-picker {
-  min-width: 0;
-}
-
-.handoff-card-picker .codex-model-menu.runtime-panel.is-embedded {
+.handoff-card .codex-model-menu.runtime-panel.is-embedded {
   position: relative;
-  width: 100%;
-  max-width: none;
-  box-shadow: none;
 }
 
-.handoff-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.handoff-card-submit,
 .runtime-panel-handoff {
   height: 28px;
   padding: 0 10px;
@@ -386,10 +339,6 @@
   border-radius: var(--radius-sm);
   background: var(--paper);
   font-size: 12px;
-}
-
-.handoff-card-submit:disabled {
-  opacity: 0.5;
 }
 
 /* Hero (welcome) composer inherits the same dialog width as the dock composer

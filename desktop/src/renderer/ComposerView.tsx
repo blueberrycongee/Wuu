@@ -50,7 +50,6 @@ import {
 } from "./ComposerSlashCommands";
 import { HandoffCard } from "./HandoffCard";
 import {
-  canSubmitHandoffDraft,
   emptyHandoffDraft,
   handoffPromptFromIntent,
   handoffPromptFromSelection,
@@ -719,6 +718,10 @@ export function Composer({
     const actionCommand = submitSlashDraft
       ? exactActionSlashCommand(slashCommands, submitSlashDraft)
       : undefined;
+    if (submitSlashDraft?.query === "handoff") {
+      submitHandoffDraft();
+      return;
+    }
     if (actionCommand) {
       applySlashCommand(actionCommand, submitSlashDraft);
       return;
@@ -742,6 +745,22 @@ export function Composer({
     }
     setSubmissionClearRevision((current) => current + 1);
     focusComposerSoon();
+  }
+
+  function submitHandoffDraft(override?: { provider: string; model: string; effort?: string }): void {
+    const provider = override?.provider ?? handoffDraft.providerId;
+    const model = override?.model ?? handoffDraft.modelId;
+    const effort = override?.effort || handoffDraft.variant || undefined;
+    if (!provider || !model) {
+      return;
+    }
+    onHandoffSession?.({
+      provider,
+      model,
+      effort,
+      intent: handoffDraft.intent,
+    });
+    setPrompt("");
   }
 
   function submitComposer(): void {
@@ -1037,8 +1056,6 @@ export function Composer({
           draft={handoffDraft}
           initialized={initialized}
           modelState={codexModels}
-          sourceLabel={queryHistorySessionID || t("handoff.card.source")}
-          workspaceLabel={activeContext?.cwd || activeProject?.path || ""}
           onSelectProvider={(providerId) => {
             setHandoffVariant("");
             setHandoffRevision((current) => current + 1);
@@ -1046,23 +1063,10 @@ export function Composer({
           }}
           onSelectModel={(providerId, modelId, variant) => {
             setHandoffVariant(variant ?? "");
-            setHandoffRevision((current) => current + 1);
-            setPrompt(handoffPromptFromSelection(providerId, modelId, handoffDraft.intent));
+            submitHandoffDraft({ provider: providerId, model: modelId, effort: variant });
           }}
           onSelectEffort={(variant) => {
             setHandoffVariant(variant);
-          }}
-          onSubmit={() => {
-            if (!canSubmitHandoffDraft(handoffDraft)) {
-              return;
-            }
-            onHandoffSession?.({
-              provider: handoffDraft.providerId,
-              model: handoffDraft.modelId,
-              effort: handoffDraft.variant || undefined,
-              intent: handoffDraft.intent,
-            });
-            setPrompt("");
           }}
         />
       ) : null}
