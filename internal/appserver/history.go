@@ -79,6 +79,10 @@ type persistedMessage struct {
 	ContextTokens       int                                `json:"context_tokens,omitempty"`
 	CacheCreationTokens int                                `json:"cache_creation_tokens,omitempty"`
 	CacheReadTokens     int                                `json:"cache_read_tokens,omitempty"`
+	// RetryCount and MaxRetries carry the final retry counters of a
+	// stream_reconnect meta row. Zero for all other record types.
+	RetryCount int `json:"retry_count,omitempty"`
+	MaxRetries int `json:"max_retries,omitempty"`
 	// Provider carries native-state provenance for chat rows and token-usage
 	// provenance for meta rows. Model is currently used by token-usage rows;
 	// provider-native chat state keeps its model in ProviderItemModel.
@@ -531,6 +535,8 @@ func historyRecordFromPersistedMessage(rec persistedMessage) sessionstore.Histor
 		ContextTokens:       rec.ContextTokens,
 		CacheCreationTokens: rec.CacheCreationTokens,
 		CacheReadTokens:     rec.CacheReadTokens,
+		RetryCount:          rec.RetryCount,
+		MaxRetries:          rec.MaxRetries,
 		Provider:            rec.Provider,
 		Model:               rec.Model,
 	}
@@ -570,6 +576,8 @@ func persistedMessageFromHistoryRecord(rec sessionstore.HistoryRecord) (persiste
 		ContextTokens:       rec.ContextTokens,
 		CacheCreationTokens: rec.CacheCreationTokens,
 		CacheReadTokens:     rec.CacheReadTokens,
+		RetryCount:          rec.RetryCount,
+		MaxRetries:          rec.MaxRetries,
 		Provider:            rec.Provider,
 		Model:               rec.Model,
 	}

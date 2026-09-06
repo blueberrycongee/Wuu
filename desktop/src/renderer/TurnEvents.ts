@@ -59,6 +59,11 @@ export function turnEventForTurn(
   if (turn.kind === "compact" && hasContextCompactionOutcome(turn)) {
     return undefined;
   }
+  // A settled stream_reconnect row already names the cause and the final
+  // retry count in place; the generic turn-level notice would repeat it.
+  if (hasSettledStreamReconnect(turn)) {
+    return undefined;
+  }
   const rawMessage = turn.error?.message || latestTurnItemError(turn);
   const baseDisplay =
     isCancellationMessage((rawMessage ?? "").toLowerCase())
@@ -170,5 +175,11 @@ function hasContextCompactionOutcome(turn: Turn): boolean {
     (item) =>
       item.type === "context_compaction" &&
       (item.status === "completed" || item.status === "failed"),
+  );
+}
+
+function hasSettledStreamReconnect(turn: Turn): boolean {
+  return turn.items.some(
+    (item) => item.type === "stream_reconnect" && item.status === "failed",
   );
 }

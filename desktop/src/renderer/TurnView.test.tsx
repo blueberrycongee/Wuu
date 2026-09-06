@@ -509,6 +509,52 @@ describe("TurnView", () => {
     expect(view.querySelector("button:has(.lucide-square-terminal)")).toBeNull();
     expect(view.querySelectorAll(".agent-message-actions button")).toHaveLength(2);
   });
+
+  it("settles the reconnect row inside the stream when retries are exhausted", () => {
+    vi.useFakeTimers();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const turn = makeTurn(
+      "failed",
+      [
+        makeCommentary("partial work"),
+        {
+          id: "reconnect-1",
+          type: "stream_reconnect",
+          status: "failed",
+          text: "connection reset by peer",
+          reason: "network",
+          retry_count: 5,
+          max_retries: 5,
+        },
+      ],
+      "network down",
+    );
+    act(() => {
+      root!.render(
+        <TurnView
+          turn={turn}
+          onStreamFrame={() => {}}
+          isLatestTurn
+        />,
+      );
+    });
+    act(() => {
+      vi.advanceTimersByTime(ASSISTANT_TURN_PRESENTATION_STABILIZE_MS);
+    });
+
+    // The failure row renders as a trailing row of the process stream,
+    // carrying the cause and the final retry count.
+    const notice = container!.querySelector("aside.stream-reconnect-notice");
+    expect(notice?.textContent).toContain("网络异常");
+    expect(notice?.textContent).toContain("第 5/5 次重试");
+    expect(notice?.closest(".assistant-turn-shell")).not.toBeNull();
+    // It stands in for the generic turn error notice.
+    expect(
+      container!.querySelectorAll("aside:not(.stream-reconnect-notice)"),
+    ).toHaveLength(0);
+  });
 });
 
 describe("TurnView optimistic placeholder", () => {

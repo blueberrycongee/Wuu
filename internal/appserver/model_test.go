@@ -292,13 +292,19 @@ func TestThreadStateDiscardsToolDraftsOnInferenceReplay(t *testing.T) {
 	}, now.Add(time.Second))
 
 	turn := th.ensureTurnLocked("turn", now)
-	if len(turn.Items) != 1 || turn.Items[0].Type != ThreadItemUserMessage {
+	if len(turn.Items) != 2 || turn.Items[0].Type != ThreadItemUserMessage ||
+		turn.Items[1].Type != ThreadItemStreamReconnect || turn.Items[1].Status != ThreadItemStatusInProgress {
 		t.Fatalf("discarded tool drafts remained in turn = %+v", turn.Items)
 	}
-	if len(out) != len(calls) {
+	// The reconnecting event upserts the reconnect row first, then notifies
+	// one removal per discarded tool draft.
+	if len(out) != 1+len(calls) {
 		t.Fatalf("discard notifications = %+v", out)
 	}
-	for i, notification := range out {
+	if out[0].method != NotificationItemStarted {
+		t.Fatalf("reconnect row upsert notification = %+v, want item/started", out[0])
+	}
+	for i, notification := range out[1:] {
 		if notification.method != NotificationItemRemoved {
 			t.Fatalf("discard notification %d = %+v", i, notification)
 		}
@@ -319,7 +325,7 @@ func TestThreadStateDiscardsToolDraftsOnInferenceReplay(t *testing.T) {
 		Type: providers.EventToolUseEnd, ToolCall: &replacement, ToolResult: "done",
 	}, now.Add(3*time.Second))
 	turn = th.ensureTurnLocked("turn", now)
-	if len(turn.Items) != 2 || turn.Items[1].SourceID != replacement.ID || turn.Items[1].Status != ThreadItemStatusCompleted {
+	if len(turn.Items) != 3 || turn.Items[2].SourceID != replacement.ID || turn.Items[2].Status != ThreadItemStatusCompleted {
 		t.Fatalf("successful retry turn = %+v", turn.Items)
 	}
 }
@@ -338,7 +344,8 @@ func TestThreadStateRetryTerminalFailureDoesNotRestoreDiscardedToolDraft(t *test
 	}, now.Add(time.Second))
 
 	turn := th.finishTurnLocked("turn", TurnStatusFailed, errors.New("provider unavailable"), now.Add(2*time.Second), "", "", false)
-	if len(turn.Items) != 1 || turn.Items[0].Type != ThreadItemUserMessage {
+	if len(turn.Items) != 2 || turn.Items[0].Type != ThreadItemUserMessage ||
+		turn.Items[1].Type != ThreadItemStreamReconnect || turn.Items[1].Status != ThreadItemStatusFailed {
 		t.Fatalf("terminal retry failure restored discarded tool draft = %+v", turn.Items)
 	}
 	if turn.Error == nil || turn.Error.Message != "provider unavailable" {
@@ -760,6 +767,205 @@ func TestThreadStateUpdatesContextCompactionProgressItem(t *testing.T) {
 	}
 	if len(completed) != 1 || completed[0].method != NotificationItemCompleted {
 		t.Fatalf("compact completion notifications = %+v, want one item/completed", completed)
+	}
+}
+
+func TestThreadStateFailedContextTransitionSettlesProgress(t *testing.T) {
+	for _, phase := range []providers.CompactPhase{providers.CompactPhaseFailed, providers.CompactPhaseCompleted} {
+		t.Run(string(phase), func(t *testing.T) {
+			now := time.Unix(0, 0).UTC()
+			th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+			th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "continue"}, now)
+			th.applyStreamEventLocked("turn", providers.StreamEvent{Type: providers.EventCompact, CompactPhase: providers.CompactPhaseStarted}, now)
+			id := th.ensureTurnLocked("turn", now).Items[1].ID
+			text := "Fresh context could not be installed; active history is unchanged."
+			if phase == providers.CompactPhaseFailed {
+				text = "arbitrary diagnostic, not a status contract"
+			}
+			out := th.applyStreamEventLocked("turn", providers.StreamEvent{
+				Type: providers.EventCompact, CompactReason: "new_context", CompactPhase: phase, Content: text,
+			}, now)
+			items := th.ensureTurnLocked("turn", now).Items
+			if len(items) != 2 || items[1].ID != id || items[1].Status != ThreadItemStatusFailed {
+				t.Fatalf("failed transition must settle the existing row: %+v", items)
+			}
+			if len(out) != 1 || out[0].method != NotificationItemCompleted {
+				t.Fatalf("failure must finish progress: %+v", out)
+			}
+		})
+	}
+}
+
+func TestThreadStateStreamReconnectLifecycle(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "go"}, now)
+
+	reconnecting := func(retryCount int, retryIn time.Duration) []outboundNotification {
+		return th.applyStreamEventLocked("turn", providers.StreamEvent{
+			Type: providers.EventLifecycle,
+			Lifecycle: &providers.StreamLifecycle{
+				Phase:           providers.StreamPhaseReconnecting,
+				Reason:          "connection reset by peer",
+				FailureCategory: "network",
+				RetryCount:      retryCount,
+				MaxRetries:      5,
+				RetryIn:         retryIn,
+			},
+		}, now)
+	}
+
+	started := reconnecting(1, 2*time.Second)
+	turn := th.ensureTurnLocked("turn", now)
+	if len(turn.Items) != 2 || turn.Items[1].Type != ThreadItemStreamReconnect || turn.Items[1].Status != ThreadItemStatusInProgress {
+		t.Fatalf("reconnecting should add one in-progress stream_reconnect item, got %+v", turn.Items)
+	}
+	item := turn.Items[1]
+	if item.RetryCount != 1 || item.MaxRetries != 5 || item.RetryAtMS != now.Add(2*time.Second).UnixMilli() {
+		t.Fatalf("reconnect row should carry retry counters and deadline, got %+v", item)
+	}
+	if len(started) != 1 || started[0].method != NotificationItemStarted {
+		t.Fatalf("reconnecting notifications = %+v, want one item/started", started)
+	}
+
+	// A later attempt refreshes the same row instead of stacking a new one.
+	refreshed := reconnecting(2, 4*time.Second)
+	turn = th.ensureTurnLocked("turn", now)
+	if len(turn.Items) != 2 || turn.Items[1].ID != item.ID || turn.Items[1].RetryCount != 2 {
+		t.Fatalf("retry should update the existing row in place, got %+v", turn.Items)
+	}
+	if len(refreshed) != 1 || refreshed[0].method != NotificationItemStarted {
+		t.Fatalf("retry refresh notifications = %+v, want one item/started", refreshed)
+	}
+
+	connected := th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type:      providers.EventLifecycle,
+		Lifecycle: &providers.StreamLifecycle{Phase: providers.StreamPhaseConnected},
+	}, now)
+	turn = th.ensureTurnLocked("turn", now)
+	if len(turn.Items) != 1 {
+		t.Fatalf("a successful reconnect must erase the row, got %+v", turn.Items)
+	}
+	if len(connected) != 1 || connected[0].method != NotificationItemRemoved {
+		t.Fatalf("connected notifications = %+v, want one item/removed", connected)
+	}
+}
+
+func TestThreadStateSettlesStreamReconnectWhenProviderGivesUp(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "go"}, now)
+
+	th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type: providers.EventLifecycle,
+		Lifecycle: &providers.StreamLifecycle{
+			Phase:           providers.StreamPhaseReconnecting,
+			Reason:          "connection reset by peer",
+			FailureCategory: "network",
+			RetryCount:      5,
+			MaxRetries:      5,
+			RetryIn:         2 * time.Second,
+		},
+	}, now)
+
+	settled := th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type: providers.EventLifecycle,
+		Lifecycle: &providers.StreamLifecycle{
+			Phase:           providers.StreamPhaseFailed,
+			Reason:          "connection reset by peer",
+			FailureCategory: "network",
+			RetryCount:      5,
+			MaxRetries:      5,
+		},
+	}, now)
+	turn := th.ensureTurnLocked("turn", now)
+	if len(turn.Items) != 2 || turn.Items[1].Type != ThreadItemStreamReconnect || turn.Items[1].Status != ThreadItemStatusFailed {
+		t.Fatalf("giving up should freeze the row as failed, got %+v", turn.Items)
+	}
+	item := turn.Items[1]
+	if item.RetryCount != 5 || item.MaxRetries != 5 || item.RetryAtMS != 0 {
+		t.Fatalf("settled row keeps final counters and clears the deadline, got %+v", item)
+	}
+	if len(settled) != 1 || settled[0].method != NotificationItemCompleted {
+		t.Fatalf("settle notifications = %+v, want one item/completed", settled)
+	}
+}
+
+func TestThreadStateStreamFailureWithoutReconnectKeepsOrdinaryNotice(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "go"}, now)
+
+	out := th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type: providers.EventLifecycle,
+		Lifecycle: &providers.StreamLifecycle{
+			Phase:           providers.StreamPhaseFailed,
+			Reason:          "prompt too long",
+			FailureCategory: "budget",
+		},
+	}, now)
+	if len(out) != 0 {
+		t.Fatalf("a failure without a reconnect cycle must not synthesize a row: %+v", out)
+	}
+	for _, item := range th.ensureTurnLocked("turn", now).Items {
+		if item.Type == ThreadItemStreamReconnect {
+			t.Fatalf("no stream_reconnect item expected without a reconnect cycle: %+v", item)
+		}
+	}
+}
+
+func TestThreadStateFinishTurnFreezesPendingStreamReconnect(t *testing.T) {
+	for _, status := range []TurnStatus{TurnStatusInterrupted, TurnStatusFailed} {
+		t.Run(string(status), func(t *testing.T) {
+			now := time.Unix(0, 0).UTC()
+			th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+			th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "go"}, now)
+			th.applyStreamEventLocked("turn", providers.StreamEvent{
+				Type: providers.EventLifecycle,
+				Lifecycle: &providers.StreamLifecycle{
+					Phase:           providers.StreamPhaseReconnecting,
+					Reason:          "connection reset by peer",
+					FailureCategory: "network",
+					RetryCount:      2,
+					MaxRetries:      5,
+					RetryIn:         3 * time.Second,
+				},
+			}, now)
+
+			turn := th.finishTurnLocked("turn", status, nil, now, "", "", false)
+			if len(turn.Items) != 2 {
+				t.Fatalf("turn ending mid-reconnect keeps the frozen row, got %+v", turn.Items)
+			}
+			item := turn.Items[1]
+			if item.Type != ThreadItemStreamReconnect || item.Status != ThreadItemStatusFailed {
+				t.Fatalf("pending reconnect row must freeze as failed, got %+v", item)
+			}
+			if item.RetryCount != 2 || item.MaxRetries != 5 || item.RetryAtMS != 0 {
+				t.Fatalf("frozen row stops at the last reported retry, got %+v", item)
+			}
+		})
+	}
+}
+
+func TestThreadStateCompletedTurnDropsPendingStreamReconnect(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+	th := newThreadState("thread", nil, "provider", "model", "/repo", false, now)
+	th.startTurnLocked("turn", providers.ChatMessage{Role: "user", Content: "go"}, now)
+	th.applyStreamEventLocked("turn", providers.StreamEvent{
+		Type: providers.EventLifecycle,
+		Lifecycle: &providers.StreamLifecycle{
+			Phase:           providers.StreamPhaseReconnecting,
+			Reason:          "flaky",
+			FailureCategory: "network",
+			RetryCount:      1,
+			MaxRetries:      5,
+		},
+	}, now)
+	turn := th.finishTurnLocked("turn", TurnStatusCompleted, nil, now, "", "", false)
+	for _, item := range turn.Items {
+		if item.Type == ThreadItemStreamReconnect {
+			t.Fatalf("a completed turn must not retain a reconnect row: %+v", item)
+		}
 	}
 }
 

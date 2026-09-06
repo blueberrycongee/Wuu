@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ThreadItemStatus } from "../shared/protocol";
+import type { ThreadItem, ThreadItemStatus } from "../shared/protocol";
 import { isUnchangedContextCompaction, type TurnEventDisplay } from "./TurnEvents";
 import type { UserFacingErrorDisplay, UserFacingErrorTone } from "./UserFacingErrors";
 import { formatCurrentNumber, translateCurrent as t } from "./i18n";
@@ -120,13 +120,10 @@ export function StreamStatusNotice({
 }: {
   status: TurnStreamStatus;
 }): JSX.Element {
-  const waitText = useRetryCountdown(status.event?.retryAtMs);
-  const detail = streamStatusDetail(status, waitText);
   return (
     <SystemEventNotice
       event={{
-        label: status.event?.label ?? status.text,
-        detail,
+        label: status.text,
         state: status.liveProgress ? "in_progress" : "settled",
       }}
       className="stream-status-notice"
@@ -134,21 +131,90 @@ export function StreamStatusNotice({
   );
 }
 
-function streamStatusDetail(
-  status: TurnStreamStatus,
-  waitText: string | undefined,
-): string | undefined {
-  const event = status.event;
-  if (!event) return undefined;
-  const retryText = event.maxRetries
+export function StreamReconnectNotice({
+  item,
+}: {
+  item: ThreadItem;
+}): JSX.Element {
+  const inProgress = item.status === "in_progress";
+  const waitText = useRetryCountdown(inProgress ? item.retry_at_ms : undefined);
+  const detail =
+    [streamReconnectRetryText(item), waitText].filter(Boolean).join(" · ") ||
+    undefined;
+  return (
+    <SystemEventNotice
+      event={{
+        label: streamReconnectTitle(item),
+        detail,
+        tone: item.status === "failed" ? "error" : undefined,
+        state: inProgress ? "in_progress" : "settled",
+      }}
+      className="stream-reconnect-notice"
+    />
+  );
+}
+
+function streamReconnectRetryText(item: ThreadItem): string | undefined {
+  const retryCount = item.retry_count ?? 0;
+  if (retryCount <= 0) {
+    return undefined;
+  }
+  return item.max_retries
     ? t("appState.retryProgress", {
-        count: formatCurrentNumber(event.retryCount),
-        max: formatCurrentNumber(event.maxRetries),
+        count: formatCurrentNumber(retryCount),
+        max: formatCurrentNumber(item.max_retries),
       })
-    : t("appState.retryOrdinal", {
-        count: formatCurrentNumber(event.retryCount),
-      });
-  return [retryText, waitText].filter(Boolean).join(" · ");
+    : t("appState.retryOrdinal", { count: formatCurrentNumber(retryCount) });
+}
+
+/**
+ * Short localized title for the failure that triggered a stream reconnect.
+ * Prefers the item's structured `reason` (the provider's failure category);
+ * the redacted cause text is only consulted for app-servers that predate the
+ * category field, and anything unmapped reads as a network failure.
+ */
+function streamReconnectTitle(item: ThreadItem): string {
+  const fromCategory = streamReconnectCategoryTitle(item.reason);
+  if (fromCategory) {
+    return fromCategory;
+  }
+  const reason = (item.text ?? "").toLowerCase();
+  if (reason.includes("authentication") || reason.includes("unauthorized")) {
+    return t("error.authTitle");
+  }
+  if (reason.includes("rate limit") || reason.includes("too many requests")) {
+    return `429 ${t("error.http429")}`;
+  }
+  if (reason.includes("overloaded")) {
+    return t("error.upstreamOverloaded");
+  }
+  if (reason.includes("timeout") || reason.includes("deadline")) {
+    return t("error.requestTimeout");
+  }
+  return t("error.networkTitle");
+}
+
+function streamReconnectCategoryTitle(
+  category: string | undefined,
+): string | undefined {
+  switch (category) {
+    case "authentication":
+      return t("error.authTitle");
+    case "rate_limit":
+    case "quota":
+      return `429 ${t("error.http429")}`;
+    case "overloaded":
+      return t("error.upstreamOverloaded");
+    case "server":
+      return t("error.providerTitle");
+    case "deadline":
+      return t("error.requestTimeout");
+    case "network":
+    case "incomplete_stream":
+      return t("error.networkTitle");
+    default:
+      return undefined;
+  }
 }
 
 function useRetryCountdown(retryAtMs: number | undefined): string | undefined {
@@ -277,8 +343,7 @@ function contextCompactionProgressTitle(text?: string, reason?: string): string 
   if (isManualCompact(reason, normalizeContextCompactionText(text))) {
     return t("compaction.compacting");
   }
-  const normalized = normalizeContextCompactionText(text);
-  return normalized || t("compaction.autoCompacting");
+  return t("compaction.autoCompacting");
 }
 
 function contextCompactionTitle(
@@ -335,7 +400,7 @@ function normalizeContextCompactionText(text?: string): string {
 }
 
 function isFailedCompactNotice(text: string): boolean {
-  return /^(?:Manual context compaction|Context compaction|Proactive compact|Context-overflow compact|Compact) failed\b/i.test(
+  return /^(?:(?:Manual context compaction|Context compaction|Proactive compact|Context-overflow compact|Compact) failed\b|Fresh context could not be installed\b)/i.test(
     text,
   );
 }

@@ -145,6 +145,11 @@ type HistoryRecord struct {
 	ContextTokens       int             `json:"context_tokens,omitempty"`
 	CacheCreationTokens int             `json:"cache_creation_tokens,omitempty"`
 	CacheReadTokens     int             `json:"cache_read_tokens,omitempty"`
+	// RetryCount and MaxRetries carry the final retry counters of a
+	// stream_reconnect meta row (the reconnect attempt the stream gave up
+	// on, out of the configured cap). Zero for all other record types.
+	RetryCount int `json:"retry_count,omitempty"`
+	MaxRetries int `json:"max_retries,omitempty"`
 	// Provider and Model carry which provider/model produced this token_usage
 	// row. Empty for chat records and for legacy token_usage rows written
 	// before this field existed; readers should treat empty as "unknown".
@@ -1584,6 +1589,12 @@ WHERE workflow_id = ''`); err != nil {
 	if err := addColumnIfMissing(db, "session_messages", "context_tokens", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	if err := addColumnIfMissing(db, "session_messages", "retry_count", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "session_messages", "max_retries", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	if err := addColumnIfMissing(db, "session_messages", "tool_result_kind", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -1940,18 +1951,18 @@ func insertHistoryRecordTx(tx *sql.Tx, id string, seq int, rec HistoryRecord) er
 			INSERT INTO session_messages (
 				session_id, seq, role, content, display_content, origin, origin_id, cause, presentation_kind, related_session_id, read_only, phase, provider_item_id, provider_item_model, client_id, hidden, steered, reasoning_content,
 				reasoning_blocks_json, content_parts_json, images_json, files_json, tool_calls_json, discovered_tools_json,
-				tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens,
+				tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens, retry_count, max_retries,
 				provider, model
 			) VALUES (
 				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 				?, ?, ?, ?, ?, ?,
-				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			)`,
 		id, seq, strings.ToLower(strings.TrimSpace(storedRec.Role)), storedRec.Content, storedRec.DisplayContent,
 		strings.TrimSpace(storedRec.Origin), strings.TrimSpace(storedRec.OriginID), strings.TrimSpace(storedRec.Cause), strings.TrimSpace(storedRec.PresentationKind), strings.TrimSpace(storedRec.RelatedSessionID), boolInt(storedRec.ReadOnly),
 		strings.TrimSpace(storedRec.Phase), strings.TrimSpace(storedRec.ProviderItemID), strings.TrimSpace(storedRec.ProviderItemModel), storedRec.ClientID, boolInt(storedRec.Hidden), boolInt(storedRec.Steered), storedRec.ReasoningContent,
 		rawJSONText(storedRec.ReasoningBlocks), rawJSONText(storedRec.ContentParts), rawJSONText(storedRec.Images), rawJSONText(storedRec.Files), rawJSONText(storedRec.ToolCalls), rawJSONText(storedRec.DiscoveredTools),
-		storedRec.ToolCallID, storedRec.ToolInvocationID, storedRec.ToolResultKind, rawJSONText(storedRec.ToolResult), storedRec.FinishReason, storedRec.StopReason, boolInt(storedRec.Truncated), storedRec.Name, nullableValueTimeText(storedRec.At), storedRec.InputTokens, storedRec.OutputTokens, storedRec.ContextTokens, storedRec.CacheCreationTokens, storedRec.CacheReadTokens,
+		storedRec.ToolCallID, storedRec.ToolInvocationID, storedRec.ToolResultKind, rawJSONText(storedRec.ToolResult), storedRec.FinishReason, storedRec.StopReason, boolInt(storedRec.Truncated), storedRec.Name, nullableValueTimeText(storedRec.At), storedRec.InputTokens, storedRec.OutputTokens, storedRec.ContextTokens, storedRec.CacheCreationTokens, storedRec.CacheReadTokens, storedRec.RetryCount, storedRec.MaxRetries,
 		strings.TrimSpace(storedRec.Provider), strings.TrimSpace(storedRec.Model),
 	)
 	if err != nil {
@@ -1997,7 +2008,7 @@ const historyRecordsSelect = `
 	SELECT seq, role, content, display_content, origin, origin_id, cause, presentation_kind, related_session_id, read_only, phase, client_id, hidden, steered, reasoning_content,
 	       provider_item_id, provider_item_model,
 	       reasoning_blocks_json, content_parts_json, images_json, files_json, tool_calls_json, discovered_tools_json,
-	       tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens,
+	       tool_call_id, tool_invocation_id, tool_result_kind, tool_result_json, finish_reason, stop_reason, truncated, name, at, input_tokens, output_tokens, context_tokens, cache_creation_tokens, cache_read_tokens, retry_count, max_retries,
 	       provider, model
 	FROM session_messages`
 
@@ -2030,7 +2041,7 @@ func scanHistoryRecords(rows *sql.Rows) ([]HistoryRecord, error) {
 			&rec.Role, &rec.Content, &rec.DisplayContent, &rec.Origin, &rec.OriginID, &rec.Cause, &rec.PresentationKind, &rec.RelatedSessionID, &readOnly, &rec.Phase, &rec.ClientID, &hidden, &steered, &rec.ReasoningContent,
 			&rec.ProviderItemID, &rec.ProviderItemModel,
 			&reasoningBlocks, &contentParts, &images, &files, &toolCalls, &discoveredTools,
-			&rec.ToolCallID, &rec.ToolInvocationID, &rec.ToolResultKind, &toolResult, &rec.FinishReason, &rec.StopReason, &truncated, &rec.Name, &at, &rec.InputTokens, &rec.OutputTokens, &rec.ContextTokens, &rec.CacheCreationTokens, &rec.CacheReadTokens,
+			&rec.ToolCallID, &rec.ToolInvocationID, &rec.ToolResultKind, &toolResult, &rec.FinishReason, &rec.StopReason, &truncated, &rec.Name, &at, &rec.InputTokens, &rec.OutputTokens, &rec.ContextTokens, &rec.CacheCreationTokens, &rec.CacheReadTokens, &rec.RetryCount, &rec.MaxRetries,
 			&rec.Provider, &rec.Model,
 		); err != nil {
 			return nil, fmt.Errorf("scan session history: %w", err)

@@ -7,9 +7,9 @@
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { ContextCompactionNotice, StreamStatusNotice, TurnNotice } from "./TurnNotice";
+import { ContextCompactionNotice, StreamReconnectNotice, TurnNotice } from "./TurnNotice";
 import { userFacingErrorForMessage } from "./UserFacingErrors";
-import { setActiveLocale } from "./i18n";
+import { setActiveLocale, translateCurrent as t } from "./i18n";
 
 beforeAll(() => {
   // jsdom does not lay out real heights. Stub getBoundingClientRect so
@@ -73,7 +73,7 @@ describe("ContextCompactionNotice", () => {
       />,
     );
 
-    expect(host.querySelector(".context-compaction-title")?.textContent).toBe("Context compacted");
+    expect(host.querySelector(".context-compaction-title")?.textContent).toBe(t("compaction.complete"));
     expect(host.querySelector(".context-compaction-detail")?.textContent).toBe("12k → 3k");
   });
   it("renders the in_progress host with the shimmer-ready label when status is in_progress", () => {
@@ -86,7 +86,7 @@ describe("ContextCompactionNotice", () => {
 
     const label = host.querySelector(".context-compaction-title");
     expect(label).not.toBeNull();
-    expect(label?.textContent).toBe("正在自动压缩上下文");
+    expect(label?.textContent).toBe(t("compaction.autoCompacting"));
     expect(host.querySelector(".process-surface-row.is-live-gray")).not.toBeNull();
     expect(
       host.querySelector(".process-surface-blobatar")?.getAttribute("data-wuu-mascot-activity"),
@@ -95,7 +95,7 @@ describe("ContextCompactionNotice", () => {
     expect(host.querySelector(".context-compaction-black-hole")).toBeNull();
     expect(host.querySelector(".context-compaction-copy")).not.toBeNull();
     expect(host.querySelector(".process-surface-summary-line")?.getAttribute("aria-label")).toBe(
-      "正在自动压缩上下文",
+      t("compaction.autoCompacting"),
     );
     expect(host.querySelector(".turn-event-notice")).toBeNull();
   });
@@ -110,7 +110,7 @@ describe("ContextCompactionNotice", () => {
     );
 
     expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
-      "正在压缩上下文",
+      t("compaction.compacting"),
     );
     expect(host.querySelector(".context-compaction-notice.in_progress .process-surface-row.is-live-gray")).not.toBeNull();
   });
@@ -128,7 +128,7 @@ describe("ContextCompactionNotice", () => {
     expect(aside?.getAttribute("aria-live")).toBeNull();
 
     const title = host.querySelector(".context-compaction-title");
-    expect(title?.textContent).toBe("上下文已压缩");
+    expect(title?.textContent).toBe(t("compaction.complete"));
 
     expect(host.querySelector(".context-compaction-detail")?.textContent).not.toContain("消息");
     expect(host.querySelector(".process-surface-row.is-live-gray")).toBeNull();
@@ -183,7 +183,7 @@ describe("ContextCompactionNotice", () => {
     );
 
     expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
-      "压缩成功",
+      t("compaction.manualComplete"),
     );
     expect(host.querySelector(".context-compaction-detail")?.textContent).not.toContain("消息");
   });
@@ -198,10 +198,10 @@ describe("ContextCompactionNotice", () => {
     );
 
     expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
-      "压缩失败",
+      t("compaction.failed"),
     );
     expect(host.querySelector(".context-compaction-detail")?.textContent).toContain(
-      "当前对话仍保留原上下文",
+      t("compaction.failedDetail"),
     );
     expect(host.querySelector("aside")?.classList.contains("failed")).toBe(true);
     expect(host.querySelector("aside")?.getAttribute("role")).toBe("alert");
@@ -212,7 +212,7 @@ describe("ContextCompactionNotice", () => {
     const aside = host.querySelector("aside.process-surface.context-compaction-notice");
     expect(aside?.classList.contains("completed")).toBe(true);
     expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
-      "上下文已压缩",
+      t("compaction.complete"),
     );
   });
 
@@ -225,7 +225,7 @@ describe("ContextCompactionNotice", () => {
     );
 
     expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
-      "上下文已压缩",
+      t("compaction.complete"),
     );
   });
 
@@ -240,12 +240,23 @@ describe("ContextCompactionNotice", () => {
     );
 
     expect(host.querySelector(".context-compaction-title")?.textContent).toBe(
-      "压缩失败",
+      t("compaction.failed"),
     );
     expect(host.querySelector(".context-compaction-detail")?.textContent).toContain(
-      "当前对话仍保留原上下文",
+      t("compaction.failedDetail"),
     );
-    expect(host.textContent).not.toContain("上下文已压缩");
+    expect(host.textContent).not.toContain(t("compaction.complete"));
+  });
+
+  it.each(["zh-CN", "en-US"] as const)("recovers a legacy failed fresh-window notice in %s", (locale) => {
+    setActiveLocale(locale);
+    const text = "Fresh context could not be installed; active history is unchanged.";
+    const host = mount(<ContextCompactionNotice status="completed" reason="new_context" text={text} summary="not installed" />);
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    expect(host.textContent).toContain(t("compaction.failed"));
+    expect(host.textContent).not.toContain(t("compaction.complete"));
+    expect(host.textContent).not.toContain(text);
+    expect(host.textContent).not.toContain("not installed");
   });
 });
 
@@ -280,30 +291,31 @@ describe("TurnNotice process row", () => {
     expect(aside?.classList.contains("auth")).toBe(false);
   });
 
-  it("shows retry-only progress and counts down in one live process row", () => {
+  it("shows retry progress and counts down in one live process row", () => {
     const retryAtMs = Date.now() + 2_000;
     const host = mount(
-      <StreamStatusNotice
-        status={{
-          text: "429 触发限流 · 第 2/5 次重试 · 2 秒后重试",
-          liveProgress: true,
-          event: {
-            label: "429 触发限流",
-            retryCount: 2,
-            maxRetries: 5,
-            retryAtMs,
-          },
+      <StreamReconnectNotice
+        item={{
+          id: "reconnect-1",
+          type: "stream_reconnect",
+          status: "in_progress",
+          text: "connection reset by peer",
+          reason: "rate_limit",
+          retry_count: 2,
+          max_retries: 5,
+          retry_at_ms: retryAtMs,
         }}
       />,
     );
 
-    const notice = host.querySelector("aside.stream-status-notice");
+    const notice = host.querySelector("aside.stream-reconnect-notice");
     expect(notice?.querySelectorAll(".process-surface-row")).toHaveLength(1);
     expect(notice?.textContent).toContain("429 触发限流");
     expect(notice?.textContent).toContain("第 2/5 次重试");
     expect(notice?.textContent).toContain("2 秒后重试");
-    expect(notice?.textContent).not.toContain("尝试");
-    expect(notice?.textContent).not.toContain("已发送");
+    // The redacted provider cause stays out of the row; the structured
+    // category maps to a localized title instead.
+    expect(notice?.textContent).not.toContain("connection reset");
 
     act(() => {
       vi.advanceTimersByTime(1_000);
@@ -316,4 +328,65 @@ describe("TurnNotice process row", () => {
     expect(notice?.textContent).toContain("正在重试");
     expect(notice?.querySelector(".process-surface-chevron")).toBeNull();
   });
+
+  it("settles a failed stream reconnect row with the final retry count", () => {
+    const host = mount(
+      <StreamReconnectNotice
+        item={{
+          id: "reconnect-1",
+          type: "stream_reconnect",
+          status: "failed",
+          text: "connection reset by peer",
+          reason: "network",
+          retry_count: 5,
+          max_retries: 5,
+        }}
+      />,
+    );
+
+    const notice = host.querySelector("aside.stream-reconnect-notice");
+    expect(notice?.getAttribute("role")).toBe("alert");
+    expect(notice?.textContent).toContain("网络异常");
+    expect(notice?.textContent).toContain("第 5/5 次重试");
+    expect(notice?.textContent).not.toContain("秒后重试");
+  });
+
+  it.each([
+    ["authentication", undefined, "认证失败"],
+    ["rate_limit", undefined, "429 触发限流"],
+    ["quota", undefined, "429 触发限流"],
+    ["overloaded", undefined, "上游过载"],
+    ["server", undefined, "模型服务异常"],
+    ["deadline", undefined, "请求超时"],
+    ["network", undefined, "网络异常"],
+    ["incomplete_stream", undefined, "网络异常"],
+    // App-servers that predate the structured category only carry the
+    // redacted cause text; unmapped causes read as network failures.
+    [undefined, "Authentication failed", "认证失败"],
+    [undefined, "Provider is overloaded", "上游过载"],
+    [undefined, "connection reset by peer", "网络异常"],
+  ])(
+    "titles the reconnect row from category %s or the redacted cause",
+    (reason, text, title) => {
+      const host = mount(
+        <StreamReconnectNotice
+          item={{
+            id: "reconnect-1",
+            type: "stream_reconnect",
+            status: "failed",
+            text,
+            reason,
+            retry_count: 1,
+            max_retries: 1,
+          }}
+        />,
+      );
+
+      const notice = host.querySelector("aside.stream-reconnect-notice");
+      expect(notice?.textContent).toContain(title);
+      if (text) {
+        expect(notice?.textContent).not.toContain(text);
+      }
+    },
+  );
 });

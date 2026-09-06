@@ -1142,10 +1142,14 @@ func (s *Server) settleThreadExecutionForForcedArchive(threadID string) {
 	turnID := strings.TrimSpace(th.currentTurn)
 	turnKind := th.currentTurnKind
 	settledTurnID := ""
+	var reconnectItem *ThreadItem
 	switch {
 	case turnID != "":
 		th.completeTurnLocked(turnID, TurnStatusInterrupted, errArchivedWhileRunning, now, "", "", false)
 		settledTurnID = turnID
+		if item, ok := streamReconnectItemForPersistLocked(th, turnID); ok {
+			reconnectItem = &item
+		}
 	case th.executionLease != nil || th.admissionReserved || th.running:
 		// Stuck without an active turn record: a leaked admission or a
 		// running flag whose runner is gone. Release the execution lease so
@@ -1157,7 +1161,7 @@ func (s *Server) settleThreadExecutionForForcedArchive(threadID string) {
 	if settledTurnID == "" {
 		return
 	}
-	if err := s.persistTurnTerminal(th, settledTurnID, turnKind, TurnStatusInterrupted, errArchivedWhileRunning, now); err != nil {
+	if err := s.persistTurnTerminal(th, settledTurnID, turnKind, TurnStatusInterrupted, errArchivedWhileRunning, now, reconnectItem); err != nil {
 		providers.DebugLogf("persist forced archive settlement for thread %q: %v", threadID, err)
 	}
 }

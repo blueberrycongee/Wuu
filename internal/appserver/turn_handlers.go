@@ -2546,6 +2546,10 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	if accountingTurn.StartedAt != nil {
 		startedAt = *accountingTurn.StartedAt
 	}
+	var reconnectItem *ThreadItem
+	if item, ok := streamReconnectItemForPersistLocked(th, turnID); ok {
+		reconnectItem = &item
+	}
 	th.mu.Unlock()
 
 	completedObservation := pluginhost.AgentTurnCompletedInput{
@@ -2559,7 +2563,7 @@ func (s *Server) runTurnWithRequestContext(ctx context.Context, th *threadState,
 	shouldPersistTerminal := status != TurnStatusCompleted || turnKind == TurnKindUser
 	var terminalErr error
 	if shouldPersistTerminal {
-		terminalErr = s.persistTurnTerminal(th, turnID, turnKind, status, err, now)
+		terminalErr = s.persistTurnTerminal(th, turnID, turnKind, status, err, now, reconnectItem)
 	}
 	if terminalErr != nil {
 		if err != nil {

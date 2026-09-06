@@ -8020,14 +8020,14 @@ func TestServerRetriedInterruptedTurnReloadsCompleted(t *testing.T) {
 	srv := New(rt, &lockedBuffer{})
 	th := newThreadState(sess.ID, nil, rt.ProviderName, rt.Model, rt.RootDir, true, time.Now().UTC())
 	turnID := sess.ID + "-turn-0001"
-	if err := srv.persistTurnTerminal(th, turnID, TurnKindUser, TurnStatusInterrupted, context.Canceled, time.Now().UTC()); err != nil {
+	if err := srv.persistTurnTerminal(th, turnID, TurnKindUser, TurnStatusInterrupted, context.Canceled, time.Now().UTC(), nil); err != nil {
 		t.Fatalf("persist interrupted terminal: %v", err)
 	}
 	if _, err := appendChatMessage(rt.SessionDir, sess.ID, providers.ChatMessage{Role: "assistant", Content: "final answer"}); err != nil {
 		t.Fatalf("append final assistant: %v", err)
 	}
 	completedAt := time.Date(2026, 7, 16, 11, 0, 0, 0, time.UTC)
-	if err := srv.persistTurnTerminal(th, turnID, TurnKindUser, TurnStatusCompleted, nil, completedAt); err != nil {
+	if err := srv.persistTurnTerminal(th, turnID, TurnKindUser, TurnStatusCompleted, nil, completedAt, nil); err != nil {
 		t.Fatalf("persist completed terminal: %v", err)
 	}
 
@@ -8071,7 +8071,7 @@ func TestServerFailedInternalTurnReloadsOnVisibleAggregate(t *testing.T) {
 	srv := New(rt, &lockedBuffer{})
 	th := newThreadState(sess.ID, nil, rt.ProviderName, rt.Model, rt.RootDir, true, time.Now().UTC())
 	failedAt := time.Date(2026, 7, 16, 11, 30, 0, 0, time.UTC)
-	if err := srv.persistTurnTerminal(th, session.NewID(), TurnKindInternal, TurnStatusFailed, errors.New("goal continuation failed"), failedAt); err != nil {
+	if err := srv.persistTurnTerminal(th, session.NewID(), TurnKindInternal, TurnStatusFailed, errors.New("goal continuation failed"), failedAt, nil); err != nil {
 		t.Fatalf("persist internal terminal: %v", err)
 	}
 
@@ -8091,6 +8091,90 @@ func TestServerFailedInternalTurnReloadsOnVisibleAggregate(t *testing.T) {
 	}
 	if len(turn.Items) < 4 || turn.Items[2].Type != ThreadItemAgentMessage || turn.Items[2].Text != "partial continuation" || turn.Items[len(turn.Items)-1].Type != ThreadItemError {
 		t.Fatalf("reloaded internal turn items = %+v", turn.Items)
+	}
+}
+
+func TestServerSettledStreamReconnectSurvivesReload(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	sess, err := session.CreateWithMetadata(rt.SessionDir, "20260716-000005-reconnect", rt.RootDir)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if _, err := appendChatMessage(rt.SessionDir, sess.ID, providers.ChatMessage{Role: "user", Content: "inspect"}); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+	if _, err := appendChatMessage(rt.SessionDir, sess.ID, providers.ChatMessage{Role: "assistant", Content: "partial answer"}); err != nil {
+		t.Fatalf("append partial assistant: %v", err)
+	}
+
+	srv := New(rt, &lockedBuffer{})
+	th := newThreadState(sess.ID, nil, rt.ProviderName, rt.Model, rt.RootDir, true, time.Now().UTC())
+	turnID := sess.ID + "-turn-0001"
+	reconnect := &ThreadItem{
+		Type:       ThreadItemStreamReconnect,
+		Status:     ThreadItemStatusFailed,
+		Text:       "connection reset by peer",
+		Reason:     "network",
+		RetryCount: 5,
+		MaxRetries: 5,
+	}
+	interruptedAt := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	if err := srv.persistTurnTerminal(th, turnID, TurnKindUser, TurnStatusInterrupted, errors.New("stream interrupted"), interruptedAt, reconnect); err != nil {
+		t.Fatalf("persist interrupted terminal with reconnect: %v", err)
+	}
+
+	reloadOut := &lockedBuffer{}
+	reloaded := New(rt, reloadOut)
+	resume := fmt.Sprintf(`{"id":"reload","method":"thread/resume","params":{"session_id":%q}}`, sess.ID)
+	if err := reloaded.handleLine(context.Background(), []byte(resume)); err != nil {
+		t.Fatalf("thread/resume: %v", err)
+	}
+	result := remarshal[ThreadResumeResult](t, responseByID(t, parseOutput(t, reloadOut.String()), "reload")["result"])
+	if len(result.Thread.Turns) != 1 {
+		t.Fatalf("reloaded turns = %+v, want one turn", result.Thread.Turns)
+	}
+	turn := result.Thread.Turns[0]
+	var reconnectItem *ThreadItem
+	for i := range turn.Items {
+		if turn.Items[i].Type == ThreadItemStreamReconnect {
+			reconnectItem = &turn.Items[i]
+		}
+	}
+	if reconnectItem == nil {
+		t.Fatalf("reloaded turn lost the settled reconnect row: %+v", turn.Items)
+	}
+	if reconnectItem.Status != ThreadItemStatusFailed || reconnectItem.Text != "connection reset by peer" || reconnectItem.Reason != "network" || reconnectItem.RetryCount != 5 || reconnectItem.MaxRetries != 5 {
+		t.Fatalf("reloaded reconnect row = %+v, want failed network 5/5", reconnectItem)
+	}
+}
+
+func TestServerCompletedTurnSkipsStreamReconnectRecord(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	sess, err := session.CreateWithMetadata(rt.SessionDir, "20260716-000006-reconnect-skip", rt.RootDir)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	srv := New(rt, &lockedBuffer{})
+	th := newThreadState(sess.ID, nil, rt.ProviderName, rt.Model, rt.RootDir, true, time.Now().UTC())
+	reconnect := &ThreadItem{
+		Type:       ThreadItemStreamReconnect,
+		Status:     ThreadItemStatusFailed,
+		Text:       "connection reset by peer",
+		Reason:     "network",
+		RetryCount: 1,
+		MaxRetries: 5,
+	}
+	if err := srv.persistTurnTerminal(th, sess.ID+"-turn-0001", TurnKindUser, TurnStatusCompleted, nil, time.Now().UTC(), reconnect); err != nil {
+		t.Fatalf("persist completed terminal: %v", err)
+	}
+	metas, err := loadMetaMessages(rt.SessionDir, sess.ID)
+	if err != nil {
+		t.Fatalf("load meta messages: %v", err)
+	}
+	for _, meta := range metas {
+		if meta.Content == streamReconnectHistoryRecord {
+			t.Fatalf("a recovered turn must not persist a reconnect record: %+v", metas)
+		}
 	}
 }
 

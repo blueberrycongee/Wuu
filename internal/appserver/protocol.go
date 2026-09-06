@@ -2178,6 +2178,7 @@ const (
 	ThreadItemReasoning         ThreadItemType = "reasoning"
 	ThreadItemToolCall          ThreadItemType = "tool_call"
 	ThreadItemContextCompaction ThreadItemType = "context_compaction"
+	ThreadItemStreamReconnect   ThreadItemType = "stream_reconnect"
 	ThreadItemError             ThreadItemType = "error"
 )
 
@@ -2232,6 +2233,13 @@ type ThreadItem struct {
 	FinishReason string `json:"finish_reason,omitempty"`
 	StopReason   string `json:"stop_reason,omitempty"`
 	Truncated    bool   `json:"truncated,omitempty"`
+	// Retry counters and the scheduled next-attempt deadline for a
+	// stream_reconnect item. RetryCount is 1-based ("第 n 次重试"), capped by
+	// MaxRetries; RetryAtMS is the unix-ms deadline the renderer counts down
+	// to. All zero for other item types.
+	RetryCount int   `json:"retry_count,omitempty"`
+	MaxRetries int   `json:"max_retries,omitempty"`
+	RetryAtMS  int64 `json:"retry_at_ms,omitempty"`
 }
 
 type ThreadItemImage struct {

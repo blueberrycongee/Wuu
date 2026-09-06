@@ -1621,6 +1621,7 @@ export type ThreadItemType =
   | "reasoning"
   | "tool_call"
   | "context_compaction"
+  | "stream_reconnect"
   | "error";
 export type ThreadItemStatus = "in_progress" | "completed" | "failed";
 
@@ -2269,6 +2270,13 @@ export type ThreadItem = {
   // compacted history the model now runs on. Empty for failed/no-op passes
   // and for other item types.
   summary?: string;
+  // Retry counters and the scheduled next-attempt deadline of a
+  // stream_reconnect item. retry_count is 1-based ("第 n 次重试"), capped by
+  // max_retries; retry_at_ms is the unix-ms deadline the renderer counts
+  // down toward while the item is in_progress.
+  retry_count?: number;
+  max_retries?: number;
+  retry_at_ms?: number;
 };
 
 export type ThreadForkTarget = Pick<ThreadItem, "type" | "seq" | "source_id">;

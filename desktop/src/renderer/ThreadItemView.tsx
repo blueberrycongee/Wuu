@@ -41,6 +41,7 @@ import { streamFieldValue } from "./ThreadItemText";
 import { ToolActivityRow } from "./ToolActivity";
 import {
   ContextCompactionNotice,
+  StreamReconnectNotice,
   TurnNotice,
 } from "./TurnNotice";
 import { userMessageAnchorID } from "./TurnViewHelpers";
@@ -433,6 +434,8 @@ function BuiltInThreadItemView({
           summary={item.summary}
         />
       );
+    case "stream_reconnect":
+      return <StreamReconnectNotice item={item} />;
     case "error":
       return (
         <TurnNotice display={userFacingErrorForMessage(item.error, "turn")} />

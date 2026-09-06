@@ -277,7 +277,12 @@ func abortStartedThreadTurn(th *threadState, started startedThreadTurn, cause er
 
 const turnTerminalHistoryRecord = "turn_terminal"
 
-func (s *Server) persistTurnTerminal(th *threadState, turnID string, kind TurnKind, status TurnStatus, cause error, at time.Time) error {
+// streamReconnectHistoryRecord marks the durable form of a settled
+// stream_reconnect turn item, written only when the turn ends failed or
+// interrupted so the settled row ("网络异常 · 第 n/m 次重试") survives reload.
+const streamReconnectHistoryRecord = "stream_reconnect"
+
+func (s *Server) persistTurnTerminal(th *threadState, turnID string, kind TurnKind, status TurnStatus, cause error, at time.Time, reconnect *ThreadItem) error {
 	if s == nil || s.rt == nil || th == nil || !th.PersistHistory || strings.TrimSpace(turnID) == "" {
 		return nil
 	}
@@ -304,12 +309,29 @@ func (s *Server) persistTurnTerminal(th *threadState, turnID string, kind TurnKi
 	if cause != nil {
 		message = cause.Error()
 	}
-	return session.AppendHistoryRecord(s.rt.SessionDir, th.ID, session.HistoryRecord{
+	if err := session.AppendHistoryRecord(s.rt.SessionDir, th.ID, session.HistoryRecord{
 		Role:           "meta",
 		Content:        turnTerminalHistoryRecord,
 		DisplayContent: message,
 		ClientID:       clientID,
 		StopReason:     string(status),
+		At:             at,
+	}); err != nil {
+		return err
+	}
+	if reconnect == nil || status == TurnStatusCompleted {
+		// Successful turns never persist a reconnect row: a recovery that
+		// worked leaves no trace in history.
+		return nil
+	}
+	return session.AppendHistoryRecord(s.rt.SessionDir, th.ID, session.HistoryRecord{
+		Role:           "meta",
+		Content:        streamReconnectHistoryRecord,
+		DisplayContent: reconnect.Text,
+		Cause:          reconnect.Reason,
+		ClientID:       clientID,
+		RetryCount:     reconnect.RetryCount,
+		MaxRetries:     reconnect.MaxRetries,
 		At:             at,
 	})
 }
@@ -324,7 +346,7 @@ func (s *Server) abortStartedThreadTurnDurably(th *threadState, started startedT
 	}
 	var persistErr error
 	if started.userMsgSeq > 0 {
-		persistErr = s.persistTurnTerminal(th, started.turnID, TurnKindUser, TurnStatusFailed, cause, time.Now().UTC())
+		persistErr = s.persistTurnTerminal(th, started.turnID, TurnKindUser, TurnStatusFailed, cause, time.Now().UTC(), nil)
 	}
 	abortStartedThreadTurn(th, started, cause)
 	if persistErr != nil {

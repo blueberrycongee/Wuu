@@ -22,7 +22,7 @@ import { ThreadItemView } from "./ThreadItemView";
 import { LightweightStreamingText } from "./LightweightStreamingText";
 import { useLiveTextWave } from "./LiveTextWave";
 import { streamFieldValue } from "./ThreadItemText";
-import { TurnEventNotice } from "./TurnNotice";
+import { StreamReconnectNotice, TurnEventNotice } from "./TurnNotice";
 import { turnEventForItem } from "./TurnEvents";
 import {
   clearPausedTurnElapsed,
@@ -630,6 +630,11 @@ function EntryRenderer({
         }
       />
     );
+  }
+  if (item.type === "stream_reconnect") {
+    // The reconnect row renders straight from the item (retry counters and
+    // countdown live on it), not through the generic turn-event projection.
+    return <StreamReconnectNotice item={item} />;
   }
   if (item.type === "context_compaction" || item.type === "error") {
     const event = turnEventForItem(item);

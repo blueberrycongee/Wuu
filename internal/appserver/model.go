@@ -352,6 +352,20 @@ func (th *threadState) finishTurnLocked(turnID string, status TurnStatus, err er
 		th.finishPendingContextCompactionLocked(turnID, ThreadItemStatusFailed, manualContextCompactionFailedText, now)
 		turn = th.ensureTurnLocked(turnID, now)
 	}
+	if item, ok := th.pendingStreamReconnectItemLocked(turnID, now); ok {
+		// A turn that ends with a reconnect still pending freezes the row at
+		// its last reported retry (e.g. interrupted at 2/5). A completed turn
+		// should never carry one — the connected event removes it — but drop
+		// it defensively so a successful recovery leaves no trace.
+		if status == TurnStatusCompleted {
+			th.removeItemLocked(turnID, item.ID, now)
+		} else {
+			item.Status = ThreadItemStatusFailed
+			item.RetryAtMS = 0
+			th.upsertItemLocked(turnID, item, now)
+		}
+		turn = th.ensureTurnLocked(turnID, now)
+	}
 	turn.Status = status
 	if err != nil {
 		turn.Error = &TurnError{Message: err.Error()}
@@ -569,28 +583,48 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 	var out []outboundNotification
 	switch ev.Type {
 	case providers.EventLifecycle:
-		if ev.Lifecycle == nil || ev.Lifecycle.Phase != providers.StreamPhaseReconnecting || !ev.Lifecycle.ResetPartial {
+		if ev.Lifecycle == nil {
 			return nil
 		}
-		removed := make(map[string]struct{})
-		for sourceID, itemID := range th.toolItems {
-			item, ok := th.itemLocked(turnID, itemID)
-			if !ok {
+		switch ev.Lifecycle.Phase {
+		case providers.StreamPhaseReconnecting:
+			out = append(out, th.upsertStreamReconnectItemLocked(turnID, ev.Lifecycle, now)...)
+			if !ev.Lifecycle.ResetPartial {
+				return out
+			}
+			removed := make(map[string]struct{})
+			for sourceID, itemID := range th.toolItems {
+				item, ok := th.itemLocked(turnID, itemID)
+				if !ok {
+					delete(th.toolItems, sourceID)
+					continue
+				}
+				if item.Status != ThreadItemStatusInProgress {
+					continue
+				}
 				delete(th.toolItems, sourceID)
-				continue
+				if _, seen := removed[item.ID]; seen {
+					continue
+				}
+				if th.removeItemLocked(turnID, item.ID, now) {
+					removed[item.ID] = struct{}{}
+					out = append(out, itemRemoved(th.ID, turnID, item.ID, now))
+				}
 			}
-			if item.Status != ThreadItemStatusInProgress {
-				continue
+			return out
+		case providers.StreamPhaseConnected:
+			// A successful (re)connect erases the reconnect row: recovery
+			// leaves no trace in the message flow.
+			if item, ok := th.pendingStreamReconnectItemLocked(turnID, now); ok {
+				if th.removeItemLocked(turnID, item.ID, now) {
+					out = append(out, itemRemoved(th.ID, turnID, item.ID, now))
+				}
 			}
-			delete(th.toolItems, sourceID)
-			if _, seen := removed[item.ID]; seen {
-				continue
-			}
-			if th.removeItemLocked(turnID, item.ID, now) {
-				removed[item.ID] = struct{}{}
-				out = append(out, itemRemoved(th.ID, turnID, item.ID, now))
-			}
+			return out
+		case providers.StreamPhaseFailed:
+			return th.settleStreamReconnectItemLocked(turnID, ev.Lifecycle, now)
 		}
+		return nil
 	case providers.EventContentDelta:
 		if ev.Content == "" {
 			return nil
@@ -765,6 +799,9 @@ func (th *threadState) applyStreamEventLocked(turnID string, ev providers.Stream
 			item.Type = ThreadItemContextCompaction
 		}
 		item.Status = contextCompactionStatusForContent(ev.Content)
+		if ev.CompactPhase == providers.CompactPhaseFailed {
+			item.Status = ThreadItemStatusFailed
+		}
 		item.Text = ev.Content
 		item.Reason = ev.CompactReason
 		item.Summary = ev.CompactSummary
@@ -828,6 +865,73 @@ func contextCompactionStatusForContent(content string) ThreadItemStatus {
 	return ThreadItemStatusCompleted
 }
 
+// pendingStreamReconnectItemLocked finds the turn's in-progress
+// stream_reconnect item, mirroring pendingContextCompactionItemLocked.
+func (th *threadState) pendingStreamReconnectItemLocked(turnID string, now time.Time) (ThreadItem, bool) {
+	turn := th.ensureTurnLocked(turnID, now)
+	for i := len(turn.Items) - 1; i >= 0; i-- {
+		item := turn.Items[i]
+		if item.Type == ThreadItemStreamReconnect && item.Status == ThreadItemStatusInProgress {
+			return item, true
+		}
+	}
+	return ThreadItem{}, false
+}
+
+// upsertStreamReconnectItemLocked creates or refreshes the turn's reconnect
+// row from a reconnecting lifecycle event. The item ID stays stable across
+// retries so the renderer updates one row instead of stacking one per
+// attempt; each update is re-notified as item/started (the renderer upserts
+// on both started and completed).
+func (th *threadState) upsertStreamReconnectItemLocked(turnID string, lc *providers.StreamLifecycle, now time.Time) []outboundNotification {
+	item, pending := th.pendingStreamReconnectItemLocked(turnID, now)
+	if !pending {
+		item = ThreadItem{
+			ID:     th.nextItemIDLocked(turnID),
+			Type:   ThreadItemStreamReconnect,
+			Status: ThreadItemStatusInProgress,
+		}
+	}
+	item.Text = lc.Reason
+	item.Reason = lc.FailureCategory
+	item.RetryCount = lc.RetryCount
+	item.MaxRetries = lc.MaxRetries
+	if lc.RetryIn > 0 {
+		item.RetryAtMS = now.Add(lc.RetryIn).UnixMilli()
+	} else {
+		item.RetryAtMS = 0
+	}
+	th.upsertItemLocked(turnID, item, now)
+	return []outboundNotification{itemStarted(th.ID, turnID, item, now)}
+}
+
+// settleStreamReconnectItemLocked freezes the reconnect row as failed with
+// its final retry counters once the provider reports it gave up.
+func (th *threadState) settleStreamReconnectItemLocked(turnID string, lc *providers.StreamLifecycle, now time.Time) []outboundNotification {
+	item, pending := th.pendingStreamReconnectItemLocked(turnID, now)
+	if !pending {
+		// No reconnect cycle was reported, so there is no row to settle.
+		// Terminal non-retryable failures (replay-unsafe stops, budget
+		// limits, …) keep their ordinary turn-level notice instead.
+		return nil
+	}
+	item.Status = ThreadItemStatusFailed
+	item.Text = lc.Reason
+	item.Reason = lc.FailureCategory
+	if lc.RetryCount > 0 {
+		item.RetryCount = lc.RetryCount
+	}
+	if lc.MaxRetries > 0 {
+		item.MaxRetries = lc.MaxRetries
+	}
+	item.RetryAtMS = 0
+	th.upsertItemLocked(turnID, item, now)
+	if pending {
+		return []outboundNotification{itemCompleted(th.ID, turnID, item, now)}
+	}
+	return []outboundNotification{itemStarted(th.ID, turnID, item, now), itemCompleted(th.ID, turnID, item, now)}
+}
+
 func isCompactFailureNoticeContent(content string) bool {
 	normalized := strings.TrimSpace(strings.TrimLeft(content, "✦*• \t"))
 	lower := strings.ToLower(normalized)
@@ -835,6 +939,7 @@ func isCompactFailureNoticeContent(content string) bool {
 		strings.HasPrefix(lower, "context compaction failed") ||
 		strings.HasPrefix(lower, "proactive compact failed") ||
 		strings.HasPrefix(lower, "context-overflow compact failed") ||
+		strings.HasPrefix(lower, "fresh context could not be installed") ||
 		strings.HasPrefix(lower, "compact failed")
 }
 
@@ -1117,6 +1222,23 @@ func (th *threadState) nextItemIDLocked(turnID string) string {
 	return fmt.Sprintf("%s-item-%d", turnID, th.nextItemIndex)
 }
 
+// streamReconnectItemForPersistLocked returns the turn's latest
+// stream_reconnect item in any status, for terminal persistence. The caller
+// must hold th.mu; unlike ensureTurnLocked it never creates a turn.
+func streamReconnectItemForPersistLocked(th *threadState, turnID string) (ThreadItem, bool) {
+	for _, turn := range th.Turns {
+		if turn.ID != turnID {
+			continue
+		}
+		for i := len(turn.Items) - 1; i >= 0; i-- {
+			if turn.Items[i].Type == ThreadItemStreamReconnect {
+				return turn.Items[i], true
+			}
+		}
+	}
+	return ThreadItem{}, false
+}
+
 func itemStarted(threadID, turnID string, item ThreadItem, at time.Time) outboundNotification {
 	return outboundNotification{
 		method: NotificationItemStarted,
@@ -1303,6 +1425,26 @@ func projectPersistedHistory(threadID string, history []persistedMessage, now ti
 					Error:    message,
 				}, -1, true)
 			}
+			if current != nil && rec.Content == streamReconnectHistoryRecord && (strings.TrimSpace(rec.ClientID) == "" || rec.ClientID == current.ID) {
+				sourceID := streamReconnectItemSourceID(rec.ClientID)
+				items := current.Items[:0]
+				for _, item := range current.Items {
+					if item.Type != ThreadItemStreamReconnect || item.SourceID != sourceID {
+						items = append(items, item)
+					}
+				}
+				current.Items = items
+				appendItem(ThreadItem{
+					ID:         nextItemID(current.ID),
+					SourceID:   sourceID,
+					Type:       ThreadItemStreamReconnect,
+					Status:     ThreadItemStatusFailed,
+					Text:       strings.TrimSpace(rec.DisplayContent),
+					Reason:     rec.Cause,
+					RetryCount: rec.RetryCount,
+					MaxRetries: rec.MaxRetries,
+				}, -1, true)
+			}
 			continue
 		}
 		msg := chatMessageFromPersistedMessage(rec)
@@ -1470,6 +1612,10 @@ func parseTurnTerminalStatus(raw string) (TurnStatus, bool) {
 
 func turnTerminalItemSourceID(clientID string) string {
 	return turnTerminalHistoryRecord + ":" + strings.TrimSpace(clientID)
+}
+
+func streamReconnectItemSourceID(clientID string) string {
+	return streamReconnectHistoryRecord + ":" + strings.TrimSpace(clientID)
 }
 
 func pendingCompactionsContainReason(items []ThreadItem, reason string) bool {

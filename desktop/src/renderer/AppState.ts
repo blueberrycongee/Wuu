@@ -60,12 +60,6 @@ type ComposerDraftState = {
 export type TurnStreamStatus = {
   text: string;
   liveProgress: boolean;
-  event?: {
-    label: string;
-    retryCount: number;
-    maxRetries?: number;
-    retryAtMs?: number;
-  };
 };
 
 function emptyComposerDraft(): ComposerDraftState {
@@ -855,25 +849,17 @@ function reduceNotification(
         providerState,
       );
       const providerStatus = streamStatusFromProviderState(providerState);
-      const stateWithProviderStatus =
+      const stateWithStatus =
         providerStatus === undefined
           ? stateWithTransport
           : setTurnStreamStatus(stateWithTransport, turnID, providerStatus);
-      const lifecycleStatus = streamStatusFromLifecycle(
-        recordValue(event, "lifecycle"),
-        stateWithProviderStatus.turnStreamTransport[turnID],
-      );
-      const stateWithLifecycle =
-        lifecycleStatus === undefined
-          ? stateWithProviderStatus
-          : setTurnStreamStatus(stateWithProviderStatus, turnID, lifecycleStatus);
       if (!digest) {
-        return stateWithLifecycle;
+        return stateWithStatus;
       }
       return {
-        ...stateWithLifecycle,
+        ...stateWithStatus,
         turnRequestContext: withRetainedTurnTelemetry(
-          stateWithLifecycle.turnRequestContext,
+          stateWithStatus.turnRequestContext,
           turnID,
           digest,
         ),
@@ -1048,157 +1034,6 @@ function streamStatusFromProviderState(
   };
 }
 
-function streamStatusFromLifecycle(
-  lifecycle: JsonRecord | undefined,
-  transport: string | undefined,
-): TurnStreamStatus | null | undefined {
-  if (!lifecycle) {
-    return undefined;
-  }
-  const phase = stringValue(lifecycle, "phase");
-  if (phase !== "reconnecting" && phase !== "failed") {
-    return null;
-  }
-  const subject = transportSubject(transportLabel(transport));
-  if (phase === "failed") {
-    const failureCategory = stringValue(lifecycle, "failure_category");
-    const replayReason = stringValue(lifecycle, "replay_reason");
-    if (failureCategory === "replay_unsafe") {
-      return {
-        text:
-          replayReason === "invocation_unknown"
-            ? t("appState.recoveryToolUnknown")
-            : t("appState.recoveryStoppedDuplicateTool", { subject }),
-        liveProgress: false,
-      };
-    }
-    if (failureCategory === "workflow_budget_exceeded") {
-      return {
-        text: t("appState.recoveryBudgetExceeded"),
-        liveProgress: false,
-      };
-    }
-    if (failureCategory === "workflow_cost_indeterminate") {
-      return {
-        text: t("appState.recoveryCostIndeterminate"),
-        liveProgress: false,
-      };
-    }
-    const reason = stringValue(lifecycle, "reason")?.toLowerCase() ?? "";
-    if (
-      reason.includes("automatic replay blocked") ||
-      reason.includes("run it twice")
-    ) {
-      return {
-        text: t("appState.recoveryStoppedDuplicateTool", { subject }),
-        liveProgress: false,
-      };
-    }
-    return {
-      text: t("appState.recoveryFailed", { subject }),
-      liveProgress: false,
-    };
-  }
-  const reportedAttempt = positiveInteger(numberValue(lifecycle, "attempt"));
-  const reportedRetryCount = nonNegativeInteger(numberValue(lifecycle, "retry_count"));
-  const retryCount = Math.max(
-    1,
-    reportedRetryCount ?? retryCountFromAttempt(reportedAttempt),
-  );
-  const reportedMaxAttempts = positiveInteger(numberValue(lifecycle, "max_attempts"));
-  const maxRetries =
-    positiveInteger(numberValue(lifecycle, "max_retries")) ??
-    (reportedMaxAttempts === undefined ? undefined : Math.max(1, reportedMaxAttempts - 1));
-  const progressText = maxRetries
-    ? t("appState.retryProgress", {
-        count: formatCurrentNumber(retryCount),
-        max: formatCurrentNumber(maxRetries),
-      })
-    : t("appState.retryOrdinal", { count: formatCurrentNumber(retryCount) });
-  const retryInMs = positiveInteger(numberValue(lifecycle, "retry_in_ms"));
-  const waitText = retryWaitText(retryInMs);
-  // Name the failure rather than the transport so the row reads as one clear
-  // status: cause, current retry, then the countdown when one is available.
-  const label = reconnectCauseLabel(lifecycle) ?? t("error.networkTitle");
-  const event = {
-    label,
-    retryCount,
-    ...(maxRetries === undefined ? {} : { maxRetries }),
-    ...(retryInMs === undefined ? {} : { retryAtMs: Date.now() + retryInMs }),
-  };
-  return {
-    text: [label, progressText, waitText].filter(Boolean).join(" · "),
-    liveProgress: true,
-    event,
-  };
-}
-
-/**
- * Short localized label for the failure that triggered a stream reconnect,
- * or undefined when nothing specific is known (the chip then falls back to
- * the transport-subject wording). Prefers the lifecycle's structured
- * `failure_category`; the redacted `reason` summary is only consulted for
- * app-servers that predate the category field.
- */
-function reconnectCauseLabel(lifecycle: JsonRecord): string | undefined {
-  const category = stringValue(lifecycle, "failure_category");
-  if (category) {
-    switch (category) {
-      case "authentication":
-        return t("error.authTitle");
-      case "rate_limit":
-      case "quota":
-        return `429 ${t("error.http429")}`;
-      case "overloaded":
-        return t("error.upstreamOverloaded");
-      case "server":
-        return t("error.providerTitle");
-      case "deadline":
-        return t("error.requestTimeout");
-      case "network":
-      case "incomplete_stream":
-        return t("error.networkTitle");
-      default:
-        // A category with no user-meaningful cause (replay_unsafe, budget
-        // limits, context overflow, …) keeps the transport wording.
-        return undefined;
-    }
-  }
-  const reason = stringValue(lifecycle, "reason")?.toLowerCase() ?? "";
-  if (!reason) {
-    return undefined;
-  }
-  if (reason.includes("authentication") || reason.includes("unauthorized")) {
-    return t("error.authTitle");
-  }
-  if (reason.includes("rate limit") || reason.includes("too many requests")) {
-    return `429 ${t("error.http429")}`;
-  }
-  if (reason.includes("overloaded")) {
-    return t("error.upstreamOverloaded");
-  }
-  if (reason.includes("timeout") || reason.includes("deadline")) {
-    return t("error.requestTimeout");
-  }
-  return undefined;
-}
-
-function retryWaitText(retryInMs: number | undefined): string | undefined {
-  if (!retryInMs) {
-    return undefined;
-  }
-  if (retryInMs < 60_000) {
-    const seconds = Math.max(1, Math.ceil(retryInMs / 1_000));
-    return t(seconds === 1 ? "appState.retrySecond" : "appState.retrySeconds", {
-      count: formatCurrentNumber(seconds),
-    });
-  }
-  const minutes = Math.ceil(retryInMs / 60_000);
-  return t(minutes === 1 ? "appState.retryMinute" : "appState.retryMinutes", {
-    count: formatCurrentNumber(minutes),
-  });
-}
-
 function failedTransportLabelFromProviderState(
   providerState: JsonRecord,
 ): string | undefined {
@@ -1251,25 +1086,12 @@ function booleanValue(record: JsonRecord, key: string): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
-function retryCountFromAttempt(attempt: number | undefined): number {
-  const safeAttempt = positiveInteger(attempt);
-  return safeAttempt ? Math.max(1, safeAttempt - 1) : 1;
-}
-
 function positiveInteger(value: number | undefined): number | undefined {
   if (value === undefined) {
     return undefined;
   }
   const integer = Math.floor(value);
   return integer > 0 ? integer : undefined;
-}
-
-function nonNegativeInteger(value: number | undefined): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const integer = Math.floor(value);
-  return integer >= 0 ? integer : undefined;
 }
 
 function releaseSettledTurnStreams(turn: Turn): void {
