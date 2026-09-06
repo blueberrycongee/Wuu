@@ -393,46 +393,43 @@ export function FirstRunOnboarding({
 
         {step === "plugins" ? (
           <div className="onboarding-panel onboarding-plugins-panel">
-            <div className="onboarding-panel-heading">
-              <div>
+            <div className="onboarding-plugins-masthead">
+              <div className="onboarding-plugins-masthead-copy">
                 <h1>{t("onboarding.pluginsTitle")}</h1>
+                <div className="onboarding-presets" aria-label={t("onboarding.presets")}>
+                  {(["minimal", "recommended", "all"] as const).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className={preset === item ? "is-selected" : ""}
+                      aria-pressed={preset === item}
+                      onClick={() => choosePreset(item)}
+                    >
+                      {t(`onboarding.preset.${item}`)}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-
-            <div className="onboarding-plugins-stage">
               <OnboardingMascotStage
                 pluginIDs={wornPluginIDs}
                 previewedPluginID={previewedPluginID}
               />
-              {previewedPluginID ? (
-                <div className="onboarding-plugin-preview-frame">
-                  <div className="onboarding-plugin-preview-toolbar">
-                    <strong>
-                      {bundledPlugins.find((plugin) => plugin.provenance.plugin_id === previewedPluginID)?.name
-                        ?? previewedPluginID}
-                    </strong>
-                    <button type="button" onClick={() => setPreviewedPluginID("")}>
-                      {t("onboarding.preview.close")}
-                    </button>
-                  </div>
-                  <OnboardingPluginPreview pluginID={previewedPluginID} />
-                </div>
-              ) : null}
             </div>
 
-            <div className="onboarding-presets" aria-label={t("onboarding.presets")}> 
-              {(["minimal", "recommended", "all"] as const).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={preset === item ? "is-selected" : ""}
-                  aria-pressed={preset === item}
-                  onClick={() => choosePreset(item)}
-                >
-                  {t(`onboarding.preset.${item}`)}
-                </button>
-              ))}
-            </div>
+            {previewedPluginID ? (
+              <div className="onboarding-plugin-preview-frame">
+                <div className="onboarding-plugin-preview-toolbar">
+                  <strong>
+                    {bundledPlugins.find((plugin) => plugin.provenance.plugin_id === previewedPluginID)?.name
+                      ?? previewedPluginID}
+                  </strong>
+                  <button type="button" onClick={() => setPreviewedPluginID("")}>
+                    {t("onboarding.preview.close")}
+                  </button>
+                </div>
+                <OnboardingPluginPreview pluginID={previewedPluginID} />
+              </div>
+            ) : null}
 
             {inventory === undefined ? (
               <div className="onboarding-loading" role="status">
