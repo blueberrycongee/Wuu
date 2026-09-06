@@ -588,6 +588,15 @@ export function App(): JSX.Element {
     () => window.wuu?.initialOnboardingComplete ?? true,
   );
   const [onboardingPreview, setOnboardingPreview] = useState(false);
+
+  useEffect(() => {
+    if (!onboardingPreview) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOnboardingPreview(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onboardingPreview]);
   const [appMode, setAppMode] = useState<AppMode>("harness");
   const [collaborationSection, setCollaborationSection] = useState<ChannelSection>("rooms");
   const [newRoomRequest, setNewRoomRequest] = useState(0);
@@ -4829,25 +4838,19 @@ export function App(): JSX.Element {
     );
   }
 
-  if (!onboardingComplete || onboardingPreview) {
+  if (!onboardingComplete) {
     return (
       <WuuMascotRuntimeProvider>
         <FirstRunOnboarding
           inventory={state.initialized?.extension_inventory}
           providers={state.initialized?.providers}
           engines={engineInventory}
-          preview={onboardingPreview}
-          onDismissPreview={onboardingPreview ? () => setOnboardingPreview(false) : undefined}
           onUpdateExtensionPackage={updateExtensionPackage}
           onSaveProvider={async (provider, model, connection) => {
             await updateRuntimeSettings(provider, model, undefined, connection, undefined);
           }}
           onUpdateEngines={updateEngineInventory}
           onComplete={async () => {
-            if (onboardingPreview) {
-              setOnboardingPreview(false);
-              return;
-            }
             if (!window.wuu?.completeOnboarding) {
               throw new Error(t("onboarding.finishFailed"));
             }
@@ -5686,6 +5689,33 @@ export function App(): JSX.Element {
           },
         }}
       />
+      {onboardingPreview ? (
+        <div className="onboarding-preview-overlay" onClick={() => setOnboardingPreview(false)}>
+          <div
+            className="onboarding-preview-window"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("sidebar.replayOnboarding")}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <FirstRunOnboarding
+              inventory={state.initialized?.extension_inventory}
+              providers={state.initialized?.providers}
+              engines={engineInventory}
+              preview
+              onDismissPreview={() => setOnboardingPreview(false)}
+              onUpdateExtensionPackage={updateExtensionPackage}
+              onSaveProvider={async (provider, model, connection) => {
+                await updateRuntimeSettings(provider, model, undefined, connection, undefined);
+              }}
+              onUpdateEngines={updateEngineInventory}
+              onComplete={async () => {
+                setOnboardingPreview(false);
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
       </div>
     </ImagePreviewProvider>
     </WuuMascotRuntimeProvider>
