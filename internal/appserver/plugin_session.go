@@ -118,17 +118,36 @@ func (s *Server) createPluginSession(ctx context.Context, pluginID string, param
 	if params.WorkspaceRoot != "" && filepath.Clean(params.WorkspaceRoot) != filepath.Clean(s.rt.RootDir) {
 		return pluginhost.SessionCreateResult{}, errors.New("target workspace root is not served by this app-server")
 	}
-	owner := "plugin:" + pluginID
+	owner := pluginSessionOwner(pluginID, params)
+	if existing, ok, err := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); err != nil {
+		return pluginhost.SessionCreateResult{}, err
+	} else if ok {
+		if th, loadErr := s.ensureThreadLoaded(existing.ID); loadErr == nil && params.ContextSource == pluginhost.SessionContextSourceSeed {
+			if err := s.dispatchHandoffLaunchTurn(th, params); err != nil {
+				providers.DebugLogf("dispatch existing handoff first turn for %q: %v", existing.ID, err)
+			}
+		}
+		return pluginhost.SessionCreateResult{SessionID: existing.ID, Created: false, WorkspaceRoot: existing.CWD}, nil
+	}
+	if launch, ok, err := session.LoadSessionLaunch(s.rt.SessionDir, params.RequestID); err != nil {
+		return pluginhost.SessionCreateResult{}, err
+	} else if ok && launch.TargetSession != "" {
+		workspaceRoot := ""
+		if th, loadErr := s.ensureThreadLoaded(launch.TargetSession); loadErr == nil {
+			workspaceRoot = th.CWD
+			if params.ContextSource == pluginhost.SessionContextSourceSeed {
+				if err := s.dispatchHandoffLaunchTurn(th, params); err != nil {
+					providers.DebugLogf("dispatch existing handoff first turn for %q: %v", launch.TargetSession, err)
+				}
+			}
+		}
+		return pluginhost.SessionCreateResult{SessionID: launch.TargetSession, Created: false, WorkspaceRoot: workspaceRoot}, nil
+	}
 	prepared, err := s.prepareHandoffSeed(ctx, params)
 	if err != nil {
 		return pluginhost.SessionCreateResult{}, err
 	}
 	params = prepared
-	if existing, ok, err := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); err != nil {
-		return pluginhost.SessionCreateResult{}, err
-	} else if ok {
-		return pluginhost.SessionCreateResult{SessionID: existing.ID, Created: false, WorkspaceRoot: existing.CWD}, nil
-	}
 	th, err := s.createPluginSessionThread(owner, params)
 	if err != nil {
 		if existing, ok, findErr := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); findErr == nil && ok {
@@ -776,7 +795,7 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		selection.Variant = resolved.Runtime.Variant
 		selection.Effort = resolved.Runtime.Effort
 	}
-	source := owner
+	source := pluginSessionSource(owner, params)
 	workspaceID := strings.TrimSpace(s.rt.WorkspaceID)
 	if len(history) == 0 {
 		history = make([]providers.ChatMessage, 0, 1)
@@ -862,6 +881,13 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 				launch.Kind = params.Launch.Kind
 			}
 			launch.Input.Intent = params.Launch.Intent
+			launch.Input.Prompt = strings.TrimSpace(params.Launch.Prompt)
+		}
+		if launch.Input.Prompt == "" {
+			launch.Input.Prompt = strings.TrimSpace(launch.Input.Intent)
+		}
+		if launch.Input.Prompt != "" {
+			records = append(records, historyRecordFromPersistedMessage(persistedMessageFromChatMessage(handoffLaunchUserMessage(params.RequestID, launch.Input.Prompt))))
 		}
 	}
 	created, err := session.CreateInitializedWithLaunch(s.rt.SessionDir, initial, records, seed, launch)
@@ -896,16 +922,96 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 	s.mu.Lock()
 	s.threads[id] = th
 	s.mu.Unlock()
+	if params.ContextSource == pluginhost.SessionContextSourceSeed {
+		if err := s.dispatchHandoffLaunchTurn(th, params); err != nil {
+			return nil, err
+		}
+	}
 	th.mu.Lock()
 	thread := th.snapshotLocked()
 	th.mu.Unlock()
-	if params.Visibility == pluginhost.SessionVisibilityUser {
+	if params.Visibility == pluginhost.SessionVisibilityUser && params.ContextSource != pluginhost.SessionContextSourceSeed {
 		if err := s.notifyThreadStarted(thread); err != nil {
 			providers.DebugLogf("notify plugin-created thread %q: %v", id, err)
 		}
 	}
 	s.pruneCachedThreads(id)
 	return th, nil
+}
+
+func pluginSessionOwner(pluginID string, params pluginhost.SessionCreateParams) string {
+	if params.ContextSource == pluginhost.SessionContextSourceSeed && params.Visibility == pluginhost.SessionVisibilityUser {
+		return "user"
+	}
+	return "plugin:" + pluginID
+}
+
+func pluginSessionSource(owner string, params pluginhost.SessionCreateParams) string {
+	if params.ContextSource == pluginhost.SessionContextSourceSeed && params.Seed != nil {
+		if producer := strings.TrimSpace(params.Seed.Provenance.Producer); producer != "" {
+			return producer
+		}
+	}
+	return owner
+}
+
+func handoffLaunchUserMessage(requestID, prompt string) providers.ChatMessage {
+	return providers.ChatMessage{
+		Role:     "user",
+		Content:  strings.TrimSpace(prompt),
+		ClientID: pluginSessionRequestClientID("handoff", requestID),
+		Origin:   "user",
+		Cause:    session.SessionLaunchKindHandoff,
+	}
+}
+
+func handoffLaunchTurnAlreadyStarted(th *threadState, clientID string) bool {
+	if th == nil {
+		return false
+	}
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return false
+	}
+	th.mu.Lock()
+	defer th.mu.Unlock()
+	if th.running {
+		return true
+	}
+	sawUser := false
+	for _, existing := range th.History {
+		if strings.TrimSpace(existing.ClientID) == clientID {
+			sawUser = true
+			continue
+		}
+		if sawUser && strings.EqualFold(strings.TrimSpace(existing.Role), "assistant") && !existing.Hidden {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) dispatchHandoffLaunchTurn(th *threadState, params pluginhost.SessionCreateParams) error {
+	if th == nil || params.Launch == nil {
+		return nil
+	}
+	prompt := strings.TrimSpace(params.Launch.Prompt)
+	if prompt == "" {
+		prompt = strings.TrimSpace(params.Launch.Intent)
+	}
+	if prompt == "" {
+		return nil
+	}
+	msg := handoffLaunchUserMessage(params.RequestID, prompt)
+	if handoffLaunchTurnAlreadyStarted(th, msg.ClientID) {
+		return nil
+	}
+	permissions, err := s.resolveThreadTurnPermissions(th, nil)
+	if err != nil {
+		return err
+	}
+	_, _, err = s.startPluginSubmittedTurn(context.Background(), th, msg, turnRuntimeSnapshot{}.withPermissions(permissions))
+	return err
 }
 
 func (s *Server) startPluginSubmittedTurn(ctx context.Context, th *threadState, msg providers.ChatMessage, snapshot turnRuntimeSnapshot) (startedThreadTurn, bool, error) {

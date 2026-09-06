@@ -210,6 +210,7 @@ func (s *Server) startHandoffThread(selection session.RuntimeSelection, params T
 			Revision: params.Handoff.Revision,
 			Kind:     session.SessionLaunchKindHandoff,
 			Intent:   strings.TrimSpace(params.Handoff.Intent),
+			Prompt:   strings.TrimSpace(params.Handoff.Intent),
 		},
 	}
 	result, err := s.createPluginSession(context.Background(), "handoff", createParams)

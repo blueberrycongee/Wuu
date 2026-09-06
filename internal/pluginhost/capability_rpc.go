@@ -297,6 +297,7 @@ type SessionLaunchParams struct {
 	Revision int    `json:"revision,omitempty"`
 	Kind     string `json:"kind,omitempty"`
 	Intent   string `json:"intent,omitempty"`
+	Prompt   string `json:"prompt,omitempty"`
 }
 
 type SessionCreateResult struct {

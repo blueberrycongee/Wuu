@@ -633,3 +633,148 @@ func TestPluginTurnLifecycleOutboxDropsInactivePluginEvents(t *testing.T) {
 		t.Fatalf("inactive plugin lifecycle events were not dropped: %+v", entries)
 	}
 }
+
+type handoffBriefProvider struct{}
+
+func (handoffBriefProvider) CompactionKey() string   { return "notecompaction" }
+func (handoffBriefProvider) CompactionPriority() int { return 10 }
+func (handoffBriefProvider) CompactionNotesEnabled() bool {
+	return true
+}
+func (handoffBriefProvider) Compact(_ context.Context, _ string, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+	return messages, nil
+}
+func (handoffBriefProvider) PlanCompactionNote(_ context.Context, _ string, _, _ []providers.ChatMessage, _ agent.CompactionNote) (agent.CompactionNotePlan, error) {
+	return agent.CompactionNotePlan{Prompt: "update the note", MaxBytes: 24_000}, nil
+}
+func (handoffBriefProvider) PlanHandoffBrief(_ context.Context, _ string, _ []providers.ChatMessage, _ agent.CompactionNote, _, _ string, _ int) (agent.CompactionNotePlan, error) {
+	return agent.CompactionNotePlan{Prompt: "write the brief", MaxBytes: 24_000}, nil
+}
+func (handoffBriefProvider) CompactWithNote(_ context.Context, _ string, messages []providers.ChatMessage, _ agent.CompactionNote) (agent.CompactionNoteReplacement, error) {
+	return agent.CompactionNoteReplacement{Messages: messages, CoveredMessages: len(messages)}, nil
+}
+
+func TestHandoffThreadStartUsesTargetModelWithoutCopyingSourceHistory(t *testing.T) {
+	client := &fakeClient{
+		responses: []providers.ChatResponse{
+			providersResponse("# Handoff brief\nContinue from the verified performance fix."),
+			providersResponse("starting from the brief"),
+		},
+	}
+	rt := newTestRuntime(t, client)
+	rt.PluginSessionRouter = runtime.NewPluginSessionRouter()
+	rt.StreamRunner.CompactionRegistry = agent.NewCompactionRegistry()
+	rt.StreamRunner.CompactionRegistry.Register(handoffBriefProvider{})
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	t.Cleanup(srv.Close)
+
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"source","method":"thread/start"}`)); err != nil {
+		t.Fatalf("source thread/start: %v", err)
+	}
+	sourceID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "source")["result"]).Thread.ID
+	if err := session.AppendHistoryRecords(rt.SessionDir, sourceID, []session.HistoryRecord{
+		{Role: "user", Content: "SENTINEL-SOURCE-ONLY"},
+		{Role: "assistant", Content: "investigation notes"},
+	}); err != nil {
+		t.Fatalf("append source history: %v", err)
+	}
+
+	payload, err := json.Marshal(map[string]any{
+		"id":     "handoff",
+		"method": "thread/start",
+		"params": ThreadStartParams{
+			Provider: "fake-provider",
+			Model:    "fake-model",
+			Handoff: &ThreadHandoffParams{
+				RequestID:       "handoff-1",
+				Revision:        1,
+				ParentSessionID: sourceID,
+				Intent:          "reconsider the visual layout",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.handleLine(context.Background(), payload); err != nil {
+		t.Fatalf("handoff thread/start: %v", err)
+	}
+	started := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "handoff")["result"]).Thread
+	if started.ModelProvider != "fake-provider" || started.Model != "fake-model" || started.Source != "desktop:handoff" {
+		t.Fatalf("handoff thread = %+v", started)
+	}
+	waitForTurnCompletedForThread(t, out, started.ID)
+
+	page, err := session.ReadHistoryPage(context.Background(), rt.SessionDir, started.ID, 1, 20)
+	if err != nil {
+		t.Fatalf("read target history: %v", err)
+	}
+	var sawSeed, sawIntent, sawSentinel bool
+	for _, record := range page.Records {
+		if record.Content == "SENTINEL-SOURCE-ONLY" {
+			sawSentinel = true
+		}
+		if record.Name == "context_seed" && strings.Contains(record.Content, "Handoff brief") {
+			sawSeed = true
+		}
+		if record.Role == "user" && record.Content == "reconsider the visual layout" {
+			sawIntent = true
+		}
+	}
+	if sawSentinel || !sawSeed || !sawIntent {
+		t.Fatalf("target history = %+v", page.Records)
+	}
+	metadata, ok, err := session.Find(rt.SessionDir, started.ID)
+	if err != nil || !ok || metadata.Owner != "user" || metadata.Provider != "fake-provider" || metadata.Model != "fake-model" {
+		t.Fatalf("target metadata = %+v ok=%v err=%v", metadata, ok, err)
+	}
+
+	client.mu.Lock()
+	requests := append([]providers.ChatRequest(nil), client.requests...)
+	client.mu.Unlock()
+	var firstTurn *providers.ChatRequest
+	for index := range requests {
+		req := &requests[index]
+		for _, msg := range req.Messages {
+			if msg.Role == "user" && strings.Contains(msg.Content, "reconsider the visual layout") && msg.Cause == session.SessionLaunchKindHandoff {
+				firstTurn = req
+			}
+		}
+	}
+	if firstTurn == nil {
+		t.Fatalf("missing destination first-turn request: %+v", requests)
+	}
+	if firstTurn.Model != "fake-model" {
+		t.Fatalf("first turn request = %+v", firstTurn)
+	}
+	var sawBrief, sawLaunch bool
+	for _, msg := range firstTurn.Messages {
+		if strings.Contains(msg.Content, "SENTINEL-SOURCE-ONLY") {
+			t.Fatalf("first turn copied source history: %+v", firstTurn.Messages)
+		}
+		if strings.Contains(msg.Content, "Handoff brief") {
+			sawBrief = true
+		}
+		if msg.Role == "user" && strings.Contains(msg.Content, "reconsider the visual layout") {
+			sawLaunch = true
+		}
+	}
+	if !sawBrief || !sawLaunch {
+		t.Fatalf("first turn messages = %+v", firstTurn.Messages)
+	}
+
+	if err := srv.handleLine(context.Background(), payload); err != nil {
+		t.Fatalf("idempotent handoff thread/start: %v", err)
+	}
+	again := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "handoff")["result"]).Thread
+	if again.ID != started.ID {
+		t.Fatalf("idempotent target = %q, want %q", again.ID, started.ID)
+	}
+	client.mu.Lock()
+	requestCount := len(client.requests)
+	client.mu.Unlock()
+	if requestCount != len(requests) {
+		t.Fatalf("idempotent retry issued extra provider requests: before=%d after=%d", len(requests), requestCount)
+	}
+}
