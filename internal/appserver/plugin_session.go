@@ -78,11 +78,24 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 	if params.Visibility != pluginhost.SessionVisibilityUser && params.Visibility != pluginhost.SessionVisibilityPlugin {
 		return pluginhost.SessionCreateResult{}, errors.New("visibility must be user or plugin")
 	}
-	if params.ContextSource != pluginhost.SessionContextFresh && params.ContextSource != pluginhost.SessionContextFork {
-		return pluginhost.SessionCreateResult{}, errors.New("context_source must be fresh or fork")
+	if params.ContextSource != pluginhost.SessionContextFresh && params.ContextSource != pluginhost.SessionContextFork && params.ContextSource != pluginhost.SessionContextSourceSeed {
+		return pluginhost.SessionCreateResult{}, errors.New("context_source must be fresh, fork, or seed")
 	}
 	if params.ContextSource == pluginhost.SessionContextFork && params.ParentSessionID == "" {
 		return pluginhost.SessionCreateResult{}, errors.New("parent_session_id is required for fork context")
+	}
+	if params.ContextSource == pluginhost.SessionContextSourceSeed {
+		if params.Seed == nil {
+			return pluginhost.SessionCreateResult{}, errors.New("seed is required for seed context")
+		}
+		if params.Instructions != "" {
+			return pluginhost.SessionCreateResult{}, errors.New("seed initialization cannot use instructions")
+		}
+		if params.Provider == "" || params.Model == "" {
+			return pluginhost.SessionCreateResult{}, errors.New("seed initialization requires provider and model")
+		}
+	} else if params.Seed != nil {
+		return pluginhost.SessionCreateResult{}, errors.New("seed is only valid when context_source is seed")
 	}
 	if params.Workspace == "" {
 		params.Workspace = "shared"
@@ -728,7 +741,23 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		history = cloneForkHistory(parent.history)
 		fork = session.ForkMetadata{ForkedFromID: params.ParentSessionID}
 	}
+	if params.ContextSource == pluginhost.SessionContextSourceSeed && params.ParentSessionID != "" {
+		parent, loadErr := s.loadPersistedThreadSnapshot(params.ParentSessionID)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		threadCWD = firstNonEmpty(parent.metadata.CWD, threadCWD)
+	}
 	selection := s.currentSessionRuntimeSelection()
+	if params.Provider != "" || params.Model != "" {
+		selection.Provider = params.Provider
+		selection.Model = params.Model
+		selection.Variant = params.Variant
+		selection.Effort = params.Effort
+		if params.PermissionMode != "" {
+			selection.PermissionMode = params.PermissionMode
+		}
+	}
 	if params.ModelAlias != "" {
 		resolved := s.resolveSubagentModelAlias(params.ModelAlias)
 		if resolved.Err != nil {
@@ -747,11 +776,13 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 	if len(history) == 0 {
 		history = make([]providers.ChatMessage, 0, 1)
 	}
-	if prompt := strings.TrimSpace(s.rt.StreamRunner.SystemPrompt); prompt != "" && len(history) == 0 {
-		history = append(history, providers.ChatMessage{Role: "system", Content: prompt})
-	}
-	if params.Instructions != "" {
-		history = applyPluginSessionInstructions(history, params.Instructions)
+	if params.ContextSource != pluginhost.SessionContextSourceSeed {
+		if prompt := strings.TrimSpace(s.rt.StreamRunner.SystemPrompt); prompt != "" && len(history) == 0 {
+			history = append(history, providers.ChatMessage{Role: "system", Content: prompt})
+		}
+		if params.Instructions != "" {
+			history = applyPluginSessionInstructions(history, params.Instructions)
+		}
 	}
 	toolPolicyJSON := ""
 	if params.ToolPolicy != nil {
@@ -808,7 +839,27 @@ func (s *Server) createPluginSessionThread(owner string, params pluginhost.Sessi
 		}
 		records = historyRecordsFromChatMessages(history)
 	}
-	created, err := session.CreateInitialized(s.rt.SessionDir, initial, records)
+	var seed session.ContextSeed
+	var launch session.SessionLaunchRecord
+	if params.ContextSource == pluginhost.SessionContextSourceSeed {
+		seed = contextSeedFromParams(*params.Seed)
+		launch = session.SessionLaunchRecord{
+			RequestID: params.RequestID, Revision: 1, Kind: session.SessionLaunchKindHandoff,
+			SourceSession: seed.Source.SessionID, SourceCutoff: seed.Source.ThroughSeq,
+			Owner: owner, Producer: seed.Provenance.Producer,
+			Runtime: session.SessionRuntimeSelection{Provider: selection.Provider, Model: selection.Model, Variant: selection.Variant, Effort: selection.Effort, PermissionMode: selection.PermissionMode},
+		}
+		if params.Launch != nil {
+			if params.Launch.Revision > 0 {
+				launch.Revision = params.Launch.Revision
+			}
+			if params.Launch.Kind != "" {
+				launch.Kind = params.Launch.Kind
+			}
+			launch.Input.Intent = params.Launch.Intent
+		}
+	}
+	created, err := session.CreateInitializedWithLaunch(s.rt.SessionDir, initial, records, seed, launch)
 	if err != nil {
 		if artifactStateDir != "" {
 			_ = os.RemoveAll(statepath.SessionArtifactDir(artifactStateDir, id))
@@ -960,4 +1011,31 @@ func pluginTurnRequestContext(input []pluginhost.SessionContextBlock) ([]agent.C
 		})
 	}
 	return agent.RequestOnlyContextBlocks(blocks), nil
+}
+
+func contextSeedFromParams(params pluginhost.SessionContextSeed) session.ContextSeed {
+	seed := session.ContextSeed{
+		Version: params.Version,
+		ID:      strings.TrimSpace(params.ID),
+		Body:    params.Body,
+		Source:  session.HistorySnapshot{SessionID: strings.TrimSpace(params.Source.SessionID), ThroughSeq: params.Source.ThroughSeq},
+		Provenance: session.ContextSeedProvenance{
+			Producer: strings.TrimSpace(params.Provenance.Producer), SourceModel: strings.TrimSpace(params.Provenance.SourceModel), CreatedAt: strings.TrimSpace(params.Provenance.CreatedAt),
+		},
+	}
+	for _, reference := range params.References {
+		seed.References = append(seed.References, session.ContextSeedReference{
+			ID:    strings.TrimSpace(reference.ID),
+			Label: strings.TrimSpace(reference.Label),
+			History: session.HistoryRef{
+				Snapshot: session.HistorySnapshot{SessionID: strings.TrimSpace(reference.History.Snapshot.SessionID), ThroughSeq: reference.History.Snapshot.ThroughSeq},
+				StartSeq: reference.History.StartSeq,
+				EndSeq:   reference.History.EndSeq,
+			},
+		})
+	}
+	for _, artifact := range params.Artifacts {
+		seed.Artifacts = append(seed.Artifacts, session.ContextSeedArtifact{ID: strings.TrimSpace(artifact.ID), Label: strings.TrimSpace(artifact.Label)})
+	}
+	return seed
 }

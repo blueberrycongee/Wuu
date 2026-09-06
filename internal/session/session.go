@@ -52,6 +52,7 @@ type Session struct {
 	ParentID              string    `json:"parent_id,omitempty"`
 	ContextSource         string    `json:"context_source,omitempty"`
 	CreationRequestID     string    `json:"creation_request_id,omitempty"`
+	SeedID                string    `json:"seed_id,omitempty"`
 	Provider              string    `json:"provider,omitempty"`
 	Model                 string    `json:"model,omitempty"`
 	Variant               string    `json:"variant,omitempty"`
@@ -257,6 +258,10 @@ func createWithMetadataAndWorktree(sessDir, id, cwd string, fork ForkMetadata, w
 // history in one transaction. Callers must resolve external resources and all
 // pure validation before invoking it.
 func CreateInitialized(sessDir string, sess Session, records []HistoryRecord) (*Session, error) {
+	return CreateInitializedWithLaunch(sessDir, sess, records, ContextSeed{}, SessionLaunchRecord{})
+}
+
+func CreateInitializedWithLaunch(sessDir string, sess Session, records []HistoryRecord, seed ContextSeed, launch SessionLaunchRecord) (*Session, error) {
 	sess.ID = strings.TrimSpace(sess.ID)
 	if sess.ID == "" {
 		sess.ID = NewID()
@@ -283,11 +288,52 @@ func CreateInitialized(sessDir string, sess Session, records []HistoryRecord) (*
 		return nil, fmt.Errorf("begin initialized session create: %w", err)
 	}
 	defer tx.Rollback()
+	if strings.TrimSpace(launch.RequestID) != "" {
+		existing, ok, err := loadSessionLaunchTx(tx, launch.RequestID)
+		if err != nil {
+			return nil, err
+		}
+		if ok && existing.Status == SessionLaunchCommitted && existing.TargetSession != "" {
+			if existing.Revision != launch.Revision || existing.Runtime != launch.Runtime || existing.SourceSession != launch.SourceSession || existing.SourceCutoff != launch.SourceCutoff {
+				return nil, fmt.Errorf("%w: request %q", ErrSessionLaunchConflict, launch.RequestID)
+			}
+			loaded, found, err := findSessionTx(tx, existing.TargetSession)
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				if err := tx.Commit(); err != nil {
+					return nil, fmt.Errorf("commit initialized session create: %w", err)
+				}
+				return &loaded, nil
+			}
+		}
+	}
+	if seed.Version != 0 || strings.TrimSpace(seed.Body) != "" {
+		written, err := putContextSeedTx(tx, seed)
+		if err != nil {
+			return nil, err
+		}
+		seed = written
+		sess.SeedID = seed.ID
+		if strings.TrimSpace(sess.ContextSource) == "" {
+			sess.ContextSource = "seed"
+		}
+		records = append([]HistoryRecord{seedHistoryRecord(seed)}, records...)
+	}
 	if err := insertSessionTx(tx, sess); err != nil {
 		return nil, err
 	}
 	for index, record := range records {
 		if err := insertHistoryRecordTx(tx, sess.ID, index+1, record); err != nil {
+			return nil, err
+		}
+	}
+	if strings.TrimSpace(launch.RequestID) != "" {
+		launch.TargetSession = sess.ID
+		launch.SeedID = sess.SeedID
+		launch.Status = SessionLaunchCommitted
+		if _, err := putSessionLaunchTx(tx, launch); err != nil {
 			return nil, err
 		}
 	}
@@ -1489,6 +1535,38 @@ func migrateSchema(db *sql.DB) error {
 			updated_at    TEXT NOT NULL,
 			FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS context_seeds (
+			id TEXT PRIMARY KEY,
+			version INTEGER NOT NULL,
+			body TEXT NOT NULL,
+			source_session_id TEXT NOT NULL,
+			source_through_seq INTEGER NOT NULL,
+			references_json TEXT NOT NULL DEFAULT '[]',
+			artifacts_json TEXT NOT NULL DEFAULT '[]',
+			provenance_json TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY(source_session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS session_launches (
+			request_id TEXT PRIMARY KEY,
+			revision INTEGER NOT NULL,
+			kind TEXT NOT NULL,
+			status TEXT NOT NULL,
+			source_session_id TEXT NOT NULL DEFAULT '',
+			source_cutoff_seq INTEGER NOT NULL DEFAULT 0,
+			seed_id TEXT NOT NULL DEFAULT '',
+			target_session_id TEXT NOT NULL DEFAULT '',
+			initial_turn_id TEXT NOT NULL DEFAULT '',
+			owner TEXT NOT NULL DEFAULT '',
+			producer TEXT NOT NULL DEFAULT '',
+			runtime_json TEXT NOT NULL DEFAULT '{}',
+			input_json TEXT NOT NULL DEFAULT '{}',
+			error TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			committed_at TEXT
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_session_launches_target ON session_launches(target_session_id) WHERE target_session_id <> ''`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
@@ -1691,6 +1769,9 @@ WHERE workflow_id = ''`); err != nil {
 		return fmt.Errorf("migrate sessions database: %w", err)
 	}
 	if err := addColumnIfMissing(db, "inference_journal_runtimes", "pid", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "sessions", "seed_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	return nil

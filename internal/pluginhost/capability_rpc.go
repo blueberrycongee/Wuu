@@ -184,10 +184,10 @@ const (
 
 	// Sessions. Creation and input delivery are separate so ownership,
 	// visibility, provenance, and idempotency remain explicit.
-	HostServiceSessionCreate  HostServiceMethod = "host.session.create"
-	HostServiceSessionSend    HostServiceMethod = "host.session.send"
-	HostServiceSessionList    HostServiceMethod = "host.session.list"
-	HostServiceSessionCancel  HostServiceMethod = "host.session.cancel"
+	HostServiceSessionCreate        HostServiceMethod = "host.session.create"
+	HostServiceSessionSend          HostServiceMethod = "host.session.send"
+	HostServiceSessionList          HostServiceMethod = "host.session.list"
+	HostServiceSessionCancel        HostServiceMethod = "host.session.cancel"
 	HostServiceSessionInspect       HostServiceMethod = "host.session.inspect"
 	HostServiceSessionHistoryRead   HostServiceMethod = "host.session.history.read"
 	HostServiceSessionHistorySearch HostServiceMethod = "host.session.history.search"
@@ -217,6 +217,7 @@ const (
 	SessionListScopeShared         = "shared"
 	SessionContextFresh            = "fresh"
 	SessionContextFork             = "fork"
+	SessionContextSourceSeed       = "seed"
 	SessionInputPlugin             = "plugin"
 	SessionPresentationQueryBubble = "query_bubble"
 	SessionIfRunningQueue          = "queue"
@@ -234,17 +235,68 @@ type SessionToolPolicy struct {
 }
 
 type SessionCreateParams struct {
-	RequestID       string             `json:"request_id"`
-	Name            string             `json:"name,omitempty"`
-	Visibility      string             `json:"visibility"`
-	ParentSessionID string             `json:"parent_session_id,omitempty"`
-	ContextSource   string             `json:"context_source"`
-	Workspace       string             `json:"workspace,omitempty"`
-	WorkspaceID     string             `json:"workspace_id,omitempty"`
-	WorkspaceRoot   string             `json:"workspace_root,omitempty"`
-	ModelAlias      string             `json:"model_alias,omitempty"`
-	Instructions    string             `json:"instructions,omitempty"`
-	ToolPolicy      *SessionToolPolicy `json:"tool_policy,omitempty"`
+	RequestID       string               `json:"request_id"`
+	Name            string               `json:"name,omitempty"`
+	Visibility      string               `json:"visibility"`
+	ParentSessionID string               `json:"parent_session_id,omitempty"`
+	ContextSource   string               `json:"context_source"`
+	Workspace       string               `json:"workspace,omitempty"`
+	WorkspaceID     string               `json:"workspace_id,omitempty"`
+	WorkspaceRoot   string               `json:"workspace_root,omitempty"`
+	ModelAlias      string               `json:"model_alias,omitempty"`
+	Provider        string               `json:"provider,omitempty"`
+	Model           string               `json:"model,omitempty"`
+	Variant         string               `json:"variant,omitempty"`
+	Effort          string               `json:"effort,omitempty"`
+	PermissionMode  string               `json:"permission_mode,omitempty"`
+	Instructions    string               `json:"instructions,omitempty"`
+	ToolPolicy      *SessionToolPolicy   `json:"tool_policy,omitempty"`
+	Seed            *SessionContextSeed  `json:"seed,omitempty"`
+	Launch          *SessionLaunchParams `json:"launch,omitempty"`
+}
+
+type SessionContextSeed struct {
+	Version    int                    `json:"version"`
+	ID         string                 `json:"id,omitempty"`
+	Body       string                 `json:"body"`
+	Source     SessionHistorySnapshot `json:"source"`
+	References []SessionHistoryRef    `json:"references,omitempty"`
+	Artifacts  []SessionSeedArtifact  `json:"artifacts,omitempty"`
+	Provenance SessionSeedProvenance  `json:"provenance"`
+}
+
+type SessionHistorySnapshot struct {
+	SessionID  string `json:"session_id"`
+	ThroughSeq int    `json:"through_seq"`
+}
+
+type SessionHistoryRef struct {
+	ID      string              `json:"id"`
+	Label   string              `json:"label,omitempty"`
+	History SessionHistoryRange `json:"history"`
+}
+
+type SessionHistoryRange struct {
+	Snapshot SessionHistorySnapshot `json:"snapshot"`
+	StartSeq int                    `json:"start_seq"`
+	EndSeq   int                    `json:"end_seq"`
+}
+
+type SessionSeedArtifact struct {
+	ID    string `json:"id"`
+	Label string `json:"label,omitempty"`
+}
+
+type SessionSeedProvenance struct {
+	Producer    string `json:"producer"`
+	SourceModel string `json:"source_model,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+}
+
+type SessionLaunchParams struct {
+	Revision int    `json:"revision,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	Intent   string `json:"intent,omitempty"`
 }
 
 type SessionCreateResult struct {
