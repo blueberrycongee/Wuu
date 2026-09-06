@@ -48,7 +48,7 @@ func (s *Server) notifyPluginTurnDiscarded(threadID string, entry queuedTurn, re
 	})
 }
 
-func (s *Server) createPluginSession(_ context.Context, pluginID string, params pluginhost.SessionCreateParams) (pluginhost.SessionCreateResult, error) {
+func (s *Server) createPluginSession(ctx context.Context, pluginID string, params pluginhost.SessionCreateParams) (pluginhost.SessionCreateResult, error) {
 	if s == nil || s.closed.Load() {
 		return pluginhost.SessionCreateResult{}, errServerClosed
 	}
@@ -119,6 +119,11 @@ func (s *Server) createPluginSession(_ context.Context, pluginID string, params 
 		return pluginhost.SessionCreateResult{}, errors.New("target workspace root is not served by this app-server")
 	}
 	owner := "plugin:" + pluginID
+	prepared, err := s.prepareHandoffSeed(ctx, params)
+	if err != nil {
+		return pluginhost.SessionCreateResult{}, err
+	}
+	params = prepared
 	if existing, ok, err := session.FindManagedByRequest(s.rt.SessionDir, owner, params.RequestID); err != nil {
 		return pluginhost.SessionCreateResult{}, err
 	} else if ok {

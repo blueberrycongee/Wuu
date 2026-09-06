@@ -398,6 +398,27 @@ func (p *pluginCompactionProvider) PlanCompactionNote(ctx context.Context, model
 	}, nil
 }
 
+func (p *pluginCompactionProvider) PlanHandoffBrief(ctx context.Context, model string, messages []providers.ChatMessage, previous agent.CompactionNote, intent, sourceSessionID string, sourceThroughSeq int) (agent.CompactionNotePlan, error) {
+	if p.capability.Descriptor.Version < 2 {
+		return agent.CompactionNotePlan{}, agent.ErrCompactionNoteUnsupported
+	}
+	output := pluginhost.CompactionOutput{}
+	if err := p.host.InvokeCapability(ctx, p.capability, pluginhost.CompactionInput{
+		Operation: "handoff_brief_plan", Model: model, Messages: providers.CloneChatMessages(messages),
+		PreviousNote: previous.Markdown, PreviousCoveredMessages: previous.CoveredMessages,
+		Intent: intent, SourceSessionID: sourceSessionID, SourceThroughSeq: sourceThroughSeq,
+	}, &output); err != nil {
+		if policyErr := p.host.HandleCapabilityError(p.capability, err); policyErr != nil {
+			return agent.CompactionNotePlan{}, policyErr
+		}
+		return agent.CompactionNotePlan{}, err
+	}
+	if strings.TrimSpace(output.NotePrompt) == "" {
+		return agent.CompactionNotePlan{}, agent.ErrCompactionNoteUnsupported
+	}
+	return agent.CompactionNotePlan{Prompt: output.NotePrompt, MaxBytes: output.MaxNoteBytes}, nil
+}
+
 func (p *pluginCompactionProvider) CompactWithNote(ctx context.Context, model string, messages []providers.ChatMessage, note agent.CompactionNote) (agent.CompactionNoteReplacement, error) {
 	output := pluginhost.CompactionOutput{}
 	if err := p.host.InvokeCapability(ctx, p.capability, pluginhost.CompactionInput{

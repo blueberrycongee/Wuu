@@ -803,6 +803,9 @@ type CompactionInput struct {
 	PreviousCoveredMessages int                     `json:"previous_covered_messages,omitempty"`
 	Note                    string                  `json:"note,omitempty"`
 	CoveredMessages         int                     `json:"covered_messages,omitempty"`
+	Intent                  string                  `json:"intent,omitempty"`
+	SourceSessionID         string                  `json:"source_session_id,omitempty"`
+	SourceThroughSeq        int                     `json:"source_through_seq,omitempty"`
 }
 
 // CompactionOutput is the experimental replacement transcript returned by a compactor.

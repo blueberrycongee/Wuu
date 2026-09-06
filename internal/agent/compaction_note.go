@@ -58,6 +58,7 @@ type ForkingCompactionProvider interface {
 	CompactionProvider
 	CompactionNotesEnabled() bool
 	PlanCompactionNote(ctx context.Context, model string, messages, delta []providers.ChatMessage, previous CompactionNote) (CompactionNotePlan, error)
+	PlanHandoffBrief(ctx context.Context, model string, messages []providers.ChatMessage, previous CompactionNote, intent, sourceSessionID string, sourceThroughSeq int) (CompactionNotePlan, error)
 	CompactWithNote(ctx context.Context, model string, messages []providers.ChatMessage, note CompactionNote) (CompactionNoteReplacement, error)
 }
 
@@ -129,6 +130,32 @@ func generateCompactionNote(
 		start = previous.CoveredMessages
 	}
 	delta := messages[start:]
+	forkHistory := messages
+	if budget, ok := ctx.Value(compactionNoteBudgetKey{}).(int); ok && budget > 0 && estimateCompactionMessagesTokens(messages) > budget*3/4 {
+		// The previous note must accompany a reduced snapshot even when the
+		// provider's prompt does not embed it. Otherwise the fork could replace
+		// covered history with a note based only on the newest delta.
+		prefix := freshContextSystemPrefix(messages[:start])
+		if previousExists {
+			prefix = append(providers.CloneChatMessages(prefix), providers.ChatMessage{
+				Role: "user", Content: "Continuation note for the omitted history prefix:\n" + previous.Markdown, Hidden: true,
+			})
+		}
+		for {
+			forkHistory = append(providers.CloneChatMessages(prefix), delta...)
+			if estimateCompactionMessagesTokens(forkHistory) <= budget*3/4 && providers.ValidateToolCallHistory(forkHistory) == nil {
+				break
+			}
+			if len(delta) == 0 {
+				return CompactionNote{}, nil, errors.New("context note instructions exceed the model input budget")
+			}
+			delta = delta[:len(delta)-1]
+		}
+		if len(delta) == 0 {
+			return previous, nil, ErrCompactionNoteNotDue
+		}
+		messages = messages[:start+len(delta)]
+	}
 	plan, err := provider.PlanCompactionNote(ctx, model, messages, delta, previous)
 	if err != nil {
 		return CompactionNote{}, nil, err
@@ -136,11 +163,28 @@ func generateCompactionNote(
 	if strings.TrimSpace(plan.Prompt) == "" {
 		return CompactionNote{}, nil, errors.New("compaction provider returned an empty note prompt")
 	}
+	if budget, ok := ctx.Value(compactionNoteBudgetKey{}).(int); ok && budget > 0 {
+		interval := max(1, budget/3)
+		if !previousExists {
+			interval = max(1, interval/2)
+		}
+		if plan.IntervalTokens > 0 {
+			plan.IntervalTokens = min(plan.IntervalTokens, interval)
+		}
+		maxBytes := max(1, budget/4)
+		if plan.MaxBytes <= 0 || plan.MaxBytes > maxBytes {
+			plan.MaxBytes = maxBytes
+		}
+		plan.Prompt += fmt.Sprintf("\nThe current model budget limits the complete replacement note to %d UTF-8 bytes. Prefer task state and exact history addresses over copied detail.", plan.MaxBytes)
+	}
 	if !force && plan.IntervalTokens > 0 && estimateCompactionMessagesTokens(delta) < plan.IntervalTokens {
 		return previous, nil, ErrCompactionNoteNotDue
 	}
-	result, err := fork(ctx, messages, plan)
+	result, err := fork(ctx, forkHistory, plan)
 	if err != nil {
+		return CompactionNote{}, result.Usage, err
+	}
+	if err := ctx.Err(); err != nil {
 		return CompactionNote{}, result.Usage, err
 	}
 	markdown := strings.TrimSpace(result.Markdown)
@@ -175,18 +219,12 @@ var ErrCompactionNoteNotDue = errors.New("compaction note update is not due")
 var ErrCompactionNoteUnsupported = errors.New("compaction provider does not support note forks")
 var ErrCompactionNoteSuperseded = errors.New("compaction note update was superseded")
 
+// The provider owns cadence and note policy; the host caps their resource use
+// against the active model's usable fresh-window budget.
+type compactionNoteBudgetKey struct{}
+
 func estimateCompactionMessagesTokens(messages []providers.ChatMessage) int {
-	total := 0
-	for _, message := range messages {
-		total += len([]rune(message.Content))/4 + 8
-		for _, call := range message.ToolCalls {
-			total += len([]rune(call.Name+call.Arguments))/4 + 16
-		}
-		if message.ToolResult != nil || strings.EqualFold(message.Role, "tool") {
-			total += 256
-		}
-	}
-	return total
+	return estimateOutboundRequestTokens(providers.ChatRequest{Messages: messages})
 }
 
 func annotateCompactionNoteHistorySeqs(messages []providers.ChatMessage) []providers.ChatMessage {

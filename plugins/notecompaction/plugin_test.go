@@ -133,3 +133,24 @@ func TestCompactionFromPersistedSummaryKeepsBodyIntact(t *testing.T) {
 		t.Errorf("tail message was not preserved verbatim")
 	}
 }
+
+func TestHandoffBriefPlanDoesNotSelectAModel(t *testing.T) {
+	input, err := json.Marshal(rawCompactionInput{
+		Operation: "handoff_brief_plan", Messages: []json.RawMessage{rawMessage(t, map[string]any{"Role": "user", "Content": "keep the performance fix"})},
+		Intent: "redesign the visual hierarchy", SourceSessionID: "source-1", SourceThroughSeq: 4,
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	output, err := Handler().InvokeCapability(context.Background(), nil, pluginapi.CapabilityCall{Capability: capabilityCompaction, Input: input})
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	var result rawCompactionOutput
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(result.NotePrompt, "Never select a provider or model") || !strings.Contains(result.NotePrompt, "source-1") {
+		t.Fatalf("prompt = %q", result.NotePrompt)
+	}
+}

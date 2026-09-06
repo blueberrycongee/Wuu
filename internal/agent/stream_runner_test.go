@@ -96,6 +96,9 @@ func (cancellationNoteProvider) Compact(_ context.Context, _ string, messages []
 func (cancellationNoteProvider) PlanCompactionNote(_ context.Context, _ string, _, _ []providers.ChatMessage, _ CompactionNote) (CompactionNotePlan, error) {
 	return CompactionNotePlan{Prompt: "update the note", MaxBytes: 24_000}, nil
 }
+func (cancellationNoteProvider) PlanHandoffBrief(_ context.Context, _ string, _ []providers.ChatMessage, _ CompactionNote, _, _ string, _ int) (CompactionNotePlan, error) {
+	return CompactionNotePlan{Prompt: "write the brief", MaxBytes: 24_000}, nil
+}
 func (cancellationNoteProvider) CompactWithNote(_ context.Context, _ string, messages []providers.ChatMessage, _ CompactionNote) (CompactionNoteReplacement, error) {
 	return CompactionNoteReplacement{Messages: messages, CoveredMessages: len(messages)}, nil
 }
@@ -1629,7 +1632,7 @@ func TestStreamRunner_ProactiveCompactFailureEmitsVisibleEvent(t *testing.T) {
 	if compactEvents[0].CompactPhase != providers.CompactPhaseStarted {
 		t.Fatalf("expected compact progress to start first, got %+v", compactEvents[0])
 	}
-	if compactEvents[1].CompactPhase != providers.CompactPhaseCompleted || !strings.Contains(compactEvents[1].Content, "compaction failed") {
+	if compactEvents[1].CompactPhase != providers.CompactPhaseFailed {
 		t.Fatalf("expected failure notice to complete progress, got %+v", compactEvents[1])
 	}
 	if compactEvents[1].CompactReason != string(CompactReasonProactive) {

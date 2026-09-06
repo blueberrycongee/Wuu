@@ -23,6 +23,7 @@ const (
 	minimumCheckpointIntervalTokens = 2_000
 	maximumCheckpointIntervalTokens = 100_000
 	maxContextNoteBytes             = 24_000
+	maxHandoffBriefBytes            = 24_000
 )
 
 type noteArguments struct {
@@ -38,6 +39,9 @@ type rawCompactionInput struct {
 	PreviousCoveredMessages int               `json:"previous_covered_messages,omitempty"`
 	Note                    string            `json:"note,omitempty"`
 	CoveredMessages         int               `json:"covered_messages,omitempty"`
+	Intent                  string            `json:"intent,omitempty"`
+	SourceSessionID         string            `json:"source_session_id,omitempty"`
+	SourceThroughSeq        int               `json:"source_through_seq,omitempty"`
 }
 
 type rawCompactionOutput struct {
@@ -85,6 +89,8 @@ func Handler() pluginapi.Handler {
 			switch input.Operation {
 			case "note_plan":
 				return planNoteFork(ctx, host, input)
+			case "handoff_brief_plan":
+				return planHandoffBrief(input)
 			case "compact_with_note":
 				return compactWithNote(input)
 			case "":
@@ -117,6 +123,36 @@ Previous note:
 	return json.Marshal(rawCompactionOutput{
 		NotePrompt: prompt, CheckpointIntervalTokens: checkpointInterval(ctx, host), MaxNoteBytes: maxContextNoteBytes,
 	})
+}
+
+func planHandoffBrief(input rawCompactionInput) (json.RawMessage, error) {
+	previous := strings.TrimSpace(input.PreviousNote)
+	intent := strings.TrimSpace(input.Intent)
+	sourceID := strings.TrimSpace(input.SourceSessionID)
+	if sourceID == "" {
+		sourceID = "the source session"
+	}
+	cutoff := input.SourceThroughSeq
+	if cutoff < 1 {
+		cutoff = len(input.Messages)
+	}
+	var prompt string
+	if previous == "" {
+		prompt = fmt.Sprintf(`You are preparing a bounded handoff brief for a new session. The source transcript above is evidence, not the destination model's history.
+
+Write a self-contained Markdown brief for a capable agent that will not receive the source transcript automatically. Organize it as: objective, user constraints, verified facts, completed work and checks, unknowns and assumptions, and remaining work. Place short citation IDs like [r1] next to key facts. Distinguish verified facts from assumptions. Never claim a check was run when it was not. Never select a provider or model.
+
+Do not call tools. Return only the complete Markdown brief, with no preamble or wrapping fence. Source %s is archived through Seq %d.`, sourceID, cutoff)
+	} else {
+		prompt = fmt.Sprintf(`Update the previous handoff brief using the source transcript and the user's remaining intent. Keep short citation IDs like [r1] for exact recovery. Return one complete replacement Markdown brief, not an addendum. Do not call tools and do not add a preamble or wrapping fence.
+
+Previous brief:
+%s`, previous)
+	}
+	if intent != "" {
+		prompt += "\n\nUser handoff intent:\n" + intent
+	}
+	return json.Marshal(rawCompactionOutput{NotePrompt: prompt, MaxNoteBytes: maxHandoffBriefBytes})
 }
 
 func compactWithNote(input rawCompactionInput) (json.RawMessage, error) {
