@@ -16,8 +16,8 @@ describe("onboarding companion", () => {
     container.remove();
   });
 
-  async function render(ids: readonly string[], preview = ""): Promise<void> {
-    await act(async () => root.render(<OnboardingMascotStage pluginIDs={ids} previewedPluginID={preview} />));
+  async function render(ids: readonly string[]): Promise<void> {
+    await act(async () => root.render(<OnboardingMascotStage pluginIDs={ids} />));
   }
 
   it("keeps the same character while arbitrary capability combinations are equipped and removed", async () => {
@@ -38,13 +38,9 @@ describe("onboarding companion", () => {
     }
   });
 
-  it("does not duplicate equipment when previewing an enabled plugin or react to an unavailable preview", async () => {
-    await render(["memory", "memory", "unknown-plugin"], "memory");
+  it("deduplicates equipment, ignores unknown plugins, and stays inert", async () => {
+    await render(["memory", "memory", "unknown-plugin"]);
     expect(container.querySelectorAll("[data-onboarding-capability]")).toHaveLength(1);
-    const notebook = container.querySelector("[data-onboarding-capability=memory]");
-    await render(["memory"], "ask-user");
-    expect(container.querySelector("[data-onboarding-capability=memory]")).toBe(notebook);
-    expect(container.querySelector("[data-onboarding-preview]")).toBeNull();
     expect(container.querySelectorAll("button, input, [tabindex='0']")).toHaveLength(0);
     expect(container.querySelector("[data-testid=onboarding-mascot-stage]")?.getAttribute("aria-hidden")).toBe("true");
   });

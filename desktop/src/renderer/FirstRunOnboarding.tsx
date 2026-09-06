@@ -12,7 +12,6 @@ import type {
 import { useI18n } from "./i18n";
 import type { TranslationKey } from "./i18n/resources/zh-CN";
 import { OnboardingMascotStage } from "./OnboardingMascotStage";
-import { OnboardingPluginPreview } from "./OnboardingPluginPreview";
 import { PluginIcon } from "./PublicIcon";
 import { applyThemePreference } from "./Theme";
 import { WuuMascot } from "./WuuMascot";
@@ -135,7 +134,6 @@ export function FirstRunOnboarding({
     () => recommendedPluginSubjectIDs(bundledPlugins),
   );
   const initializedPluginSelection = useRef(bundledPlugins.length > 0);
-  const [previewedPluginID, setPreviewedPluginID] = useState("");
   const [applyingPlugins, setApplyingPlugins] = useState(false);
   const [providerName, setProviderName] = useState("");
   const [providerType, setProviderType] = useState("openai-compatible");
@@ -158,9 +156,8 @@ export function FirstRunOnboarding({
       .filter((plugin) => selectedPluginIDs.has(plugin.id))
       .map((plugin) => plugin.provenance.plugin_id ?? "")
       .filter(Boolean);
-    if (previewedPluginID && !ids.includes(previewedPluginID)) ids.push(previewedPluginID);
     return ids;
-  }, [bundledPlugins, previewedPluginID, selectedPluginIDs]);
+  }, [bundledPlugins, selectedPluginIDs]);
   const selectableEngines = useMemo(
     () => [
       { id: "wuu", ready: true },
@@ -200,7 +197,6 @@ export function FirstRunOnboarding({
   }, [discoveredCodex]);
 
   function choosePreset(next: Exclude<PluginPreset, "custom">): void {
-    setPreviewedPluginID("");
     if (next === "minimal") {
       setSelectedPluginIDs(new Set());
       return;
@@ -410,26 +406,8 @@ export function FirstRunOnboarding({
                   ))}
                 </div>
               </div>
-              <OnboardingMascotStage
-                pluginIDs={wornPluginIDs}
-                previewedPluginID={previewedPluginID}
-              />
+              <OnboardingMascotStage pluginIDs={wornPluginIDs} />
             </div>
-
-            {previewedPluginID ? (
-              <div className="onboarding-plugin-preview-frame">
-                <div className="onboarding-plugin-preview-toolbar">
-                  <strong>
-                    {bundledPlugins.find((plugin) => plugin.provenance.plugin_id === previewedPluginID)?.name
-                      ?? previewedPluginID}
-                  </strong>
-                  <button type="button" onClick={() => setPreviewedPluginID("")}>
-                    {t("onboarding.preview.close")}
-                  </button>
-                </div>
-                <OnboardingPluginPreview pluginID={previewedPluginID} />
-              </div>
-            ) : null}
 
             {inventory === undefined ? (
               <div className="onboarding-loading" role="status">
@@ -446,42 +424,29 @@ export function FirstRunOnboarding({
                   const selected = selectedPluginIDs.has(plugin.id);
                   const pluginID = plugin.provenance.plugin_id ?? "";
                   const descriptionKey = PLUGIN_DESCRIPTION_KEYS[pluginID];
-                  const previewed = previewedPluginID === pluginID;
                   return (
-                    <div
+                    <button
                       key={plugin.id}
-                      className={`onboarding-plugin${selected ? " is-selected" : ""}${previewed ? " is-previewed" : ""}`}
+                      type="button"
+                      className={`onboarding-plugin${selected ? " is-selected" : ""}`}
+                      aria-pressed={selected}
+                      onClick={() => togglePlugin(plugin.id)}
                     >
-                      <button
-                        type="button"
-                        className="onboarding-plugin-body"
-                        aria-pressed={previewed}
-                        onClick={() => setPreviewedPluginID(previewed ? "" : pluginID)}
-                      >
-                        <span className="onboarding-plugin-icon">
-                          <PluginIcon
-                            icon={plugin.icon}
-                            pluginId={plugin.id}
-                            fingerprint={plugin.fingerprint ?? ""}
-                          />
-                        </span>
-                        <span className="onboarding-plugin-copy">
-                          <strong>{plugin.name}</strong>
-                          <span>{descriptionKey ? t(descriptionKey) : plugin.description}</span>
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="onboarding-plugin-check"
-                        aria-pressed={selected}
-                        aria-label={selected
-                          ? t("onboarding.disablePlugin", { name: plugin.name })
-                          : t("onboarding.enablePlugin", { name: plugin.name })}
-                        onClick={() => togglePlugin(plugin.id)}
-                      >
+                      <span className="onboarding-plugin-icon">
+                        <PluginIcon
+                          icon={plugin.icon}
+                          pluginId={plugin.id}
+                          fingerprint={plugin.fingerprint ?? ""}
+                        />
+                      </span>
+                      <span className="onboarding-plugin-copy">
+                        <strong>{plugin.name}</strong>
+                        <span>{descriptionKey ? t(descriptionKey) : plugin.description}</span>
+                      </span>
+                      <span className="onboarding-plugin-check" aria-hidden="true">
                         {selected ? <Check /> : null}
-                      </button>
-                    </div>
+                      </span>
+                    </button>
                   );
                 })}
               </div>

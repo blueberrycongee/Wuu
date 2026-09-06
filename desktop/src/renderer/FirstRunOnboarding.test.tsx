@@ -171,44 +171,6 @@ describe("FirstRunOnboarding", () => {
     expect(container.querySelector(".onboarding-presets .is-selected")?.textContent).toBe("推荐");
   });
 
-  it("previews a plugin UI without changing the enablement choice", async () => {
-    await act(async () => {
-      root.render(
-        <I18nProvider>
-          <FirstRunOnboarding
-            inventory={[plugin("todo", false), plugin("ask-user", false)]}
-            providers={[]}
-            onUpdateExtensionPackage={vi.fn(async () => undefined)}
-            onSaveProvider={vi.fn(async () => undefined)}
-            onComplete={vi.fn(async () => undefined)}
-          />
-        </I18nProvider>,
-      );
-    });
-    await clickButton("开始设置");
-
-    expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
-    expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")).toBeNull();
-    expect(wornCapabilities()).toEqual(["todo"]);
-    expect(visibleClones()).toHaveLength(1);
-
-    await clickPlugin("todo");
-    expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")?.getAttribute("data-plugin")).toBe("todo");
-    expect(container.textContent).toContain("补上首次设置预览");
-    expect(wornCapabilities()).toEqual(["todo"]);
-    expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
-
-    await clickPlugin("ask-user");
-    expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")?.getAttribute("data-plugin")).toBe("ask-user");
-    expect(container.textContent).toContain("这次更想怎么推进？");
-    expect(wornCapabilities()).toEqual(["ask-user", "todo"]);
-    expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(1);
-
-    await clickPluginCheck("ask-user");
-    expect(container.querySelectorAll(".onboarding-plugin.is-selected")).toHaveLength(2);
-    expect(wornCapabilities()).toEqual(["ask-user", "todo"]);
-  });
-
   it("splits the mascot into three colored clones that keep stacked decorations", async () => {
     await act(async () => {
       root.render(
@@ -224,36 +186,30 @@ describe("FirstRunOnboarding", () => {
       );
     });
     await clickButton("开始设置");
-    // The recommended selection includes subagent, even before any preview.
+    // The recommended selection includes subagent, so the mascot starts split.
     expect(visibleClones()).toHaveLength(3);
     await clickButton("极简");
-    await clickPluginCheck("automation");
+    await clickPlugin("automation");
 
     expect(mascotStage()?.hasAttribute("data-onboarding-split")).toBe(false);
     expect(visibleClones()).toHaveLength(1);
     expect(wornCapabilities()).toEqual(["automation"]);
 
     await clickPlugin("subagent");
-    expect(container.querySelector("[data-testid=\"onboarding-plugin-preview\"]")?.getAttribute("data-plugin")).toBe("subagent");
     expect(mascotStage()?.hasAttribute("data-onboarding-split")).toBe(true);
     expect(visibleClones()).toHaveLength(3);
     const alarm = mascotStage()?.querySelector("[data-onboarding-capability=automation]");
     expect(alarm).not.toBeNull();
 
-    await clickPlugin("automation");
-    expect(visibleClones()).toHaveLength(1);
-    await clickPluginCheck("subagent");
-    expect(visibleClones()).toHaveLength(3);
-    await clickPlugin("subagent");
-    await clickPluginCheck("subagent");
-    // Unchecking still leaves the active preview; closing it merges the body.
-    expect(visibleClones()).toHaveLength(3);
     await clickPlugin("subagent");
     expect(visibleClones()).toHaveLength(1);
     expect(mascotStage()?.querySelector("[data-onboarding-capability=automation]")).toBe(alarm);
+    await clickPlugin("subagent");
+    expect(visibleClones()).toHaveLength(3);
+    expect(mascotStage()?.querySelector("[data-onboarding-capability=automation]")).toBe(alarm);
   });
 
-  it("stacks every official accessory through preview, selection and dismissal without writing settings", async () => {
+  it("stacks every official accessory through selection and dismissal without writing settings", async () => {
     const update = vi.fn(async () => undefined);
     const complete = vi.fn(async () => undefined);
     await act(async () => {
@@ -275,25 +231,20 @@ describe("FirstRunOnboarding", () => {
     const rendered = new Map<string, Element>();
     for (const id of ONBOARDING_PLUGIN_ORDER) {
       await clickPlugin(id);
-      expect(container.querySelectorAll(".onboarding-plugin-check[aria-pressed=true]")).toHaveLength(selected.length);
-      const expected = [...selected, id].filter((pluginID) => pluginID !== "subagent");
+      selected.push(id);
+      expect(container.querySelectorAll(".onboarding-plugin[aria-pressed=true]")).toHaveLength(selected.length);
+      const expected = selected.filter((pluginID) => pluginID !== "subagent");
       expect(wornCapabilities().sort()).toEqual([...expected].sort());
-      expect(mascotStage()?.getAttribute("data-onboarding-preview")).toBe(id);
       for (const decoration of expected) {
         const node = mascotStage()?.querySelector(`[data-onboarding-capability="${decoration}"]`);
         expect(node).not.toBeNull();
         if (rendered.has(decoration)) expect(node).toBe(rendered.get(decoration));
         else rendered.set(decoration, node!);
       }
-      expect(visibleClones()).toHaveLength([...selected, id].includes("subagent") ? 3 : 1);
-      await clickPluginCheck(id);
-      selected.push(id);
-      await clickPlugin(id);
-      expect(wornCapabilities().sort()).toEqual([...expected].sort());
-      expect(mascotStage()?.hasAttribute("data-onboarding-preview")).toBe(false);
+      expect(visibleClones()).toHaveLength(selected.includes("subagent") ? 3 : 1);
     }
     // Removing one capability leaves all the others intact.
-    await clickPluginCheck("memory");
+    await clickPlugin("memory");
     expect(wornCapabilities()).not.toContain("memory");
     expect(wornCapabilities()).toHaveLength(5);
     await clickButton("极简");
@@ -302,13 +253,6 @@ describe("FirstRunOnboarding", () => {
     await clickButton("全部");
     expect(visibleClones()).toHaveLength(3);
     expect(wornCapabilities().sort()).toEqual(ONBOARDING_PLUGIN_ORDER.filter((id) => id !== "subagent").sort());
-    await clickPlugin("ask-user");
-    expect(mascotStage()?.getAttribute("data-onboarding-preview")).toBe("ask-user");
-    // Presets end a temporary demonstration as well as changing the outfit.
-    await clickButton("极简");
-    expect(wornCapabilities()).toEqual([]);
-    expect(mascotStage()?.hasAttribute("data-onboarding-preview")).toBe(false);
-    expect(container.querySelector("[data-testid=onboarding-plugin-preview]")).toBeNull();
     expect(update).not.toHaveBeenCalled();
     expect(complete).not.toHaveBeenCalled();
   });
@@ -515,20 +459,10 @@ describe("FirstRunOnboarding", () => {
   }
 
   async function clickPlugin(name: string): Promise<void> {
-    const button = [...container.querySelectorAll(".onboarding-plugin-body")].find(
+    const button = [...container.querySelectorAll(".onboarding-plugin")].find(
       (candidate) => candidate.querySelector("strong")?.textContent === name,
     );
     expect(button, `missing plugin ${name}`).toBeDefined();
-    await act(async () => {
-      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-  }
-
-  async function clickPluginCheck(name: string): Promise<void> {
-    const button = [...container.querySelectorAll(".onboarding-plugin-check")].find(
-      (candidate) => candidate.getAttribute("aria-label")?.includes(name),
-    );
-    expect(button, `missing plugin check ${name}`).toBeDefined();
     await act(async () => {
       button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });

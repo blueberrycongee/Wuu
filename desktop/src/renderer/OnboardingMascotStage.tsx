@@ -17,21 +17,17 @@ const equipmentFit = `translate(${body.cx} ${body.cy}) scale(${body.rx / 40} ${b
 
 export function OnboardingMascotStage({
   pluginIDs,
-  previewedPluginID = "",
 }: {
   pluginIDs: readonly string[];
-  previewedPluginID?: string;
 }): JSX.Element {
   const worn = new Set(pluginIDs);
   const split = worn.has("subagent");
-  const preview = worn.has(previewedPluginID) ? previewedPluginID : "";
 
   return (
     <div
       className={`onboarding-plugin-mascot-stage${split ? " is-split" : ""}`}
       data-testid="onboarding-mascot-stage"
       data-onboarding-split={split ? "" : undefined}
-      data-onboarding-preview={preview || undefined}
       aria-hidden="true"
     >
       <div className="onboarding-mascot-pack">
@@ -43,7 +39,7 @@ export function OnboardingMascotStage({
             hidden={index !== 0 && !split}
           >
             <div className="onboarding-mascot-body">
-              <div className="onboarding-mascot-pose" data-listening={index === 0 && preview === "ask-user" ? "" : undefined}>
+              <div className="onboarding-mascot-pose">
                 <WuuMascot
                   className="onboarding-mascot"
                   size={200}
@@ -53,7 +49,7 @@ export function OnboardingMascotStage({
                   followPointer
                   style={{ "--mo-head": `var(--companion-${color})`, "--mo-eye": "var(--equipment-ink)" } as CSSProperties}
                 />
-                {index === 0 ? <CompanionEquipment worn={worn} preview={preview} /> : null}
+                {index === 0 ? <CompanionEquipment worn={worn} /> : null}
               </div>
             </div>
           </div>
@@ -63,18 +59,14 @@ export function OnboardingMascotStage({
   );
 }
 
-function CompanionEquipment({ worn, preview }: { worn: ReadonlySet<string>; preview: string }): JSX.Element {
+function CompanionEquipment({ worn }: { worn: ReadonlySet<string> }): JSX.Element {
   const hasBelt = ["todo", "automation", "memory", "dream", "note-compaction"].some((id) => worn.has(id));
   const hasPocket = worn.has("memory") || worn.has("dream");
   function capability(id: OnboardingPluginID, content: ReactNode): ReactNode {
     if (!worn.has(id)) return null;
     return (
       <g key={id} className="onboarding-equipment-module" data-onboarding-capability={id}>
-        {/* Replay only this capability's demonstration; never remount the face
-            or the other equipment when a different preview is opened. */}
-        <g key={preview === id ? "preview" : "rest"} className={preview === id ? "is-demonstrating" : undefined}>
-          {content}
-        </g>
+        {content}
       </g>
     );
   }
