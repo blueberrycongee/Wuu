@@ -52,6 +52,7 @@ import { HandoffCard } from "./HandoffCard";
 import {
   canSubmitHandoffDraft,
   emptyHandoffDraft,
+  handoffPromptFromIntent,
   reduceHandoffDraft,
   type HandoffCatalog,
   type HandoffDraft,
@@ -201,6 +202,7 @@ export function Composer({
   contextUsage,
   queryHistorySessionID,
   queryHistory = [],
+  requestedHandoffIntent,
   hideRuntimeControls = false,
   hidePlusButton = false,
   hidePermissionControl = false,
@@ -305,6 +307,7 @@ export function Composer({
   contextUsage?: TurnContextUsage | null;
   queryHistorySessionID?: string;
   queryHistory?: string[];
+  requestedHandoffIntent?: string;
   // Suppress the model/context/token runtime chrome on the bar's right edge.
   // Side-thread composers reuse this input without a separate runtime picker.
   hideRuntimeControls?: boolean;
@@ -524,6 +527,15 @@ export function Composer({
     })),
   }), [initialized]);
   const [handoffRevision, setHandoffRevision] = useState(1);
+  const appliedHandoffIntentRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (requestedHandoffIntent === undefined || appliedHandoffIntentRef.current === requestedHandoffIntent) {
+      return;
+    }
+    appliedHandoffIntentRef.current = requestedHandoffIntent;
+    setHandoffRevision((current) => current + 1);
+    setPrompt(handoffPromptFromIntent(requestedHandoffIntent));
+  }, [requestedHandoffIntent]);
   const handoffDraft = useMemo<HandoffDraft>(() => {
     if (slashDraft?.query !== "handoff") {
       return emptyHandoffDraft(handoffRevision);

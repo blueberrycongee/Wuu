@@ -122,6 +122,27 @@ export function canSubmitHandoffDraft(draft: HandoffDraft): boolean {
   return (draft.status === "resolved" || draft.status === "unverified") && Boolean(draft.providerId && draft.modelId);
 }
 
+export function handoffPromptFromIntent(intent: string): string {
+  const trimmed = intent.trim();
+  return trimmed ? `/handoff -- ${trimmed}` : "/handoff";
+}
+
+export function parseRequestedHandoffIntent(payload: string): string | null {
+  const trimmed = payload.trim();
+  if (!trimmed.startsWith("{")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as { awaiting_user_configuration?: unknown; intent?: unknown };
+    if (parsed.awaiting_user_configuration !== true) {
+      return null;
+    }
+    return typeof parsed.intent === "string" ? parsed.intent : "";
+  } catch {
+    return null;
+  }
+}
+
 function splitOnce(value: string, separator: string): string[] {
   const index = value.indexOf(separator);
   if (index < 0) {

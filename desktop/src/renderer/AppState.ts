@@ -20,6 +20,7 @@ import {
   type ComposerFile,
   type ComposerImage,
 } from "./ComposerMessages";
+import { parseRequestedHandoffIntent } from "./HandoffDraft";
 import { isInternalUserNotificationItem } from "./InternalUserNotification";
 import { threadDisplayTitle } from "./ThreadTitles";
 import { sortChildAgents } from "./ThreadAgents";
@@ -2544,6 +2545,27 @@ function queryTextsForThread(thread: Thread | undefined): string[] {
   return queries;
 }
 
+function requestedHandoffIntentForThread(thread: Thread | undefined): string | undefined {
+  if (!thread) {
+    return undefined;
+  }
+  for (let turnIndex = thread.turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+    const items = thread.turns[turnIndex]?.items ?? [];
+    for (let itemIndex = items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+      const item = items[itemIndex];
+      if (item.type !== "tool_call" || item.status !== "completed") {
+        continue;
+      }
+      const payload = item.result ?? item.text ?? "";
+      const intent = parseRequestedHandoffIntent(payload);
+      if (intent !== null) {
+        return intent;
+      }
+    }
+  }
+  return undefined;
+}
+
 function queryTextForUserItem(item: ThreadItem): string | undefined {
   if (item.type !== "user_message") {
     return undefined;
@@ -3623,6 +3645,7 @@ export {
   projectThreadSummaries,
   queryTextForUserItem,
   queryTextsForThread,
+  requestedHandoffIntentForThread,
   reconcileChannelRoomSessionTabs,
   reduceNotification,
   reduceServerEvent,

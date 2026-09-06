@@ -50,6 +50,7 @@ import {
   presentationRunningThreadIDs,
   projectThreads,
   queryTextsForThread,
+  requestedHandoffIntentForThread,
   reconcileChannelRoomSessionTabs,
   reconcileResumedThreadTurns,
   reduceServerEvent,
@@ -745,6 +746,20 @@ describe("queryTextsForThread", () => {
     thread.turns[0].items[0].name = PROCESS_NOTIFICATION_NAME;
 
     expect(queryTextsForThread(thread)).toEqual(["真正的用户问题"]);
+  });
+});
+
+describe("requestedHandoffIntentForThread", () => {
+  it("reads the latest completed request_handoff result", () => {
+    const thread = threadWithUserTexts(["真正的用户问题"]);
+    thread.turns[0].items.push({
+      id: "handoff-request",
+      type: "tool_call",
+      status: "completed",
+      name: "request_handoff",
+      result: `{"awaiting_user_configuration":true,"intent":"keep the verified fix"}`,
+    });
+    expect(requestedHandoffIntentForThread(thread)).toBe("keep the verified fix");
   });
 });
 

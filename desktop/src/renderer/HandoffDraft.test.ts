@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canSubmitHandoffDraft, parseHandoffArgs, reduceHandoffDraft } from "./HandoffDraft";
+import { canSubmitHandoffDraft, handoffPromptFromIntent, parseHandoffArgs, parseRequestedHandoffIntent, reduceHandoffDraft } from "./HandoffDraft";
 
 const catalog = {
   providers: [
@@ -52,5 +52,11 @@ describe("handoff draft", () => {
     expect(draft.status).toBe("pending");
     expect(draft.candidates.map((item) => item.modelId)).toEqual(["gpt-5.4", "gpt-5.5"]);
     expect(canSubmitHandoffDraft(draft)).toBe(false);
+  });
+
+  it("opens a configuration draft from an agent request without selecting a model", () => {
+    expect(parseRequestedHandoffIntent(`{"awaiting_user_configuration":true,"intent":"keep the verified fix"}`)).toBe("keep the verified fix");
+    expect(handoffPromptFromIntent("keep the verified fix")).toBe("/handoff -- keep the verified fix");
+    expect(parseRequestedHandoffIntent(`{"intent":"keep going"}`)).toBeNull();
   });
 });

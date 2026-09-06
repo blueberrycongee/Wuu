@@ -154,3 +154,24 @@ func TestHandoffBriefPlanDoesNotSelectAModel(t *testing.T) {
 		t.Fatalf("prompt = %q", result.NotePrompt)
 	}
 }
+
+func TestRequestHandoffReturnsAwaitingUserConfiguration(t *testing.T) {
+	result, err := Handler().ExecuteTool(context.Background(), nil, pluginapi.ToolCall{
+		ToolID:    toolRequestHandoff,
+		CallID:    "call-1",
+		SessionID: "source-1",
+		Arguments: []byte(`{"intent":"keep the verified performance fix"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Content) != 1 || !strings.Contains(result.Content[0].Text, `"awaiting_user_configuration":true`) || !strings.Contains(result.Content[0].Text, `"source_session_id":"source-1"`) {
+		t.Fatalf("result = %+v", result)
+	}
+	if _, err := Handler().ExecuteTool(context.Background(), nil, pluginapi.ToolCall{
+		ToolID:    toolRequestHandoff,
+		Arguments: []byte(`{"intent":"keep going","provider":"openai"}`),
+	}); err == nil {
+		t.Fatal("provider selection was accepted")
+	}
+}

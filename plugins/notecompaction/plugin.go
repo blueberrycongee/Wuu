@@ -16,6 +16,7 @@ const (
 	// Kept only to read checkpoints authored by the retired tool-based scheme.
 	// The plugin no longer registers or asks the model to call this tool.
 	toolWriteContextNote = "write_context_note"
+	toolRequestHandoff   = "request_handoff"
 
 	conversationSummaryMark = "[Conversation summary]"
 
@@ -77,7 +78,20 @@ func Handler() pluginapi.Handler {
 				ID: capabilityCompaction, Kind: "decision", Version: 2, Priority: 100,
 			}},
 			RequiredHostServices: []pluginapi.HostService{{ID: pluginapi.HostServiceSettingsGet, Required: true}},
+			Tools: []pluginapi.Tool{{
+				ID:          toolRequestHandoff,
+				Description: "Ask the user to hand this conversation to a new session. Supply an optional intent only. Do not choose a provider or model.",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"intent": map[string]any{"type": "string", "description": "What the destination session should continue doing."},
+					},
+					"additionalProperties": false,
+				},
+				Display: &pluginapi.ToolDisplay{Kind: "handoff", Text: "Requesting handoff", Capability: "handoff"},
+			}},
 		},
+		ExecuteTool: executeHandoffTool,
 		InvokeCapability: func(ctx context.Context, host pluginapi.Host, call pluginapi.CapabilityCall) (json.RawMessage, error) {
 			if call.Capability != capabilityCompaction {
 				return nil, fmt.Errorf("unknown note compaction capability %q", call.Capability)
@@ -102,6 +116,35 @@ func Handler() pluginapi.Handler {
 			}
 		},
 	}
+}
+
+func executeHandoffTool(_ context.Context, _ pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
+	if call.ToolID != toolRequestHandoff {
+		return pluginapi.ToolResult{}, fmt.Errorf("unknown note compaction tool %q", call.ToolID)
+	}
+	var input struct {
+		Intent   string `json:"intent"`
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	}
+	if len(call.Arguments) > 0 {
+		if err := json.Unmarshal(call.Arguments, &input); err != nil {
+			return pluginapi.ToolResult{}, fmt.Errorf("invalid request_handoff arguments: %w", err)
+		}
+	}
+	if strings.TrimSpace(input.Provider) != "" || strings.TrimSpace(input.Model) != "" {
+		return pluginapi.ToolResult{}, errors.New("request_handoff cannot select a provider or model")
+	}
+	payload, err := json.Marshal(map[string]any{
+		"request_id":                  strings.TrimSpace(call.CallID),
+		"awaiting_user_configuration": true,
+		"intent":                      strings.TrimSpace(input.Intent),
+		"source_session_id":           strings.TrimSpace(call.SessionID),
+	})
+	if err != nil {
+		return pluginapi.ToolResult{}, err
+	}
+	return pluginapi.TextResult(string(payload)), nil
 }
 
 func planNoteFork(ctx context.Context, host pluginapi.Host, input rawCompactionInput) (json.RawMessage, error) {

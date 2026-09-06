@@ -23,6 +23,7 @@ import {
   emptyComposerDraft,
   isThreadPresentationRunning,
   queryTextsForThread,
+  requestedHandoffIntentForThread,
   sessionTabLabel,
   threadForTab,
   turnStreamStatusForThread,
@@ -151,6 +152,7 @@ export function ConversationSplitPaneRenderer({
       draft={splitComposerDrafts[pane] ?? emptyComposerDraft()}
       viewSwitchPending={viewSwitchPending}
       queryHistory={queryTextsForThread(thread)}
+      requestedHandoffIntent={requestedHandoffIntentForThread(thread)}
       editingMessage={
         historyMessageEdit?.threadID === thread.id
           ? historyMessageEdit

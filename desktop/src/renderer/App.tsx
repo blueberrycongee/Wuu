@@ -127,6 +127,7 @@ import {
   SCRATCH_PSEUDO_PROJECT_ID,
   scratchThreadSummaries,
   queryTextsForThread,
+  requestedHandoffIntentForThread,
   reduceServerEvent,
   reconcileListedThreadState,
   resolveComposerRunningAction,
@@ -3031,6 +3032,7 @@ export function App(): JSX.Element {
         onInterrupt={() => void interrupt()}
         queryHistorySessionID={activeThread?.id ?? currentSessionTab?.id}
         queryHistory={queryTextsForThread(activeThread)}
+        requestedHandoffIntent={requestedHandoffIntentForThread(activeThread)}
       />
       </>
     );
