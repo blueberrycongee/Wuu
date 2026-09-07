@@ -183,3 +183,69 @@ describe("connection recovery", () => {
     restore.resolve();
   });
 });
+
+
+describe("workspace routing", () => {
+  const workspaces = {
+    current: "/computer/alpha", current_id: "alpha",
+    workspaces: [{ id: "alpha", name: "Alpha", path: "/computer/alpha" },
+      { id: "beta", name: "Beta", path: "/computer/beta" }],
+  };
+
+  it("selects registered workspaces and starts work with the computer's workspace ID", async () => {
+    remote.call.mockResolvedValue(workspaces);
+    const bridge = await connectBridge();
+    expect((await bridge.api.listProjects()).projects.map((project) => project.id)).toEqual(["alpha", "beta"]);
+    const selected = await bridge.api.selectProject("beta");
+    expect(selected.active_context).toEqual({ kind: "project", project_id: "beta", cwd: "/computer/beta" });
+    await bridge.api.listThreads();
+    expect(remote.call).toHaveBeenLastCalledWith("thread/list", { cwd: "/computer/beta" }, 30_000);
+    await bridge.api.startThread({ model: "chosen-model" });
+    expect(remote.call).toHaveBeenLastCalledWith("thread/start", {
+      model: "chosen-model", cwd: "/computer/beta", workspace_id: "beta",
+    }, 30_000);
+    await bridge.api.listWorkspaceDirectory();
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/directory/list", { path: undefined, root: "/computer/beta" }, 30_000);
+  });
+
+  it("routes background and worktree events to their owning project after switching", async () => {
+    remote.call.mockResolvedValue(workspaces);
+    const bridge = await connectBridge();
+    const events: Array<{ workdir: string }> = [];
+    bridge.api.onServerEvent((event) => events.push(event));
+    remote.options.onNotification?.("thread/started", { thread: { id: "a", cwd: "/computer/alpha-tree", workspace_id: "alpha", worktree: { base_repo: "/computer/alpha" } } });
+    await bridge.api.selectProject("beta");
+    remote.options.onNotification?.("item/agentMessage/delta", { thread_id: "a", delta: "still running" });
+    expect(events.at(-1)?.workdir).toBe("/computer/alpha");
+    remote.options.onNotification?.("thread/started", { thread: { id: "b", cwd: "/computer/beta", workspace_id: "beta" } });
+    expect(events.at(-1)?.workdir).toBe("/computer/beta");
+    remote.options.onState?.({ ver: 1, host: { workdir: "/computer/alpha" }, running: [{ thread_id: "a" }, { thread_id: "b" }] });
+    expect(await bridge.api.getRunningThreadsSnapshot()).toEqual([
+      { thread_id: "a", workdir: "/computer/alpha" }, { thread_id: "b", workdir: "/computer/beta" },
+    ]);
+  });
+
+  it("reopens a known unregistered conversation without creating a native scratch workspace", async () => {
+    remote.call.mockResolvedValue(workspaces);
+    const bridge = await connectBridge();
+    remote.call.mockResolvedValueOnce({ threads: [{ id: "scratch", cwd: "/computer/scratch" }] });
+    await bridge.api.listAllThreads();
+    expect((await bridge.api.selectNoProject(false, "/computer/scratch")).active_context)
+      .toEqual({ kind: "no_project", cwd: "/computer/scratch" });
+    await expect(bridge.api.selectNoProject(true)).rejects.toBeInstanceOf(UnavailableHostOperationError);
+    await expect(bridge.api.selectNoProject(false, "/unknown")).rejects.toBeInstanceOf(UnavailableHostOperationError);
+  });
+
+  it("preserves selection on reconnect and never substitutes a different directory after removal", async () => {
+    remote.call.mockResolvedValue(workspaces);
+    const bridge = await connectBridge();
+    await bridge.api.selectProject("beta");
+    remote.options.onAttach?.({ session: "next", resumed: false });
+    await vi.waitFor(() => expect(bridge.getConnectionSnapshot().phase).toBe("connected"));
+    expect((await bridge.api.listProjects()).active_context?.cwd).toBe("/computer/beta");
+    remote.call.mockResolvedValue({ ...workspaces, workspaces: [workspaces.workspaces[0]] });
+    const refreshed = await bridge.api.listProjects();
+    expect(refreshed.active_context?.cwd).toBe("/computer/beta");
+    expect(refreshed.projects.find((project) => project.id === "beta")?.missing).toBe(true);
+  });
+});

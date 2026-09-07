@@ -1540,6 +1540,7 @@ type WorkspaceInfo struct {
 }
 
 type WorkspaceListResult struct {
+	CurrentID  string          `json:"current_id,omitempty"`
 	Workspaces []WorkspaceInfo `json:"workspaces"`
 	Current    string          `json:"current,omitempty"`
 }

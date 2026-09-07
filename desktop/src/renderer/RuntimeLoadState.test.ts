@@ -338,6 +338,8 @@ describe("runtime restoration", () => {
       listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
       resumeThread,
     });
+    window.wuu.listProjects = vi.fn().mockResolvedValue({ projects: [], active_context: context });
+    window.wuu.listAllThreads = window.wuu.listThreads;
     const snapshot = await loadRuntimeRestore(state);
     const restored = applyRuntimeRestore(state, snapshot);
     expect(resumeThread).toHaveBeenCalledExactlyOnceWith("opened");
@@ -347,6 +349,26 @@ describe("runtime restoration", () => {
     expect(restored.activeSessionTabID).toBe(tab.id);
     expect(restored.running).toBe(true);
     streamTextStore.clearTurn("restore-turn");
+  });
+
+  it("restores inactive workspace tabs and opened child conversations", async () => {
+    const one = thread("one", { child_agents: [{ id: "child" }] } as Partial<Thread>);
+    const two = thread("two", { cwd: "/other" });
+    const child = thread("child", { read_only: true, parent_id: "one" });
+    const tabs = [one, two, child].map((item) => createThreadSessionTab(item, { kind: "no_project", cwd: item.cwd }));
+    const state = { ...initialState, activeContext: context, thread: one,
+      threads: [one, two, child], sessionTabs: tabs, activeSessionTabID: tabs[0].id };
+    const resumeThread = vi.fn(async (id) => ({ thread: [one, two, child].find((item) => item.id === id)! }));
+    installWuuStub({
+      listProjects: vi.fn().mockResolvedValue({ projects: [], active_context: context }),
+      initialize: vi.fn().mockResolvedValue({ status: "ready" }),
+      listAllThreads: vi.fn().mockResolvedValue({ threads: [one, two] }),
+      listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }), resumeThread,
+    });
+    const restored = applyRuntimeRestore(state, await loadRuntimeRestore(state));
+    expect(resumeThread.mock.calls.map(([id]) => id).sort()).toEqual(["child", "one", "two"]);
+    expect(restored.sessionTabs).toEqual(tabs);
+    expect(restored.activeContext).toEqual(context);
   });
 
   it("reconciles completion, unarchive and deletion performed while disconnected", () => {
@@ -360,6 +382,7 @@ describe("runtime restoration", () => {
     const state = { ...initialState, thread: running, secondaryThread: removed, threads: [running, archived, removed],
       sessionTabs: tabs, activeSessionTabID: tabs[0].id, running: true };
     const restored = applyRuntimeRestore(state, {
+      projects: { projects: [], active_context: context },
       initialized: { status: "ready" } as InitializeResult,
       threads: [completed, { ...archived, archived: false }], resumed: [],
     });

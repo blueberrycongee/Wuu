@@ -200,6 +200,7 @@ export async function selectRuntimeContext(
 
 
 export type RuntimeRestoreSnapshot = {
+  projects: ProjectListResult;
   initialized: InitializeResult;
   threads: Thread[];
   resumed: ThreadResumeResult[];
@@ -208,13 +209,14 @@ export type RuntimeRestoreSnapshot = {
 /** Refresh the server-owned portion of an existing workbench. Drafts and
  * pane selection stay in the renderer while opened threads regain history. */
 export async function loadRuntimeRestore(state: AppState): Promise<RuntimeRestoreSnapshot> {
+  const projects = await window.wuu.listProjects();
   const [initialized, listed, archived] = await Promise.all([
     window.wuu.initialize(),
-    window.wuu.listThreads(),
+    window.wuu.listAllThreads(),
     window.wuu.listArchivedThreads(),
   ]);
   const threads = [...listed.threads, ...archived.threads];
-  const available = new Set(threads.map((thread) => thread.id));
+  const available = new Set(threads.flatMap((thread) => [thread.id, ...(thread.child_agents ?? []).map((agent) => agent.id)]));
   const openIDs = new Set([
     state.thread?.id,
     state.secondaryThread?.id,
@@ -228,7 +230,8 @@ export async function loadRuntimeRestore(state: AppState): Promise<RuntimeRestor
     return result;
   }));
   const byID = new Map(resumed.map((result) => [result.thread.id, result.thread]));
-  return { initialized, threads: threads.map((thread) => byID.get(thread.id) ?? thread), resumed };
+  for (const thread of threads) if (!byID.has(thread.id)) byID.set(thread.id, thread);
+  return { projects, initialized, threads: [...byID.values()], resumed };
 }
 
 export function applyRuntimeRestore(state: AppState, snapshot: RuntimeRestoreSnapshot): AppState {
@@ -248,5 +251,8 @@ export function applyRuntimeRestore(state: AppState, snapshot: RuntimeRestoreSna
   return {
     ...reconcileListedThreadState(current, snapshot.threads),
     initialized: snapshot.initialized,
+    projects: snapshot.projects.projects,
+    activeContext: snapshot.projects.active_context,
+    activeProjectId: snapshot.projects.active_project_id,
   };
 }

@@ -1439,7 +1439,7 @@ export function ProjectPickerMenu({
         <FolderPlus className="icon-lg" />
         <span>{t("runtime.createBlankProject")}</span>
       </button>
-      <button type="button" role="menuitem" disabled={!hostSupports("selectNoProject")} onClick={onSelectNoProject}>
+      <button type="button" role="menuitem" disabled={!hostSupports("createBlankProject")} onClick={onSelectNoProject}>
         <FolderX className="icon-lg" />
         <span>{t("runtime.noProject")}</span>
         {activeContext?.kind === "no_project" ? <Check className="icon-lg" /> : null}

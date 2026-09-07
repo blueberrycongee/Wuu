@@ -16,6 +16,8 @@ import type {
   PluginConflictPreferences,
   ProjectListResult,
   RunningThreadSnapshot,
+  RuntimeContext,
+  Thread,
   ServerEvent,
   ThemePreference,
   VoiceInputSettings,
@@ -27,6 +29,13 @@ export type WebConnectionSnapshot = {
   revision: number;
   error?: string;
 };
+
+type WorkspaceSnapshot = {
+  current: string;
+  current_id?: string;
+  workspaces?: Array<{ id?: string; name: string; path: string }>;
+};
+type ThreadLocation = Pick<Thread, "id" | "cwd" | "workspace_id" | "worktree">;
 
 type ServerEventListener = (event: ServerEvent) => void;
 type RunningListener = (snapshot: RunningThreadSnapshot[]) => void;
@@ -106,7 +115,6 @@ const unavailableWebMethods = [
   "removeProject",
   "cleanupProjectState",
   "relocateProject",
-  "selectNoProject",
   "gitStatus",
   "listGitChanges",
   "readGitFileDiff",
@@ -169,6 +177,10 @@ export class RemoteDesktopBridge {
   private hostState: HostState | null = null;
   private attachedOnce = false;
   private defaultWorkdir = "";
+  private projects: DesktopProject[] = [];
+  private readonly remoteWorkspaceIDs = new Set<string>();
+  private activeContext: RuntimeContext | undefined;
+  private readonly threadLocations = new Map<string, ThreadLocation>();
   private connection: WebConnectionSnapshot = { phase: "connecting", revision: 0 };
   private readonly connectionListeners = new Set<() => void>();
   private readonly restoreListeners = new Set<() => Promise<void>>();
@@ -197,10 +209,10 @@ export class RemoteDesktopBridge {
   private async synchronize(first: boolean): Promise<void> {
     const revision = this.setConnection(first ? "connecting" : "restoring");
     try {
-      const workspace = await this.client.call<{ current: string }>("workspace/list", undefined, 30_000);
+      const workspace = await this.client.call<WorkspaceSnapshot>("workspace/list", undefined, 30_000);
       if (this.connection.revision !== revision || this.stopped) return;
       if (!workspace.current) throw new Error("Remote host did not provide a workspace");
-      this.defaultWorkdir = workspace.current;
+      this.updateWorkspaces(workspace);
       if (!first) await Promise.all([...this.restoreListeners].map((restore) => restore()));
       if (this.connection.revision !== revision || this.stopped) return;
       this.setConnection("connected");
@@ -225,8 +237,9 @@ export class RemoteDesktopBridge {
       // Do not use mobile_chat: the shared workbench needs the full event
       // stream, including tools, activities, usage, and lifecycle events.
       onNotification: (method, params) => {
+        this.recordThreadLocations(params);
         this.emitServerEvent({
-          workdir: this.workdir(),
+          workdir: this.eventWorkdir(params),
           kind: "notification",
           message: { method, params },
         });
@@ -279,41 +292,88 @@ export class RemoteDesktopBridge {
     // would execute an instruction the user already saw fail.
     if (this.stopped || !this.client.isAttached()) throw new Error("Remote host is disconnected");
     if (this.connection.phase === "restoring" && ![
-      "initialize", "thread/list", "thread/listArchived", "thread/resume", "user-question/list",
+      "initialize", "workspace/list", "thread/list", "thread/listAll", "thread/listArchived", "thread/resume", "user-question/list",
     ].includes(method)) throw new Error("Remote workspace is restoring; retry after it reconnects");
     const revision = this.connection.revision;
     const result = await this.client.call<T>(method, params, 30_000);
     if (this.stopped || this.connection.revision !== revision) {
       throw new Error("Remote connection changed while the request was in flight");
     }
+    this.recordThreadLocations(result);
     return result;
   }
 
+  private recordThreadLocations(value: unknown): void {
+    if (!value || typeof value !== "object") return;
+    const payload = value as { thread?: ThreadLocation; threads?: ThreadLocation[] };
+    for (const thread of [...(Array.isArray(payload.threads) ? payload.threads : []), payload.thread]) {
+      if (thread && typeof thread.id === "string" && typeof thread.cwd === "string") {
+        this.threadLocations.set(thread.id, thread);
+      }
+    }
+  }
+
+  private threadWorkdir(thread: ThreadLocation): string {
+    if (this.activeContext?.kind === "no_project" && this.activeContext.cwd === thread.cwd) return thread.cwd;
+    return this.projects.find((project) => project.id === thread.workspace_id)?.path
+      || thread.worktree?.base_repo || thread.cwd;
+  }
+
+  private eventWorkdir(params: unknown): string {
+    const payload = params && typeof params === "object" ? params as { thread_id?: string; thread?: ThreadLocation } : undefined;
+    const thread = payload?.thread ?? (payload?.thread_id ? this.threadLocations.get(payload.thread_id) : undefined);
+    return thread ? this.threadWorkdir(thread) : this.defaultWorkdir;
+  }
+
+  private updateWorkspaces(snapshot: WorkspaceSnapshot): void {
+    if (!snapshot.current) throw new Error("Remote host did not provide a workspace");
+    this.defaultWorkdir = snapshot.current;
+    const now = new Date().toISOString();
+    const previous = new Map(this.projects.map((project) => [project.id, project]));
+    this.remoteWorkspaceIDs.clear();
+    for (const workspace of snapshot.workspaces ?? []) if (workspace.id) this.remoteWorkspaceIDs.add(workspace.id);
+    if (snapshot.current_id) this.remoteWorkspaceIDs.add(snapshot.current_id);
+    const workspaces = [...(snapshot.workspaces ?? [])];
+    if (!workspaces.some((workspace) => workspace.path === snapshot.current || (snapshot.current_id && workspace.id === snapshot.current_id))) {
+      workspaces.unshift({ id: snapshot.current_id || this.projectID, name: basename(snapshot.current), path: snapshot.current });
+    }
+    this.projects = workspaces.map((workspace) => {
+      const id = workspace.id || `${this.projectID}:${workspace.path}`;
+      return { id, name: workspace.name, path: workspace.path,
+        created_at: previous.get(id)?.created_at ?? now, updated_at: now };
+    });
+    if (!this.activeContext) {
+      const project = this.projects.find((project) => project.id === snapshot.current_id || project.path === snapshot.current)!;
+      this.activeContext = { kind: "project", project_id: project.id, cwd: project.path };
+    } else if (this.activeContext.kind === "project") {
+      const projectID = this.activeContext.project_id;
+      const selected = this.projects.find((project) => project.id === projectID);
+      if (selected) this.activeContext = { kind: "project", project_id: selected.id, cwd: selected.path };
+      // Removing a project on the desktop must not silently move a browser's
+      // open draft to a different directory.
+      else {
+        const old = previous.get(this.activeContext.project_id);
+        if (old) this.projects.push({ ...old, missing: true });
+      }
+    }
+  }
+
   private workdir(): string {
-    return this.defaultWorkdir || this.hostState?.host.workdir || "";
+    return this.activeContext?.cwd || this.defaultWorkdir || this.hostState?.host.workdir || "";
   }
 
   private projectState(): ProjectListResult {
-    const path = this.workdir();
-    const now = new Date().toISOString();
-    const project: DesktopProject = {
-      id: this.projectID,
-      name: basename(path),
-      path,
-      created_at: now,
-      updated_at: now,
-    };
     return {
-      projects: [project],
-      active_project_id: project.id,
-      active_context: { kind: "project", project_id: project.id, cwd: path },
+      projects: this.projects,
+      active_project_id: this.activeContext?.kind === "project" ? this.activeContext.project_id : undefined,
+      active_context: this.activeContext,
     };
   }
 
   private runningSnapshot(): RunningThreadSnapshot[] {
-    const workdir = this.workdir();
     return (this.hostState?.running ?? []).map((turn) => ({
-      workdir,
+      workdir: this.threadLocations.has(turn.thread_id)
+        ? this.threadWorkdir(this.threadLocations.get(turn.thread_id)!) : this.defaultWorkdir,
       thread_id: turn.thread_id,
     }));
   }
@@ -332,7 +392,7 @@ export class RemoteDesktopBridge {
       const id = String(request.id);
       this.pendingServerRequests.set(id, { resolve });
       this.emitServerEvent({
-        workdir: this.workdir(),
+        workdir: this.eventWorkdir(request.params),
         kind: "server-request",
         message: { id, method: request.method, params: request.params },
       });
@@ -364,9 +424,21 @@ export class RemoteDesktopBridge {
       listWorkspaceDirectory: (path, root) => this.call("workspace/directory/list", { path, root: root || this.workdir() }),
       readWorkspaceFile: (path, root) => this.call("workspace/file/read", { path, root: root || this.workdir() }),
       resolveWorkspaceFileReference: (reference, root) => this.call("workspace/file/resolve", { reference, root: root || this.workdir() }),
-      listProjects: async () => this.projectState(),
+      listProjects: async () => {
+        this.updateWorkspaces(await this.call<WorkspaceSnapshot>("workspace/list"));
+        return this.projectState();
+      },
       selectProject: async (id) => {
-        if (id !== this.projectID) throw new Error("Unknown remote workspace");
+        const project = this.projects.find((candidate) => candidate.id === id);
+        if (!project) throw new Error("Unknown remote workspace");
+        this.activeContext = { kind: "project", project_id: project.id, cwd: project.path };
+        return this.projectState();
+      },
+      selectNoProject: async (fresh, cwd) => {
+        if (fresh || !cwd || ![...this.threadLocations.values()].some((thread) => thread.cwd === cwd)) {
+          throw new UnavailableHostOperationError("selectNoProject");
+        }
+        this.activeContext = { kind: "no_project", cwd };
         return this.projectState();
       },
 
@@ -382,12 +454,18 @@ export class RemoteDesktopBridge {
           features: { ...result.features, browser: false },
         };
       },
-      listThreads: (cwd?: string) => this.call("thread/list", cwd ? { cwd } : undefined),
+      listThreads: (cwd?: string) => this.call("thread/list", { cwd: cwd || this.workdir() }),
       listAllThreads: () => this.call("thread/listAll"),
       listArchivedThreads: () => this.call("thread/listArchived"),
       resumeThread: (sessionId?: string) =>
         this.call("thread/resume", { session_id: sessionId ?? "" }),
-      startThread: (params = {}) => this.call("thread/start", params),
+      startThread: (params = {}) => this.call("thread/start", {
+        ...params,
+        cwd: params.cwd || this.workdir(),
+        workspace_id: params.workspace_id && this.remoteWorkspaceIDs.has(params.workspace_id)
+          ? params.workspace_id : this.activeContext?.kind === "project" && this.remoteWorkspaceIDs.has(this.activeContext.project_id)
+            ? this.activeContext.project_id : undefined,
+      }),
       searchThreads: (query: string, limit?: number) =>
         this.call("thread/search", { query, limit }),
       getThreadPreview: (threadId: string, limit?: number) =>

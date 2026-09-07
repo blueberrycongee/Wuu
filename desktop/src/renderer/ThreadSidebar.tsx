@@ -403,7 +403,7 @@ export function ProjectGroup({
                 ? t("threadSidebar.missingWorkspace")
                 : t("sidebar.newConversation")
             }
-            disabled={isMissing}
+            disabled={isMissing || (isScratchPseudo && !hostSupports("createBlankProject"))}
             onClick={() => onStartNewThread(project.id)}
           >
             <MessageSquarePlus className="icon" />

@@ -23,5 +23,6 @@ func (s *Server) handleWorkspaceList(req Request) error {
 	return s.writeResponse(req.ID, WorkspaceListResult{
 		Workspaces: out,
 		Current:    s.rt.RootDir,
+		CurrentID:  s.rt.WorkspaceID,
 	}, nil)
 }
