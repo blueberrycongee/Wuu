@@ -1093,10 +1093,85 @@
 
 .settings-provider-model-fields {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.6fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: auto auto;
   column-gap: 16px;
   row-gap: 8px;
+}
+
+.settings-provider-model-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+  margin-bottom: 16px;
+}
+
+.settings-provider-model-list .settings-button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.settings-provider-model-tag {
+  position: relative;
+  max-width: 100%;
+}
+
+.settings-provider-model-tag .settings-button {
+  padding-right: 26px;
+}
+
+.settings-provider-model-remove {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.settings-provider-model-tag:has([aria-pressed="true"]) .settings-provider-model-remove {
+  color: var(--paper);
+}
+
+.settings-provider-model-remove:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.settings-provider-model-tag:hover .settings-provider-model-remove,
+.settings-provider-model-tag:focus-within .settings-provider-model-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-provider-model-remove:disabled {
+  cursor: default;
+}
+
+.settings-provider-model-tag:hover .settings-provider-model-remove:disabled,
+.settings-provider-model-tag:focus-within .settings-provider-model-remove:disabled {
+  opacity: 0.35;
+}
+
+.settings-provider-model-remove .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.settings-provider-model-list [aria-pressed="true"] {
+  background: var(--ink-strong);
+  color: var(--paper);
 }
 
 /* Shared label/control rows keep adjacent inputs aligned when help text wraps. */

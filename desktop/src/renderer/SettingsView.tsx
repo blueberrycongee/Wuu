@@ -503,11 +503,12 @@ export function SettingsView({
   // change. An emptied required field snaps back to the persisted value;
   // an empty API key field means "keep the current secret" and never
   // round-trips.
-  async function commitModelName(): Promise<void> {
+  async function commitModelName(selection?: string): Promise<void> {
     if (addingProvider) {
       return;
     }
-    const model = modelDraft.trim();
+    const model = (selection ?? modelDraft).trim();
+    if (selection !== undefined) setModelDraft(model);
     if (!model) {
       setModelDraft(selectedProvider?.model ?? "");
       return;
@@ -536,6 +537,23 @@ export function SettingsView({
       await onSave(providerDraft, modelDraft, undefined, undefined, variant);
     } catch (saveError) {
       setVariantDraft(previous);
+      setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
+    }
+  }
+
+  async function removeModel(model: string): Promise<void> {
+    if (addingProvider || !selectedProvider || running) return;
+    const remaining = [...new Set([selectedProvider.model, ...(selectedProvider.models ?? []).map((item) => item.id)])]
+      .filter((id) => id && id !== model);
+    if (!remaining.length) return;
+    const nextModel = selectedProvider.model === model ? remaining[0] : selectedProvider.model;
+    const variant = normalizedVariantForProviderModel(variantDraft, selectedProvider, nextModel);
+    setError("");
+    try {
+      await onSave(providerDraft, nextModel, undefined, { remove_model: model }, variant);
+      setModelDraft(nextModel);
+      setVariantDraft(variant);
+    } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
     }
   }
@@ -1084,6 +1102,7 @@ export function SettingsView({
                   onBaseURLDraftChange={setBaseURLDraft}
                   onAPIKeyDraftChange={setAPIKeyDraft}
                   onCommitModel={commitModelName}
+                  onRemoveModel={removeModel}
                   onCommitBaseURL={commitBaseURL}
                   onCommitAPIKey={commitAPIKey}
                   onSubmit={submit}
@@ -1288,6 +1307,7 @@ function SettingsProvidersPage({
   onBaseURLDraftChange,
   onAPIKeyDraftChange,
   onCommitModel,
+  onRemoveModel,
   onCommitBaseURL,
   onCommitAPIKey,
   onSubmit,
@@ -1323,7 +1343,8 @@ function SettingsProvidersPage({
   onVariantDraftChange: (value: string) => void;
   onBaseURLDraftChange: (value: string) => void;
   onAPIKeyDraftChange: (value: string) => void;
-  onCommitModel: () => void;
+  onCommitModel: (selection?: string) => void;
+  onRemoveModel: (model: string) => Promise<void>;
   onCommitBaseURL: () => void;
   onCommitAPIKey: () => void;
   onSubmit: (event: ReactFormEvent<HTMLFormElement>) => Promise<void>;
@@ -1337,6 +1358,10 @@ function SettingsProvidersPage({
 }): JSX.Element {
   const { t } = useI18n();
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
+  const [removingModel, setRemovingModel] = useState(false);
+  function modelIDs(provider: ProviderSummary | undefined): string[] {
+    return [...new Set([provider?.model ?? "", ...(provider?.models ?? []).map((model) => model.id)].filter(Boolean))];
+  }
   const reasoningMode = providerModelReasoningMode(selectedProvider, modelDraft);
   const authFieldLabel = t("provider.apiKey");
   const xaiType = addingProvider
@@ -1404,7 +1429,7 @@ function SettingsProvidersPage({
               >
                 <span className="settings-provider-copy">
                   <strong>{providerLabels.get(provider.name) ?? providerServiceLabel(provider, t)}</strong>
-                  <small>{provider.model || t("provider.noModel")}</small>
+                  <small>{t("provider.modelCount", { count: modelIDs(provider).length })} · {provider.model ? t("provider.selectedModel", { model: provider.model }) : t("provider.noModel")}</small>
                 </span>
               </button>
               {onRemoveProvider && !provider.auto_discovered && (!provider.connection_locked || isXAISubscriptionType(provider.type) || isGrokBuildType(provider.type)) ? (
@@ -1479,6 +1504,27 @@ function SettingsProvidersPage({
           </SettingsRow>
         ) : null}
         <section className="settings-provider-form-section">
+          {!addingProvider && modelIDs(selectedProvider).length > 0 && <SettingsRow title={t("provider.availableModels")} block>
+            <div className="settings-provider-model-list" role="group" aria-label={t("provider.availableModels")}>
+              {modelIDs(selectedProvider).map((model) => <span key={model} className="settings-provider-model-tag"><button
+                type="button"
+                className="settings-button"
+                aria-pressed={modelDraft === model}
+                disabled={running || removingModel}
+                onClick={() => onCommitModel(model)}
+              >{model}</button><button
+                type="button"
+                className="settings-provider-model-remove"
+                aria-label={t("provider.removeModel", { model })}
+                title={modelIDs(selectedProvider).length < 2 ? t("provider.keepOneModel") : t("provider.removeModel", { model })}
+                disabled={running || removingModel || modelIDs(selectedProvider).length < 2}
+                onClick={() => {
+                  setRemovingModel(true);
+                  void onRemoveModel(model).finally(() => setRemovingModel(false));
+                }}
+              ><X className="icon" /></button></span>)}
+            </div>
+          </SettingsRow>}
           <div className="settings-provider-model-fields">
         <SettingsRow title={t("provider.modelName")} block>
           <input

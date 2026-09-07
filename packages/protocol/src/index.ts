@@ -1199,6 +1199,8 @@ export type BrowserBoundsRect = {
 };
 
 export type RuntimeConnectionUpdate = {
+  // Remove a model from this provider's choices, including future catalog refreshes.
+  remove_model?: string;
   base_url?: string;
   api_key?: string;
   auth_token?: string;

@@ -793,6 +793,55 @@ describe("SettingsView provider configuration", () => {
   });
 });
 
+describe("SettingsView provider model catalog", () => {
+  it("removes tags without selecting them, switches away from a removed default, and protects the last model", async () => {
+    installBuildInfoStub({ core: undefined, desktop: { version: "test", date: "1970-01-01T00:00:00Z" } });
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const initialized = baseInitialized({ provider: "kimi", model: "k3", providers: [
+      { name: "kimi", type: "openai", model: "k3", models: [{ id: "k3" }, { id: "k2" }] },
+    ] });
+    renderSettings({ initialPage: "providers", initialized, onSave });
+    const remove = (model: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="删除 ${model}"]`)!;
+    await act(async () => { remove("k2").click(); });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenLastCalledWith("kimi", "k3", undefined, { remove_model: "k2" }, expect.any(String));
+    await act(async () => { remove("k3").click(); });
+    expect(onSave).toHaveBeenLastCalledWith("kimi", "k2", undefined, { remove_model: "k3" }, expect.any(String));
+    renderSettings({ initialPage: "providers", onSave, initialized: { ...initialized, model: "k2", providers: [
+      { name: "kimi", type: "openai", model: "k2", models: [{ id: "k2" }] },
+    ] } });
+    expect(remove("k3")).toBeNull();
+    expect(remove("k2").disabled).toBe(true);
+  });
+
+  it("shows all known models, preserves an unlisted selection, and saves a catalog choice", async () => {
+    installBuildInfoStub({
+      core: undefined,
+      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
+    });
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    renderSettings({
+      initialPage: "providers",
+      initialized: baseInitialized({
+        provider: "kimi",
+        model: "custom-k3",
+        providers: [{ name: "kimi", type: "openai", model: "custom-k3", models: [
+          { id: "k2" }, { id: "p7" }, { id: "k2" },
+        ] }],
+      }),
+      onSave,
+    });
+    const modelButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('form button[aria-pressed]'));
+    expect(modelButtons.map((button) => button.textContent)).toEqual(["custom-k3", "k2", "p7"]);
+    expect(modelButtons[0].getAttribute("aria-pressed")).toBe("true");
+    await act(async () => {
+      modelButtons[1].click();
+    });
+    expect(onSave).toHaveBeenCalledWith("kimi", "k2", undefined, undefined, expect.any(String));
+    expect(modelButtons[1].getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
 describe("SettingsView collaboration models", () => {
   it("shows inherited capability models and saves explicit overrides", async () => {
     installBuildInfoStub({

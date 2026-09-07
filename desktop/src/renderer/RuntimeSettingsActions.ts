@@ -142,6 +142,7 @@ export function createRuntimeSettingsActions(
               ? { type: connection.type }
               : {}),
             ...(connection.create_provider ? { create_provider: true } : {}),
+            ...(connection.remove_model ? { remove_model: connection.remove_model } : {}),
             ...(connection.reuse_codex_credentials === undefined
               ? {}
               : { reuse_codex_credentials: connection.reuse_codex_credentials }),
@@ -150,6 +151,7 @@ export function createRuntimeSettingsActions(
       (item) => item.name === nextProvider,
     );
     const connectionChanged =
+      Boolean(nextConnection?.remove_model) ||
       Boolean(nextConnection?.create_provider) ||
       Boolean(nextConnection?.api_key) ||
       Boolean(nextConnection?.auth_token) ||

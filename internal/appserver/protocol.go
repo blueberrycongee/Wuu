@@ -932,6 +932,7 @@ type ConfigModelUpdateParams struct {
 	// "anthropic-official", "xai-subscription", "grok-build". Codex OAuth types remain
 	// excluded because they require a separate connection flow.
 	Type           *string `json:"type,omitempty"`
+	RemoveModel    string  `json:"remove_model,omitempty"`
 	CreateProvider bool    `json:"create_provider,omitempty"`
 	// ReuseCodexCredentials opts a Codex subscription provider into reading
 	// the local Codex CLI auth store. An explicit false is persisted so

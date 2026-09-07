@@ -1299,6 +1299,18 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	previousProviderCfg := providerCfg
 	previousModel := strings.TrimSpace(providerCfg.Model)
 	providerCfg.Model = model
+	if removed := strings.TrimSpace(params.RemoveModel); removed != "" {
+		if creatingProvider || threadID != "" || removed == model {
+			return s.writeResponse(req.ID, nil, errors.New("model removal requires an existing provider and a different workspace model"))
+		}
+		providerCfg.Models = cloneProviderModelConfigs(providerCfg.Models)
+		if providerCfg.Models == nil {
+			providerCfg.Models = make(map[string]config.ProviderModelConfig)
+		}
+		entry := providerCfg.Models[removed]
+		entry.Disabled = true
+		providerCfg.Models[removed] = entry
+	}
 	connectionChanged := creatingProvider
 	connectionLocked := isCodexProviderType(providerCfg.Type)
 	if connectionLocked && (params.BaseURL != nil || strings.TrimSpace(stringValue(params.APIKey)) != "" || strings.TrimSpace(stringValue(params.AuthToken)) != "") {
@@ -1458,7 +1470,7 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 		}
 		err = config.CreateProviderRuntime(s.rt.ConfigPath, resolvedName, &providerTypeValue, model, baseURLForCreate, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode, params.ReuseCodexCredentials)
 	} else {
-		err = config.UpdateProviderRuntime(s.rt.ConfigPath, resolvedName, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode, params.ReuseCodexCredentials)
+		err = config.UpdateProviderRuntime(s.rt.ConfigPath, resolvedName, model, params.BaseURL, apiKeyForConfig, authTokenForConfig, effortForConfig, variantForConfig, params.PermissionMode, params.ReuseCodexCredentials, params.RemoveModel)
 	}
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
@@ -2601,6 +2613,8 @@ func (s *Server) withCachedCodexModels(providerName string, provider config.Prov
 	}
 	for id, live := range cached {
 		merged := modelcatalog.MergeModelConfig(live, out.Models[id])
+		// User removals survive live discovery, just as they survive catalog refreshes.
+		merged.Disabled = out.Models[id].Disabled
 		// Live Codex model discovery is authoritative for adjustable reasoning
 		// levels. Do not retain catalog-only variants that the official model
 		// response omitted.

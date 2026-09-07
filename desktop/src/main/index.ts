@@ -1516,6 +1516,7 @@ app.whenReady().then(async () => {
         auth_token?: string;
         type?: string;
         create_provider?: boolean;
+        remove_model?: string;
         reuse_codex_credentials?: boolean;
       },
       variant?: string,
@@ -1542,6 +1543,7 @@ app.whenReady().then(async () => {
           : { auth_token: connection.auth_token }),
         ...(connection?.type === undefined ? {} : { type: connection.type }),
         ...(connection?.create_provider ? { create_provider: true } : {}),
+        ...(connection?.remove_model ? { remove_model: connection.remove_model } : {}),
         ...(connection?.reuse_codex_credentials === undefined
           ? {}
           : { reuse_codex_credentials: connection.reuse_codex_credentials }),

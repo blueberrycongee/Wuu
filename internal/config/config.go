@@ -1201,8 +1201,9 @@ func UpdateProviderSelection(configPath, providerName, newModel string) error {
 
 // UpdateProviderRuntime changes the default provider and editable connection
 // fields for that provider. A nil apiKey keeps the existing key configuration.
-func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, reuseCodexCredentials *bool) error {
-	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, reuseCodexCredentials, false, nil)
+// Removed models are disabled in the same atomic write and cannot include newModel.
+func UpdateProviderRuntime(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, reuseCodexCredentials *bool, removedModels ...string) error {
+	return updateProviderSelection(configPath, providerName, newModel, baseURL, apiKey, authToken, effort, variant, permissionMode, reuseCodexCredentials, false, nil, removedModels...)
 }
 
 // CreateProviderRuntime creates a new provider with the requested type
@@ -1635,7 +1636,7 @@ func setOptionalBool(target map[string]any, key string, value *bool) {
 	target[key] = true
 }
 
-func updateProviderSelection(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, reuseCodexCredentials *bool, createProvider bool, providerType *string) error {
+func updateProviderSelection(configPath, providerName, newModel string, baseURL, apiKey, authToken, effort, variant, permissionMode *string, reuseCodexCredentials *bool, createProvider bool, providerType *string, removedModels ...string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
@@ -1708,6 +1709,27 @@ func updateProviderSelection(configPath, providerName, newModel string, baseURL,
 	}
 	raw["default_provider"] = providerName
 	provider["model"] = newModel
+	for _, id := range removedModels {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if id == strings.TrimSpace(newModel) {
+			return fmt.Errorf("select another model before removing %q", id)
+		}
+		models, _ := provider["models"].(map[string]any)
+		if models == nil {
+			models = make(map[string]any)
+			provider["models"] = models
+		}
+		model, _ := models[id].(map[string]any)
+		if model == nil {
+			model = make(map[string]any)
+			models[id] = model
+		}
+		// Keep an override so catalog refreshes cannot resurrect the choice.
+		model["disabled"] = true
+	}
 	if baseURL != nil {
 		provider["base_url"] = strings.TrimSpace(*baseURL)
 	}
