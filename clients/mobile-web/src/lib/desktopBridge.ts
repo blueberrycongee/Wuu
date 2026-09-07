@@ -116,10 +116,7 @@ const unavailableWebMethods = [
   "generateCommitMessage",
   "createPullRequest",
   "listWorkspaceFiles",
-  "listWorkspaceDirectory",
-  "readWorkspaceFile",
   "writeWorkspaceFile",
-  "resolveWorkspaceFileReference",
   "startTerminalSession",
   "writeTerminalSession",
   "resizeTerminalSession",
@@ -364,6 +361,9 @@ export class RemoteDesktopBridge {
       initialMessageFlowFontSize: storedMessageSize(),
       popOutInit: () => ({ kind: null, threadID: null, context: null }),
 
+      listWorkspaceDirectory: (path, root) => this.call("workspace/directory/list", { path, root: root || this.workdir() }),
+      readWorkspaceFile: (path, root) => this.call("workspace/file/read", { path, root: root || this.workdir() }),
+      resolveWorkspaceFileReference: (reference, root) => this.call("workspace/file/resolve", { reference, root: root || this.workdir() }),
       listProjects: async () => this.projectState(),
       selectProject: async (id) => {
         if (id !== this.projectID) throw new Error("Unknown remote workspace");

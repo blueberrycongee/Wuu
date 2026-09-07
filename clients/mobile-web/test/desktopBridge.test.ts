@@ -77,6 +77,16 @@ describe("browser host contract", () => {
     }), 30_000);
   });
 
+  it("reads and resolves files in the selected conversation worktree on the host", async () => {
+    const bridge = await connectBridge();
+    await bridge.api.listWorkspaceDirectory("src", "/paired/worktree");
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/directory/list", { path: "src", root: "/paired/worktree" }, 30_000);
+    await bridge.api.readWorkspaceFile("src/main.go", "/paired/worktree");
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/file/read", { path: "src/main.go", root: "/paired/worktree" }, 30_000);
+    await bridge.api.resolveWorkspaceFileReference("main.go:12");
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/file/resolve", { reference: "main.go:12", root: "/paired/workspace" }, 30_000);
+  });
+
   it("does not open executable URL schemes", async () => {
     const host = api();
     await expect(host.openExternal("javascript:alert(1)")).rejects.toThrow("HTTP");

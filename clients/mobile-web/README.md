@@ -35,10 +35,22 @@ npm run build
 
 ## 当前边界
 
-第一阶段已接通会话加载、完整事件流、发送、排队、打断、归档、重命名和用户问题。
-Electron 专属能力（本地文件选择器、PTY、嵌入式 WebContentsView、系统级设置）不能
-伪装成浏览器能力，需逐项变成可选 capability 或增加窄的远程宿主 API。Web 扩展模块
-加载也暂时关闭，直到存在与 Electron 自定义协议同等的公共加载路径。
+Web bridge 使用完整的类型检查接口，并通过 `unsupportedMethods` 声明不可用操作。
+共享 renderer 据此限制原生窗口、文件管理器、语音、桌宠和本机文件选择器等入口。
+会话、模型配置、会话组织、用户问题及 Agent 管理的进程使用已有 app-server RPC。
+新建原生 PTY 不可用；Agent 启动的持久进程仍可读取、输入、调整尺寸和停止。
+
+重连会原地重新读取已打开会话、排队消息和用户问题，保留本地草稿与标签选择。
+离线操作立即失败，恢复失败可重试。旧连接的请求结果不能覆盖新连接。
+
+文件面板需要目录导航、预览和聊天文件引用解析，因此增加三个只读 RPC：
+`workspace/directory/list`、`workspace/file/read`、`workspace/file/resolve`。
+它们只访问宿主已知的工作区、会话目录及其子目录，使用 rooted 文件访问阻止路径和符号链接逃逸。
+文本预览上限为 512 KiB；PNG、JPEG、GIF、WebP 和 PDF 在 2 MiB 内通过同一加密通道返回。
+文件编辑没有现有 renderer 调用方，因此没有增加远程写入接口。
+
+仍需完成注册工作区选择、git 状态和 diff、手机视口布局及真实浏览器端到端验证。
+Web 扩展模块加载暂时关闭，直到存在与 Electron 自定义协议同等的公共加载路径。
 
 浏览器凭据保存在当前 origin 的 `localStorage`，隔离强度低于 Keychain/Keystore。
 不要把该页面部署到不受信任的公共 origin；远程链路继续使用端到端加密和既有配对信任。
