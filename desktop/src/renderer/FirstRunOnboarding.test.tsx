@@ -95,6 +95,56 @@ describe("FirstRunOnboarding", () => {
     ])).toBe("wuu");
   });
 
+  it("decorates the runtime mascot with the selected engine mark", async () => {
+    const engines: EngineListResult = {
+      engines: [
+        { id: "wuu", enabled: true, binary_ok: true },
+        { id: "codex", enabled: true, binary_ok: true },
+        { id: "claude", enabled: true, binary_ok: true },
+      ],
+      settings: { default_engine: "wuu" },
+    };
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={[plugin("todo", true)]}
+            providers={[]}
+            engines={engines}
+            onUpdateExtensionPackage={vi.fn(async () => undefined)}
+            onSaveProvider={vi.fn(async () => undefined)}
+            onUpdateEngines={vi.fn(async () => undefined)}
+            onComplete={vi.fn(async () => undefined)}
+          />
+        </I18nProvider>,
+      );
+    });
+    await clickButton("开始设置");
+    await clickButton("继续");
+
+    expect(container.querySelector("[data-wuu-mascot-follows-pointer]")).not.toBeNull();
+    expect(mascotStage()?.getAttribute("data-onboarding-engine")).toBe("wuu");
+    expect(mascotStage()?.querySelector("[data-onboarding-engine-mark]")).toBeNull();
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[data-testid=onboarding-engine-codex]")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(mascotStage()?.querySelector("[data-onboarding-engine-mark]")?.getAttribute("data-onboarding-engine-mark")).toBe("codex");
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[data-testid=onboarding-engine-claude]")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(mascotStage()?.querySelector("[data-onboarding-engine-mark]")?.getAttribute("data-onboarding-engine-mark")).toBe("claude");
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[data-testid=onboarding-engine-wuu]")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(mascotStage()?.querySelector("[data-onboarding-engine-mark]")).toBeNull();
+  });
+
   it("discovers a local Codex login without treating it as already configured", () => {
     const providers = [{
       name: "openai-codex",
@@ -127,7 +177,7 @@ describe("FirstRunOnboarding", () => {
     await clickButton("继续");
 
     expect(container.querySelector(".onboarding-stage-provider")).not.toBeNull();
-    expect(container.querySelector(".onboarding-provider-panel.is-ready")).not.toBeNull();
+    expect(container.querySelector(".onboarding-panel.is-ready")).not.toBeNull();
   });
 
   it("selects the recommended subject IDs when inventory arrives after mount", async () => {

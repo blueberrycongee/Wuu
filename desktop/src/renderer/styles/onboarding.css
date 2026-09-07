@@ -9,17 +9,14 @@
   --onboarding-copy-strong: var(--ink-soft);
   --onboarding-copy-description: var(--ink-soft);
   --onboarding-copy-card: var(--ink-tertiary);
-  --onboarding-copy-eyebrow: var(--ink-tertiary);
   --onboarding-copy-muted: var(--ink-tertiary);
   --onboarding-copy-loading: var(--ink-tertiary);
   --onboarding-copy-back: var(--ink-tertiary);
   --onboarding-copy-label: var(--ink-soft);
-  --onboarding-copy-sparkle: var(--ink-muted);
   --onboarding-progress-idle: var(--hairline-strong);
   --onboarding-surface-soft: var(--surface-1);
   --onboarding-surface-selected: var(--surface-1);
   --onboarding-surface-control: var(--surface-2);
-  --onboarding-surface-plug: var(--surface-2);
   --onboarding-border: var(--hairline);
   --onboarding-border-card: var(--hairline);
   --onboarding-border-hover: var(--hairline-strong);
@@ -78,58 +75,6 @@
   letter-spacing: -0.01em;
 }
 
-/* Dev-only preview: the real first-run flow owns a fixed-size, non-resizable
- * 1120x840 window (see computeOnboardingWindowBounds), so the preview renders
- * as a fixed-size dialog over the app instead of taking over the resizable
- * main window. */
-.onboarding-preview-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: grid;
-  place-items: center;
-  padding: 32px;
-  background: var(--modal-backdrop-bg);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-}
-
-.onboarding-preview-window {
-  position: relative;
-  width: min(1120px, 100%);
-  height: min(840px, 100%);
-  border: 1px solid var(--onboarding-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: var(--onboarding-white);
-  box-shadow:
-    0 24px 80px var(--onboarding-shadow-hero),
-    0 4px 18px var(--onboarding-shadow-button);
-  animation: onboarding-preview-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.onboarding-preview-window .first-run-onboarding {
-  position: absolute;
-  inset: 0;
-  z-index: auto;
-}
-
-.onboarding-preview-window .onboarding-chrome {
-  -webkit-app-region: no-drag;
-}
-
-@keyframes onboarding-preview-enter {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.97);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
 .onboarding-progress {
   grid-column: 2;
   display: flex;
@@ -157,16 +102,8 @@
   scrollbar-gutter: stable;
 }
 
-.onboarding-stage-plugins {
-  display: grid;
-  align-items: center;
-}
-
-.onboarding-stage-runtime {
-  display: grid;
-  align-items: start;
-}
-
+.onboarding-stage-plugins,
+.onboarding-stage-runtime,
 .onboarding-stage-provider {
   display: grid;
   align-items: center;
@@ -190,18 +127,10 @@
   flex: 0 0 auto;
 }
 
-.onboarding-mascot-hero {
+.onboarding-welcome .onboarding-plugin-mascot-stage {
+  width: 240px;
+  height: 200px;
   margin: 0 auto 30px;
-  filter: drop-shadow(0 18px 26px var(--onboarding-shadow-hero));
-}
-
-.onboarding-eyebrow {
-  margin: 0 0 14px;
-  color: var(--onboarding-copy-eyebrow);
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
 }
 
 .onboarding-welcome h1,
@@ -214,20 +143,8 @@
   line-height: 1.08;
 }
 
-.onboarding-lede {
-  max-width: 570px;
-  margin: 22px auto 32px;
-  color: var(--onboarding-copy);
-  font-size: 16px;
-  line-height: 1.75;
-}
-
-.onboarding-stage-welcome h1 {
-  /* Compensate for the weak visual weight of the trailing Chinese punctuation. */
-  transform: translateX(0.08em);
-}
-
-.onboarding-stage-welcome .onboarding-primary {
+.onboarding-stage-welcome .onboarding-primary,
+.onboarding-stage-ready .onboarding-primary {
   margin-top: 32px;
 }
 
@@ -284,23 +201,6 @@
   animation: onboarding-enter 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.onboarding-runtime-panel {
-  padding-top: clamp(24px, 8vh, 104px);
-}
-
-.onboarding-panel-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 32px;
-  margin-bottom: 22px;
-}
-
-.onboarding-panel-heading h1 {
-  font-size: clamp(29px, 3.3vw, 42px);
-}
-
-.onboarding-panel-heading > div > p:last-child,
 .onboarding-provider-description {
   max-width: 640px;
   margin: 14px 0 0;
@@ -312,7 +212,7 @@
 .onboarding-plugins-masthead {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: stretch;
+  align-items: center;
   gap: 24px;
   margin-bottom: 22px;
 }
@@ -320,9 +220,10 @@
 .onboarding-plugins-masthead-copy {
   display: flex;
   min-width: 0;
+  min-height: 200px;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: center;
   gap: 18px;
   padding: 4px 0;
 }
@@ -468,6 +369,10 @@
 .equipment-binding { fill: var(--equipment-binding); }
 .equipment-bookmark { fill: var(--equipment-accent); }
 
+.onboarding-engine-mark {
+  fill: var(--equipment-ink);
+}
+
 .equipment-seam,
 .equipment-detail,
 .equipment-listen {
@@ -521,10 +426,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-}
-
-.onboarding-runtime-panel .onboarding-choice-grid {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
 .onboarding-plugin {
@@ -761,69 +662,10 @@
   gap: 9px;
 }
 
-.onboarding-provider-panel {
-  width: min(600px, 100%);
-  padding-top: 8px;
-}
-
-.onboarding-provider-panel.is-ready {
-  width: min(560px, 100%);
-  padding-top: 0;
-  text-align: center;
-}
-
-.onboarding-provider-panel h1 {
-  font-size: clamp(30px, 3.4vw, 42px);
-}
-
-.onboarding-provider-mark {
-  position: relative;
-  width: fit-content;
-  margin-bottom: 22px;
-}
-
-.onboarding-provider-panel.is-ready .onboarding-provider-mark {
-  margin: 0 auto 24px;
-  /* The plug and thinking marks both extend right of the mascot's layout box. */
-  transform: translateX(-12px);
-}
-
-.onboarding-provider-panel.is-ready h1 {
-  transform: translateX(0.08em);
-}
-
-.onboarding-provider-panel.is-ready .onboarding-provider-description {
-  margin-inline: auto;
-}
-
-.onboarding-provider-panel.is-ready .onboarding-actions {
-  width: min(360px, 100%);
-  margin: 32px auto 0;
-}
-
-.onboarding-provider-plug {
-  position: absolute;
-  right: -6px;
-  bottom: 0;
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border: 4px solid var(--onboarding-white);
-  border-radius: var(--radius-pill);
-  background: var(--onboarding-surface-plug);
-  color: var(--onboarding-copy-strong);
-}
-
-.onboarding-provider-plug svg {
-  width: 14px;
-}
-
 .onboarding-provider-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-  margin-top: 28px;
 }
 
 .onboarding-provider-form label {
@@ -866,24 +708,6 @@
   line-height: 1.5;
 }
 
-.onboarding-ready-mascot {
-  position: relative;
-  width: fit-content;
-  margin: 0 auto;
-}
-
-.onboarding-ready-mascot > svg:last-child {
-  position: absolute;
-  top: 4px;
-  right: -18px;
-  width: 24px;
-  color: var(--onboarding-copy-sparkle);
-}
-
-.onboarding-ready .onboarding-lede {
-  margin-bottom: 26px;
-}
-
 .is-spinning {
   animation: onboarding-spin 900ms linear infinite;
 }
@@ -918,7 +742,6 @@
 
   .onboarding-plugin-grid,
   .onboarding-choice-grid,
-  .onboarding-runtime-panel .onboarding-choice-grid,
   .onboarding-plugins-masthead,
   .onboarding-provider-form {
     grid-template-columns: 1fr;
@@ -935,7 +758,6 @@
   .onboarding-progress-dot,
   .onboarding-primary,
   .onboarding-plugin,
-  .onboarding-preview-window,
   .onboarding-plugin-mascot-stage *,
   .onboarding-plugin-mascot-stage *::before,
   .onboarding-plugin-mascot-stage *::after {

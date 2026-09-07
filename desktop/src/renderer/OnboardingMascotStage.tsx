@@ -1,5 +1,6 @@
 import { _layout } from "blobatar";
 import type { CSSProperties, ReactNode } from "react";
+import { ENGINE_ICON_PATHS } from "./EngineIcons";
 import { WuuMascot } from "./WuuMascot";
 import { WUU_MASCOT_NAME, WUU_MASCOT_TRAITS } from "./wuu-mascot-spec";
 
@@ -17,17 +18,21 @@ const equipmentFit = `translate(${body.cx} ${body.cy}) scale(${body.rx / 40} ${b
 
 export function OnboardingMascotStage({
   pluginIDs,
+  engineID,
 }: {
-  pluginIDs: readonly string[];
+  pluginIDs?: readonly string[];
+  engineID?: string;
 }): JSX.Element {
-  const worn = new Set(pluginIDs);
+  const worn = new Set(pluginIDs ?? []);
   const split = worn.has("subagent");
+  const engineMark = engineID && engineID !== "wuu" ? ENGINE_ICON_PATHS[engineID] : undefined;
 
   return (
     <div
       className={`onboarding-plugin-mascot-stage${split ? " is-split" : ""}`}
       data-testid="onboarding-mascot-stage"
       data-onboarding-split={split ? "" : undefined}
+      data-onboarding-engine={engineID || undefined}
       aria-hidden="true"
     >
       <div className="onboarding-mascot-pack">
@@ -49,7 +54,7 @@ export function OnboardingMascotStage({
                   followPointer
                   style={{ "--mo-head": `var(--companion-${color})`, "--mo-eye": "var(--equipment-ink)" } as CSSProperties}
                 />
-                {index === 0 ? <CompanionEquipment worn={worn} /> : null}
+                {index === 0 ? <CompanionEquipment worn={worn} engineMark={engineMark} engineID={engineID} /> : null}
               </div>
             </div>
           </div>
@@ -59,7 +64,15 @@ export function OnboardingMascotStage({
   );
 }
 
-function CompanionEquipment({ worn }: { worn: ReadonlySet<string> }): JSX.Element {
+function CompanionEquipment({
+  worn,
+  engineMark,
+  engineID,
+}: {
+  worn: ReadonlySet<string>;
+  engineMark?: string;
+  engineID?: string;
+}): JSX.Element {
   const hasBelt = ["todo", "automation", "memory", "dream", "note-compaction"].some((id) => worn.has(id));
   const hasPocket = worn.has("memory") || worn.has("dream");
   function capability(id: OnboardingPluginID, content: ReactNode): ReactNode {
@@ -74,6 +87,13 @@ function CompanionEquipment({ worn }: { worn: ReadonlySet<string> }): JSX.Elemen
   return (
     <svg className="onboarding-mascot-equipment" viewBox="0 0 100 100" aria-hidden="true">
       <g transform={equipmentFit}>
+        {engineMark ? (
+          <g className="onboarding-equipment-module" data-onboarding-engine-mark={engineID}>
+            <g className="onboarding-engine-mark" transform="translate(68 18) scale(0.72)">
+              <path d={engineMark} />
+            </g>
+          </g>
+        ) : null}
         {hasBelt ? (
           <g className="onboarding-equipment-belt">
             <path className="equipment-edge" d="M14 65 Q49 84 86 64 L83 74 Q51 94 18 76 Z" />

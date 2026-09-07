@@ -44,4 +44,21 @@ describe("onboarding companion", () => {
     expect(container.querySelectorAll("button, input, [tabindex='0']")).toHaveLength(0);
     expect(container.querySelector("[data-testid=onboarding-mascot-stage]")?.getAttribute("aria-hidden")).toBe("true");
   });
+
+  it("wears the Codex or Claude mark and leaves Wuu undecorated", async () => {
+    await act(async () => root.render(<OnboardingMascotStage engineID="wuu" />));
+    const face = container.querySelector("[data-wuu-mascot-follows-pointer]");
+    expect(face).not.toBeNull();
+    expect(container.querySelector("[data-onboarding-engine-mark]")).toBeNull();
+
+    await act(async () => root.render(<OnboardingMascotStage engineID="codex" />));
+    expect(container.querySelector("[data-wuu-mascot-follows-pointer]")).toBe(face);
+    expect(container.querySelector("[data-onboarding-engine-mark]")?.getAttribute("data-onboarding-engine-mark")).toBe("codex");
+
+    await act(async () => root.render(<OnboardingMascotStage engineID="claude" />));
+    expect(container.querySelector("[data-onboarding-engine-mark]")?.getAttribute("data-onboarding-engine-mark")).toBe("claude");
+
+    await act(async () => root.render(<OnboardingMascotStage engineID="wuu" />));
+    expect(container.querySelector("[data-onboarding-engine-mark]")).toBeNull();
+  });
 });

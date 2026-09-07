@@ -924,6 +924,70 @@ function createPopOutWindow(params: PopOutWindowParams): BrowserWindow {
   return win;
 }
 
+function createOnboardingPreviewWindow(sourceWindow?: BrowserWindow | null): BrowserWindow {
+  const existing = windowRegistry.onboardingPreviewWindow();
+  if (existing && !existing.isDestroyed() && !existing.webContents.isDestroyed()) {
+    if (existing.isMinimized()) {
+      existing.restore();
+    }
+    existing.show();
+    existing.focus();
+    return existing;
+  }
+
+  const cursor = (screen as unknown as { getCursorScreenPoint(): { x: number; y: number } }).getCursorScreenPoint();
+  const display = (screen as unknown as {
+    getDisplayNearestPoint(point: { x: number; y: number }): {
+      workArea: { x: number; y: number; width: number; height: number };
+    };
+  }).getDisplayNearestPoint(cursor);
+  const workArea = display.workArea;
+  const size = computeOnboardingWindowBounds(workArea);
+  const sourceBounds = sourceWindow?.isDestroyed() ? undefined : sourceWindow?.getBounds();
+  const x = Math.max(
+    workArea.x,
+    Math.min(
+      Math.round((sourceBounds?.x ?? cursor.x) + ((sourceBounds?.width ?? 0) - size.width) / 2),
+      workArea.x + workArea.width - size.width,
+    ),
+  );
+  const y = Math.max(
+    workArea.y,
+    Math.min(
+      Math.round((sourceBounds?.y ?? cursor.y) + ((sourceBounds?.height ?? 0) - size.height) / 2),
+      workArea.y + workArea.height - size.height,
+    ),
+  );
+
+  const win = new BrowserWindow({
+    width: size.width,
+    height: size.height,
+    x,
+    y,
+    resizable: false,
+    ...windowFrameOptions(),
+    ...mainWindowMaterialOptions(),
+    title: "wuu",
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: true,
+      scrollBounce: process.platform === "darwin",
+      plugins: true,
+      ...appShellWebPreferences(app.isPackaged),
+    },
+  });
+  const windowID = win.webContents.id;
+  registerThemedChromeWindow(win);
+  windowRegistry.registerWindow(win, "onboarding");
+  win.on("closed", () => {
+    unregisterWindow(windowID);
+  });
+  loadRenderer(win);
+  return win;
+}
+
 function createWindow(): void {
   const primaryDisplay = screen.getPrimaryDisplay();
   const onboardingComplete = isOnboardingComplete();
@@ -1177,17 +1241,28 @@ app.whenReady().then(async () => {
     (event) => {
       const threadID = windowRegistry.threadForWindow(event.sender.id);
       const context = windowRegistry.runtimeContextForWindow(event.sender.id);
+      const role = windowRegistry.roleForWindow(event.sender.id);
       event.returnValue = {
-        kind: context
-          ? threadID
-            ? "thread"
-            : "draft"
-          : null,
+        kind: role === "onboarding"
+          ? "onboarding-preview"
+          : context
+            ? threadID
+              ? "thread"
+              : "draft"
+            : null,
         threadID: threadID ?? null,
         context: context ?? null,
       } satisfies PopOutInitResult;
     },
   );
+  ipcMain.handle("wuu:onboarding-preview-open", (event) => {
+    if (app.isPackaged) {
+      throw new Error("onboarding preview is unavailable in packaged builds");
+    }
+    const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+    const win = createOnboardingPreviewWindow(sourceWindow);
+    return { windowID: win.webContents.id };
+  });
   ipcMain.handle("wuu:cua-active-thread", (event, threadID?: string) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender);
     if (!senderWindow || senderWindow.isDestroyed()) return;

@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, LoaderCircle, Plug, Sparkles } from "lucide-react";
+import { Check, ChevronLeft, LoaderCircle } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   EngineInfo,
@@ -14,7 +14,6 @@ import type { TranslationKey } from "./i18n/resources/zh-CN";
 import { OnboardingMascotStage } from "./OnboardingMascotStage";
 import { PluginIcon } from "./PublicIcon";
 import { applyThemePreference } from "./Theme";
-import { WuuMascot } from "./WuuMascot";
 
 type OnboardingStep = "welcome" | "plugins" | "runtime" | "provider" | "ready";
 type PluginPreset = "minimal" | "recommended" | "all" | "custom";
@@ -372,14 +371,7 @@ export function FirstRunOnboarding({
       <section className={`onboarding-stage onboarding-stage-${step}`}>
         {step === "welcome" ? (
           <div className="onboarding-welcome">
-            <WuuMascot
-              className="onboarding-mascot onboarding-mascot-hero"
-              size={152}
-              activity="compose"
-              accessory="none"
-              followPointer
-              aria-hidden="true"
-            />
+            <OnboardingMascotStage />
             <h1>{t("onboarding.welcomeTitle")}</h1>
             <button className="onboarding-primary" type="button" onClick={() => setStep("plugins")}>
               {t("onboarding.begin")}
@@ -470,16 +462,14 @@ export function FirstRunOnboarding({
         ) : null}
 
         {step === "runtime" ? (
-          <div className="onboarding-panel onboarding-runtime-panel">
-            <div className="onboarding-panel-heading">
-              <div>
-                <p className="onboarding-eyebrow">{t("onboarding.runtimeEyebrow")}</p>
+          <div className="onboarding-panel">
+            <div className="onboarding-plugins-masthead">
+              <div className="onboarding-plugins-masthead-copy">
                 <h1>{t("onboarding.runtimeTitle")}</h1>
-                <p>{t("onboarding.runtimeDescription")}</p>
               </div>
-              <WuuMascot className="onboarding-mascot" size={112} activity="thinking" accessory="none" aria-hidden="true" />
+              <OnboardingMascotStage engineID={selectedEngine} />
             </div>
-            <div className="onboarding-choice-grid" role="radiogroup" aria-label={t("onboarding.runtimeEyebrow")}>
+            <div className="onboarding-choice-grid" role="radiogroup" aria-label={t("onboarding.runtimeTitle")}>
               {selectableEngines.map((engine) => {
                 const selected = selectedEngine === engine.id;
                 const recommended = recommendedEngine === engine.id;
@@ -549,16 +539,13 @@ export function FirstRunOnboarding({
         ) : null}
 
         {step === "provider" ? (
-          <div className={`onboarding-panel onboarding-provider-panel${providerReady ? " is-ready" : ""}`}>
-            <div className="onboarding-provider-mark">
-              <WuuMascot className="onboarding-mascot" size={104} activity="thinking" accessory="none" aria-hidden="true" />
-              <span className="onboarding-provider-plug"><Plug /></span>
+          <div className={`onboarding-panel${providerReady ? " is-ready" : ""}`}>
+            <div className="onboarding-plugins-masthead">
+              <div className="onboarding-plugins-masthead-copy">
+                <h1>{providerReady ? t("onboarding.providerReadyTitle") : t("onboarding.providerTitle")}</h1>
+              </div>
+              <OnboardingMascotStage />
             </div>
-            <p className="onboarding-eyebrow">{t("onboarding.providerEyebrow")}</p>
-            <h1>{providerReady ? t("onboarding.providerReadyTitle") : t("onboarding.providerTitle")}</h1>
-            <p className="onboarding-provider-description">
-              {providerReady ? t("onboarding.providerReadyDescription") : t("onboarding.providerDescription")}
-            </p>
 
             {!providerReady ? (
               <div className="onboarding-provider-form">
@@ -633,13 +620,8 @@ export function FirstRunOnboarding({
 
         {step === "ready" ? (
           <div className="onboarding-welcome onboarding-ready">
-            <div className="onboarding-ready-mascot">
-              <WuuMascot className="onboarding-mascot onboarding-mascot-hero" size={144} activity="compose" accessory="sprout" aria-hidden="true" />
-              <Sparkles aria-hidden="true" />
-            </div>
-            <p className="onboarding-eyebrow">{t("onboarding.readyEyebrow")}</p>
+            <OnboardingMascotStage />
             <h1>{t("onboarding.readyTitle")}</h1>
-            <p className="onboarding-lede">{t("onboarding.readyDescription", { count: selectedPluginIDs.size })}</p>
             <OnboardingError message={error} />
             <button className="onboarding-primary" type="button" disabled={finishing} onClick={() => void finish()}>
               {finishing ? t("onboarding.finishing") : t("onboarding.enterWuu")}
