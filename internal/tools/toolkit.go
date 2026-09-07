@@ -67,6 +67,7 @@ type Toolkit struct {
 	codeModeMu              sync.RWMutex
 	codeMode                *codemode.Service
 	codeModeOnly            bool
+	codeModeAdditionalTools func() []providers.ToolDefinition
 	// mcpManager, when set, exposes MCP server tools alongside built-in
 	// tools. MCP tools are appended after built-ins to preserve prompt
 	// cache stability (the built-in prefix stays constant).

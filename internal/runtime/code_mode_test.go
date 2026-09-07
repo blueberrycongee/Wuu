@@ -21,6 +21,7 @@ func TestSessionCodeModeDefaultAndOptOut(t *testing.T) {
 		{"desktop-default", "", "code-mode-workspace"},
 		{"path-only-default", "", ""},
 		{"code-only", "code_only", "code-mode-workspace"},
+		{"mixed", "code", "code-mode-workspace"},
 		{"direct", "direct", "code-mode-workspace"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -72,7 +73,7 @@ func TestSessionCodeModeDefaultAndOptOut(t *testing.T) {
 					t.Fatalf("mode %q: model cannot discover configured runtime", mode)
 				}
 				for _, d := range defs {
-					if mode == "code_only" && d.Name == "read_file" {
+					if (mode == "" || mode == "code_only") && d.Name == "read_file" {
 						t.Fatal("code_only exposed leaf tools")
 					}
 				}
@@ -115,9 +116,13 @@ func TestSessionCodeModeDefaultAndOptOut(t *testing.T) {
 	}
 }
 
-type codeModeTestScope struct{ kit *tools.Toolkit }
+type codeModeTestScope struct {
+	executor interface {
+		ExecuteResult(context.Context, providers.ToolCall) (toolresult.Result, error)
+	}
+}
 
 func (s codeModeTestScope) OutlivingNested() toolctx.NestedExecutor { return s }
 func (s codeModeTestScope) Invoke(ctx context.Context, call providers.ToolCall) (toolresult.Result, error) {
-	return s.kit.ExecuteResult(ctx, call)
+	return s.executor.ExecuteResult(ctx, call)
 }

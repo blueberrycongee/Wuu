@@ -63,10 +63,11 @@ incremental Cargo build and copies the result next to `wuu-core` in
 `desktop/build/bin`. Existing staged binaries do not bypass the build. Windows
 requires a separately built Windows host staged in that directory.
 
-Wuu defaults to `code_mode.mode: "code"`: models receive `exec` and `wait`
-alongside their ordinary tools. `code_only` routes leaf tool calls through these
-entries; `direct` disables the runtime. The host is started on the first `exec`
-call and shared by conversations in the workspace session. Plain text replies
+Wuu defaults to `code_mode.mode: "code_only"`: models invoke ordinary tools
+through `exec` and `wait`, with schemas included in the `exec` description.
+Context switching remains a top-level control. Explicit `code` also exposes
+ordinary tools directly; `direct` disables the runtime. The host is started on
+the first `exec` call and shared by conversations in the workspace session. Plain text replies
 do not start a host process.
 
 The core resolves the host from `code_mode.host`, then `WUU_CODE_MODE_HOST`,

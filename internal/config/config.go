@@ -113,7 +113,7 @@ type Config struct {
 	// desktop settings. Nil means auto-detection from the CLI binaries.
 	Engines *EnginesConfig `json:"engines,omitempty"`
 	// CodeMode configures the isolated code-mode runtime. The default
-	// invocation mode is CodeModeEnabled. The runtime resolves an empty Host
+	// invocation mode is CodeModeOnly. The runtime resolves an empty Host
 	// from WUU_CODE_MODE_HOST or the binary next to the core executable.
 	CodeMode CodeModeConfig `json:"code_mode,omitempty"`
 }
@@ -138,8 +138,7 @@ type CodeModeConfig struct {
 	// Host is the absolute path to the wuu-code-mode-host executable. The
 	// launcher rejects relative paths and never searches for a model CLI.
 	Host string `json:"host,omitempty"`
-	// Mode selects the invocation mode: "direct", "code" (default), or
-	// "code_only".
+	// Mode selects the invocation mode: "direct", "code", or "code_only" (default).
 	Mode string `json:"mode,omitempty"`
 	// DefaultYieldMS is applied to exec calls that leave yield_time_ms unset.
 	DefaultYieldMS uint64 `json:"default_yield_ms,omitempty"`
@@ -147,16 +146,16 @@ type CodeModeConfig struct {
 	MaxHeapSizeBytes uint64 `json:"max_heap_size_bytes,omitempty"`
 }
 
-// InvocationMode normalizes Mode. Unknown values fall back to code mode,
+// InvocationMode normalizes Mode. Unknown values fall back to code-only mode,
 // which is the product default.
 func (c CodeModeConfig) InvocationMode() CodeModeInvocationMode {
 	switch strings.ToLower(strings.TrimSpace(c.Mode)) {
 	case "direct":
 		return CodeModeDirect
-	case "code_only", "code-mode-only", "code_mode_only":
-		return CodeModeOnly
-	default:
+	case "code":
 		return CodeModeEnabled
+	default:
+		return CodeModeOnly
 	}
 }
 

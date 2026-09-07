@@ -220,17 +220,32 @@ func (t *Toolkit) withCodeModeSurface(surface capability.Surface) capability.Sur
 	return out
 }
 
-// codeModeEntryDefinitions returns only the code-mode exec/wait entries for
-// the model-visible surface in Code Mode Only.
+// Context switches remain top-level controls: nested cell output cannot signal
+// the agent loop, and a live cell may yield before finishing its writes.
 func (t *Toolkit) codeModeEntryDefinitions() []providers.ToolDefinition {
 	all := t.registry.Definitions()
 	out := make([]providers.ToolDefinition, 0, 2)
 	for _, d := range all {
-		if (d.Name == codeModeExecToolName || d.Name == codeModeWaitToolName) && !t.isToolDisabled(d.Name) {
+		if (d.Name == codeModeExecToolName || d.Name == codeModeWaitToolName || d.Name == newContextToolName) && t.SupportsTool(d.Name) {
+			if d.Name == codeModeExecToolName {
+				if nested, err := t.CodeModeNestedSurface(); err == nil {
+					if catalog, err := json.Marshal(nested); err == nil {
+						d.Description += "\nAvailable tools (call as tools.<name> with the documented input schema):\n" + string(catalog)
+					}
+				}
+			}
 			out = append(out, d)
 		}
 	}
 	return out
+}
+
+// SetCodeModeAdditionalTools supplies live extension definitions for this toolkit.
+// Thread clones bind their own provider so execution scopes and host reloads remain current.
+func (t *Toolkit) SetCodeModeAdditionalTools(provider func() []providers.ToolDefinition) {
+	t.codeModeMu.Lock()
+	t.codeModeAdditionalTools = provider
+	t.codeModeMu.Unlock()
 }
 
 // CodeModeNestedSurface lists every tool a code-mode cell may invoke. It is
@@ -244,7 +259,7 @@ func (t *Toolkit) CodeModeNestedSurface() ([]codemode.ToolDefinition, error) {
 	all := t.registry.Definitions()
 	out := make([]codemode.ToolDefinition, 0, len(all))
 	for _, d := range all {
-		if d.Name == codeModeExecToolName || d.Name == codeModeWaitToolName || t.isToolDisabled(d.Name) {
+		if d.Name == codeModeExecToolName || d.Name == codeModeWaitToolName || d.Name == newContextToolName || !t.SupportsTool(d.Name) {
 			continue
 		}
 		definition, err := codeModeToolDefinition(d)
@@ -255,7 +270,7 @@ func (t *Toolkit) CodeModeNestedSurface() ([]codemode.ToolDefinition, error) {
 	}
 	for _, tool := range t.mcpToolsSnapshot() {
 		d := tool.Definition()
-		if d.Name == codeModeExecToolName || d.Name == codeModeWaitToolName || t.isToolDisabled(d.Name) {
+		if d.Name == codeModeExecToolName || d.Name == codeModeWaitToolName || !t.SupportsTool(d.Name) {
 			continue
 		}
 		definition, err := codeModeToolDefinition(d)
@@ -263,6 +278,18 @@ func (t *Toolkit) CodeModeNestedSurface() ([]codemode.ToolDefinition, error) {
 			return nil, err
 		}
 		out = append(out, definition)
+	}
+	t.codeModeMu.RLock()
+	additional := t.codeModeAdditionalTools
+	t.codeModeMu.RUnlock()
+	if additional != nil {
+		for _, d := range additional() {
+			definition, err := codeModeToolDefinition(d)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, definition)
+		}
 	}
 	return out, nil
 }

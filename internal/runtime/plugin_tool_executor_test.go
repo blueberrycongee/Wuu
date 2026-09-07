@@ -2,11 +2,17 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/blueberrycongee/wuu/internal/agent"
+	"github.com/blueberrycongee/wuu/internal/codemode"
 	"github.com/blueberrycongee/wuu/internal/hooks"
 	"github.com/blueberrycongee/wuu/internal/pluginhost"
 	"github.com/blueberrycongee/wuu/internal/providers"
@@ -215,5 +221,98 @@ func TestReplacePluginToolHostPreservesHookLayer(t *testing.T) {
 	_, err := executor.Execute(context.Background(), providers.ToolCall{Name: name, Arguments: `{}`})
 	if err == nil || !hooks.IsBlocked(err) || newClient.executed {
 		t.Fatalf("replacement lost hook layer: error=%v executed=%v", err, newClient.executed)
+	}
+}
+
+func TestCodeModeOnlyIncludesPluginToolsInNestedSurface(t *testing.T) {
+	root := t.TempDir()
+	kit, err := tools.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kit.ConfigureSurfaceForProviderModel("openai", "gpt-5", true)
+	executable := os.Getenv("WUU_CODE_MODE_HOST")
+	realHost := executable != ""
+	if !realHost {
+		executable = filepath.Join(root, "host")
+	}
+	service, err := codemode.NewService(codemode.ServiceConfig{Executable: executable, SessionID: "plugin-code-mode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	kit.SetCodeModeService(service)
+	kit.SetCodeModeOnly(true)
+	client := &pluginToolTestClient{}
+	host := pluginhost.New(client)
+	name := host.ToolDefinitions()[0].Name
+	executor := newPluginToolExecutor(kit, host, "thread", root)
+	var execDescription string
+	for _, def := range executor.Definitions() {
+		if def.Name == name || def.Name == "read_file" {
+			t.Fatalf("leaf tool exposed at top level: %s", def.Name)
+		}
+		if def.Name == "exec" {
+			execDescription = def.Description
+		}
+	}
+	if !strings.Contains(execDescription, name) {
+		t.Fatal("plugin tool is missing from the code-mode catalog")
+	}
+	nested, err := kit.CodeModeNestedSurface()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, def := range nested {
+		if def.Name == name {
+			found = true
+		}
+		if def.Name == "write_file" {
+			t.Fatal("catalog advertised a tool unavailable in the active model profile")
+		}
+	}
+	if !found {
+		t.Fatal("plugin tool missing from nested execution surface")
+	}
+	if realHost {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		runtime := agent.NewTurnToolRuntime(agent.ToolRuntimeConfig{Executor: executor, RunContext: ctx, Gate: agent.NewToolExecutionGate(1)})
+		defer runtime.Cancel()
+		run := func(call providers.ToolCall) string {
+			messages, err := runtime.ExecuteFinalCalls(ctx, []providers.ToolCall{call}, nil)
+			if err != nil || len(messages) != 1 {
+				t.Fatalf("tool call failed: %+v, %v", messages, err)
+			}
+			return messages[0].Content
+		}
+		args, _ := json.Marshal(map[string]any{"source": "text(await tools." + name + "({}));", "yield_time_ms": 1})
+		result := run(providers.ToolCall{ID: "plugin-exec", Name: "exec", Arguments: string(args)})
+		var output strings.Builder
+		for step := 0; ; step++ {
+			output.WriteString(result)
+			var response struct {
+				State  string `json:"state"`
+				CellID string `json:"cell_id"`
+			}
+			if err := json.Unmarshal([]byte(result), &response); err != nil {
+				t.Fatal(err)
+			}
+			if response.State != "Yielded" {
+				break
+			}
+			args, _ = json.Marshal(map[string]any{"cell_id": response.CellID, "yield_time_ms": 1000})
+			result = run(providers.ToolCall{ID: fmt.Sprintf("plugin-wait-%d", step), Name: "wait", Arguments: string(args)})
+		}
+		if !client.executed || !strings.Contains(output.String(), "changed") {
+			t.Fatalf("nested plugin did not execute: %s", output.String())
+		}
+	}
+	executor = replacePluginToolHost(executor, pluginhost.New(), "thread", root)
+	for _, def := range executor.Definitions() {
+		if strings.Contains(def.Description, name) {
+			t.Fatal("replaced plugin host left a stale code-mode catalog")
+		}
 	}
 }

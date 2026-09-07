@@ -15,6 +15,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/toolctx"
 	"github.com/blueberrycongee/wuu/internal/toolerrors"
 	"github.com/blueberrycongee/wuu/internal/toolresult"
+	"github.com/blueberrycongee/wuu/internal/tools"
 )
 
 type pluginToolExecutor struct {
@@ -26,9 +27,16 @@ type pluginToolExecutor struct {
 
 func newPluginToolExecutor(inner agent.ToolExecutor, host *pluginhost.Host, threadID, cwd string) agent.ToolExecutor {
 	if inner == nil || host == nil {
+		if kit, ok := inner.(*tools.Toolkit); ok {
+			kit.SetCodeModeAdditionalTools(nil)
+		}
 		return inner
 	}
-	return &pluginToolExecutor{inner: inner, host: host, threadID: threadID, cwd: cwd}
+	executor := &pluginToolExecutor{inner: inner, host: host, threadID: threadID, cwd: cwd}
+	if kit, ok := inner.(*tools.Toolkit); ok {
+		kit.SetCodeModeAdditionalTools(executor.pluginDefinitions)
+	}
+	return executor
 }
 
 func newPluginAwareToolExecutor(inner agent.ToolExecutor, host *pluginhost.Host, dispatcher *hooks.Dispatcher, pluginThreadID, hookSessionID, cwd string) agent.ToolExecutor {
@@ -55,6 +63,13 @@ func replacePluginToolHost(executor agent.ToolExecutor, host *pluginhost.Host, t
 
 func (e *pluginToolExecutor) Definitions() []providers.ToolDefinition {
 	inner := e.inner.Definitions()
+	if kit, ok := e.inner.(*tools.Toolkit); ok && kit.CodeModeOnly() {
+		return inner
+	}
+	return append(inner, e.pluginDefinitions()...)
+}
+
+func (e *pluginToolExecutor) pluginDefinitions() []providers.ToolDefinition {
 	registered := e.host.ToolDefinitions()
 	plugin := make([]providers.ToolDefinition, 0, len(registered))
 	for _, definition := range registered {
@@ -62,10 +77,7 @@ func (e *pluginToolExecutor) Definitions() []providers.ToolDefinition {
 			plugin = append(plugin, definition)
 		}
 	}
-	definitions := make([]providers.ToolDefinition, 0, len(inner)+len(plugin))
-	definitions = append(definitions, inner...)
-	definitions = append(definitions, plugin...)
-	return definitions
+	return plugin
 }
 
 func (e *pluginToolExecutor) Execute(ctx context.Context, call providers.ToolCall) (string, error) {
