@@ -102,6 +102,16 @@ describe("RuntimePicker", () => {
     expect(onToggleMenu).toHaveBeenCalledWith("model");
   });
 
+  it("shows the level stored in effort when the variant column is empty", () => {
+    const initialized = runtimeWithEffort();
+    initialized.variant = "";
+    initialized.effort = "max";
+    renderPicker(null, initialized);
+
+    const trigger = document.querySelector<HTMLButtonElement>(".codex-runtime-trigger");
+    expect(trigger?.textContent).toContain("Max");
+  });
+
   it("uses the configured inventory even when stale discovery contains a removed model", () => {
     const initialized = runtimeWithEffort();
     initialized.providers![0].type = "openai-codex";

@@ -279,3 +279,30 @@ func TestServerThreadForkInheritsSourceSelection(t *testing.T) {
 			sess.Variant, sess.Effort, sess.PermissionMode)
 	}
 }
+
+// The desktop composes a level choice (max/medium/...) for the built-in wuu
+// engine as the thread/start "effort" param. The wuu runtime stores that level
+// in the variant column everywhere else (config/model/update, session
+// persistence), so thread/start must keep the mirror instead of clearing
+// variant; otherwise every picker that prefers model_variant would read the
+// brand-new thread as "Default" right after the first message.
+func TestServerThreadStartMirrorsExplicitEffortIntoVariant(t *testing.T) {
+	client := &fakeClient{responses: []providers.ChatResponse{{Content: "answer"}}}
+	rt := newTestRuntime(t, client)
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	t.Cleanup(srv.Close)
+
+	payload, _ := json.Marshal(map[string]any{
+		"id": "1", "method": MethodThreadStart,
+		"params": ThreadStartParams{Model: "fake-model", Effort: "max"},
+	})
+	if err := srv.handleLine(context.Background(), payload); err != nil {
+		t.Fatalf("thread/start: %v", err)
+	}
+	started := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"]).Thread
+	if started.ModelVariant != "max" || started.ModelEffort != "max" {
+		t.Fatalf("thread/start dropped the explicit level: variant=%q effort=%q",
+			started.ModelVariant, started.ModelEffort)
+	}
+}

@@ -83,7 +83,19 @@ func (s *Server) handleThreadStart(req Request) error {
 	}
 	if effort := strings.TrimSpace(params.Effort); effort != "" {
 		selection.Effort = effort
-		selection.Variant = ""
+		if engineID == agentengine.EngineWuu {
+			// The desktop mirrors one level choice into both columns before
+			// the first send, and the runtime update path stores the level
+			// in the variant column (see handleThreadModelSelection). Keep
+			// that mirror here; clearing variant would make every UI that
+			// prefers model_variant read the brand-new thread as "Default"
+			// even though the explicit effort was stored and will run.
+			selection.Variant = effort
+		} else {
+			// External engines own the effort field exclusively; their
+			// display and execution read the effort column first.
+			selection.Variant = ""
+		}
 	}
 	if engineID != agentengine.EngineWuu {
 		selection.Provider = string(engineID)

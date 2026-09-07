@@ -384,7 +384,13 @@ export function RuntimePicker({
   const codexProvider = isCodexProvider(initialized);
   const currentCodexModel = codexProvider ? state.models.find((model) => model.slug === initialized.model) : undefined;
   const currentProviderModel = currentProvider?.models?.find((model) => model.id === initialized.model);
-  const currentVariant = initialized.variant ?? initialized.effort ?? "";
+  // One level choice is stored in either column depending on how the session
+  // was created: thread/start and the runtime update path mirror the level
+  // into both, while some persisted sessions carry it in the effort column
+  // with an empty variant. An empty variant means "not set", so display
+  // whichever column holds the level instead of letting "" shadow a real
+  // effort.
+  const currentVariant = initialized.variant || initialized.effort || "";
   const placement: FloatingMenuPlacement = variant === "hero" ? "below" : "above";
   const externalEngine = activeEngine && activeEngine !== "wuu" ? activeEngine : "";
   const engineOptions = availableEngineOptions(engines, externalEngine);
