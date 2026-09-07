@@ -150,7 +150,6 @@ type Session struct {
 	WorkerModelBudget        modelbudget.Budget
 	BaseSystemPrompt         string
 	BaseSystemPromptSections []prompt.SectionInfo
-	UserSystemPrompt         string
 	// SessionDate is the session-start frozen calendar date (YYYY-MM-DD)
 	// stamped into the "# Environment" system section. Freezing it here keeps
 	// the cached system prefix byte-stable across turns and thread rebuilds:
@@ -239,7 +238,6 @@ func (s *Session) cloneForThreadModel() *Session {
 		WorkerModelBudget:           s.WorkerModelBudget,
 		BaseSystemPrompt:            s.BaseSystemPrompt,
 		BaseSystemPromptSections:    s.BaseSystemPromptSections,
-		UserSystemPrompt:            s.UserSystemPrompt,
 		SessionDate:                 s.SessionDate,
 		WuuHome:                     s.WuuHome,
 		SafeMode:                    s.SafeMode,
@@ -365,7 +363,6 @@ func NewSession(opts Options) (*Session, error) {
 		}
 	}()
 	workspaceJournal := journalRuntime.ForOwner("workspace-runtime")
-	userSystemPrompt := cfg.Agent.UserSystemPrompt()
 	permissions := config.ResolveAgentPermissions(cfg.Agent)
 
 	providerCfg, resolvedName, err := cfg.ResolveProvider(opts.ProviderName)
@@ -571,7 +568,7 @@ func NewSession(opts Options) (*Session, error) {
 		return nil, err
 	}
 	mainSurface.DeferredToolCatalog = deferredToolCatalogPrompt
-	baseSystemPromptResult := buildBaseSystemPromptResult(rootDir, sessionDate, config.DefaultSystemPrompt(), userSystemPrompt, resolvedName, toolModeModel, mainSurface, instructionFiles, "", "", discoveredSkills)
+	baseSystemPromptResult := buildBaseSystemPromptResult(rootDir, sessionDate, config.DefaultSystemPrompt(), "", resolvedName, toolModeModel, mainSurface, instructionFiles, "", "", discoveredSkills)
 	baseSystemPrompt, pluginPromptSections := assemblePluginSystemPrompt(baseSystemPromptResult.Content, systemPrompts)
 	baseSystemPromptSections := append(agentPromptSections(baseSystemPromptResult.Sections), pluginPromptSections...)
 
@@ -600,7 +597,7 @@ func NewSession(opts Options) (*Session, error) {
 			return nil, catErr
 		}
 		workerToolSurface.DeferredToolCatalog = workerDeferredCatalog
-		workerBaseSystemPrompt := buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, instructionFiles, "", "", discoveredSkills)
+		workerBaseSystemPrompt := buildBaseSystemPromptContent(rootDir, sessionDate, config.WorkerSystemPrompt(), "", workerToolProviderName, workerToolModeModel, workerToolSurface, instructionFiles, "", "", discoveredSkills)
 		var werr error
 		workerClient, werr = providerfactory.BuildStreamClient(roleSelections.Worker.RuleProviderConfig, roleSelections.Worker.Provider)
 		if werr != nil {
@@ -632,7 +629,7 @@ func NewSession(opts Options) (*Session, error) {
 			HistoryDir:                     "",
 			WorkerSysPrompt:                workerBaseSystemPrompt,
 			WorkerPrompt: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata, isolation agentcontrol.IsolationMode) (string, error) {
-				return buildWorkerBasePrompt(workerRoot, sessionDate, userSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, instructionFiles, discoveredSkills), nil
+				return buildWorkerBasePrompt(workerRoot, sessionDate, "", workerToolProviderName, workerToolModeModel, workerToolSurface, instructionFiles, discoveredSkills), nil
 			},
 			WorkerFactory: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata) (agent.ToolExecutor, error) {
 				wkit, werr := toolkit.CloneForRoot(workerRoot)
@@ -773,7 +770,6 @@ func NewSession(opts Options) (*Session, error) {
 		WorkerModelBudget:           workerModelBudget,
 		BaseSystemPrompt:            baseSystemPrompt,
 		BaseSystemPromptSections:    baseSystemPromptResult.Sections,
-		UserSystemPrompt:            userSystemPrompt,
 		SessionDate:                 sessionDate,
 		WuuHome:                     wuuHome,
 		SafeMode:                    safeMode,
@@ -1181,7 +1177,7 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	shadow.WorkerClient = workerClient
 
 	promptResult := buildBaseSystemPromptResult(
-		threadRoot, shadow.SessionDate, config.DefaultSystemPrompt(), shadow.UserSystemPrompt,
+		threadRoot, shadow.SessionDate, config.DefaultSystemPrompt(), "",
 		resolvedName, apiModel, activeSurfaceWithDeferredToolCatalog(shadow.Toolkit, shadow.DeferredToolCatalogPrompt),
 		shadow.InstructionFiles, "", "", shadow.Skills,
 	)
@@ -1247,7 +1243,7 @@ func (s *Session) ConfigureNamedAgentThreadRuntime(threadRuntime *ThreadRuntime,
 		toolkitContextBlockProvider(toolkit),
 		namedAgentWorkspaceContextProvider(s.WuuHome, rootDir, memoryDir, toolkit),
 	)
-	userPrompt := strings.TrimSpace(strings.TrimSpace(s.UserSystemPrompt) + "\n\n" + strings.TrimSpace(orientation))
+	userPrompt := strings.TrimSpace(orientation)
 	promptResult := buildBaseSystemPromptResult(
 		rootDir, s.SessionDate, config.DefaultSystemPrompt(), userPrompt,
 		runner.ProviderName, runner.APIModel, activeSurfaceWithDeferredToolCatalog(toolkit, catalog),
@@ -1415,7 +1411,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 			workerBaseSystemPrompt := buildWorkerBasePrompt(
 				threadRoot,
 				s.SessionDate,
-				s.UserSystemPrompt,
+				"",
 				workerToolProviderName,
 				workerToolModeModel,
 				workerToolSurface,
@@ -1443,7 +1439,7 @@ func (s *Session) NewThreadRuntimeForRoot(sessionID, rootDir string) (*ThreadRun
 				HarnessDir:                     filepath.Join(artifactDir, "harness"),
 				WorkerSysPrompt:                workerBaseSystemPrompt,
 				WorkerPrompt: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata, isolation agentcontrol.IsolationMode) (string, error) {
-					return buildWorkerBasePrompt(workerRoot, s.SessionDate, s.UserSystemPrompt, workerToolProviderName, workerToolModeModel, workerToolSurface, s.InstructionFiles, s.Skills), nil
+					return buildWorkerBasePrompt(workerRoot, s.SessionDate, "", workerToolProviderName, workerToolModeModel, workerToolSurface, s.InstructionFiles, s.Skills), nil
 				},
 				WorkerFactory: func(workerRoot string, wt agentcontrol.WorkerType, meta agentthread.Metadata) (agent.ToolExecutor, error) {
 					workerKit, err := kit.CloneForRoot(workerRoot)
@@ -2618,7 +2614,7 @@ func (s *Session) RefreshSystemPrompt(providerName, model string) string {
 		s.RootDir,
 		s.SessionDate,
 		config.DefaultSystemPrompt(),
-		s.UserSystemPrompt,
+		"",
 		providerName,
 		model,
 		activeSurfaceWithDeferredToolCatalog(s.Toolkit, s.DeferredToolCatalogPrompt),
@@ -2651,7 +2647,7 @@ func assemblePluginSystemPrompt(base string, assembler *agent.SystemPromptAssemb
 	return base + "\n\n" + pluginText, sections
 }
 
-// ApplyGeneralConfig refreshes user-owned prompt and instruction settings on the
+// ApplyGeneralConfig refreshes instruction and git-attribution settings on the
 // shared session runtime without changing provider or model selection.
 func (s *Session) ApplyGeneralConfig(cfg config.Config, homeDir string) string {
 	if s == nil {
@@ -2660,7 +2656,6 @@ func (s *Session) ApplyGeneralConfig(cfg config.Config, homeDir string) string {
 	if strings.TrimSpace(homeDir) == "" {
 		homeDir = os.Getenv("HOME")
 	}
-	s.UserSystemPrompt = cfg.Agent.UserSystemPrompt()
 	s.InstructionFiles = discoverInstructions(s.RootDir, homeDir, cfg.Instructions)
 	if s.Toolkit != nil {
 		s.Toolkit.SetGitAttributionEnabled(cfg.Agent.GitAttributionEnabledValue())

@@ -805,14 +805,9 @@ func TestApplyGeneralConfigRefreshesPromptAndGitAttribution(t *testing.T) {
 	if rt.Toolkit == nil {
 		t.Fatal("expected toolkit")
 	}
-	baseConfig.Agent.AppendSystemPrompt = "默认用中文回答。"
 	gitAttributionEnabled := false
 	baseConfig.Agent.GitAttributionEnabled = &gitAttributionEnabled
-	prompt := rt.ApplyGeneralConfig(baseConfig, home)
-
-	if rt.UserSystemPrompt != "默认用中文回答。" || !strings.Contains(prompt, "默认用中文回答。") || !strings.Contains(rt.StreamRunner.SystemPrompt, "默认用中文回答。") {
-		t.Fatalf("user prompt not refreshed: user=%q prompt=%q runner=%q", rt.UserSystemPrompt, prompt, rt.StreamRunner.SystemPrompt)
-	}
+	rt.ApplyGeneralConfig(baseConfig, home)
 	for _, args := range [][]string{
 		{"init", "-q", root},
 		{"-C", root, "config", "user.name", "Runtime Test"},
@@ -1579,7 +1574,7 @@ func TestNewThreadRuntimeLocalWorkerDoesNotTeachTerminalPaths(t *testing.T) {
 	}
 }
 
-func TestNewSessionAppendsUserPromptAfterBuiltInBase(t *testing.T) {
+func TestNewSessionDoesNotAppendRetiredConfigPrompt(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("WUU_HOME", filepath.Join(home, "state"))
@@ -1599,27 +1594,16 @@ func TestNewSessionAppendsUserPromptAfterBuiltInBase(t *testing.T) {
 					Model:     "gpt-test",
 				},
 			},
-			Agent: config.AgentConfig{
-				SystemPrompt:       "legacy custom behavior",
-				AppendSystemPrompt: "preferred custom behavior",
-			},
 		},
 	})
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
-
-	baseIdx := strings.Index(rt.BaseSystemPrompt, config.DefaultSystemPrompt())
-	legacyIdx := strings.Index(rt.BaseSystemPrompt, "legacy custom behavior")
-	preferredIdx := strings.Index(rt.BaseSystemPrompt, "preferred custom behavior")
-	if baseIdx == -1 || legacyIdx == -1 || preferredIdx == -1 {
-		t.Fatalf("assembled prompt missing base or user additions:\n%s", rt.BaseSystemPrompt)
+	if !strings.Contains(rt.BaseSystemPrompt, config.DefaultSystemPrompt()) {
+		t.Fatalf("assembled prompt missing built-in base:\n%s", rt.BaseSystemPrompt)
 	}
-	if baseIdx > legacyIdx || legacyIdx > preferredIdx {
-		t.Fatalf("prompt order should be built-in base, legacy append, preferred append:\n%s", rt.BaseSystemPrompt)
-	}
-	if !strings.Contains(rt.BaseSystemPrompt, "Follow these user-defined instructions unless they conflict") {
-		t.Fatalf("user prompt section must preserve built-in behavior boundary:\n%s", rt.BaseSystemPrompt)
+	if strings.Contains(rt.BaseSystemPrompt, "User Custom Instructions") {
+		t.Fatalf("assembled prompt should not inject retired config prompt:\n%s", rt.BaseSystemPrompt)
 	}
 }
 
@@ -2584,10 +2568,9 @@ func TestSessionRefreshSystemPromptUpdatesRunnerPrompt(t *testing.T) {
 	}
 	kit.ConfigureSurfaceForProviderModel("openai", "gpt-5-codex", false)
 	rt := &Session{
-		RootDir:          root,
-		UserSystemPrompt: "Prefer concise answers.",
-		StreamRunner:     &agent.StreamRunner{SystemPrompt: "old prompt"},
-		Toolkit:          kit,
+		RootDir:      root,
+		StreamRunner: &agent.StreamRunner{SystemPrompt: "old prompt"},
+		Toolkit:      kit,
 	}
 
 	prompt := rt.RefreshSystemPrompt("openai", "gpt-5-codex")
@@ -2595,7 +2578,6 @@ func TestSessionRefreshSystemPromptUpdatesRunnerPrompt(t *testing.T) {
 	for _, want := range []string{
 		"[Tool surface: openai_codex]",
 		"Use apply_patch for file changes and bash for command execution",
-		"Prefer concise answers.",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("refreshed prompt missing %q:\n%s", want, prompt)

@@ -126,7 +126,7 @@ func TestLocalAppServerControllerIgnoreUserConfigReloadsProjectLayers(t *testing
       "model": "gpt-test"
     }
   },
-  "agent": {"max_steps": 4, "append_system_prompt": "base prompt"}
+  "agent": {"max_steps": 4, "effort": "low"}
 }`), 0o644); err != nil {
 		t.Fatalf("write project config: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestLocalAppServerControllerIgnoreUserConfigReloadsProjectLayers(t *testing
 		t.Fatalf("mkdir project settings: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(settingsDir, "settings.json"), []byte(`{
-  "agent": {"max_steps": 17, "append_system_prompt": "layer prompt"}
+  "agent": {"max_steps": 17, "effort": "high"}
 }`), 0o644); err != nil {
 		t.Fatalf("write project settings: %v", err)
 	}
@@ -156,8 +156,8 @@ func TestLocalAppServerControllerIgnoreUserConfigReloadsProjectLayers(t *testing
 	if err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
-	if init.AdvancedSettings.MaxSteps != 17 || init.GeneralSettings.AppendSystemPrompt != "layer prompt" {
-		t.Fatalf("initialize lost explicitly trusted project layer: advanced=%+v general=%+v", init.AdvancedSettings, init.GeneralSettings)
+	if init.AdvancedSettings.MaxSteps != 17 || init.Effort != "high" {
+		t.Fatalf("initialize lost explicitly trusted project layer: advanced=%+v effort=%q", init.AdvancedSettings, init.Effort)
 	}
 }
 

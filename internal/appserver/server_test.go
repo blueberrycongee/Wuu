@@ -2371,7 +2371,7 @@ func TestServerConfigGeneralUpdatePersistsAndRefreshesRuntime(t *testing.T) {
     }
   },
   "agent": {
-    "append_system_prompt": "old custom behavior"
+    "git_attribution_enabled": true
   },
   "mcp_servers": {
     "docs": {
@@ -2393,15 +2393,14 @@ func TestServerConfigGeneralUpdatePersistsAndRefreshesRuntime(t *testing.T) {
 	srv := New(rt, out)
 	srv.threads[th.ID] = th
 
-	req := `{"id":"1","method":"config/general/update","params":{"append_system_prompt":"默认用中文回答。","git_attribution_enabled":false,"mcp_enabled_toggles":{"docs":false,"search":true}}}`
+	req := `{"id":"1","method":"config/general/update","params":{"git_attribution_enabled":false,"mcp_enabled_toggles":{"docs":false,"search":true}}}`
 	if err := srv.handleLine(context.Background(), []byte(req)); err != nil {
 		t.Fatalf("config/general/update: %v", err)
 	}
 
 	msgs := parseOutput(t, out.String())
 	result := remarshal[ConfigGeneralUpdateResult](t, responseByID(t, msgs, "1")["result"])
-	if result.GeneralSettings.AppendSystemPrompt != "默认用中文回答。" ||
-		result.GeneralSettings.GitAttributionEnabled ||
+	if result.GeneralSettings.GitAttributionEnabled ||
 		result.GeneralSettings.MCPServerEnabled["docs"] ||
 		!result.GeneralSettings.MCPServerEnabled["search"] {
 		t.Fatalf("unexpected general settings result: %+v", result.GeneralSettings)
@@ -2410,8 +2409,7 @@ func TestServerConfigGeneralUpdatePersistsAndRefreshesRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
-	if cfg.Agent.AppendSystemPrompt != "默认用中文回答。" ||
-		cfg.Agent.GitAttributionEnabled == nil ||
+	if cfg.Agent.GitAttributionEnabled == nil ||
 		*cfg.Agent.GitAttributionEnabled {
 		t.Fatalf("config general settings not persisted: %+v", cfg)
 	}
@@ -2421,16 +2419,10 @@ func TestServerConfigGeneralUpdatePersistsAndRefreshesRuntime(t *testing.T) {
 	if cfg.MCPServers["search"].Enabled != nil {
 		t.Fatalf("enabled MCP server should omit explicit enabled flag: %+v", cfg.MCPServers["search"])
 	}
-	if rt.UserSystemPrompt != "默认用中文回答。" || !strings.Contains(rt.StreamRunner.SystemPrompt, "默认用中文回答。") {
-		t.Fatalf("runtime prompt not refreshed: user=%q prompt=%q", rt.UserSystemPrompt, rt.StreamRunner.SystemPrompt)
-	}
 	th.mu.Lock()
 	defer th.mu.Unlock()
 	if th.execRuntime != nil {
 		t.Fatalf("thread runtime should be reset after general settings change")
-	}
-	if len(th.History) == 0 || !strings.Contains(th.History[0].Content, "默认用中文回答。") {
-		t.Fatalf("thread history prompt not refreshed: %+v", th.History)
 	}
 }
 

@@ -319,12 +319,6 @@ type AgentConfig struct {
 	// CompactKeepRecentTokens is the recent raw-history budget kept after
 	// compaction. Zero means use the default 20K tokens.
 	CompactKeepRecentTokens int `json:"compact_keep_recent_tokens,omitempty"`
-	// SystemPrompt is a legacy user-customized prompt field. It is appended
-	// after wuu's built-in base prompt instead of replacing it.
-	SystemPrompt string `json:"system_prompt,omitempty"`
-	// AppendSystemPrompt is the preferred field for user or project-specific
-	// instructions that should customize, not replace, wuu's base behavior.
-	AppendSystemPrompt string `json:"append_system_prompt,omitempty"`
 	// GitAttributionEnabled controls whether commits created through WUU's
 	// agent tool surface receive the WUU Agent co-author trailer. Nil defaults
 	// to enabled; an explicit false is the user opt-out.
@@ -435,7 +429,6 @@ type AdvancedRuntimeUpdate struct {
 }
 
 type GeneralSettingsUpdate struct {
-	AppendSystemPrompt    *string
 	GitAttributionEnabled *bool
 	MCPEnabledToggles     map[string]*bool // server name → enabled; nil = skip
 }
@@ -604,6 +597,8 @@ func stripLegacyPermissionKeys(data []byte) []byte {
 			"permission_profile",
 			"approval_policy",
 			"approvals_reviewer",
+			"system_prompt",
+			"append_system_prompt",
 		} {
 			delete(agent, key)
 		}
@@ -1076,8 +1071,7 @@ func ApplyGrokBuildProviderDefaults(provider ProviderConfig) ProviderConfig {
 }
 
 // DefaultSystemPrompt returns wuu's built-in base behavior prompt for the
-// main agent. It is not serialized into config files; user config is appended
-// separately.
+// main agent. It is not serialized into config files.
 func DefaultSystemPrompt() string {
 	return prompts.System() + "\n\n" + prompts.SystemMain()
 }
@@ -1087,19 +1081,6 @@ func DefaultSystemPrompt() string {
 // plugins instead of being embedded here.
 func WorkerSystemPrompt() string {
 	return prompts.System()
-}
-
-// UserSystemPrompt returns user-controlled prompt additions. The legacy
-// system_prompt field is preserved as an append-only customization.
-func (a AgentConfig) UserSystemPrompt() string {
-	var parts []string
-	if s := strings.TrimSpace(a.SystemPrompt); s != "" {
-		parts = append(parts, s)
-	}
-	if s := strings.TrimSpace(a.AppendSystemPrompt); s != "" {
-		parts = append(parts, s)
-	}
-	return strings.Join(parts, "\n\n")
 }
 
 func (a AgentConfig) ToolSearchEnabled() bool {
@@ -1503,18 +1484,6 @@ func UpdateGeneralSettings(configPath string, update GeneralSettingsUpdate) erro
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
-	}
-
-	if update.AppendSystemPrompt != nil {
-		agent, _ := raw["agent"].(map[string]any)
-		if agent == nil {
-			agent = make(map[string]any)
-			raw["agent"] = agent
-		}
-		setOptionalString(agent, "append_system_prompt", update.AppendSystemPrompt)
-		if len(agent) == 0 {
-			delete(raw, "agent")
-		}
 	}
 
 	if update.GitAttributionEnabled != nil {

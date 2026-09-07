@@ -172,7 +172,6 @@ function initializedWithSecrets(): InitializeResult {
       fingerprint: "private-fingerprint",
     }],
     general_settings: {
-      append_system_prompt: "sk-private",
       mcp_server_enabled: {},
     },
   };

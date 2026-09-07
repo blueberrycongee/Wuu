@@ -258,7 +258,6 @@ export type AdvancedSettingsSummary = {
 };
 
 export type GeneralSettingsSummary = {
-  append_system_prompt: string;
   git_attribution_enabled?: boolean;
   mcp_server_enabled: Record<string, boolean>;
 };
@@ -1251,7 +1250,6 @@ export type ConfigAdvancedUpdateResult = {
 };
 
 export type RuntimeGeneralSettingsUpdate = {
-  append_system_prompt?: string;
   git_attribution_enabled?: boolean;
   mcp_enabled_toggles?: Record<string, boolean>;
 };

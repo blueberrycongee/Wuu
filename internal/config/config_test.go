@@ -87,7 +87,7 @@ func TestLoadFrom_UsesUserProviderAndProjectAgentSettings(t *testing.T) {
 	if _, ok := cfg.Providers["local"]; ok {
 		t.Fatalf("project provider must not be introduced: %+v", cfg.Providers)
 	}
-	if cfg.Agent.MaxSteps != 3 || cfg.Agent.SystemPrompt != "local" {
+	if cfg.Agent.MaxSteps != 3 || cfg.Agent.Temperature != 0.3 {
 		t.Fatalf("project agent settings were not applied: %+v", cfg.Agent)
 	}
 }
@@ -125,9 +125,6 @@ func TestLoadFrom_Defaults(t *testing.T) {
 	}
 	if cfg.Agent.MaxParallel != DefaultAgentMaxParallel {
 		t.Fatalf("expected default max_parallel %d, got %d", DefaultAgentMaxParallel, cfg.Agent.MaxParallel)
-	}
-	if cfg.Agent.SystemPrompt != "" {
-		t.Fatalf("expected config system_prompt to remain user-owned, got %q", cfg.Agent.SystemPrompt)
 	}
 	if cfg.Agent.ToolLoadingPreference() != ToolLoadingAuto {
 		t.Fatalf("expected default tool_loading auto, got %q", cfg.Agent.ToolLoadingPreference())
@@ -473,10 +470,6 @@ func TestDefaultCodexSubscriptionUsesGPT6Astra(t *testing.T) {
 }
 
 func TestTemplateJSONDoesNotSerializeBuiltInSystemPrompt(t *testing.T) {
-	cfg := Default()
-	if cfg.Agent.SystemPrompt != "" {
-		t.Fatalf("default config should not carry built-in prompt, got %q", cfg.Agent.SystemPrompt)
-	}
 	tpl, err := TemplateJSON()
 	if err != nil {
 		t.Fatalf("TemplateJSON: %v", err)
@@ -522,17 +515,38 @@ func TestResolveAgentPermissionsKeepsOnlyMode(t *testing.T) {
 	}
 }
 
-func TestAgentConfig_UserSystemPromptAppendsLegacyAndPreferredFields(t *testing.T) {
-	cfg := AgentConfig{
-		SystemPrompt:       "legacy instructions",
-		AppendSystemPrompt: "preferred instructions",
+func TestLoadFrom_IgnoresRetiredSystemPromptFields(t *testing.T) {
+	t.Setenv("WUU_HOME", "")
+	workdir := t.TempDir()
+	home := t.TempDir()
+	homeConfig := filepath.Join(home, ".wuu", "config.json")
+	if err := os.MkdirAll(filepath.Dir(homeConfig), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
 	}
-	got := cfg.UserSystemPrompt()
-	if !strings.Contains(got, "legacy instructions") || !strings.Contains(got, "preferred instructions") {
-		t.Fatalf("expected both user prompt fields, got %q", got)
+	homeJSON := `{
+  "default_provider": "home",
+  "providers": {
+    "home": {
+      "type": "openai-compatible",
+      "base_url": "https://home.example/v1",
+      "api_key_env": "HOME_KEY",
+      "model": "home-model"
+    }
+  },
+  "agent": {
+    "system_prompt": "legacy instructions",
+    "append_system_prompt": "preferred instructions"
+  }
+}`
+	if err := os.WriteFile(homeConfig, []byte(homeJSON), 0o644); err != nil {
+		t.Fatalf("write home config: %v", err)
 	}
-	if strings.Index(got, "legacy instructions") > strings.Index(got, "preferred instructions") {
-		t.Fatalf("legacy field should keep stable order before append field, got %q", got)
+	cfg, _, err := LoadFrom(workdir, home)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if cfg.DefaultProvider != "home" {
+		t.Fatalf("retired prompt fields should not block load, got provider %q", cfg.DefaultProvider)
 	}
 }
 

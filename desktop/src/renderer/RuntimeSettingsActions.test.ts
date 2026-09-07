@@ -45,7 +45,6 @@ function initialized(overrides: Partial<InitializeResult> = {}): InitializeResul
       disable_auto_compact: false,
     },
     general_settings: {
-      append_system_prompt: "",
       mcp_server_enabled: {},
     },
     ...overrides,
@@ -102,7 +101,7 @@ function installWuuApi(): {
   });
   const updateGeneralSettings = vi.fn().mockResolvedValue({
     general_settings: {
-      append_system_prompt: "Stay concise.",
+      git_attribution_enabled: false,
       mcp_server_enabled: { local: false },
     },
   });
@@ -573,7 +572,6 @@ describe("createRuntimeSettingsActions", () => {
       disable_auto_compact: true,
     });
     await harness.actions.updateGeneralSettings({
-      append_system_prompt: "Stay concise.",
       git_attribution_enabled: false,
     });
 
@@ -582,13 +580,12 @@ describe("createRuntimeSettingsActions", () => {
       disable_auto_compact: true,
     });
     expect(api.updateGeneralSettings).toHaveBeenCalledWith({
-      append_system_prompt: "Stay concise.",
       git_attribution_enabled: false,
     });
     expect(harness.getAppState().initialized?.advanced_settings?.max_steps).toBe(
       20,
     );
-	expect(harness.getAppState().initialized?.general_settings?.append_system_prompt).toBe("Stay concise.");
+    expect(harness.getAppState().initialized?.general_settings?.git_attribution_enabled).toBe(false);
 
     const blocked = buildActions({ viewContextSwitchPending: true });
     await blocked.actions.updateAdvancedSettings({ max_steps: 30 });

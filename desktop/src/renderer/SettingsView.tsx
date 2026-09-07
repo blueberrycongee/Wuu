@@ -1957,7 +1957,6 @@ function SettingsGeneralPage({
   const generalSettings = initialized?.general_settings;
   const configuredMCPEnabled = generalSettings?.mcp_server_enabled ?? {};
   const configuredMCPKey = stableBoolRecordSignature(configuredMCPEnabled);
-  const [appendSystemPromptDraft, setAppendSystemPromptDraft] = useState(generalSettings?.append_system_prompt ?? "");
   const [mcpEnabledDraft, setMCPEnabledDraft] = useState<Record<string, boolean>>(() => ({ ...configuredMCPEnabled }));
   const [mcpToggleBusy, setMCPToggleBusy] = useState("");
   const [mcpToggleError, setMCPToggleError] = useState("");
@@ -1967,28 +1966,10 @@ function SettingsGeneralPage({
   const [codexPetLocalError, setCodexPetLocalError] = useState("");
   const [gitAttributionBusy, setGitAttributionBusy] = useState(false);
   const [gitAttributionError, setGitAttributionError] = useState("");
-  const [generalError, setGeneralError] = useState("");
 
   useEffect(() => {
-    setAppendSystemPromptDraft(generalSettings?.append_system_prompt ?? "");
     setMCPEnabledDraft({ ...configuredMCPEnabled });
-    setGeneralError("");
-  }, [generalSettings?.append_system_prompt, configuredMCPKey]);
-
-  // Instant-apply, same model as the MCP toggles below: the textarea
-  // commits on blur and only failures speak inline at the foot of the section.
-  async function commitAppendSystemPrompt(): Promise<void> {
-    const next = appendSystemPromptDraft.trim();
-    if (next === (generalSettings?.append_system_prompt ?? "")) {
-      return;
-    }
-    setGeneralError("");
-    try {
-      await onGeneralSave({ append_system_prompt: next });
-    } catch (error) {
-      setGeneralError(error instanceof Error ? error.message : t("settings.saveFailed"));
-    }
-  }
+  }, [configuredMCPKey]);
 
   async function toggleMCPServer(name: string, enabled: boolean): Promise<void> {
     const previous = mcpEnabledDraft;
@@ -2178,23 +2159,6 @@ function SettingsGeneralPage({
       <SettingsSection title={t("settings.behavior")} testID="settings-general">
         <SettingsCard>
           <SettingsRow
-            title={t("settings.additionalPrompt")}
-            description={t("settings.additionalPromptDescription")}
-            block
-          >
-            <textarea
-              className="settings-input settings-textarea"
-              value={appendSystemPromptDraft}
-              placeholder={t("settings.additionalPromptPlaceholder")}
-              rows={5}
-              onChange={(event) => {
-                setAppendSystemPromptDraft(event.target.value);
-              }}
-              onBlur={() => void commitAppendSystemPrompt()}
-              disabled={running || !initialized}
-            />
-          </SettingsRow>
-          <SettingsRow
             title={t("settings.gitAttribution")}
             description={t("settings.gitAttributionDescription")}
           >
@@ -2218,11 +2182,6 @@ function SettingsGeneralPage({
               </small>
             ) : null}
           </SettingsRow>
-          {generalError ? (
-            <div className="settings-row settings-row-footer">
-              <div className="settings-error">{generalError}</div>
-            </div>
-          ) : null}
         </SettingsCard>
       </SettingsSection>
 

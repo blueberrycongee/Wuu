@@ -1043,7 +1043,6 @@ type ConfigAdvancedUpdateResult struct {
 }
 
 type ConfigGeneralUpdateParams struct {
-	AppendSystemPrompt    *string          `json:"append_system_prompt,omitempty"`
 	GitAttributionEnabled *bool            `json:"git_attribution_enabled,omitempty"`
 	MCPEnabledToggles     map[string]*bool `json:"mcp_enabled_toggles,omitempty"`
 }
@@ -1053,7 +1052,6 @@ type ConfigGeneralUpdateResult struct {
 }
 
 type GeneralSettingsSummary struct {
-	AppendSystemPrompt    string          `json:"append_system_prompt"`
 	GitAttributionEnabled bool            `json:"git_attribution_enabled"`
 	MCPServerEnabled      map[string]bool `json:"mcp_server_enabled"`
 }

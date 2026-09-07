@@ -62,7 +62,7 @@ const layerBaseConfigJSON = `{
   },
   "agent": {
     "max_steps": 5,
-    "append_system_prompt": "base prompt"
+    "temperature": 0.1
   },
   "memory": {
     "filenames": ["BASE.md"]
@@ -186,7 +186,7 @@ func TestLoadFrom_ProjectLayersPreserveUserOwnedSettings(t *testing.T) {
   },
   "agent": {
     "effort": "low",
-    "append_system_prompt": "local prompt"
+    "temperature": 0.4
   }
 }`
 	writeProjectSettings(t, workdir, sharedSettingsFile, shared)
@@ -215,9 +215,9 @@ func TestLoadFrom_ProjectLayersPreserveUserOwnedSettings(t *testing.T) {
 	if cfg.Agent.Effort != "low" {
 		t.Fatalf("agent.effort = %q, want low (local outranks shared)", cfg.Agent.Effort)
 	}
-	// agent.append_system_prompt: local wins over base.
-	if cfg.Agent.AppendSystemPrompt != "local prompt" {
-		t.Fatalf("agent.append_system_prompt = %q, want 'local prompt'", cfg.Agent.AppendSystemPrompt)
+	// agent.temperature: local wins over base.
+	if cfg.Agent.Temperature != 0.4 {
+		t.Fatalf("agent.temperature = %v, want 0.4", cfg.Agent.Temperature)
 	}
 	// agent.max_steps: only set in base, preserved through both layers.
 	if cfg.Agent.MaxSteps != 5 {
@@ -490,7 +490,7 @@ func TestLoadFrom_AllProjectSourcesPreserveUserSecuritySettings(t *testing.T) {
       "title": {"provider": "evil", "model": "evil-model"},
       "worker": {"provider": "evil", "model": "evil-model"}
     },
-    "append_system_prompt": "project instructions"
+    "effort": "high"
   }
 }`
 
@@ -560,7 +560,7 @@ func TestLoadFrom_AllProjectSourcesPreserveUserSecuritySettings(t *testing.T) {
 			if cfg.Agent.ModelRoles != (ModelRolesConfig{}) {
 				t.Fatalf("project changed role-specific provider/model selection: %+v", cfg.Agent.ModelRoles)
 			}
-			if cfg.Agent.AppendSystemPrompt != "project instructions" {
+			if cfg.Agent.Effort != "high" {
 				t.Fatalf("safe project agent setting was not applied: %+v", cfg.Agent)
 			}
 			if !strings.Contains(warning, projectPath) || !strings.Contains(warning, "providers") ||
@@ -611,7 +611,7 @@ func TestLoadFrom_ProjectSecurityKeysAreCaseInsensitive(t *testing.T) {
   "Agent": {
     "Permission_Mode": "unconfined",
     "Model_Roles": {"title": {"provider": "cloud", "model": "cloud-model"}},
-    "append_system_prompt": "case-safe project prompt"
+    "effort": "high"
   }
 }`)
 
@@ -632,7 +632,7 @@ func TestLoadFrom_ProjectSecurityKeysAreCaseInsensitive(t *testing.T) {
 	if got := cfg.Agent.ModelRoles.Title; got.Provider != "local" || got.Model != "local-model" {
 		t.Fatalf("case variant changed title routing: %+v", got)
 	}
-	if cfg.Agent.AppendSystemPrompt != "case-safe project prompt" {
+	if cfg.Agent.Effort != "high" {
 		t.Fatalf("safe project field was lost: %+v", cfg.Agent)
 	}
 	for _, field := range []string{"default_provider", "providers", "memory", "agent.permission_mode", "agent.model_roles"} {
@@ -656,7 +656,7 @@ func TestLoadFrom_UserProviderUpdateDoesNotModifyProjectConfig(t *testing.T) {
       "model": "project-model"
     }
   },
-  "agent": {"append_system_prompt": "project prompt"}
+  "agent": {"effort": "high"}
 }`)
 	before, err := os.ReadFile(projectPath)
 	if err != nil {
@@ -688,7 +688,7 @@ func TestLoadFrom_UserProviderUpdateDoesNotModifyProjectConfig(t *testing.T) {
 	if got := reloaded.Providers["main"].Model; got != "saved-model" {
 		t.Fatalf("saved model = %q, want saved-model", got)
 	}
-	if reloaded.Agent.AppendSystemPrompt != "project prompt" {
+	if reloaded.Agent.Effort != "high" {
 		t.Fatalf("safe project overlay lost after update: %+v", reloaded.Agent)
 	}
 }

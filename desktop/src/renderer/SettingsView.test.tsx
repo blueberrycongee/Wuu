@@ -1080,7 +1080,6 @@ describe("SettingsView general settings", () => {
       locale: "en-US",
       initialized: baseInitialized({
         general_settings: {
-          append_system_prompt: "",
           git_attribution_enabled: true,
           mcp_server_enabled: {},
         },
@@ -1110,7 +1109,7 @@ describe("SettingsView general settings", () => {
     });
   });
 
-  it("renders and saves prompt and MCP toggles", async () => {
+  it("renders and saves MCP toggles", async () => {
     installBuildInfoStub({
       core: undefined,
       desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
@@ -1120,7 +1119,6 @@ describe("SettingsView general settings", () => {
       initialPage: "general",
       initialized: baseInitialized({
         general_settings: {
-          append_system_prompt: "Keep answers compact.",
           mcp_server_enabled: {
             docs: true,
             search: false,
@@ -1134,23 +1132,8 @@ describe("SettingsView general settings", () => {
     });
     expect(container.querySelector("[data-testid=\"settings-general\"]")).not.toBeNull();
     expect(container.querySelector("[data-testid=\"settings-voice-input\"]")).toBeNull();
-    expect(rootText()).toContain("附加系统提示");
     expect(rootText()).toContain("docs");
     expect(rootText()).toContain("search");
-
-    const textarea = container.querySelector("textarea") as HTMLTextAreaElement | null;
-    expect(textarea).not.toBeNull();
-    await act(async () => {
-      setInputValue(textarea!, "默认用中文回答。");
-    });
-    // The prompt commits on blur, sending only its own field.
-    await act(async () => {
-      textarea!.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-      await Promise.resolve();
-    });
-    expect(onGeneralSave).toHaveBeenCalledWith({
-      append_system_prompt: "默认用中文回答。",
-    });
 
     // MCP toggles now save immediately on switch, sending only the toggle map.
     const docsSwitch = container.querySelector("[data-testid=\"settings-mcp-enabled-docs\"]") as HTMLButtonElement | null;

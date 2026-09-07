@@ -40,10 +40,10 @@ stable model aliases the agent can select explicitly, and Wuu's local permission
 boundary. Field names follow JSON's case-matching rules, so renaming them to
 `Providers`, `Memory`, or `Permission_Mode` does not bypass the restriction.
 
-Other project behaviors still layer on normally, such as
-`agent.append_system_prompt`. Project configuration must conform to the full
-configuration structure; unknown fields are reported as errors so typos are not
-silently ignored.
+Other project behaviors still layer on normally. Long-term instructions belong
+in `AGENTS.md`. Project configuration must conform to the full configuration
+structure; unknown fields are reported as errors so typos are not silently
+ignored.
 
 ## Instructions, Memory, and Dream
 
