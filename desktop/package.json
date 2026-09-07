@@ -20,11 +20,12 @@
     "icon:generate": "bun scripts/generate-icon.ts",
     "build:core": "node scripts/build-core.cjs",
     "build:core:win": "node scripts/build-core.cjs --platform=win32",
+    "build:codemode-host": "node scripts/build-codemode-host.cjs",
     "build": "electron-vite build",
-    "pack:mac": "npm run build:core && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --publish=never --config.electronDist=node_modules/electron/dist",
-    "dist:mac": "npm run build:core && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip --publish=never --config.electronDist=node_modules/electron/dist",
-    "pack:win": "npm run build:core:win && npm run build && electron-builder --win dir --publish=never",
-    "dist:win": "npm run build:core:win && npm run build && electron-builder --win nsis zip --publish=never",
+    "pack:mac": "npm run build:core && npm run build:codemode-host && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --publish=never --config.electronDist=node_modules/electron/dist",
+    "dist:mac": "npm run build:core && npm run build:codemode-host && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip --publish=never --config.electronDist=node_modules/electron/dist",
+    "pack:win": "npm run build:core:win && npm run build:codemode-host && npm run build && electron-builder --win dir --publish=never",
+    "dist:win": "npm run build:core:win && npm run build:codemode-host && npm run build && electron-builder --win nsis zip --publish=never",
     "release:desktop": "npm run dist:mac",
     "test": "npm run test:dev-launcher && npm run test:unit",
     "test:dev-launcher": "node scripts/test-dev-launcher.cjs",
@@ -83,6 +84,8 @@
         "filter": [
           "wuu-core",
           "wuu-core.exe",
+          "wuu-code-mode-host",
+          "wuu-code-mode-host.exe",
           "wuu-*-plugin",
           "wuu-*-plugin.exe"
         ]
