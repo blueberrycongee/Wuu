@@ -836,11 +836,7 @@ function abbreviateFingerprint(fingerprint: string): string {
 function PluginArtwork({ record }: { record: ExtensionInventoryRecord }): JSX.Element {
   return (
     <span className="skill-artwork skill-artwork-plugin-brand" aria-hidden="true">
-      {!record.icon || "name" in record.icon ? (
-        <CapabilityMark name={record.icon?.name} />
-      ) : (
-        <PluginIcon icon={record.icon} pluginId={record.id} fingerprint={record.fingerprint ?? ""} />
-      )}
+      <PluginIcon icon={record.icon} pluginId={record.id} fingerprint={record.fingerprint ?? ""} />
     </span>
   );
 }

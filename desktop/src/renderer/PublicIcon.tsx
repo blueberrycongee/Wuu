@@ -33,6 +33,7 @@ import {
 import { isPublicIconName, type PublicIconName } from "../shared/themeContract.generated";
 import type { ExtensionIconDescriptor } from "../shared/protocol";
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
+import { CapabilityMark } from "./CapabilityMark";
 import { useEffect, useState } from "react";
 
 const PUBLIC_ICON_COMPONENTS = {
@@ -95,7 +96,7 @@ export function PluginIcon({
   className?: string;
 }): JSX.Element {
   if (!icon || "name" in icon) {
-    return <PublicIcon name={icon?.name} className={className} />;
+    return <CapabilityMark name={icon?.name} className={className} />;
   }
   return (
     <PluginAssetIcon
@@ -136,7 +137,7 @@ function PluginAssetIcon({
   }, [pluginId, fingerprint, paths.join("\u0000")]);
 
   if (urls.length !== paths.length) {
-    return <PluginBlocksIcon className={className} />;
+    return <CapabilityMark className={className} />;
   }
   if (urls.length === 1) {
     return <img className={`plugin-icon-asset ${className ?? ""}`} src={urls[0]} alt="" />;
