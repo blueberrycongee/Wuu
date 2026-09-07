@@ -61,18 +61,18 @@ describe("computeDefaultMainWindowBounds", () => {
 describe("computeOnboardingWindowBounds", () => {
   it("uses a stable first-run size on normal displays", () => {
     expect(computeOnboardingWindowBounds({ width: 2560, height: 1400 })).toEqual({
-      width: 1120,
-      height: 840,
+      width: 920,
+      height: 720,
     });
     expect(computeOnboardingWindowBounds({ width: 1440, height: 900 })).toEqual({
-      width: 1120,
-      height: 840,
+      width: 920,
+      height: 720,
     });
   });
 
   it("fits the first-run window onto a smaller work area", () => {
-    expect(computeOnboardingWindowBounds({ width: 1024, height: 700 })).toEqual({
-      width: 1024,
+    expect(computeOnboardingWindowBounds({ width: 800, height: 700 })).toEqual({
+      width: 800,
       height: 700,
     });
   });

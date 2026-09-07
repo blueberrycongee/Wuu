@@ -10,7 +10,7 @@ import {
   recommendedOnboardingEngine,
 } from "./FirstRunOnboarding";
 import { I18nProvider } from "./i18n";
-import { ONBOARDING_PLUGIN_ORDER } from "./OnboardingMascotStage";
+import { ONBOARDING_PLUGIN_ORDER } from "./onboardingCatalog";
 
 function plugin(
   id: string,
@@ -157,7 +157,7 @@ describe("FirstRunOnboarding", () => {
     expect(hasOnboardingProvider(providers)).toBe(false);
   });
 
-  it("uses the centered ready layout when a model provider is already configured", async () => {
+  it("does not request credentials when a model provider is already configured", async () => {
     await act(async () => {
       root.render(
         <I18nProvider>
@@ -177,7 +177,11 @@ describe("FirstRunOnboarding", () => {
     await clickButton("继续");
 
     expect(container.querySelector(".onboarding-stage-provider")).not.toBeNull();
-    expect(container.querySelector(".onboarding-panel.is-ready")).not.toBeNull();
+    expect(container.querySelector("input")).toBeNull();
+    expect(container.querySelector("dl")?.textContent).toContain("openai");
+    expect(container.querySelector("dl")?.textContent).toContain("gpt-5");
+    await clickButton("继续");
+    expect(container.querySelector(".onboarding-stage-ready")).not.toBeNull();
   });
 
   it("selects the recommended subject IDs when inventory arrives after mount", async () => {
@@ -453,16 +457,57 @@ describe("FirstRunOnboarding", () => {
     });
     await clickButton("开始设置");
     await clickButton("继续");
-    expect(container.textContent).toContain("使用本机 Codex 登录");
-    expect(container.querySelector<HTMLInputElement>('[data-testid="onboarding-reuse-codex"] input')?.checked).toBe(true);
+    expect(container.querySelector('[data-testid="onboarding-reuse-codex"]')).toBeNull();
     await clickButton("继续");
     expect(updateEngines).toHaveBeenCalledWith({ default_engine: "wuu" });
+    expect(save).not.toHaveBeenCalled();
+    const reuse = container.querySelector<HTMLButtonElement>('[data-testid="onboarding-reuse-codex"]');
+    expect(reuse).not.toBeNull();
+    await act(async () => reuse!.click());
     expect(save).toHaveBeenCalledWith("openai-codex", "gpt-6-astra", {
       reuse_codex_credentials: true,
     });
+    expect(container.querySelector(".onboarding-stage-ready")).not.toBeNull();
   });
 
-  it("lets a local preview walk the flow without writing settings", async () => {
+  it.each(["skip", "retry"])("handles Codex reuse through %s without implicit credential changes", async (mode) => {
+    const save = vi.fn(async () => undefined);
+    if (mode === "retry") save.mockRejectedValueOnce(new Error("Connection unavailable"));
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <FirstRunOnboarding
+            inventory={[plugin("todo", true)]}
+            providers={[{ name: "local-codex", type: "openai-codex", model: "test-model", codex_credential_source: "codex-cli" }]}
+            onUpdateExtensionPackage={vi.fn(async () => undefined)}
+            onSaveProvider={save}
+            onComplete={vi.fn(async () => undefined)}
+          />
+        </I18nProvider>,
+      );
+    });
+    await clickButton("开始设置");
+    await clickButton("继续");
+    await clickButton("继续");
+    expect(save).not.toHaveBeenCalled();
+    if (mode === "skip") {
+      await clickButton("稍后配置");
+    } else {
+      const reuse = container.querySelector<HTMLButtonElement>('[data-testid="onboarding-reuse-codex"]')!;
+      await act(async () => reuse.click());
+      if (mode === "retry") {
+        expect(container.querySelector('[role="alert"]')?.textContent).toBe("Connection unavailable");
+        expect(container.querySelector(".onboarding-stage-provider")).not.toBeNull();
+        expect(reuse.disabled).toBe(false);
+        await act(async () => reuse.click());
+        expect(save).toHaveBeenCalledTimes(2);
+      }
+    }
+    expect(container.querySelector(".onboarding-stage-ready")).not.toBeNull();
+    if (mode !== "retry") expect(save).not.toHaveBeenCalled();
+  });
+
+  it.each(["skip", "connect"])("previews a clean installation through %s without using or writing local settings", async (mode) => {
     const updateExtension = vi.fn(async () => undefined);
     const save = vi.fn(async () => undefined);
     const updateEngines = vi.fn(async () => undefined);
@@ -473,8 +518,12 @@ describe("FirstRunOnboarding", () => {
         <I18nProvider>
           <FirstRunOnboarding
             preview
-            inventory={[plugin("todo", true)]}
-            providers={[{ name: "openai", type: "openai-compatible", model: "gpt-5", api_key_configured: true }]}
+            inventory={[]}
+            providers={[
+              { name: "openai", type: "openai-compatible", model: "gpt-5", api_key_configured: true },
+              { name: "local-codex", type: "openai-codex", model: "test-model", codex_credential_source: "codex-cli" },
+            ]}
+            engines={{ engines: [{ id: "codex", enabled: true, binary_ok: true }], settings: { default_engine: "codex" } }}
             onDismissPreview={onDismissPreview}
             onUpdateExtensionPackage={updateExtension}
             onSaveProvider={save}
@@ -487,15 +536,33 @@ describe("FirstRunOnboarding", () => {
 
     expect(container.querySelector("[data-testid=\"onboarding-preview-exit\"]")?.textContent).toBe("退出预览");
     await clickButton("开始设置");
+    expect(container.querySelectorAll('.onboarding-plugin[aria-pressed="true"]').length).toBeGreaterThan(0);
     await clickButton("继续");
+    expect(container.querySelector<HTMLButtonElement>('[data-testid="onboarding-engine-codex"]')?.disabled).toBe(true);
     await clickButton("继续");
-    await clickButton("继续");
+    expect(container.querySelector('[data-testid="onboarding-reuse-codex"]')).toBeNull();
+    const inputs = [...container.querySelectorAll<HTMLInputElement>("input")];
+    expect(inputs).toHaveLength(3);
+    expect(inputs.every((input) => input.value === "")).toBe(true);
+    if (mode === "skip") {
+      await clickButton("稍后配置");
+    } else {
+      await act(async () => {
+        for (const [index, value] of ["preview-provider", "preview-model", "not-a-real-key"].entries()) {
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(inputs[index], value);
+          inputs[index].dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      });
+      await clickButton("继续");
+    }
+    expect(container.querySelector(".onboarding-stage-ready")).not.toBeNull();
     await clickButton("开始使用 Wuu");
 
     expect(updateExtension).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
     expect(updateEngines).not.toHaveBeenCalled();
-    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onDismissPreview).toHaveBeenCalledTimes(1);
   });
 
   async function clickButton(label: string): Promise<void> {

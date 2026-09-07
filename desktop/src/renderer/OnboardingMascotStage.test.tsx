@@ -1,7 +1,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ONBOARDING_PLUGIN_ORDER, OnboardingMascotStage } from "./OnboardingMascotStage";
+import { OnboardingMascotStage } from "./OnboardingMascotStage";
+import { ONBOARDING_PLUGIN_ORDER } from "./onboardingCatalog";
 
 describe("onboarding companion", () => {
   let container: HTMLDivElement;

@@ -4,9 +4,7 @@ import { ENGINE_ICON_PATHS } from "./EngineIcons";
 import { WuuMascot } from "./WuuMascot";
 import { WUU_MASCOT_NAME, WUU_MASCOT_TRAITS } from "./wuu-mascot-spec";
 
-export const ONBOARDING_PLUGIN_ORDER = [
-  "ask-user", "todo", "automation", "subagent", "memory", "dream", "note-compaction",
-] as const;
+import { ONBOARDING_PLUGIN_ORDER } from "./onboardingCatalog";
 
 export type OnboardingPluginID = (typeof ONBOARDING_PLUGIN_ORDER)[number];
 

@@ -10,8 +10,9 @@ import type {
   RuntimeConnectionUpdate,
 } from "../shared/protocol";
 import { useI18n } from "./i18n";
-import type { TranslationKey } from "./i18n/resources/zh-CN";
+import { ONBOARDING_ENGINES, ONBOARDING_PLUGIN_ORDER, PLUGIN_DESCRIPTION_KEYS, RECOMMENDED_PLUGIN_IDS } from "./onboardingCatalog";
 import { OnboardingMascotStage } from "./OnboardingMascotStage";
+import { PREVIEW_PLUGINS } from "./onboardingPreview";
 import { PluginIcon } from "./PublicIcon";
 import { applyThemePreference } from "./Theme";
 
@@ -19,37 +20,14 @@ type OnboardingStep = "welcome" | "plugins" | "runtime" | "provider" | "ready";
 type PluginPreset = "minimal" | "recommended" | "all" | "custom";
 
 const STEP_ORDER: readonly OnboardingStep[] = ["welcome", "plugins", "runtime", "provider", "ready"];
-const BUNDLED_PLUGIN_ORDER = [
-  "ask-user",
-  "todo",
-  "automation",
-  "subagent",
-  "memory",
-  "dream",
-  "note-compaction",
-] as const;
-const RECOMMENDED_PLUGIN_IDS = new Set<string>([
-  "todo",
-  "automation",
-  "subagent",
-]);
 
-const PLUGIN_DESCRIPTION_KEYS: Readonly<Record<string, TranslationKey>> = {
-  "ask-user": "onboarding.plugin.askUser",
-  todo: "onboarding.plugin.todo",
-  automation: "onboarding.plugin.automation",
-  subagent: "onboarding.plugin.subagent",
-  memory: "onboarding.plugin.memory",
-  dream: "onboarding.plugin.dream",
-  "note-compaction": "onboarding.plugin.noteCompaction",
-};
 
 export function bundledOnboardingPlugins(
   inventory: readonly ExtensionInventoryRecord[] | undefined,
 ): ExtensionInventoryRecord[] {
   if (!inventory) return [];
   const order = new Map<string, number>(
-    BUNDLED_PLUGIN_ORDER.map((id, index) => [id, index]),
+    ONBOARDING_PLUGIN_ORDER.map((id, index) => [id, index]),
   );
   return inventory
     .filter(
@@ -95,16 +73,10 @@ function isCodexSubscriptionProvider(provider: ProviderSummary): boolean {
   return type === "openai-codex" || type === "codex-subscription" || type === "chatgpt-codex";
 }
 
-function engineLabel(id: string): string {
-  if (id === "codex") return "Codex";
-  if (id === "claude") return "Claude Code";
-  return "Wuu";
-}
-
 export function FirstRunOnboarding({
-  inventory,
-  providers,
-  engines,
+  inventory: liveInventory,
+  providers: liveProviders,
+  engines: liveEngines,
   preview = false,
   onDismissPreview,
   onUpdateExtensionPackage,
@@ -127,6 +99,10 @@ export function FirstRunOnboarding({
   onComplete: () => Promise<void>;
 }): JSX.Element {
   const { t } = useI18n();
+  // A clean preview must not inherit this machine's connections or discovery.
+  const inventory = preview ? PREVIEW_PLUGINS : liveInventory;
+  const providers = preview ? undefined : liveProviders;
+  const engines = preview ? undefined : liveEngines;
   const bundledPlugins = useMemo(() => bundledOnboardingPlugins(inventory), [inventory]);
   const [step, setStep] = useState<OnboardingStep>("welcome");
   const [selectedPluginIDs, setSelectedPluginIDs] = useState<Set<string>>(
@@ -146,7 +122,6 @@ export function FirstRunOnboarding({
   const recommendedEngine = recommendedOnboardingEngine(engines?.engines);
   const [selectedEngine, setSelectedEngine] = useState(recommendedEngine);
   const discoveredCodex = discoveredCodexCredential(providers);
-  const [reuseCodexCredentials, setReuseCodexCredentials] = useState(Boolean(discoveredCodex));
   const providerReady = hasOnboardingProvider(providers);
   const preset = selectedPreset(selectedPluginIDs, bundledPlugins);
   const currentStepIndex = STEP_ORDER.indexOf(step);
@@ -158,13 +133,13 @@ export function FirstRunOnboarding({
     return ids;
   }, [bundledPlugins, selectedPluginIDs]);
   const selectableEngines = useMemo(
-    () => [
-      { id: "wuu", ready: true },
-      ...(engines?.engines ?? [])
-        .filter((engine) => engine.id === "codex" || engine.id === "claude")
-        .map((engine) => ({ id: engine.id, ready: engine.enabled && engine.binary_ok })),
-    ],
-    [engines],
+    () => ONBOARDING_ENGINES.flatMap((choice) => {
+      if (choice.id === "wuu") return [{ ...choice, ready: true }];
+      if (preview) return [{ ...choice, ready: false }];
+      const engine = engines?.engines.find((item) => item.id === choice.id);
+      return engine ? [{ ...choice, ready: engine.enabled && engine.binary_ok }] : [];
+    }),
+    [engines, preview],
   );
 
   useLayoutEffect(() => {
@@ -188,12 +163,7 @@ export function FirstRunOnboarding({
     });
   }, [recommendedEngine, selectableEngines]);
 
-  const initializedReuseSelection = useRef(Boolean(discoveredCodex));
-  useEffect(() => {
-    if (initializedReuseSelection.current || !discoveredCodex) return;
-    initializedReuseSelection.current = true;
-    setReuseCodexCredentials(true);
-  }, [discoveredCodex]);
+  useEffect(() => setError(""), [step]);
 
   function choosePreset(next: Exclude<PluginPreset, "custom">): void {
     if (next === "minimal") {
@@ -260,17 +230,29 @@ export function FirstRunOnboarding({
       if (onUpdateEngines) {
         await onUpdateEngines({ default_engine: selectedEngine });
       }
-      const codexProvider = providers?.find((provider) => isCodexSubscriptionProvider(provider));
-      if (codexProvider && discoveredCodex) {
-        await onSaveProvider(codexProvider.name, codexProvider.model, {
-          reuse_codex_credentials: reuseCodexCredentials,
-        });
-      }
       setStep("provider");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("onboarding.runtimeFailed"));
     } finally {
       setSavingRuntime(false);
+    }
+  }
+
+  async function reuseCodexLogin(): Promise<void> {
+    if (!discoveredCodex || savingProvider) return;
+    setSavingProvider(true);
+    setError("");
+    try {
+      if (!preview) {
+        await onSaveProvider(discoveredCodex.name, discoveredCodex.model, {
+          reuse_codex_credentials: true,
+        });
+      }
+      setStep("ready");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("provider.saveFailed"));
+    } finally {
+      setSavingProvider(false);
     }
   }
 
@@ -334,6 +316,10 @@ export function FirstRunOnboarding({
 
   async function finish(): Promise<void> {
     if (finishing) return;
+    if (preview) {
+      onDismissPreview?.();
+      return;
+    }
     setFinishing(true);
     setError("");
     try {
@@ -369,21 +355,30 @@ export function FirstRunOnboarding({
       </header>
 
       <section className={`onboarding-stage onboarding-stage-${step}`}>
+        <div className="onboarding-masthead">
+          <h1>{t(step === "welcome" ? "onboarding.welcomeTitle"
+            : step === "plugins" ? "onboarding.pluginsTitle"
+              : step === "runtime" ? "onboarding.runtimeTitle"
+                : step === "provider" ? (providerReady ? "onboarding.providerReadyTitle" : "onboarding.providerTitle")
+                  : "onboarding.readyTitle")}</h1>
+          <OnboardingMascotStage
+            pluginIDs={step === "welcome" ? [] : wornPluginIDs}
+            engineID={step === "welcome" || step === "plugins" ? undefined : selectedEngine}
+          />
+        </div>
         {step === "welcome" ? (
           <div className="onboarding-welcome">
-            <OnboardingMascotStage />
-            <h1>{t("onboarding.welcomeTitle")}</h1>
+            <div className="onboarding-actions onboarding-actions-end">
             <button className="onboarding-primary" type="button" onClick={() => setStep("plugins")}>
               {t("onboarding.begin")}
             </button>
+            </div>
           </div>
         ) : null}
 
         {step === "plugins" ? (
           <div className="onboarding-panel onboarding-plugins-panel">
-            <div className="onboarding-plugins-masthead">
-              <div className="onboarding-plugins-masthead-copy">
-                <h1>{t("onboarding.pluginsTitle")}</h1>
+            <div className="onboarding-body">
                 <div className="onboarding-presets" aria-label={t("onboarding.presets")}>
                   {(["minimal", "recommended", "all"] as const).map((item) => (
                     <button
@@ -391,16 +386,13 @@ export function FirstRunOnboarding({
                       type="button"
                       className={preset === item ? "is-selected" : ""}
                       aria-pressed={preset === item}
+                      disabled={applyingPlugins}
                       onClick={() => choosePreset(item)}
                     >
                       {t(`onboarding.preset.${item}`)}
                     </button>
                   ))}
                 </div>
-              </div>
-              <OnboardingMascotStage pluginIDs={wornPluginIDs} />
-            </div>
-
             {inventory === undefined ? (
               <div className="onboarding-loading" role="status">
                 <LoaderCircle className="is-spinning" />
@@ -422,6 +414,7 @@ export function FirstRunOnboarding({
                       type="button"
                       className={`onboarding-plugin${selected ? " is-selected" : ""}`}
                       aria-pressed={selected}
+                      disabled={applyingPlugins}
                       onClick={() => togglePlugin(plugin.id)}
                     >
                       <span className="onboarding-plugin-icon">
@@ -444,9 +437,10 @@ export function FirstRunOnboarding({
               </div>
             )}
 
+            </div>
             <OnboardingError message={error} />
             <div className="onboarding-actions">
-              <button className="onboarding-back" type="button" onClick={() => setStep("welcome")}>
+              <button className="onboarding-back" type="button" disabled={applyingPlugins} onClick={() => setStep("welcome")}>
                 <ChevronLeft />{t("onboarding.back")}
               </button>
               <button
@@ -463,12 +457,7 @@ export function FirstRunOnboarding({
 
         {step === "runtime" ? (
           <div className="onboarding-panel">
-            <div className="onboarding-plugins-masthead">
-              <div className="onboarding-plugins-masthead-copy">
-                <h1>{t("onboarding.runtimeTitle")}</h1>
-              </div>
-              <OnboardingMascotStage engineID={selectedEngine} />
-            </div>
+            <div className="onboarding-body">
             <div className="onboarding-choice-grid" role="radiogroup" aria-label={t("onboarding.runtimeTitle")}>
               {selectableEngines.map((engine) => {
                 const selected = selectedEngine === engine.id;
@@ -481,24 +470,16 @@ export function FirstRunOnboarding({
                     aria-checked={selected}
                     className={`onboarding-choice${selected ? " is-selected" : ""}`}
                     data-testid={`onboarding-engine-${engine.id}`}
-                    disabled={!engine.ready && engine.id !== "wuu"}
+                    disabled={savingRuntime || !engine.ready}
                     onClick={() => setSelectedEngine(engine.id)}
                   >
                     <span className="onboarding-choice-copy">
                       <strong>
-                        {engineLabel(engine.id)}
+                        {engine.label}
                         {recommended ? <em>{t("onboarding.recommended")}</em> : null}
                       </strong>
                       <span>
-                        {engine.id === "wuu"
-                          ? t("onboarding.engine.wuu")
-                          : engine.id === "codex"
-                            ? engine.ready
-                              ? t("onboarding.engine.codexReady")
-                              : t("onboarding.engine.codexMissing")
-                            : engine.ready
-                              ? t("onboarding.engine.claudeReady")
-                              : t("onboarding.engine.claudeMissing")}
+                        {t(engine.ready ? engine.readyDescription : engine.missingDescription)}
                       </span>
                     </span>
                     <span className="onboarding-plugin-check" aria-hidden="true">
@@ -508,22 +489,10 @@ export function FirstRunOnboarding({
                 );
               })}
             </div>
-            {discoveredCodex ? (
-              <label className="onboarding-reuse" data-testid="onboarding-reuse-codex">
-                <input
-                  type="checkbox"
-                  checked={reuseCodexCredentials}
-                  onChange={(event) => setReuseCodexCredentials(event.currentTarget.checked)}
-                />
-                <span>
-                  <strong>{t("onboarding.reuseCodexTitle")}</strong>
-                  <span>{t("onboarding.reuseCodexDescription")}</span>
-                </span>
-              </label>
-            ) : null}
+            </div>
             <OnboardingError message={error} />
             <div className="onboarding-actions">
-              <button className="onboarding-back" type="button" onClick={() => setStep("plugins")}>
+              <button className="onboarding-back" type="button" disabled={savingRuntime} onClick={() => setStep("plugins")}>
                 <ChevronLeft />{t("onboarding.back")}
               </button>
               <button
@@ -540,13 +509,28 @@ export function FirstRunOnboarding({
 
         {step === "provider" ? (
           <div className={`onboarding-panel${providerReady ? " is-ready" : ""}`}>
-            <div className="onboarding-plugins-masthead">
-              <div className="onboarding-plugins-masthead-copy">
-                <h1>{providerReady ? t("onboarding.providerReadyTitle") : t("onboarding.providerTitle")}</h1>
-              </div>
-              <OnboardingMascotStage />
-            </div>
-
+            <div className="onboarding-body">
+            {providerReady ? (
+              <dl className="onboarding-connection-summary">
+                {providers?.filter(isConfiguredOnboardingProvider).map((provider) => (
+                  <div key={provider.name}>
+                    <dt>{provider.name}</dt>
+                    <dd>{provider.model}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {selectedEngine !== "wuu" ? (
+              <p className="onboarding-provider-description">{t("onboarding.externalEngineConnection")}</p>
+            ) : null}
+            {!providerReady && discoveredCodex ? (<>
+              <button className="onboarding-reuse" type="button" data-testid="onboarding-reuse-codex"
+                disabled={savingProvider} onClick={() => void reuseCodexLogin()}>
+                <strong>{t("onboarding.reuseCodexTitle")}</strong>
+                <span>{t("onboarding.reuseCodexDescription")}</span>
+              </button>
+              <p className="onboarding-connection-alternative">{t("onboarding.otherConnection")}</p>
+            </>) : null}
             {!providerReady ? (
               <div className="onboarding-provider-form">
                 <label>
@@ -594,14 +578,15 @@ export function FirstRunOnboarding({
               </div>
             ) : null}
 
+            </div>
             <OnboardingError message={error} />
             <div className="onboarding-actions">
-              <button className="onboarding-back" type="button" onClick={() => setStep("runtime")}>
+              <button className="onboarding-back" type="button" disabled={savingProvider} onClick={() => setStep("runtime")}>
                 <ChevronLeft />{t("onboarding.back")}
               </button>
               <div className="onboarding-action-group">
                 {!providerReady ? (
-                  <button className="onboarding-secondary" type="button" onClick={() => setStep("ready")}>
+                  <button className="onboarding-secondary" type="button" disabled={savingProvider} onClick={() => setStep("ready")}>
                     {t("onboarding.configureLater")}
                   </button>
                 ) : null}
@@ -620,12 +605,12 @@ export function FirstRunOnboarding({
 
         {step === "ready" ? (
           <div className="onboarding-welcome onboarding-ready">
-            <OnboardingMascotStage />
-            <h1>{t("onboarding.readyTitle")}</h1>
             <OnboardingError message={error} />
+            <div className="onboarding-actions onboarding-actions-end">
             <button className="onboarding-primary" type="button" disabled={finishing} onClick={() => void finish()}>
               {finishing ? t("onboarding.finishing") : t("onboarding.enterWuu")}
             </button>
+            </div>
           </div>
         ) : null}
       </section>

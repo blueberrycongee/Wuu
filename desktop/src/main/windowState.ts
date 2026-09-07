@@ -10,8 +10,8 @@ export const MAIN_WINDOW_DEFAULT_WIDTH_RATIO = 0.40;
 export const MAIN_WINDOW_DEFAULT_HEIGHT_RATIO = 0.60;
 export const MAIN_WINDOW_MAX_WIDTH = 1600;
 export const MAIN_WINDOW_MAX_HEIGHT = 1100;
-export const ONBOARDING_WINDOW_WIDTH = 1120;
-export const ONBOARDING_WINDOW_HEIGHT = 840;
+export const ONBOARDING_WINDOW_WIDTH = 920;
+export const ONBOARDING_WINDOW_HEIGHT = 720;
 
 export type WorkArea = {
   width: number;
