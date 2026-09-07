@@ -56,26 +56,20 @@ func TestAskUserPluginWaitsForKernelAnswerAcrossRealProcess(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("plugin did not ask the kernel")
 	}
-	if serviceCall.Service != pluginhost.KernelUserQuestionAskService || serviceCall.ExecutionID != "execution-1" {
+	if serviceCall.Service != pluginhost.KernelUserQuestionOfferService || serviceCall.ExecutionID != "execution-1" {
 		t.Fatalf("service call = %+v", serviceCall)
 	}
-	select {
-	case premature := <-done:
-		t.Fatalf("tool returned before user answer: %+v", premature)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	router.answer <- json.RawMessage(`{"answers":[{"id":"choice","selected":["B"]}]}`)
+	router.answer <- json.RawMessage(`{"request_id":"question-1","expires_at":"2026-01-01T00:00:20Z"}`)
 	select {
 	case completed := <-done:
 		if completed.err != nil {
 			t.Fatal(completed.err)
 		}
-		if len(completed.output.Result.Content) != 1 || !strings.Contains(completed.output.Result.Content[0].Text, `"B"`) {
+		if len(completed.output.Result.Content) != 1 || !strings.Contains(completed.output.Result.Content[0].Text, `"question-1"`) {
 			t.Fatalf("tool output = %+v", completed.output)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("tool did not resume after user answer")
+		t.Fatal("tool did not return after offering the question")
 	}
 }
 

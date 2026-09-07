@@ -72,6 +72,7 @@ import {
   type QueryHistoryEntry,
 } from "./QueryHistoryPopover";
 import { QueryHistoryRail } from "./QueryHistoryRail";
+import { UserQuestionCard } from "./UserQuestionCard";
 import { ConversationSearchOverlay } from "./ConversationSearchOverlay";
 import { useConversationScrollState } from "./ConversationScrollState";
 import { useConversationSearch } from "./ConversationSearchState";
@@ -370,6 +371,18 @@ type MainComposerFocusRequest = {
   interactionVersion: number;
   matchesDestination?: (state: AppState) => boolean;
 };
+
+function formatUserQuestionSteerPrompt(
+  request: UserQuestionRequest,
+  answer: UserQuestionAnswer,
+): string {
+  return request.questions.map((question) => {
+    const item = answer.answers.find((entry) => entry.id === question.id);
+    const parts = [...(item?.selected ?? [])];
+    if (item?.custom?.trim()) parts.push(item.custom.trim());
+    return `${question.question}\n${parts.join(", ") || "(no answer)"}`;
+  }).join("\n\n");
+}
 
 export function App(): JSX.Element {
   const { locale, t } = useI18n();
@@ -2766,10 +2779,12 @@ export function App(): JSX.Element {
     }
   }
 
-  // Pending ask-user requests belong to the conversation stream, not the
-  // composer dock: render the card after the turn that paused for an answer.
+  // Blocking questions stay in the conversation stream. Offers float above the composer.
   const pendingUserQuestion = userQuestionApiAvailable
-    ? userQuestions.find((request) => request.thread_id === activeThreadID)
+    ? userQuestions.find((request) => request.thread_id === activeThreadID && request.mode !== "offer")
+    : undefined;
+  const pendingUserQuestionOffer = userQuestionApiAvailable
+    ? userQuestions.find((request) => request.thread_id === activeThreadID && request.mode === "offer")
     : undefined;
 
   const answerUserQuestion = useCallback(
@@ -2788,6 +2803,17 @@ export function App(): JSX.Element {
       setUserQuestions((current) =>
         current.filter((request) => request.request_id !== requestID),
       );
+    },
+    [],
+  );
+
+  const holdUserQuestion = useCallback(
+    async (requestID: string): Promise<void> => {
+      if (typeof window.wuu.holdUserQuestion !== "function") return;
+      await window.wuu.holdUserQuestion(requestID);
+      setUserQuestions((current) => current.map((request) =>
+        request.request_id === requestID ? { ...request, expires_at: undefined } : request,
+      ));
     },
     [],
   );
@@ -2853,6 +2879,19 @@ export function App(): JSX.Element {
     return (
       <>
       <Composer
+        topAccessory={pendingUserQuestionOffer ? (
+          <UserQuestionCard
+            request={pendingUserQuestionOffer}
+            onAnswer={async (answer) => {
+              const prompt = formatUserQuestionSteerPrompt(pendingUserQuestionOffer, answer);
+              await answerUserQuestion(pendingUserQuestionOffer.request_id, answer);
+              await sendPrompt("steer", prompt);
+            }}
+            onCancel={() => cancelUserQuestion(pendingUserQuestionOffer.request_id)}
+            onHold={() => holdUserQuestion(pendingUserQuestionOffer.request_id)}
+            onCustom={() => { requestMainComposerFocus(variant === "hero" ? "hero" : "dock"); }}
+          />
+        ) : undefined}
         variant={variant}
         mainConversation
         containerRef={variant === "dock" ? dockComposerRef : undefined}
@@ -3018,15 +3057,15 @@ export function App(): JSX.Element {
         onGuideQueuedMessage={(id) => void guideQueuedMessage(id)}
         onEditQueuedMessage={(id) => void editQueuedMessage(id)}
         onEditGuideMessage={(id) => void editGuideMessage(id)}
-        onSend={(promptOverride, contentParts) => void sendPrompt("queue", promptOverride, contentParts)}
+        onSend={(promptOverride, contentParts) => void sendPrompt("queue", promptOverride, contentParts, pendingUserQuestionOffer?.request_id)}
         onSteer={
           activeThreadIsRunning && activeThread && activeThreadCanSteer
-            ? (promptOverride, contentParts) => void sendPrompt("steer", promptOverride, contentParts)
+            ? (promptOverride, contentParts) => void sendPrompt("steer", promptOverride, contentParts, pendingUserQuestionOffer?.request_id)
             : undefined
         }
         onQueue={
           activeThreadIsRunning && activeThread
-            ? (promptOverride, contentParts) => void sendPrompt("queue", promptOverride, contentParts)
+            ? (promptOverride, contentParts) => void sendPrompt("queue", promptOverride, contentParts, pendingUserQuestionOffer?.request_id)
             : undefined
         }
         onInterrupt={() => void interrupt()}
@@ -3765,9 +3804,13 @@ export function App(): JSX.Element {
     runningAction: "queue" | "steer" = "queue",
     promptOverride?: string,
     contentParts?: MessageContentPart[],
+    consumedOfferID?: string,
   ): Promise<void> {
     if (viewSwitchPending) {
       return;
+    }
+    if (consumedOfferID && pendingUserQuestionOffer?.request_id === consumedOfferID) {
+      void cancelUserQuestion(consumedOfferID).catch(() => undefined);
     }
     const draftMessage = createComposerMessage(
       promptOverride ?? currentPrimaryComposerDraft().prompt,

@@ -49,6 +49,7 @@ const (
 	MethodUserQuestionList                = "user-question/list"
 	MethodUserQuestionRespond             = "user-question/respond"
 	MethodUserQuestionCancel              = "user-question/cancel"
+	MethodUserQuestionHold                = "user-question/hold"
 	MethodConfigCodexModels               = "config/codex/models"
 	MethodAuthXAILoginStart               = "auth/xai/login/start"
 	MethodAuthXAILoginPoll                = "auth/xai/login/poll"

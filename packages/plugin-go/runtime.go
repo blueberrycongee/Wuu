@@ -100,6 +100,7 @@ const (
 	KernelWorkspaceApplyService         = "host.workspace.apply"
 	KernelWorkspaceDiscardService       = "host.workspace.discard"
 	KernelUserQuestionAskService        = "host.user-question.ask"
+	KernelUserQuestionOfferService      = "host.user-question.offer"
 	KernelArtifactImportService         = "host.artifact.import"
 	KernelServiceMethod                 = "call"
 )
@@ -332,6 +333,11 @@ type UserQuestionAnswerItem struct {
 
 type UserQuestionAnswer struct {
 	Answers []UserQuestionAnswerItem `json:"answers"`
+}
+
+type UserQuestionOfferResult struct {
+	RequestID string `json:"request_id"`
+	ExpiresAt string `json:"expires_at"`
 }
 
 func TextResult(text string) ToolResult {
@@ -758,6 +764,18 @@ func AskUserQuestions(ctx context.Context, host Host, questions []UserQuestion) 
 		Questions []UserQuestion `json:"questions"`
 	}{Questions: questions}, &answer)
 	return answer, err
+}
+
+// OfferUserQuestions shows a non-blocking question to the user and returns
+// immediately. An answer, if any, arrives later through the conversation,
+// not as this Tool result. The caller must declare
+// KernelUserQuestionOfferService in RequiredServices.
+func OfferUserQuestions(ctx context.Context, host Host, questions []UserQuestion) (UserQuestionOfferResult, error) {
+	var offer UserQuestionOfferResult
+	err := CallService(ctx, host, KernelUserQuestionOfferService, KernelServiceMethod, struct {
+		Questions []UserQuestion `json:"questions"`
+	}{Questions: questions}, &offer)
+	return offer, err
 }
 
 func RequireHostServices(services ...string) []ServiceRequirement {

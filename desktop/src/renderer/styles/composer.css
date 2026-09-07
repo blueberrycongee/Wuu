@@ -1,12 +1,14 @@
 .user-question-card {
-  /* Ask-user stays attached to the paused turn, but reads as a quiet working
-     surface rather than another framed card in the conversation. */
   box-sizing: border-box;
   margin: 4px 0 24px;
   padding: 16px 18px 14px;
   border: 0;
   border-radius: var(--radius-lg);
   background: var(--surface-1);
+}
+
+.composer-top-accessory .user-question-card {
+  margin: 0 0 10px;
 }
 
 .user-question-after-turn {

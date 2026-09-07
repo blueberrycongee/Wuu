@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -70,21 +71,27 @@ func TestRealAskUserPluginResumesThroughPublicAppServerProtocol(t *testing.T) {
 	if pending.RequestID == "" {
 		t.Fatal("real plugin did not publish a pending question")
 	}
+	if pending.Mode != pluginhost.UserQuestionModeOffer {
+		t.Fatalf("pending mode = %q, want offer", pending.Mode)
+	}
+	select {
+	case executeErr := <-errCh:
+		t.Fatal(executeErr)
+	case result := <-toolDone:
+		if len(result.Result.Content) != 1 || !strings.Contains(result.Result.Content[0].Text, pending.RequestID) {
+			t.Fatalf("tool result = %+v", result)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("real plugin Tool execution did not return after offering the question")
+	}
 	callPluginPackageRPC(t, srv, "respond-real", MethodUserQuestionRespond, UserQuestionRespondParams{
 		RequestID: pending.RequestID,
 		Answer: pluginhost.UserQuestionAnswer{Answers: []pluginhost.UserQuestionAnswerItem{{
 			ID: "path", Selected: []string{"Safe"},
 		}}},
 	})
-	select {
-	case executeErr := <-errCh:
-		t.Fatal(executeErr)
-	case result := <-toolDone:
-		if len(result.Result.Content) != 1 || result.Result.Content[0].Text == "" {
-			t.Fatalf("tool result = %+v", result)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("real plugin Tool execution did not resume")
+	if remaining := rt.UserQuestions.List("thread-real"); len(remaining) != 0 {
+		t.Fatalf("pending after respond = %+v", remaining)
 	}
 }
 
@@ -93,21 +100,21 @@ type userQuestionBrokerRouter struct {
 }
 
 func (r userQuestionBrokerRouter) RouteServiceCall(ctx context.Context, pluginID string, call pluginhost.ServiceCallParams) (json.RawMessage, *pluginhost.HostServiceError) {
-	if call.Service != pluginhost.KernelUserQuestionAskService {
+	if call.Service != pluginhost.KernelUserQuestionOfferService {
 		return nil, &pluginhost.HostServiceError{Code: "service_not_found", Message: "unexpected service"}
 	}
 	var params pluginhost.UserQuestionAskParams
 	if err := json.Unmarshal(call.Params, &params); err != nil {
 		return nil, &pluginhost.HostServiceError{Code: "invalid_params", Message: err.Error()}
 	}
-	answer, err := r.broker.Ask(ctx, pluginhost.UserQuestionOwner{
+	offer, err := r.broker.Offer(pluginhost.UserQuestionOwner{
 		PluginID: pluginID, ExecutionID: call.ExecutionID,
 		ThreadID: "thread-real", TurnID: "turn-real", CallID: "call-real",
 	}, params)
 	if err != nil {
 		return nil, &pluginhost.HostServiceError{Code: "question_failed", Message: err.Error()}
 	}
-	encoded, err := json.Marshal(answer)
+	encoded, err := json.Marshal(offer)
 	if err != nil {
 		return nil, &pluginhost.HostServiceError{Code: "service_failed", Message: err.Error()}
 	}

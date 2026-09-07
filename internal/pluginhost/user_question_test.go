@@ -85,6 +85,35 @@ func TestUserQuestionBrokerCancellationRemovesPendingRequest(t *testing.T) {
 	}
 }
 
+func TestUserQuestionBrokerOfferReturnsWithoutWaiting(t *testing.T) {
+	broker := NewUserQuestionBroker()
+	events, unsubscribe := broker.Subscribe(2)
+	defer unsubscribe()
+	offer, err := broker.Offer(testUserQuestionOwner("offer"), UserQuestionAskParams{
+		Questions: []UserQuestion{{ID: "choice", Question: "Choose", Options: []UserQuestionOption{{Label: "A"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if offer.RequestID == "" || offer.ExpiresAt.IsZero() {
+		t.Fatalf("offer = %+v", offer)
+	}
+	requested := waitUserQuestionEvent(t, events)
+	if requested.Request == nil || requested.Request.Mode != UserQuestionModeOffer || requested.Request.RequestID != offer.RequestID {
+		t.Fatalf("requested = %+v", requested)
+	}
+	if got := broker.List("thread-offer"); len(got) != 1 {
+		t.Fatalf("pending = %+v", got)
+	}
+	if err := broker.Respond(offer.RequestID, UserQuestionAnswer{Answers: []UserQuestionAnswerItem{{ID: "choice", Selected: []string{"A"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	resolved := waitUserQuestionEvent(t, events)
+	if resolved.Outcome != "answered" {
+		t.Fatalf("resolved = %+v", resolved)
+	}
+}
+
 func TestUserQuestionBrokerRejectsMalformedAnswerWithoutClaiming(t *testing.T) {
 	broker := NewUserQuestionBroker()
 	events, unsubscribe := broker.Subscribe(2)

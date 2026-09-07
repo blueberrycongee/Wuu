@@ -15,12 +15,12 @@ type arguments struct {
 func Handler() pluginapi.Handler {
 	return pluginapi.Handler{
 		Definition: pluginapi.Definition{
-			RequiredServices: pluginapi.RequireHostServices(pluginapi.KernelUserQuestionAskService),
+			RequiredServices: pluginapi.RequireHostServices(pluginapi.KernelUserQuestionOfferService),
 			Tools: []pluginapi.Tool{{
 				ID:          "ask_user",
-				Description: "Ask the user one or more focused questions when their answer is required before continuing. Offer clear choices when possible and allow custom input only when useful.",
+				Description: "Offer the user one or more focused questions without pausing the current turn. Prefer clear choices. A later user reply, if any, arrives as ordinary steering input rather than this tool result.",
 				InputSchema: questionInputSchema(),
-				Display:     &pluginapi.ToolDisplay{Kind: "ask-user", Text: "Waiting for your answer", Capability: "interaction"},
+				Display:     &pluginapi.ToolDisplay{Kind: "ask-user", Text: "Asked the user", Capability: "interaction"},
 			}},
 		},
 		ExecuteTool: executeTool,
@@ -35,11 +35,11 @@ func executeTool(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCa
 	if err := json.Unmarshal(call.Arguments, &input); err != nil {
 		return pluginapi.ToolResult{}, fmt.Errorf("invalid tool arguments: %w", err)
 	}
-	answer, err := pluginapi.AskUserQuestions(ctx, host, input.Questions)
+	offer, err := pluginapi.OfferUserQuestions(ctx, host, input.Questions)
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}
-	encoded, err := json.Marshal(answer)
+	encoded, err := json.Marshal(offer)
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}

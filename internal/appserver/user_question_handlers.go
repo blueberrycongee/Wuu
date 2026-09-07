@@ -24,6 +24,10 @@ type UserQuestionCancelParams struct {
 	RequestID string `json:"request_id"`
 }
 
+type UserQuestionHoldParams struct {
+	RequestID string `json:"request_id"`
+}
+
 type UserQuestionResolveResult struct {
 	RequestID string `json:"request_id"`
 	Resolved  bool   `json:"resolved"`
@@ -99,4 +103,22 @@ func (s *Server) handleUserQuestionCancel(req Request) error {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	return s.writeResponse(req.ID, UserQuestionResolveResult{RequestID: requestID, Resolved: true}, nil)
+}
+
+func (s *Server) handleUserQuestionHold(req Request) error {
+	var params UserQuestionHoldParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	requestID := strings.TrimSpace(params.RequestID)
+	if requestID == "" {
+		return s.writeResponse(req.ID, nil, errors.New("request_id is required"))
+	}
+	if s.rt == nil || s.rt.UserQuestions == nil {
+		return s.writeResponse(req.ID, nil, errors.New("user interaction is unavailable"))
+	}
+	if err := s.rt.UserQuestions.Hold(requestID); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	return s.writeResponse(req.ID, UserQuestionResolveResult{RequestID: requestID, Resolved: false}, nil)
 }

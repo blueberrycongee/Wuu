@@ -2011,6 +2011,7 @@ export const zhCN = {
   "userQuestion.sending": "发送中…",
   "userQuestion.cancel": "取消",
   "userQuestion.customPlaceholder": "输入其他答案",
+  "userQuestion.custom": "自己输入",
   "userQuestion.customAriaLabel": "{question} 的自定义答案",
   "userQuestion.sendFailed": "无法发送回答。",
   "userQuestion.cancelFailed": "无法取消提问。",

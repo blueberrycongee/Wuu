@@ -1122,6 +1122,8 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleUserQuestionRespond(req)
 	case MethodUserQuestionCancel:
 		return s.handleUserQuestionCancel(req)
+	case MethodUserQuestionHold:
+		return s.handleUserQuestionHold(req)
 	case MethodConfigCodexModels:
 		// Model discovery performs an external Codex request. Keep it off the
 		// serial stdio dispatch loop so unrelated local mutations, especially a

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,7 +185,7 @@ func TestKernelUserQuestionUsesTrustedToolExecutionScope(t *testing.T) {
 	}
 	done := make(chan invokeResult, 1)
 	go func() {
-		result, err := (&userQuestionAskInvoker{parent: kernel}).InvokeService(context.Background(), pluginhost.ServiceInvokeParams{
+		result, err := (&userQuestionOfferInvoker{parent: kernel}).InvokeService(context.Background(), pluginhost.ServiceInvokeParams{
 			Method: pluginhost.KernelServiceMethod, Caller: "ask-user", ExecutionID: "exec-trusted",
 			Params: json.RawMessage(`{"questions":[{"id":"choice","question":"Choose","options":[{"label":"A"}]}]}`),
 		})
@@ -199,16 +200,19 @@ func TestKernelUserQuestionUsesTrustedToolExecutionScope(t *testing.T) {
 	if requested.Request == nil || requested.Request.ThreadID != "thread-trusted" || requested.Request.TurnID != "turn-trusted" || requested.Request.CallID != "call-trusted" {
 		t.Fatalf("request = %+v", requested.Request)
 	}
-	if err := broker.Respond(requested.Request.RequestID, pluginhost.UserQuestionAnswer{Answers: []pluginhost.UserQuestionAnswerItem{{ID: "choice", Selected: []string{"A"}}}}); err != nil {
-		t.Fatal(err)
+	if requested.Request.Mode != pluginhost.UserQuestionModeOffer {
+		t.Fatalf("mode = %q, want offer", requested.Request.Mode)
 	}
 	select {
 	case outcome := <-done:
-		if outcome.err != nil || len(outcome.result) == 0 {
+		if outcome.err != nil || !strings.Contains(string(outcome.result), requested.Request.RequestID) {
 			t.Fatalf("invoke = %s, %v", outcome.result, outcome.err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("question service did not resume")
+		t.Fatal("offer service did not return")
+	}
+	if err := broker.Respond(requested.Request.RequestID, pluginhost.UserQuestionAnswer{Answers: []pluginhost.UserQuestionAnswerItem{{ID: "choice", Selected: []string{"A"}}}}); err != nil {
+		t.Fatal(err)
 	}
 }
 

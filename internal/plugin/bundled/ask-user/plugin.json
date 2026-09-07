@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "id": "ask-user",
   "name": "Ask User",
-  "description": "Pause a tool call for a focused answer from the user, then continue it.",
+  "description": "Offer focused questions to the user without pausing the current turn.",
   "icon": "message-square",
   "version": "0.1.0",
   "defaultEnabled": false,
   "author": { "name": "Wuu" },
   "minimumWuuVersion": "0.1.0",
   "runtime": { "protocol": "wuu-plugin-v1", "command": "@wuu-official-helper:ask-user", "timeout": 15 },
-  "interface": { "displayName": "Ask User", "shortDescription": "Ask focused questions during a task.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Interaction"] },
+  "interface": { "displayName": "Ask User", "shortDescription": "Offer focused questions without pausing a task.", "developerName": "Wuu", "category": "Productivity", "capabilities": ["Interaction"] },
   "officialNativeHelper": { "id": "ask-user", "environment": "WUU_ASK_USER_PLUGIN_HELPER", "executable": "wuu-ask-user-plugin" }
 }

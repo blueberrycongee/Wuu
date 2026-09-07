@@ -1432,6 +1432,10 @@ app.whenReady().then(async () => {
     appServerRequest<UserQuestionResolveResult>(event, "user-question/cancel", {
       request_id: requestId,
     }));
+  ipcMain.handle("wuu:user-question-hold", (event, requestId: string) =>
+    appServerRequest<UserQuestionResolveResult>(event, "user-question/hold", {
+      request_id: requestId,
+    }));
   ipcMain.handle(
     "wuu:system-notification",
     (event, params: SystemNotificationParams): SystemNotificationResult => {

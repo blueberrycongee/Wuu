@@ -2013,6 +2013,7 @@ export const enUS = {
   "userQuestion.sending": "Sending…",
   "userQuestion.cancel": "Cancel",
   "userQuestion.customPlaceholder": "Type another answer",
+  "userQuestion.custom": "Reply in the input box",
   "userQuestion.customAriaLabel": "Custom answer for {question}",
   "userQuestion.sendFailed": "Could not send your answer.",
   "userQuestion.cancelFailed": "Could not cancel the question.",

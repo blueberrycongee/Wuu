@@ -237,6 +237,8 @@ const api: WuuDesktopApi = {
     ipcRenderer.invoke("wuu:user-question-answer", requestId, answer),
   cancelUserQuestion: (requestId) =>
     ipcRenderer.invoke("wuu:user-question-cancel", requestId),
+  holdUserQuestion: (requestId) =>
+    ipcRenderer.invoke("wuu:user-question-hold", requestId),
   showSystemNotification: (params) =>
     ipcRenderer.invoke("wuu:system-notification", params),
   getBuildInfo: () => ipcRenderer.invoke("wuu:build-info"),

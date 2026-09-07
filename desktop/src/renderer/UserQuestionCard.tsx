@@ -1,5 +1,5 @@
 import { Circle, CircleDot, Square, SquareCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   UserQuestionAnswer,
   UserQuestion,
@@ -76,14 +76,17 @@ type Props = {
   request: UserQuestionRequest;
   onAnswer: (answer: UserQuestionAnswer) => Promise<void>;
   onCancel: () => Promise<void>;
+  onHold?: () => Promise<void>;
+  onCustom?: () => Promise<void> | void;
 };
 
-export function UserQuestionCard({ request, onAnswer, onCancel }: Props): JSX.Element {
+export function UserQuestionCard({ request, onAnswer, onCancel, onHold, onCustom }: Props): JSX.Element {
   const { t } = useI18n();
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const offer = request.mode === "offer";
   const complete = useMemo(
     () => request.questions.every((question) =>
       (selected[question.id]?.length ?? 0) > 0 ||
@@ -91,37 +94,63 @@ export function UserQuestionCard({ request, onAnswer, onCancel }: Props): JSX.El
     [custom, request.questions, selected],
   );
 
-  function toggle(questionID: string, label: string, multiSelect: boolean): void {
-    setSelected((current) => {
-      const values = current[questionID] ?? [];
-      const next = multiSelect
-        ? values.includes(label)
-          ? values.filter((value) => value !== label)
-          : [...values, label]
-        : [label];
-      return { ...current, [questionID]: next };
-    });
+  useEffect(() => {
+    if (!offer || !request.expires_at || submitting) return;
+    const expiresAt = Date.parse(request.expires_at);
+    if (!Number.isFinite(expiresAt)) return;
+    const remaining = expiresAt - Date.now();
+    const timer = window.setTimeout(() => {
+      void onCancel();
+    }, Math.max(0, remaining));
+    return () => window.clearTimeout(timer);
+  }, [offer, onCancel, request.expires_at, request.request_id, submitting]);
+
+  function toggle(questionID: string, label: string, multiSelect: boolean): Record<string, string[]> {
+    const values = selected[questionID] ?? [];
+    const next = multiSelect
+      ? values.includes(label)
+        ? values.filter((value) => value !== label)
+        : [...values, label]
+      : [label];
+    const nextSelected = { ...selected, [questionID]: next };
+    setSelected(nextSelected);
+    return nextSelected;
   }
 
-  async function submit(): Promise<void> {
-    if (!complete || submitting) return;
+  function answersFrom(nextSelected: Record<string, string[]>): UserQuestionAnswer {
+    return {
+      answers: request.questions.map((question) => ({
+        id: question.id,
+        selected: nextSelected[question.id] ?? [],
+        ...(custom[question.id]?.trim()
+          ? { custom: custom[question.id].trim() }
+          : {}),
+      })),
+    };
+  }
+
+  async function submit(nextSelected = selected): Promise<void> {
+    if (submitting) return;
+    const ready = request.questions.every((question) =>
+      (nextSelected[question.id]?.length ?? 0) > 0 ||
+      (question.allow_custom && (custom[question.id]?.trim().length ?? 0) > 0));
+    if (!ready) return;
     setSubmitting(true);
     setError("");
     try {
-      await onAnswer({
-        answers: request.questions.map((question) => ({
-          id: question.id,
-          selected: selected[question.id] ?? [],
-          ...(custom[question.id]?.trim()
-            ? { custom: custom[question.id].trim() }
-            : {}),
-        })),
-      });
+      await onAnswer(answersFrom(nextSelected));
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : t("userQuestion.sendFailed"),
       );
       setSubmitting(false);
+    }
+  }
+
+  async function chooseOption(questionID: string, label: string, multiSelect: boolean): Promise<void> {
+    const nextSelected = toggle(questionID, label, multiSelect);
+    if (offer && !multiSelect) {
+      await submit(nextSelected);
     }
   }
 
@@ -158,7 +187,7 @@ export function UserQuestionCard({ request, onAnswer, onCancel }: Props): JSX.El
                       data-active={active || undefined}
                       data-multi={question.multi_select ? "true" : "false"}
                       key={option.label}
-                      onClick={() => toggle(question.id, option.label, Boolean(question.multi_select))}
+                      onClick={() => void chooseOption(question.id, option.label, Boolean(question.multi_select))}
                       role={question.multi_select ? "checkbox" : "radio"}
                       type="button"
                     >
@@ -184,7 +213,7 @@ export function UserQuestionCard({ request, onAnswer, onCancel }: Props): JSX.El
                 })}
               </div>
             ) : null}
-            {question.allow_custom ? (
+            {question.allow_custom && !offer ? (
               <input
                 aria-label={t("userQuestion.customAriaLabel", { question: lead })}
                 className="user-question-custom"
@@ -218,14 +247,39 @@ export function UserQuestionCard({ request, onAnswer, onCancel }: Props): JSX.El
         >
           {t("userQuestion.cancel")}
         </button>
-        <button
-          className="user-question-submit"
-          disabled={!complete || submitting}
-          onClick={() => void submit()}
-          type="button"
-        >
-          {submitting ? t("userQuestion.sending") : t("userQuestion.continue")}
-        </button>
+        {offer ? (
+          <button
+            className="user-question-submit"
+            disabled={submitting}
+            onClick={() => {
+              void (async () => {
+                setSubmitting(true);
+                setError("");
+                try {
+                  if (onHold) await onHold();
+                  await onCustom?.();
+                } catch (cause) {
+                  setError(
+                    cause instanceof Error ? cause.message : t("userQuestion.sendFailed"),
+                  );
+                  setSubmitting(false);
+                }
+              })();
+            }}
+            type="button"
+          >
+            {t("userQuestion.custom")}
+          </button>
+        ) : (
+          <button
+            className="user-question-submit"
+            disabled={!complete || submitting}
+            onClick={() => void submit()}
+            type="button"
+          >
+            {submitting ? t("userQuestion.sending") : t("userQuestion.continue")}
+          </button>
+        )}
       </div>
     </section>
   );

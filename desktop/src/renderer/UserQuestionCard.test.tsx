@@ -69,6 +69,45 @@ describe("UserQuestionCard", () => {
     });
   });
 
+  it("steers an offer option immediately", async () => {
+    const onAnswer = vi.fn(async () => undefined);
+    const request: UserQuestionRequest = {
+      request_id: "offer-1",
+      plugin_id: "ask-user",
+      execution_id: "execution-1",
+      thread_id: "thread-1",
+      turn_id: "turn-1",
+      mode: "offer",
+      created_at: new Date().toISOString(),
+      questions: [{
+        id: "path",
+        question: "Which path?",
+        options: [{ label: "Safe" }],
+        allow_custom: true,
+      }],
+    };
+    window.wuu = {
+      initialLanguagePreference: "en-US",
+      initialSystemLocale: "en-US",
+    } as unknown as WuuDesktopApi;
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <I18nProvider>
+          <UserQuestionCard request={request} onAnswer={onAnswer} onCancel={async () => undefined} />
+        </I18nProvider>,
+      );
+    });
+    const option = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Safe"));
+    await act(async () => { option?.click(); });
+    expect(onAnswer).toHaveBeenCalledWith({
+      answers: [{ id: "path", selected: ["Safe"] }],
+    });
+  });
+
   it("localizes engine approval choices while submitting protocol labels", async () => {
     const onAnswer = vi.fn(async () => undefined);
     const request: UserQuestionRequest = {

@@ -52,8 +52,10 @@ export type UserQuestionRequest = {
   turn_id: string;
   actor_id?: string;
   call_id?: string;
+  mode?: "ask" | "offer";
   questions: UserQuestion[];
   created_at: string;
+  expires_at?: string;
 };
 
 export type UserQuestionAnswerItem = {
@@ -2729,6 +2731,7 @@ export type WuuDesktopApi = {
     answer: UserQuestionAnswer,
   ) => Promise<UserQuestionResolveResult>;
   cancelUserQuestion: (requestId: string) => Promise<UserQuestionResolveResult>;
+  holdUserQuestion: (requestId: string) => Promise<UserQuestionResolveResult>;
   showSystemNotification: (
     params: SystemNotificationParams,
   ) => Promise<SystemNotificationResult>;

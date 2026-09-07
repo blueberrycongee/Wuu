@@ -452,6 +452,10 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 			Invoker:    &userQuestionAskInvoker{parent: k}, Kernel: true,
 		},
 		pluginhost.ServiceRegistration{
+			Descriptor: pluginhost.KernelUserQuestionOfferDescriptor(),
+			Invoker:    &userQuestionOfferInvoker{parent: k}, Kernel: true,
+		},
+		pluginhost.ServiceRegistration{
 			Descriptor: pluginhost.KernelArtifactImportDescriptor(),
 			Invoker:    &artifactImportInvoker{parent: k}, Kernel: true,
 		},
@@ -590,21 +594,33 @@ type userQuestionAskInvoker struct {
 func (k *userQuestionAskInvoker) ID() string                { return k.parent.ID() }
 func (k *userQuestionAskInvoker) Status() pluginhost.Status { return k.parent.Status() }
 func (k *userQuestionAskInvoker) InvokeService(ctx context.Context, params pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
+	return invokeUserQuestion(ctx, k.parent, params, false)
+}
+
+type userQuestionOfferInvoker struct {
+	parent *kernelHostServices
+}
+
+func (k *userQuestionOfferInvoker) ID() string                { return k.parent.ID() }
+func (k *userQuestionOfferInvoker) Status() pluginhost.Status { return k.parent.Status() }
+func (k *userQuestionOfferInvoker) InvokeService(ctx context.Context, params pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
+	return invokeUserQuestion(ctx, k.parent, params, true)
+}
+
+func invokeUserQuestion(ctx context.Context, parent *kernelHostServices, params pluginhost.ServiceInvokeParams, offer bool) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if params.Method != pluginhost.KernelServiceMethod {
 		return nil, serviceError("method_not_found", "kernel service method is unavailable")
 	}
-	k.parent.mu.RLock()
-	broker := k.parent.userQuestions
-	k.parent.mu.RUnlock()
+	parent.mu.RLock()
+	broker := parent.userQuestions
+	executions := parent.executions
+	parent.mu.RUnlock()
 	if broker == nil {
 		return nil, serviceError("service_unavailable", "user interaction is unavailable")
 	}
-	k.parent.mu.RLock()
-	executions := k.parent.executions
-	k.parent.mu.RUnlock()
 	if executions == nil {
 		return nil, serviceError("service_unavailable", "execution scope is unavailable")
 	}
@@ -616,18 +632,30 @@ func (k *userQuestionAskInvoker) InvokeService(ctx context.Context, params plugi
 	if err := decodeServiceParams(params.Params, &input); err != nil {
 		return nil, serviceError("invalid_request", "invalid user question parameters")
 	}
-	answer, err := broker.Ask(scope.Context, pluginhost.UserQuestionOwner{
+	owner := pluginhost.UserQuestionOwner{
 		PluginID: scope.PluginID, ExecutionID: scope.ID, SessionID: scope.SessionID,
 		ThreadID: scope.ThreadID, TurnID: scope.TurnID, ActorID: scope.ActorID, CallID: scope.CallID,
-	}, input)
-	if err != nil {
-		var questionErr *pluginhost.UserQuestionError
-		if errors.As(err, &questionErr) {
-			return nil, serviceError(questionErr.Code, questionErr.Message)
+	}
+	if offer {
+		result, err := broker.Offer(owner, input)
+		if err != nil {
+			return nil, userQuestionServiceError(err)
 		}
-		return nil, err
+		return marshalServiceResult(result)
+	}
+	answer, err := broker.Ask(scope.Context, owner, input)
+	if err != nil {
+		return nil, userQuestionServiceError(err)
 	}
 	return marshalServiceResult(answer)
+}
+
+func userQuestionServiceError(err error) error {
+	var questionErr *pluginhost.UserQuestionError
+	if errors.As(err, &questionErr) {
+		return serviceError(questionErr.Code, questionErr.Message)
+	}
+	return err
 }
 
 func (s *pluginHostServices) storageGet(params pluginhost.StorageGetParams) (json.RawMessage, error) {

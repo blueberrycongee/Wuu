@@ -14,12 +14,19 @@ import (
 const (
 	UserQuestionRequested = "requested"
 	UserQuestionResolved  = "resolved"
+
+	UserQuestionModeAsk   = "ask"
+	UserQuestionModeOffer = "offer"
 )
 
-// userQuestionResponseTimeout bounds how long a pending question may block
-// its execution: unanswered questions expire instead of hanging the turn.
-// A package variable so expiry tests can shorten it without waiting.
-var userQuestionResponseTimeout = 5 * time.Minute
+// userQuestionAskTimeout bounds how long a blocking question may wait for an
+// answer before the owning execution is released.
+var userQuestionAskTimeout = 5 * time.Minute
+
+// userQuestionOfferTimeout is how long an unanswered non-blocking offer stays
+// visible. The offer expires silently: the caller already continued, and the
+// shell should not invent a timeout answer.
+var userQuestionOfferTimeout = 20 * time.Second
 
 type UserQuestionOption struct {
 	Label       string `json:"label"`
@@ -69,8 +76,15 @@ type UserQuestionRequest struct {
 	TurnID      string         `json:"turn_id"`
 	ActorID     string         `json:"actor_id,omitempty"`
 	CallID      string         `json:"call_id,omitempty"`
+	Mode        string         `json:"mode,omitempty"`
 	Questions   []UserQuestion `json:"questions"`
 	CreatedAt   time.Time      `json:"created_at"`
+	ExpiresAt   time.Time      `json:"expires_at,omitempty"`
+}
+
+type UserQuestionOfferResult struct {
+	RequestID string    `json:"request_id"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 type UserQuestionEvent struct {
@@ -102,9 +116,13 @@ type pendingUserQuestion struct {
 	timer *time.Timer
 }
 
-// UserQuestionBroker owns live, execution-bound human questions. Requests are
-// intentionally not durable: cancelling the execution or closing the runtime
-// resolves every waiter instead of reviving an orphaned Tool after restart.
+func (e *pendingUserQuestion) blocking() bool {
+	return e != nil && e.request.Mode != UserQuestionModeOffer
+}
+
+// UserQuestionBroker owns live human questions. Blocking asks stay bound to
+// the owning execution. Offers stay visible after the tool returns until the
+// user answers, the offer expires, or the runtime closes.
 type UserQuestionBroker struct {
 	mu          sync.Mutex
 	closed      bool
@@ -121,33 +139,58 @@ func NewUserQuestionBroker() *UserQuestionBroker {
 }
 
 func (b *UserQuestionBroker) Ask(ctx context.Context, owner UserQuestionOwner, params UserQuestionAskParams) (UserQuestionAnswer, error) {
-	if err := validateUserQuestionAsk(owner, params); err != nil {
+	entry, err := b.register(owner, params, UserQuestionModeAsk, userQuestionAskTimeout)
+	if err != nil {
 		return UserQuestionAnswer{}, err
+	}
+	select {
+	case result := <-entry.result:
+		return result.answer, result.err
+	case <-ctx.Done():
+		cancelErr := userQuestionContextError(ctx)
+		if b.resolve(entry.request.RequestID, userQuestionResult{err: cancelErr}, "cancelled") {
+			return UserQuestionAnswer{}, cancelErr
+		}
+		result := <-entry.result
+		return result.answer, result.err
+	}
+}
+
+func (b *UserQuestionBroker) Offer(owner UserQuestionOwner, params UserQuestionAskParams) (UserQuestionOfferResult, error) {
+	entry, err := b.register(owner, params, UserQuestionModeOffer, userQuestionOfferTimeout)
+	if err != nil {
+		return UserQuestionOfferResult{}, err
+	}
+	return UserQuestionOfferResult{RequestID: entry.request.RequestID, ExpiresAt: entry.request.ExpiresAt}, nil
+}
+
+func (b *UserQuestionBroker) register(owner UserQuestionOwner, params UserQuestionAskParams, mode string, timeout time.Duration) (*pendingUserQuestion, error) {
+	if err := validateUserQuestionAsk(owner, params); err != nil {
+		return nil, err
 	}
 	requestID, err := newUserQuestionRequestID()
 	if err != nil {
-		return UserQuestionAnswer{}, &UserQuestionError{Code: "service_unavailable", Message: "create user question id"}
+		return nil, &UserQuestionError{Code: "service_unavailable", Message: "create user question id"}
 	}
+	now := time.Now().UTC()
 	entry := &pendingUserQuestion{
 		request: UserQuestionRequest{
 			RequestID: requestID, PluginID: strings.TrimSpace(owner.PluginID), ExecutionID: strings.TrimSpace(owner.ExecutionID),
 			SessionID: strings.TrimSpace(owner.SessionID),
 			ThreadID:  strings.TrimSpace(owner.ThreadID), TurnID: strings.TrimSpace(owner.TurnID),
 			ActorID: strings.TrimSpace(owner.ActorID), CallID: strings.TrimSpace(owner.CallID),
-			Questions: cloneUserQuestions(params.Questions), CreatedAt: time.Now().UTC(),
+			Mode: mode, Questions: cloneUserQuestions(params.Questions), CreatedAt: now, ExpiresAt: now.Add(timeout),
 		},
 		result: make(chan userQuestionResult, 1),
 	}
 	b.mu.Lock()
 	if b.closed {
 		b.mu.Unlock()
-		return UserQuestionAnswer{}, &UserQuestionError{Code: "service_unavailable", Message: "user interaction is unavailable"}
+		return nil, &UserQuestionError{Code: "service_unavailable", Message: "user interaction is unavailable"}
 	}
 	b.pending[requestID] = entry
-	// Each request carries its own expiry timer so a pending question can
-	// never hang its execution forever. Arming under the lock means no
-	// answer can slip in before the timer exists.
-	entry.timer = time.AfterFunc(userQuestionResponseTimeout, func() {
+	// Arm the timer under the lock so an answer cannot slip in before expiry exists.
+	entry.timer = time.AfterFunc(timeout, func() {
 		b.resolve(requestID, userQuestionResult{err: &UserQuestionError{
 			Code:    "question_expired",
 			Message: "user did not answer within the time limit",
@@ -156,18 +199,7 @@ func (b *UserQuestionBroker) Ask(ctx context.Context, owner UserQuestionOwner, p
 	subscribers := b.subscribersLocked()
 	b.mu.Unlock()
 	b.publish(subscribers, UserQuestionEvent{Type: UserQuestionRequested, Request: cloneUserQuestionRequest(&entry.request)})
-
-	select {
-	case result := <-entry.result:
-		return result.answer, result.err
-	case <-ctx.Done():
-		cancelErr := userQuestionContextError(ctx)
-		if b.resolve(requestID, userQuestionResult{err: cancelErr}, "cancelled") {
-			return UserQuestionAnswer{}, cancelErr
-		}
-		result := <-entry.result
-		return result.answer, result.err
-	}
+	return entry, nil
 }
 
 func (b *UserQuestionBroker) Respond(requestID string, answer UserQuestionAnswer) error {
@@ -188,8 +220,24 @@ func (b *UserQuestionBroker) Respond(requestID string, answer UserQuestionAnswer
 	}
 	subscribers := b.subscribersLocked()
 	b.mu.Unlock()
-	entry.result <- userQuestionResult{answer: cloneUserQuestionAnswer(answer)}
+	b.deliver(entry, userQuestionResult{answer: cloneUserQuestionAnswer(answer)})
 	b.publish(subscribers, UserQuestionEvent{Type: UserQuestionResolved, RequestID: requestID, ThreadID: entry.request.ThreadID, Outcome: "answered"})
+	return nil
+}
+
+func (b *UserQuestionBroker) Hold(requestID string) error {
+	requestID = strings.TrimSpace(requestID)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	entry := b.pending[requestID]
+	if entry == nil {
+		return &UserQuestionError{Code: "question_not_pending", Message: "user question is no longer pending"}
+	}
+	if !entry.blocking() && entry.timer != nil {
+		entry.timer.Stop()
+		entry.timer = nil
+		entry.request.ExpiresAt = time.Time{}
+	}
 	return nil
 }
 
@@ -259,7 +307,7 @@ func (b *UserQuestionBroker) Close() {
 		if entry.timer != nil {
 			entry.timer.Stop()
 		}
-		entry.result <- userQuestionResult{err: &UserQuestionError{Code: "service_unavailable", Message: "user interaction is unavailable"}}
+		b.deliver(entry, userQuestionResult{err: &UserQuestionError{Code: "service_unavailable", Message: "user interaction is unavailable"}})
 	}
 }
 
@@ -276,9 +324,16 @@ func (b *UserQuestionBroker) resolve(requestID string, result userQuestionResult
 	}
 	subscribers := b.subscribersLocked()
 	b.mu.Unlock()
-	entry.result <- result
+	b.deliver(entry, result)
 	b.publish(subscribers, UserQuestionEvent{Type: UserQuestionResolved, RequestID: requestID, ThreadID: entry.request.ThreadID, Outcome: outcome})
 	return true
+}
+
+func (b *UserQuestionBroker) deliver(entry *pendingUserQuestion, result userQuestionResult) {
+	if entry == nil || !entry.blocking() {
+		return
+	}
+	entry.result <- result
 }
 
 func (b *UserQuestionBroker) subscribersLocked() []chan UserQuestionEvent {

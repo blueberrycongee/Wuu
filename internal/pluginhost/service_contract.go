@@ -50,6 +50,7 @@ const (
 	KernelWorkspaceApplyService         = "host.workspace.apply"
 	KernelWorkspaceDiscardService       = "host.workspace.discard"
 	KernelUserQuestionAskService        = "host.user-question.ask"
+	KernelUserQuestionOfferService      = "host.user-question.offer"
 	KernelArtifactImportService         = "host.artifact.import"
 
 	// KernelRegistryIntrospectService is the kernel's read-only registry
@@ -137,6 +138,13 @@ func KernelUserQuestionAskDescriptor() ServiceDescriptor {
 	return ServiceDescriptor{
 		Name: KernelUserQuestionAskService, Version: "1.0.0",
 		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "host.user-question.ask.input.v1", OutputSchema: "host.user-question.ask.output.v1"}},
+	}
+}
+
+func KernelUserQuestionOfferDescriptor() ServiceDescriptor {
+	return ServiceDescriptor{
+		Name: KernelUserQuestionOfferService, Version: "1.0.0",
+		Methods: []ServiceMethodDescriptor{{Name: KernelServiceMethod, InputSchema: "host.user-question.offer.input.v1", OutputSchema: "host.user-question.offer.output.v1"}},
 	}
 }
 
