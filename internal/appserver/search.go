@@ -19,8 +19,8 @@ const (
 )
 
 type threadSearchSource struct {
-	entry   threadListEntry
-	history []providers.ChatMessage
+	entry threadListEntry
+	live  *threadState
 }
 
 type threadSearchCandidate struct {
@@ -47,15 +47,30 @@ func (s *Server) handleThreadSearch(req Request) error {
 	}
 	results := make([]threadSearchResultEntry, 0, min(len(sources), limit))
 	for _, source := range sources {
-		candidates := threadSearchCandidates(source.entry.thread, source.history)
+		// Metadata has precedence over history for both matches and previews.
+		// Resolve it first so opening search never reads whole transcripts just
+		// to display recent conversations, and stop loading once the page is full.
+		candidates := threadSearchCandidates(source.entry.thread, nil)
 		snippet := ""
 		if query != "" {
 			snippet = threadSearchMatchSnippet(candidates, query)
-			if snippet == "" {
-				continue
-			}
 		} else {
 			snippet = threadSearchDefaultSnippet(candidates)
+		}
+		if snippet == "" {
+			history, err := s.threadSearchHistory(source)
+			if err != nil {
+				return s.writeResponse(req.ID, nil, err)
+			}
+			candidates = threadSearchCandidates(source.entry.thread, history)
+			if query != "" {
+				snippet = threadSearchMatchSnippet(candidates, query)
+			} else {
+				snippet = threadSearchDefaultSnippet(candidates)
+			}
+		}
+		if query != "" && snippet == "" {
+			continue
 		}
 		results = append(results, threadSearchResultEntry{
 			entry:   source.entry,
@@ -91,14 +106,7 @@ func (s *Server) threadSearchSources() ([]threadSearchSource, error) {
 			continue
 		}
 		entry := threadEntryFromSession(sess, s.rt.ProviderName, s.rt.Model)
-		history, err := loadChatMessages(s.rt.SessionDir, sess.ID)
-		if err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				return nil, err
-			}
-			history = nil
-		}
-		sourcesByID[sess.ID] = threadSearchSource{entry: entry, history: history}
+		sourcesByID[sess.ID] = threadSearchSource{entry: entry}
 	}
 
 	s.mu.Lock()
@@ -107,7 +115,6 @@ func (s *Server) threadSearchSources() ([]threadSearchSource, error) {
 		th.mu.Lock()
 		thread := th.snapshotLocked()
 		visibility := th.Visibility
-		history := cloneHistory(th.History)
 		entry := threadListEntry{thread: thread, pinnedAt: th.PinnedAt}
 		th.mu.Unlock()
 		if visibility == pluginhost.SessionVisibilityPlugin {
@@ -129,8 +136,8 @@ func (s *Server) threadSearchSources() ([]threadSearchSource, error) {
 			continue
 		}
 		sourcesByID[thread.ID] = threadSearchSource{
-			entry:   entry,
-			history: history,
+			entry: entry,
+			live:  th,
 		}
 	}
 
@@ -142,6 +149,21 @@ func (s *Server) threadSearchSources() ([]threadSearchSource, error) {
 		return threadListEntryLess(sources[i].entry, sources[j].entry)
 	})
 	return sources, nil
+}
+
+// Live history takes precedence over disk, including unpersisted turns. Clone
+// only the conversation being searched, outside the server-wide lock.
+func (s *Server) threadSearchHistory(source threadSearchSource) ([]providers.ChatMessage, error) {
+	if source.live != nil {
+		source.live.mu.Lock()
+		defer source.live.mu.Unlock()
+		return cloneHistory(source.live.History), nil
+	}
+	history, err := loadChatMessages(s.rt.SessionDir, source.entry.thread.ID)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	return history, err
 }
 
 type threadSearchResultEntry struct {
