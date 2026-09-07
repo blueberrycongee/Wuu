@@ -9,7 +9,7 @@ import type {
   ThreadSearchResultItem,
   Turn,
 } from "../shared/protocol";
-import { conversationSearchVisibleSnippet } from "./ConversationSearchDisplay";
+import { conversationSearchPattern, conversationSearchVisibleSnippet } from "./ConversationSearchDisplay";
 import { primaryShortcutLabel } from "./platform";
 import type { ConversationSearchState } from "./ConversationSearchState";
 import {
@@ -20,6 +20,21 @@ import { RichContent } from "./RichContent";
 import { threadDisplayTitle } from "./ThreadTitles";
 import { useI18n } from "./i18n";
 import { TruncatedText } from "./TruncatedText";
+
+function SearchMatchText({ text, query }: { text: string; query: string }): JSX.Element {
+  const pattern = conversationSearchPattern(query);
+  const parts: (string | JSX.Element)[] = [];
+  let cursor = 0;
+  if (pattern) {
+    for (const match of text.matchAll(pattern)) {
+      parts.push(text.slice(cursor, match.index));
+      parts.push(<mark key={match.index}>{match[0]}</mark>);
+      cursor = match.index + match[0].length;
+    }
+  }
+  parts.push(text.slice(cursor));
+  return <>{parts}</>;
+}
 
 export function ConversationSearchOverlay({
   state,
@@ -125,11 +140,11 @@ export function ConversationSearchOverlay({
                 >
                   <span className="conversation-search-result-main">
                     <span className="conversation-search-result-title">
-                      {title}
+                      <SearchMatchText text={title} query={state.query} />
                     </span>
                     {snippet ? (
                       <span className="conversation-search-result-snippet">
-                        {snippet}
+                        <SearchMatchText text={snippet} query={state.query} />
                       </span>
                     ) : null}
                   </span>

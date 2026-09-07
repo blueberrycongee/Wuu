@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { conversationSearchVisibleSnippet } from "./ConversationSearchDisplay";
 
 describe("conversationSearchVisibleSnippet", () => {
+  it("keeps a late Chinese match near the start without splitting emoji", () => {
+    const result = conversationSearchVisibleSnippet({
+      query: "引导 页面",
+      snippet: "旧上下文😀".repeat(60) + "引导\n页面需要调整 " + "后文 ".repeat(200),
+      title: "Design",
+    });
+    expect(result).toContain("引导 页面需要调整");
+    expect(Array.from(result.slice(0, result.indexOf("引导"))).length).toBeLessThanOrEqual(17);
+    expect(result.length).toBeLessThan(180);
+    expect(result).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+  });
+
   it("hides snippets in the recent conversation list", () => {
     expect(
       conversationSearchVisibleSnippet({

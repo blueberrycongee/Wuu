@@ -656,14 +656,23 @@
 }
 
 .conversation-search-result-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   min-width: 0;
   overflow: hidden;
   color: var(--env-search-result-snippet-text);
   font-size: var(--font-sm);
   font-weight: var(--weight-regular);
   line-height: 16px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.conversation-search-result-main mark {
+  background: var(--env-search-result-hover-bg);
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
 }
 
 .conversation-search-result-shortcut {
@@ -711,7 +720,7 @@
   display: grid;
   flex: 1 1 auto;
   min-height: 0;
-  grid-template-columns: minmax(220px, 1fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 1fr);
   gap: 16px;
 }
 

@@ -20,7 +20,7 @@
 import { act, createElement, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ThreadItem, Turn } from "../shared/protocol";
+import type { Thread, ThreadItem, Turn } from "../shared/protocol";
 import {
   ConversationSearchOverlay,
   PreviewTurnGroup,
@@ -80,6 +80,37 @@ function rows(container: HTMLDivElement): HTMLElement[] {
 }
 
 describe("ConversationSearchOverlay", () => {
+  it("highlights literal query matches in titles and snippets without interpreting markup", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    mountedRoots.push(root);
+    const thread: Thread = {
+      id: "match", title: "Fix [UI] layout", preview: "", turns: [],
+      model_provider: "test", model: "test", cwd: "/workspace", status: "idle",
+      created_at: "2026-09-07T00:00:00Z", updated_at: "2026-09-07T00:00:00Z",
+    };
+    const result = { thread, snippet: "<img src=x> [ui] and [UI]" };
+    const state: ConversationSearchState = {
+      open: true, closing: false, query: "[UI]", loading: false, error: "",
+      results: [result], selectedIndex: 0, previewedThreadID: "",
+      previewedTurns: [], previewLoading: false, previewError: "",
+    };
+    let opened = "";
+    act(() => root.render(createElement(ConversationSearchOverlay, {
+      state, results: [result], threads: [thread], projects: [],
+      dialogRef: createRef<HTMLDivElement>(), inputRef: createRef<HTMLInputElement>(),
+      onClose: () => {}, onQueryChange: () => {}, onClearQuery: () => {},
+      onKeyDown: () => {}, onSelectIndex: () => {},
+      onSelectResult: (item) => { opened = item.thread.id; },
+    })));
+    const button = container.querySelector<HTMLButtonElement>(".conversation-search-result")!;
+    expect(Array.from(button.querySelectorAll("mark"), (mark) => mark.textContent)).toEqual(["[UI]", "[ui]", "[UI]"]);
+    expect(button.querySelector("img")).toBeNull();
+    expect(button.textContent).toContain("<img src=x>");
+    act(() => button.click());
+    expect(opened).toBe(thread.id);
+  });
+
   it("places results directly below the search field without a status row", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);

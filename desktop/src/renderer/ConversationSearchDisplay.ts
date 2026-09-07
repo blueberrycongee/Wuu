@@ -7,21 +7,29 @@ export function conversationSearchVisibleSnippet({
   snippet?: string;
   title: string;
 }): string {
-  const trimmedSnippet = snippet?.trim() ?? "";
+  const trimmedSnippet = snippet?.trim().replace(/\s+/g, " ") ?? "";
   if (!trimmedSnippet || !query.trim()) {
     return "";
   }
   if (normalizeSearchPreview(trimmedSnippet) === normalizeSearchPreview(title)) {
     return "";
   }
-  // Cap the snippet at the source so a leading window from the search
-  // backend (the kind that easily runs 1k+ chars once an agent's
-  // markdown reply starts dumping code blocks, headers and bullet
-  // lists) cannot throw a multi-paragraph block into the right pane.
-  // The CSS line-clamp in `.conversation-search-preview-snippet` is
-  // the visual counterpart; this bounds the actual string so the
-  // pane stays compact even when CSS does not load.
+  // Keep the match near the start even when a short backend excerpt fits
+  // its character budget but not the narrow result column.
+  const match = conversationSearchPattern(query)?.exec(trimmedSnippet);
+  if (match) {
+    const prefix = Array.from(trimmedSnippet.slice(0, match.index));
+    const context = prefix.slice(-16).join("");
+    const tail = trimmedSnippet.slice(match.index + match[0].length);
+    return (prefix.length > 16 ? "…" : "") + context + match[0] + capSnippetText(tail, 120);
+  }
   return capSnippetText(trimmedSnippet);
+}
+
+export function conversationSearchPattern(query: string): RegExp | null {
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  return new RegExp(words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "giu");
 }
 
 // Cut a snippet at the last whitespace inside the cap so a long
