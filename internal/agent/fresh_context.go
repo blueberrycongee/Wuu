@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -23,8 +24,9 @@ const (
 )
 
 var (
-	ErrFreshContextTooLarge   = errors.New("fresh context cannot fit the target budget")
-	ErrFreshContextNotSmaller = errors.New("fresh context would not shrink active history")
+	ErrFreshContextTooLarge    = errors.New("fresh context cannot fit the target budget")
+	ErrFreshContextNotSmaller  = errors.New("fresh context would not shrink active history")
+	ErrFreshContextCoverageGap = errors.New("uncovered history cannot fit beside the continuation note")
 )
 
 // HistoryArchive records the physical addresses assigned to one append. Seqs is
@@ -117,7 +119,18 @@ The original conversation and tool facts remain available in this session throug
 		}
 		return nil, CompactionNote{}, fmt.Errorf("%w: fixed context and continuation note require about %d tokens for a %d-token target", ErrFreshContextTooLarge, fixedTokens+estimateFreshContextMessages(base), targetTokens)
 	}
-	tail := freshContextRecentTail(messages, covered, base, messageBudget)
+	var tail []providers.ChatMessage
+	if noteOK {
+		// Only the covered prefix may be replaced by the note. Dropping an
+		// uncovered middle makes reusing a reanchored note erase recovered work
+		// over and over. Let the caller summarize the current history instead.
+		tail = providers.CloneChatMessages(messages[covered:])
+		if estimateFreshContextMessages(append(providers.CloneChatMessages(base), tail...)) > messageBudget {
+			return nil, CompactionNote{}, ErrFreshContextCoverageGap
+		}
+	} else {
+		tail = freshContextRecentTail(messages, covered, base, messageBudget)
+	}
 	replacement := append(base, tail...)
 	if err := providers.ValidateToolCallHistory(replacement); err != nil {
 		return nil, CompactionNote{}, fmt.Errorf("fresh context has invalid tool-call history: %w", err)
@@ -214,13 +227,31 @@ func estimateFreshContextMessages(messages []providers.ChatMessage) int {
 	return estimateOutboundRequestTokens(providers.ChatRequest{Messages: messages})
 }
 
-func hasNewContextToolCall(calls []providers.ToolCall) bool {
-	for _, call := range calls {
-		if strings.EqualFold(strings.TrimSpace(call.Name), newContextToolName) {
+func acceptedNewContextRequest(results []providers.ChatMessage) bool {
+	// Consume completed results, never the model's intent or a truncated
+	// transcript. Rejected and failed tools have no control effect.
+	for _, message := range results {
+		if message.Role != "tool" || message.Name != newContextToolName || message.ToolResult == nil || message.ToolResult.IsError {
+			continue
+		}
+		var signal struct {
+			Requested bool `json:"requested"`
+		}
+		if json.Unmarshal([]byte(message.ToolResult.TextProjection()), &signal) == nil && signal.Requested {
 			return true
 		}
 	}
 	return false
+}
+
+func deferRepeatedContextTransition(messages []providers.ChatMessage, currentTokens, targetTokens int) bool {
+	if targetTokens <= 0 {
+		targetTokens = FreshContextTargetTokens
+	}
+	// Persisted summaries make admission independent of runs and restarts. A
+	// voluntary reset is useful again once the window outgrows its target.
+	// Forced capacity recovery is handled independently by the loop.
+	return currentTokens <= targetTokens && compactSummaryFromMessages(messages) != ""
 }
 
 func withContextWindowGuidance(base func() []ContextSegment) func() []ContextSegment {

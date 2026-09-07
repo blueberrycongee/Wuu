@@ -456,8 +456,8 @@ func RunToolLoop(
 					Reason: CompactReasonNewContext, Status: CompactAttemptFailed,
 					TokensBefore: beforeTokens, MessagesBefore: beforeMessages, Error: freshContextFailure,
 				})
-				// Never put serial note generation back on the transition path.
-				// Keep the original window and report the failed request instead.
+				// The builder has already tried its summary fallback. Keep the
+				// original window rather than retrying generation in this boundary.
 			}
 		}
 		// Cross-run continuity: on the first round, splice back only the
@@ -964,13 +964,20 @@ func RunToolLoop(
 			}, fmt.Errorf("execute tool batch: %w", toolErr)
 		}
 		postToolContextSegments = append(postToolContextSegments, toolRuntime.TakeRequestContextSegments()...)
+		acceptedContextRequest := freshContextEnabled && acceptedNewContextRequest(orderedToolMessages)
 		enforceAggregateResultBudget(orderedToolMessages)
 		for _, toolMsg := range orderedToolMessages {
 			appendMessage(toolMsg)
 		}
 		usage.RecordPendingMessages(orderedToolMessages)
-		if freshContextEnabled && hasNewContextToolCall(result.ToolCalls) {
-			newContextRequested = true
+		if acceptedContextRequest {
+			if deferRepeatedContextTransition(messages, usage.EstimateCurrent(), cfg.FreshContextTokens) {
+				postToolContextSegments = append(postToolContextSegments, RequestOnlyContextMessages([]providers.ChatMessage{
+					contextWindowReminder("The context-window transition was not applied: this window already contains a continuation summary and remains within the fresh-window target budget. Keep the recovered facts and continue the task; do not request another transition until the context grows. Capacity recovery remains automatic."),
+				})...)
+			} else {
+				newContextRequested = true
+			}
 		}
 	}
 

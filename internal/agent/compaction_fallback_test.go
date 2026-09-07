@@ -84,7 +84,7 @@ func TestNoteFailureFallsBackToTraditionalCompact(t *testing.T) {
 }
 
 func TestFreshContextUsesNoteOrTraditionalCompact(t *testing.T) {
-	for _, state := range []string{"valid", "missing", "stale", "oversized", "load-failed"} {
+	for _, state := range []string{"valid", "missing", "stale", "oversized", "load-failed", "coverage-gap"} {
 		t.Run(state, func(t *testing.T) {
 			history := fallbackHistory()
 			store := &failingNoteStore{}
@@ -93,6 +93,10 @@ func TestFreshContextUsesNoteOrTraditionalCompact(t *testing.T) {
 			}
 			if state == "stale" {
 				store.note.CoveredHash = "old history"
+			}
+			if state == "coverage-gap" {
+				store.note.CoveredMessages = 1
+				store.note.CoveredHash = CompactionHistoryHash(history[:1])
 			}
 			if state == "oversized" {
 				store.note.Markdown = strings.Repeat("旧笔记", 10000)

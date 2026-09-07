@@ -6,11 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blueberrycongee/wuu/internal/compact"
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
-func TestBuildFreshContextBoundsStaleUncoveredSuffix(t *testing.T) {
+func TestBuildFreshContextRejectsUncoveredHistoryLoss(t *testing.T) {
 	messages := []providers.ChatMessage{
 		{Role: "system", Content: "current system state"},
 		{Role: "user", Content: "original task"},
@@ -30,24 +29,8 @@ func TestBuildFreshContextBoundsStaleUncoveredSuffix(t *testing.T) {
 	)
 
 	replacement, reanchored, err := buildFreshContext(messages, note, true, 990, 7_000, FreshContextTargetTokens)
-	if err != nil {
-		t.Fatalf("build fresh context: %v", err)
-	}
-	if got := 7_000 + estimateFreshContextMessages(replacement); got > FreshContextTargetTokens {
-		t.Fatalf("replacement tokens = %d, target = %d", got, FreshContextTargetTokens)
-	}
-	if len(replacement) >= len(messages) {
-		t.Fatalf("replacement did not shrink: %d >= %d", len(replacement), len(messages))
-	}
-	joined := compact.SummaryBodyFromContent(replacement[1].Content)
-	if !strings.Contains(joined, "through Seq 990") || !strings.Contains(joined, "history_search") {
-		t.Fatalf("missing recovery guidance: %q", joined)
-	}
-	if replacement[len(replacement)-2].Content != "finish the current implementation" {
-		t.Fatalf("latest complete workset was not retained: %+v", replacement[len(replacement)-2:])
-	}
-	if reanchored.CoveredMessages != 2 || reanchored.CoveredHash == "" {
-		t.Fatalf("reanchored note = %+v", reanchored)
+	if !errors.Is(err, ErrFreshContextCoverageGap) || replacement != nil || reanchored.Markdown != "" {
+		t.Fatalf("uncovered history was silently dropped: replacement=%d note=%+v err=%v", len(replacement), reanchored, err)
 	}
 }
 
@@ -106,7 +89,7 @@ func TestRunToolLoopSwitchesOnlyAfterNewContextToolBatch(t *testing.T) {
 	for index := 0; index < 120; index++ {
 		history = append(history, providers.ChatMessage{Role: "assistant", Content: strings.Repeat("old context ", 1000)})
 	}
-	note := CompactionNote{Markdown: "Continue the long task.", CoveredMessages: 2}
+	note := CompactionNote{Markdown: "Continue the long task.", CoveredMessages: len(history)}
 	note.CoveredHash = CompactionHistoryHash(history[:note.CoveredMessages])
 	var archived []providers.ChatMessage
 	step := &contextSwitchStep{}

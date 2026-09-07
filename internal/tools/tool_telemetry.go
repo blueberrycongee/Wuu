@@ -264,6 +264,11 @@ func (e repeatedToolInputError) Error() string {
 }
 
 func (t *Toolkit) repeatedToolInputCount(call providers.ToolCall, revision string) int {
+	// Context transitions depend on the active window, not filesystem changes.
+	// The agent owns admission at the completed tool-batch boundary.
+	if call.Name == newContextToolName {
+		return 0
+	}
 	if t == nil || t.env == nil || isRepeatablePollingTool(call) {
 		return 0
 	}
