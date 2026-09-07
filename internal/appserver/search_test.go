@@ -193,3 +193,43 @@ func BenchmarkThreadSearchOpen(b *testing.B) {
 		})
 	}
 }
+
+func TestThreadSearchPersistedHistoryRefreshesAcrossQueries(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	for _, id := range []string{"first", "second"} {
+		if _, err := session.CreateWithMetadata(rt.SessionDir, id, rt.RootDir); err != nil {
+			t.Fatal(err)
+		}
+		if err := rewriteChatHistory(rt.SessionDir, id, []providers.ChatMessage{{Role: "user", Content: "onboarding discussion"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	search := func(id, query string, want int) {
+		t.Helper()
+		params, _ := json.Marshal(ThreadSearchParams{Query: query, Limit: 40})
+		rawID, _ := json.Marshal(id)
+		if err := srv.handleThreadSearch(Request{ID: rawID, Params: params}); err != nil {
+			t.Fatal(err)
+		}
+		response := responseByID(t, parseOutput(t, out.String()), id)
+		if response["error"] != nil {
+			t.Fatalf("search failed: %+v", response)
+		}
+		got := remarshal[ThreadSearchResult](t, response["result"]).Results
+		if len(got) != want {
+			t.Fatalf("query %q: got %d results, want %d", query, len(got), want)
+		}
+	}
+	search("1", "onboarding", 2)
+	if err := rewriteChatHistory(rt.SessionDir, "first", []providers.ChatMessage{{Role: "user", Content: "replacement discussion"}}); err != nil {
+		t.Fatal(err)
+	}
+	search("2", "onboarding", 1)
+	search("3", "replacement", 1)
+	if err := session.AppendHistoryRecord(rt.SessionDir, "second", session.HistoryRecord{Role: "user", Content: "fresh append"}); err != nil {
+		t.Fatal(err)
+	}
+	search("4", "fresh append", 1)
+}

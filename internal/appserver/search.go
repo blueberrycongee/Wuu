@@ -1,6 +1,7 @@
 package appserver
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"sort"
@@ -73,6 +74,12 @@ func (s *Server) handleThreadSearch(req Request) error {
 			}
 		}
 	}
+	var searchDB *sql.DB
+	defer func() {
+		if searchDB != nil {
+			searchDB.Close()
+		}
+	}()
 	strongMatches := len(results)
 	for _, source := range sources {
 		// All titles are accounted for. Once a page of conversation-or-better
@@ -94,7 +101,13 @@ func (s *Server) handleThreadSearch(req Request) error {
 			snippet = threadSearchDefaultSnippet(candidates)
 		}
 		if snippet == "" || (query != "" && rank < threadSearchConversationRank) {
-			history, err := s.threadSearchHistory(source)
+			if source.live == nil && searchDB == nil {
+				searchDB, err = session.OpenStore(s.rt.SessionDir)
+				if err != nil {
+					return s.writeResponse(req.ID, nil, err)
+				}
+			}
+			history, err := s.threadSearchHistory(source, searchDB)
 			if err != nil {
 				return s.writeResponse(req.ID, nil, err)
 			}
@@ -193,13 +206,21 @@ func (s *Server) threadSearchSources() ([]threadSearchSource, error) {
 
 // Live history takes precedence over disk, including unpersisted turns. Clone
 // only the conversation being searched, outside the server-wide lock.
-func (s *Server) threadSearchHistory(source threadSearchSource) ([]providers.ChatMessage, error) {
+func (s *Server) threadSearchHistory(source threadSearchSource, db *sql.DB) ([]providers.ChatMessage, error) {
 	if source.live != nil {
 		source.live.mu.Lock()
 		defer source.live.mu.Unlock()
 		return cloneHistory(source.live.History), nil
 	}
-	history, err := loadChatMessages(s.rt.SessionDir, source.entry.thread.ID)
+	snapshot, err := session.LoadProviderHistorySnapshotFromStore(db, source.entry.thread.ID)
+	var history []providers.ChatMessage
+	if err == nil {
+		records, convertErr := persistedMessagesFromProviderSnapshot(snapshot, false)
+		if convertErr != nil {
+			return nil, convertErr
+		}
+		history = chatMessagesFromPersistedMessages(records)
+	}
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}

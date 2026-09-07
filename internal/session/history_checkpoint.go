@@ -205,7 +205,14 @@ func LoadProviderHistorySnapshot(sessDir, id string) (ProviderHistorySnapshot, e
 		return ProviderHistorySnapshot{}, err
 	}
 	defer db.Close()
+	return LoadProviderHistorySnapshotFromStore(db, id)
+}
 
+// LoadProviderHistorySnapshotFromStore reads a consistent provider history using
+// an existing store. Batch readers can reuse a connection without repeating
+// database configuration and schema migration for every session.
+func LoadProviderHistorySnapshotFromStore(db *sql.DB, id string) (ProviderHistorySnapshot, error) {
+	id = strings.TrimSpace(id)
 	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return ProviderHistorySnapshot{}, fmt.Errorf("begin provider history snapshot: %w", err)

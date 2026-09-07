@@ -446,6 +446,11 @@ func loadProviderPersistedMessages(sessDir, id string, includeMeta bool) ([]pers
 	if err != nil {
 		return nil, 0, fmt.Errorf("load provider history: %w", err)
 	}
+	out, err := persistedMessagesFromProviderSnapshot(snapshot, includeMeta)
+	return out, snapshot.HeadSeq, err
+}
+
+func persistedMessagesFromProviderSnapshot(snapshot sessionstore.ProviderHistorySnapshot, includeMeta bool) ([]persistedMessage, error) {
 	out := make([]persistedMessage, 0, len(snapshot.Records))
 	for _, rec := range snapshot.Records {
 		if !includeMeta && strings.EqualFold(strings.TrimSpace(rec.Role), "meta") {
@@ -453,11 +458,11 @@ func loadProviderPersistedMessages(sessDir, id string, includeMeta bool) ([]pers
 		}
 		msg, err := persistedMessageFromHistoryRecord(rec)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		out = append(out, msg)
 	}
-	return out, snapshot.HeadSeq, nil
+	return out, nil
 }
 
 // displayHistoryAcrossProviderCheckpoint restores the user-visible transcript
