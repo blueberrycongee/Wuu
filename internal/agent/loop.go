@@ -92,6 +92,9 @@ func RunToolLoop(
 	// experimental strategies can fall back to the default summarizer
 	// when they have no strategy for the current transcript.
 	effectiveCompact := resolveEffectiveCompaction(cfg)
+	if cfg.FreshContext != nil && cfg.ArchiveHistory != nil {
+		effectiveCompact = nil
+	}
 	ctx, workflow, ownsWorkflow := providers.EnsureInferenceWorkflow(ctx, cfg.InferenceWorkloadProfile)
 	if ownsWorkflow {
 		defer func() {
@@ -354,10 +357,13 @@ func RunToolLoop(
 		cfg.OnHistoryAdvanced(providers.CloneChatMessages(messages))
 	}
 
-	if cfg.ForceInitialCompact {
+	freshContextEnabled := cfg.FreshContext != nil && cfg.ArchiveHistory != nil
+	if cfg.ForceInitialCompact && freshContextEnabled {
+		newContextRequested = true
+	} else if cfg.ForceInitialCompact {
 		runCompactPass(CompactReasonManual, true)
 	}
-	if cfg.CompactOnly {
+	if cfg.CompactOnly && !newContextRequested {
 		return LoopResult{
 			NewMessages:      newMessagesForReturn(messages, startLen, historyRewritten),
 			HistoryRewritten: historyRewritten,
@@ -384,7 +390,6 @@ func RunToolLoop(
 			}
 			usage.RecordPendingMessages(injected)
 		}
-		freshContextEnabled := cfg.FreshContext != nil && cfg.ArchiveHistory != nil
 		hardContextRollover := freshContextEnabled && threshold > 0 && usage.EstimateCurrent() >= threshold
 		attemptFreshContext := newContextRequested || hardContextRollover
 		if !attemptFreshContext {
@@ -464,11 +469,10 @@ func RunToolLoop(
 				newContextRequested = false
 				lowBudgetReminderSent = false
 				freshContextApplied = true
-				// The pre-reset note status described a different active prefix.
 				// This request is sent only after the checkpoint commit succeeds.
 				currentSegments = requestContextSegments(cfg.BeforeRequestContext)
 				currentSegments = append(currentSegments, RequestOnlyContextMessages([]providers.ChatMessage{
-					contextWindowReminder("The host has installed a fresh active window in this session. The continuation context describes the available note and any missing history. Recover omitted facts before repeating work; do not wait for a background note."),
+					contextWindowReminder("The host has installed a fresh active window. Read your persistent notes and recover missing facts from durable history before continuing. No summary was generated."),
 				})...)
 				afterTokens := fixedTokens + estimateFreshContextMessages(messages)
 				freshContextAttempt = &CompactAttemptInfo{
@@ -490,8 +494,9 @@ func RunToolLoop(
 					Reason: CompactReasonNewContext, Status: CompactAttemptFailed,
 					TokensBefore: beforeTokens, MessagesBefore: beforeMessages, Error: freshContextFailure,
 				})
-				// The builder has already tried its summary fallback. Keep the
-				// original window rather than retrying generation in this boundary.
+				if cfg.CompactOnly {
+					return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), freshErr
+				}
 			}
 		}
 		// Cross-run continuity: on the first round, splice back only the
@@ -532,7 +537,7 @@ func RunToolLoop(
 			reminderAt := max(1, threshold-min(freshContextReminderTokens, threshold/4))
 			if usage.EstimateCurrent() >= reminderAt {
 				requestSegments = append(requestSegments, RequestOnlyContextMessages([]providers.ChatMessage{
-					contextWindowReminder("The active context budget is low. At the next safe semantic breakpoint, call new_context. Do not spend time writing a summary; Wuu maintains the continuation note in a background fork."),
+					contextWindowReminder("The active context budget is low. Save progress, decisions and next steps with your note tools now, then call new_context at a safe boundary. The host will release this transcript without summarizing it."),
 				})...)
 				lowBudgetReminderSent = true
 			}
@@ -647,6 +652,9 @@ func RunToolLoop(
 				stepIdx--
 				continue
 			}
+		}
+		if cfg.CompactOnly {
+			return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), nil
 		}
 		cacheHint := buildCacheHint(req.Messages)
 		applyPromptCacheKeyOverride(&cacheHint, cfg.PromptCacheKey)

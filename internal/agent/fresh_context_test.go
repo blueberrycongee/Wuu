@@ -9,16 +9,11 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers"
 )
 
-func TestBuildFreshContextRejectsUncoveredHistoryLoss(t *testing.T) {
+func TestBuildFreshContextReleasesArchivedTranscript(t *testing.T) {
 	messages := []providers.ChatMessage{
 		{Role: "system", Content: "current system state"},
 		{Role: "user", Content: "original task"},
 		{Role: "assistant", Content: "initial decision"},
-	}
-	note := CompactionNote{
-		Markdown:        "Goal: finish the task. Decision: preserve exact history.",
-		CoveredMessages: len(messages),
-		CoveredHash:     CompactionHistoryHash(messages),
 	}
 	for index := 0; index < 401; index++ {
 		messages = append(messages, providers.ChatMessage{Role: "assistant", Content: strings.Repeat("x", 2400)})
@@ -28,9 +23,9 @@ func TestBuildFreshContextRejectsUncoveredHistoryLoss(t *testing.T) {
 		providers.ChatMessage{Role: "assistant", Content: "working set detail"},
 	)
 
-	replacement, reanchored, err := buildFreshContext(messages, note, true, 990, 7_000, FreshContextTargetTokens)
-	if !errors.Is(err, ErrFreshContextCoverageGap) || replacement != nil || reanchored.Markdown != "" {
-		t.Fatalf("uncovered history was silently dropped: replacement=%d note=%+v err=%v", len(replacement), reanchored, err)
+	replacement, err := buildFreshContext(messages, 990, 7_000, FreshContextTargetTokens)
+	if err != nil || len(replacement) != 3 || replacement[2].Content != "finish the current implementation" {
+		t.Fatalf("fresh recovery failed: replacement=%+v err=%v", replacement, err)
 	}
 }
 
@@ -40,12 +35,9 @@ func TestBuildFreshContextWorksWithoutCompletedNote(t *testing.T) {
 		messages = append(messages, providers.ChatMessage{Role: "user", Content: strings.Repeat("历史", 1000)})
 		messages = append(messages, providers.ChatMessage{Role: "assistant", Content: "answer"})
 	}
-	replacement, reanchored, err := buildFreshContext(messages, CompactionNote{}, false, 321, 4_000, FreshContextTargetTokens)
+	replacement, err := buildFreshContext(messages, 321, 4_000, FreshContextTargetTokens)
 	if err != nil {
 		t.Fatalf("build without note: %v", err)
-	}
-	if strings.TrimSpace(reanchored.Markdown) != "" {
-		t.Fatalf("unexpected reanchored note: %+v", reanchored)
 	}
 	if len(replacement) >= len(messages) || 4_000+estimateFreshContextMessages(replacement) > FreshContextTargetTokens {
 		t.Fatalf("unbounded replacement: messages=%d/%d tokens=%d", len(replacement), len(messages), 4_000+estimateFreshContextMessages(replacement))
@@ -54,7 +46,7 @@ func TestBuildFreshContextWorksWithoutCompletedNote(t *testing.T) {
 
 func TestBuildFreshContextRejectsOversizedFixedContext(t *testing.T) {
 	messages := []providers.ChatMessage{{Role: "system", Content: strings.Repeat("x", 100_000)}, {Role: "user", Content: "task"}}
-	_, _, err := buildFreshContext(messages, CompactionNote{}, false, 1, 49_000, FreshContextTargetTokens)
+	_, err := buildFreshContext(messages, 1, 49_000, FreshContextTargetTokens)
 	if !errors.Is(err, ErrFreshContextTooLarge) {
 		t.Fatalf("error = %v, want ErrFreshContextTooLarge", err)
 	}
@@ -89,8 +81,6 @@ func TestRunToolLoopSwitchesOnlyAfterNewContextToolBatch(t *testing.T) {
 	for index := 0; index < 120; index++ {
 		history = append(history, providers.ChatMessage{Role: "assistant", Content: strings.Repeat("old context ", 1000)})
 	}
-	note := CompactionNote{Markdown: "Continue the long task.", CoveredMessages: len(history)}
-	note.CoveredHash = CompactionHistoryHash(history[:note.CoveredMessages])
 	var archived []providers.ChatMessage
 	step := &contextSwitchStep{}
 	res, err := RunToolLoop(context.Background(), history, LoopConfig{
@@ -102,7 +92,7 @@ func TestRunToolLoopSwitchesOnlyAfterNewContextToolBatch(t *testing.T) {
 		},
 		FreshContextTokens: FreshContextTargetTokens,
 		FreshContext: func(_ context.Context, messages []providers.ChatMessage, headSeq, fixedTokens, targetTokens int) ([]providers.ChatMessage, error) {
-			replacement, _, err := buildFreshContext(messages, note, true, headSeq, fixedTokens, targetTokens)
+			replacement, err := buildFreshContext(messages, headSeq, fixedTokens, targetTokens)
 			return replacement, err
 		},
 	}, step)
@@ -136,7 +126,7 @@ func TestRunToolLoopFreshCommitIncludesConcurrentSteeringBeforeAction(t *testing
 			return HistoryArchive{Seqs: []int{100, 101}, HeadSeq: 101}, nil
 		},
 		FreshContext: func(_ context.Context, messages []providers.ChatMessage, head, fixed, target int) ([]providers.ChatMessage, error) {
-			replacement, _, err := buildFreshContext(messages, CompactionNote{}, false, head, fixed, target)
+			replacement, err := buildFreshContext(messages, head, fixed, target)
 			return replacement, err
 		},
 		AcceptFreshContext: func(_ context.Context, messages []providers.ChatMessage, _ int) ([]providers.ChatMessage, int, error) {

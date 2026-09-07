@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
@@ -20,11 +19,8 @@ const (
 
 	conversationSummaryMark = "[Conversation summary]"
 
-	defaultCheckpointIntervalTokens = 36_000
-	minimumCheckpointIntervalTokens = 2_000
-	maximumCheckpointIntervalTokens = 100_000
-	maxContextNoteBytes             = 24_000
-	maxHandoffBriefBytes            = 24_000
+	maxContextNoteBytes  = 24_000
+	maxHandoffBriefBytes = 24_000
 )
 
 type noteArguments struct {
@@ -75,10 +71,13 @@ func Handler() pluginapi.Handler {
 	return pluginapi.Handler{
 		Definition: pluginapi.Definition{
 			Capabilities: []pluginapi.Capability{{
-				ID: capabilityCompaction, Kind: "decision", Version: 2, Priority: 100,
+				ID: capabilityCompaction, Kind: "decision", Version: 3, Priority: 100,
 			}},
-			RequiredHostServices: []pluginapi.HostService{{ID: pluginapi.HostServiceSettingsGet, Required: true}},
-			Tools: []pluginapi.Tool{{
+			RequiredHostServices: []pluginapi.HostService{
+				{ID: pluginapi.HostServiceStorageGet, Required: true},
+				{ID: pluginapi.HostServiceStorageCompareExchange, Required: true},
+			},
+			Tools: []pluginapi.Tool{notesTool(), {
 				ID:          toolRequestHandoff,
 				Description: "Ask the user to hand this conversation to a new session. Supply an optional intent only. Do not choose a provider or model.",
 				InputSchema: map[string]any{
@@ -91,7 +90,12 @@ func Handler() pluginapi.Handler {
 				Display: &pluginapi.ToolDisplay{Kind: "handoff", Text: "Requesting handoff", Capability: "handoff"},
 			}},
 		},
-		ExecuteTool: executeHandoffTool,
+		ExecuteTool: func(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCall) (pluginapi.ToolResult, error) {
+			if call.ToolID == toolNotes {
+				return executeNotes(ctx, host, call)
+			}
+			return executeHandoffTool(ctx, host, call)
+		},
 		InvokeCapability: func(ctx context.Context, host pluginapi.Host, call pluginapi.CapabilityCall) (json.RawMessage, error) {
 			if call.Capability != capabilityCompaction {
 				return nil, fmt.Errorf("unknown note compaction capability %q", call.Capability)
@@ -101,8 +105,6 @@ func Handler() pluginapi.Handler {
 				return nil, fmt.Errorf("decode compaction input: %w", err)
 			}
 			switch input.Operation {
-			case "note_plan":
-				return planNoteFork(ctx, host, input)
 			case "handoff_brief_plan":
 				return planHandoffBrief(input)
 			case "compact_with_note":
@@ -145,27 +147,6 @@ func executeHandoffTool(_ context.Context, _ pluginapi.Host, call pluginapi.Tool
 		return pluginapi.ToolResult{}, err
 	}
 	return pluginapi.TextResult(string(payload)), nil
-}
-
-func planNoteFork(ctx context.Context, host pluginapi.Host, input rawCompactionInput) (json.RawMessage, error) {
-	previous := strings.TrimSpace(input.PreviousNote)
-	deltaCount := len(input.Delta)
-	var prompt string
-	if previous == "" {
-		prompt = fmt.Sprintf(`You are a hidden context-note writing fork of the main agent. The conversation above is the source of truth.
-
-Write a self-contained continuation note in Markdown for a capable agent that may not receive the covered transcript. Preserve the user's objective and constraints, decisions and rationale, current implementation state, files and symbols involved, completed edits, commands and their results, external effects, blockers, and concrete next steps. Preserve useful [History Seq N] references so exact source facts can be read later. Clearly distinguish verified facts from assumptions and never claim a check was run when it was not.
-
-Do not call tools. Return only the complete Markdown note, with no preamble or wrapping fence. This note covers the complete transcript above (%d messages).`, len(input.Messages))
-	} else {
-		prompt = fmt.Sprintf(`Update the previous context note using the final %d new transcript messages above. Preserve useful [History Seq N] references for exact recovery. Return one complete replacement Markdown note, not an addendum. Do not call tools and do not add a preamble or wrapping fence.
-
-Previous note:
-%s`, deltaCount, previous)
-	}
-	return json.Marshal(rawCompactionOutput{
-		NotePrompt: prompt, CheckpointIntervalTokens: checkpointInterval(ctx, host), MaxNoteBytes: maxContextNoteBytes,
-	})
 }
 
 func planHandoffBrief(input rawCompactionInput) (json.RawMessage, error) {
@@ -331,30 +312,4 @@ func summaryBody(content string) string {
 		return strings.TrimSpace(content[index+len("Summary:"):])
 	}
 	return strings.TrimSpace(content)
-}
-
-func checkpointInterval(ctx context.Context, host pluginapi.Host) int {
-	interval := defaultCheckpointIntervalTokens
-	if host != nil {
-		var result struct {
-			Value any `json:"value"`
-		}
-		if host.CallHost(ctx, pluginapi.HostServiceSettingsGet, map[string]string{"key": "checkpoint_interval_tokens"}, &result) == nil {
-			switch value := result.Value.(type) {
-			case float64:
-				interval = int(value)
-			case string:
-				if parsed, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
-					interval = parsed
-				}
-			}
-		}
-	}
-	if interval < minimumCheckpointIntervalTokens {
-		return minimumCheckpointIntervalTokens
-	}
-	if interval > maximumCheckpointIntervalTokens {
-		return maximumCheckpointIntervalTokens
-	}
-	return interval
 }

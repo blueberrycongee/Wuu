@@ -17,7 +17,7 @@ func TestFreshContextShrinksFittingToolProgress(t *testing.T) {
 		)
 	}
 	before := estimateFreshContextMessages(messages)
-	replacement, _, err := buildFreshContext(messages, CompactionNote{}, false, 25, 0, before*2)
+	replacement, err := buildFreshContext(messages, 25, 0, before*2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,9 +26,6 @@ func TestFreshContextShrinksFittingToolProgress(t *testing.T) {
 	}
 	if err := providers.ValidateToolCallHistory(replacement); err != nil {
 		t.Fatal(err)
-	}
-	if replacement[len(replacement)-1].Seq != 25 {
-		t.Fatal("lost latest completed tool progress")
 	}
 	foundTask := false
 	for _, message := range replacement {
@@ -39,18 +36,17 @@ func TestFreshContextShrinksFittingToolProgress(t *testing.T) {
 	}
 }
 
-func TestFreshContextLargeNoteDoesNotBlockSmallerModel(t *testing.T) {
+func TestFreshContextFitsSmallerModel(t *testing.T) {
 	messages := []providers.ChatMessage{{Role: "system", Content: "instructions"}}
 	for range 50 {
 		messages = append(messages, providers.ChatMessage{Role: "user", Content: strings.Repeat("历史", 500)})
 	}
-	note := CompactionNote{Markdown: strings.Repeat("旧笔记", 5000), CoveredMessages: len(messages), CoveredHash: CompactionHistoryHash(messages)}
-	replacement, anchor, err := buildFreshContext(messages, note, true, 50, 100, 4000)
+	replacement, err := buildFreshContext(messages, 50, 100, 4000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if anchor.Markdown != "" || estimateFreshContextMessages(replacement)+100 > 4000 {
-		t.Fatal("oversized old-model note was installed")
+	if estimateFreshContextMessages(replacement)+100 > 4000 {
+		t.Fatal("fresh window exceeded the smaller model budget")
 	}
 }
 

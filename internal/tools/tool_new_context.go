@@ -25,7 +25,7 @@ func (*NewContextTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: newContextToolName,
 		Description: "Start a fresh context window at the next safe tool-loop boundary. This releases old active model context but does not clear or reset files, processes, permissions, or other environment state. " +
-			"Do not write a summary first; Wuu maintains the continuation note in a background fork.",
+			"Save your working notes with the note tools before requesting this transition. The host does not generate a summary. Read your notes and archived history after the switch.",
 		InputSchema: map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,

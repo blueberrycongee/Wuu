@@ -85,13 +85,13 @@ func TestNoteOutputExhaustionPreservesCheckpointAndContextRecovery(t *testing.T)
 	if usage == nil || usage.InputTokens != 300 {
 		t.Fatalf("exhausted retry usage lost: %+v", usage)
 	}
-	replacement, _, err := buildFreshContext(history, previous, true, 41, 0, 4000)
+	replacement, err := buildFreshContext(history, 41, 0, 4000)
 	if err != nil || providers.ValidateToolCallHistory(replacement) != nil {
 		t.Fatalf("note failure blocked context recovery: %v", err)
 	}
 	foundLatest := false
 	for _, message := range replacement {
-		foundLatest = foundLatest || message.Seq == 41
+		foundLatest = foundLatest || message.Cause == "fresh_context"
 	}
 	if !foundLatest {
 		t.Fatal("recovery lost uncovered progress")

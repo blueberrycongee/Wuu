@@ -12,13 +12,12 @@ import (
 	"github.com/blueberrycongee/wuu/internal/toolresult"
 )
 
-func TestBuildFreshContextPreservesAllUncoveredProgress(t *testing.T) {
+func TestBuildFreshContextPreservesLatestAuthorization(t *testing.T) {
 	history := []providers.ChatMessage{
 		{Role: "system", Content: "system"},
 		{Role: "user", Content: "investigate only", Seq: 1},
 		{Role: "assistant", Content: strings.Repeat("investigation details ", 3000), Seq: 2},
 	}
-	note := CompactionNote{Markdown: "Investigation complete; awaiting permission.", CoveredMessages: len(history), CoveredHash: CompactionHistoryHash(history)}
 	progress := []providers.ChatMessage{
 		{Role: "user", Content: "implement the fix", Seq: 3},
 		{Role: "assistant", ToolCalls: []providers.ToolCall{{ID: "edit", Name: "apply_patch", Arguments: `{}`}}, Seq: 4},
@@ -26,17 +25,15 @@ func TestBuildFreshContextPreservesAllUncoveredProgress(t *testing.T) {
 		{Role: "assistant", Content: "Recovered latest authorization and completed implementation.", Seq: 6},
 	}
 	history = append(history, progress...)
-	got, reanchored, err := buildFreshContext(history, note, true, 6, 100, 8000)
+	got, err := buildFreshContext(history, 6, 100, 8000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) < len(progress) || !reflect.DeepEqual(got[len(got)-len(progress):], progress) || !validCompactionNote(reanchored, got) {
-		t.Fatal("authorization or implementation progress lost during note transition")
+	if len(got) != 3 || !reflect.DeepEqual(got[2], progress[0]) {
+		t.Fatal("latest authorization lost during transition")
 	}
-	// Reusing the same note is not a license to discard the recovered progress.
-	again, _, err := buildFreshContext(got, reanchored, true, 6, 100, 8000)
-	if err == nil && (len(again) < len(progress) || !reflect.DeepEqual(again[len(again)-len(progress):], progress)) {
-		t.Fatal("reanchored note erased the uncovered workset")
+	if !deferRepeatedContextTransition(got, 100, 8000) {
+		t.Fatal("immediate repeated reset was not deferred")
 	}
 }
 
@@ -112,7 +109,7 @@ func TestRunToolLoopCapacityRecoveryBypassesVoluntaryResetGuard(t *testing.T) {
 func TestRunToolLoopDefersRepeatedResetUntilWindowGrows(t *testing.T) {
 	for _, large := range []bool{false, true} {
 		history := []providers.ChatMessage{
-			{Role: "system", Content: compact.BuildSummaryContent("prior task")},
+			{Role: "system", Cause: "fresh_context", Content: "Recover prior work from persistent notes and history."},
 			{Role: "user", Content: "latest instruction"},
 			{Role: "assistant", Content: "recovered progress"},
 		}

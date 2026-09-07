@@ -639,7 +639,7 @@ type handoffBriefProvider struct{}
 func (handoffBriefProvider) CompactionKey() string   { return "notecompaction" }
 func (handoffBriefProvider) CompactionPriority() int { return 10 }
 func (handoffBriefProvider) CompactionNotesEnabled() bool {
-	return true
+	return false
 }
 func (handoffBriefProvider) Compact(_ context.Context, _ string, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
 	return messages, nil

@@ -794,7 +794,9 @@ type SystemPromptSectionOutput struct {
 }
 
 // CompactionInput is experimental immutable request context for
-// agent.compaction. Operation and note fields are available in v2.
+// agent.compaction. Operation and note fields are available in v2. Version 3
+// opts into summary-free context windows with extension-owned working memory;
+// it retains handoff_brief_plan without requiring note_plan inference.
 type CompactionInput struct {
 	Operation               string                  `json:"operation,omitempty"`
 	Model                   string                  `json:"model"`
@@ -890,7 +892,7 @@ func ValidateCapabilityDescriptor(c CapabilityDescriptor) error {
 	if requiredKind != "" {
 		maxVersion := 1
 		if c.ID == CapabilityAgentCompaction {
-			maxVersion = 2
+			maxVersion = 3
 		}
 		if c.Version > maxVersion {
 			return fmt.Errorf("capability %s requires a supported version between 1 and %d", id, maxVersion)

@@ -77,8 +77,13 @@ func TestValidateCapabilityDescriptor(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "compaction rejects unsupported v3",
+			name:    "summary-free context windows support decision v3",
 			desc:    CapabilityDescriptor{ID: CapabilityAgentCompaction, Kind: "decision", Version: 3},
+			wantErr: false,
+		},
+		{
+			name:    "compaction rejects unsupported v4",
+			desc:    CapabilityDescriptor{ID: CapabilityAgentCompaction, Kind: "decision", Version: 4},
 			wantErr: true,
 		},
 		{

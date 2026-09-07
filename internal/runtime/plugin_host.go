@@ -365,10 +365,13 @@ type pluginCompactionProvider struct {
 func (p *pluginCompactionProvider) CompactionKey() string   { return p.key }
 func (p *pluginCompactionProvider) CompactionPriority() int { return p.priority }
 func (p *pluginCompactionProvider) CompactionNotesEnabled() bool {
-	return p.capability.Descriptor.Version >= 2
+	return p.capability.Descriptor.Version == 2
+}
+func (p *pluginCompactionProvider) ContextWindowsEnabled() bool {
+	return p.capability.Descriptor.Version >= 3
 }
 func (p *pluginCompactionProvider) PlanCompactionNote(ctx context.Context, model string, messages, delta []providers.ChatMessage, previous agent.CompactionNote) (agent.CompactionNotePlan, error) {
-	if p.capability.Descriptor.Version < 2 {
+	if !p.CompactionNotesEnabled() {
 		return agent.CompactionNotePlan{}, agent.ErrCompactionNoteUnsupported
 	}
 	// With no prior note, messages and delta describe the same transcript.

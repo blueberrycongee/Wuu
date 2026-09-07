@@ -83,56 +83,6 @@ func TestNoteFailureFallsBackToTraditionalCompact(t *testing.T) {
 	}
 }
 
-func TestFreshContextUsesNoteOrTraditionalCompact(t *testing.T) {
-	for _, state := range []string{"valid", "missing", "stale", "oversized", "load-failed", "coverage-gap"} {
-		t.Run(state, func(t *testing.T) {
-			history := fallbackHistory()
-			store := &failingNoteStore{}
-			if state != "missing" {
-				store.note = CompactionNote{Markdown: "Migration applied", CoveredMessages: len(history), CoveredHash: CompactionHistoryHash(history)}
-			}
-			if state == "stale" {
-				store.note.CoveredHash = "old history"
-			}
-			if state == "coverage-gap" {
-				store.note.CoveredMessages = 1
-				store.note.CoveredHash = CompactionHistoryHash(history[:1])
-			}
-			if state == "oversized" {
-				store.note.Markdown = strings.Repeat("旧笔记", 10000)
-			}
-			if state == "load-failed" {
-				store.loadErr = errors.New("cannot load note")
-			}
-			runner := &StreamRunner{CompactionNoteStore: store}
-			pending := CompactionNote{Markdown: "must not reanchor this previous attempt"}
-			calls := 0
-			builder := runner.freshContextBuilder(cancellationNoteProvider{}, &pending, func(ctx context.Context, input []providers.ChatMessage) ([]providers.ChatMessage, error) {
-				calls++
-				if !reflect.DeepEqual(input, history) {
-					t.Fatal("fallback lost source history")
-				}
-				budget, err := applyAdaptiveCompactBudget(ctx, input, compact.Budget{})
-				if err != nil || budget.TargetTokens <= 0 || budget.TargetTokens > 7900 {
-					t.Fatalf("transition budget not applied to traditional compact: %+v %v", budget, err)
-				}
-				return []providers.ChatMessage{{Role: "system", Content: compact.BuildSummaryContent("Migration applied; verify result.")}}, nil
-			}, nil)
-			got, err := builder(context.Background(), history, 100, 100, 8000)
-			if err != nil || len(got) == 0 {
-				t.Fatalf("context transition failed: %v", err)
-			}
-			if state == "valid" {
-				if calls != 0 || !validCompactionNote(pending, got) {
-					t.Fatal("usable note did not remain the preferred path")
-				}
-			} else if calls != 1 || pending.Markdown != "" {
-				t.Fatal("fallback missing or stale note reanchored onto traditional summary")
-			}
-		})
-	}
-}
-
 func TestTraditionalFallbackFailureAndCancellationPreserveHistory(t *testing.T) {
 	noteErr, legacyErr := errors.New("note failed"), errors.New("summary failed")
 	history := fallbackHistory()
@@ -173,31 +123,30 @@ func TestTraditionalFallbackFailureAndCancellationPreserveHistory(t *testing.T) 
 	}
 }
 
-func TestNewContextContinuesThroughTraditionalFallback(t *testing.T) {
+func TestNewContextContinuesWithoutSummaryInference(t *testing.T) {
 	history := fallbackHistory()
-	runner := &StreamRunner{CompactionNoteStore: &cancellationNoteStore{}}
 	step := &contextSwitchStep{}
 	archived, committed, calls := false, false, 0
-	var pending CompactionNote
-	builder := runner.freshContextBuilder(cancellationNoteProvider{}, &pending, func(_ context.Context, input []providers.ChatMessage) ([]providers.ChatMessage, error) {
+	builder := func(_ context.Context, input []providers.ChatMessage, head, fixed, target int) ([]providers.ChatMessage, error) {
 		calls++
 		if !archived {
-			t.Fatal("fallback ran before durable archival")
+			t.Fatal("reset ran before durable archival")
 		}
-		return append([]providers.ChatMessage{{Role: "system", Content: compact.BuildSummaryContent("Migration applied; verify result.")}}, input[len(input)-2:]...), nil
-	}, nil)
+		return buildFreshContext(input, head, fixed, target)
+	}
 	res, err := RunToolLoop(context.Background(), history, LoopConfig{
 		Model: "test", MaxSteps: 3, Tools: contextSwitchTools{},
 		FreshContext: builder, FreshContextTokens: 4000,
+		Compact: func(context.Context, []providers.ChatMessage) ([]providers.ChatMessage, error) {
+			t.Fatal("context window invoked summary inference")
+			return nil, nil
+		},
 		ArchiveHistory: func(context.Context, []providers.ChatMessage) (HistoryArchive, error) {
 			archived = true
 			return HistoryArchive{Seqs: []int{101, 102}, HeadSeq: 102}, nil
 		},
 		AcceptFreshContext: func(_ context.Context, messages []providers.ChatMessage, head int) ([]providers.ChatMessage, int, error) {
 			committed = true
-			if pending.Markdown != "" {
-				t.Fatal("traditional summary committed with a stale note anchor")
-			}
 			return messages, head, nil
 		},
 	}, step)

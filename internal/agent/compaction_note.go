@@ -62,6 +62,13 @@ type ForkingCompactionProvider interface {
 	CompactWithNote(ctx context.Context, model string, messages []providers.ChatMessage, note CompactionNote) (CompactionNoteReplacement, error)
 }
 
+// HandoffBriefProvider is independent of automatic context-note generation.
+// A summary-free window provider can still prepare a user-requested handoff.
+type HandoffBriefProvider interface {
+	CompactionKey() string
+	PlanHandoffBrief(ctx context.Context, model string, messages []providers.ChatMessage, previous CompactionNote, intent, sourceSessionID string, sourceThroughSeq int) (CompactionNotePlan, error)
+}
+
 type CompactionNoteFork func(context.Context, []providers.ChatMessage, CompactionNotePlan) (CompactionNoteForkResult, error)
 
 // CompactionHistoryHash returns a stable semantic hash suitable for copying a
@@ -108,6 +115,9 @@ func generateCompactionNote(
 	messages []providers.ChatMessage,
 	force bool,
 ) (CompactionNote, *providers.TokenUsage, error) {
+	if err := ctx.Err(); err != nil {
+		return CompactionNote{}, nil, err
+	}
 	if provider == nil || fork == nil {
 		return CompactionNote{}, nil, errors.New("compaction note fork is unavailable")
 	}
@@ -178,6 +188,9 @@ func generateCompactionNote(
 	}
 	if !force && plan.IntervalTokens > 0 && estimateCompactionMessagesTokens(delta) < plan.IntervalTokens {
 		return previous, nil, ErrCompactionNoteNotDue
+	}
+	if err := ctx.Err(); err != nil {
+		return CompactionNote{}, nil, err
 	}
 	result, err := fork(ctx, forkHistory, plan)
 	if err != nil {

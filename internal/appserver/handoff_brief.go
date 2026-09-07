@@ -19,8 +19,8 @@ func (s *Server) prepareHandoffSeed(ctx context.Context, params pluginhost.Sessi
 	if s == nil || s.rt == nil || s.rt.StreamRunner == nil {
 		return params, errors.New("handoff brief generation requires a runtime")
 	}
-	provider, ok := s.rt.StreamRunner.CompactionRegistry.Resolve(nil).(agent.ForkingCompactionProvider)
-	if !ok || provider == nil || !provider.CompactionNotesEnabled() {
+	provider, ok := s.rt.StreamRunner.CompactionRegistry.Resolve(nil).(agent.HandoffBriefProvider)
+	if !ok || provider == nil {
 		return params, errors.New("handoff brief generator is unavailable")
 	}
 	sourceID := strings.TrimSpace(params.Seed.Source.SessionID)
