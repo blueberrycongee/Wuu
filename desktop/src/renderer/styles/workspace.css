@@ -4639,25 +4639,35 @@ html.resizing-workspace-terminal-split * {
   touch-action: none;
 }
 
-.codex-effort-track,
-.codex-effort-fill {
+.codex-effort-track {
   position: absolute;
   top: 3px;
   left: 0;
+  right: 0;
   height: 24px;
   border-radius: var(--radius-pill);
   pointer-events: none;
-}
-
-.codex-effort-track {
-  right: 0;
   background: var(--surface-2);
   box-shadow: inset 0 0 0 1px var(--hairline);
+  /* Clips the fill to the track's rounded ends, so the fill's square
+   * right edge still reads as a clean cap at 100% and the snap
+   * animation cannot overshoot past the track. */
+  overflow: hidden;
 }
 
 .codex-effort-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
   width: var(--effort-progress);
+  /* Square right end: a rounded cap would peek out above and below the
+   * knob at interior stops. The opaque knob covers this edge instead,
+   * and the track clips it into a rounded cap at 100%. */
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
   background: var(--interaction-accent);
+  pointer-events: none;
+  transition: width var(--motion-base) var(--ease-bounce);
 }
 
 .codex-effort-stops {
@@ -4674,6 +4684,7 @@ html.resizing-workspace-terminal-split * {
   border-radius: var(--radius-pill);
   background: var(--ink-tertiary);
   transform: translateX(-50%);
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 
 .codex-effort-stops > span.is-filled {
@@ -4692,6 +4703,7 @@ html.resizing-workspace-terminal-split * {
   background: var(--slider-thumb-bg);
   box-shadow: 0 2px 5px var(--shadow-color-medium);
   pointer-events: none;
+  transition: left var(--motion-base) var(--ease-bounce);
 }
 
 .codex-effort-slider input[type="range"] {

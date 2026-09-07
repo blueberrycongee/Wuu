@@ -992,8 +992,9 @@ function EffortSelector({
       className={`codex-effort-slider${disabled ? " is-disabled" : ""}`}
       style={{ "--effort-progress": progress } as CSSProperties}
     >
-      <span className="codex-effort-track" aria-hidden="true" />
-      <span className="codex-effort-fill" aria-hidden="true" />
+      <span className="codex-effort-track" aria-hidden="true">
+        <span className="codex-effort-fill" />
+      </span>
       <span className="codex-effort-stops" aria-hidden="true">
         {options.slice(0, -1).map((variant, index) => (
           <span
