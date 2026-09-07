@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { computeOnboardingWindowBounds } from "../../src/main/windowState";
+import { discoverPreviewEngines } from "./discoverEngines";
 
 // No product main/preload, app-server, or persistent Electron profile.
 const profile = mkdtempSync(join(tmpdir(), "wuu-onboarding-preview-"));
@@ -30,7 +31,11 @@ app.whenReady().then(async () => {
       partition: "onboarding-preview",
     },
   });
-  await win.loadURL(new URL("/dev/onboarding/index.html", url).href);
+  const previewURL = new URL("/dev/onboarding/index.html", url);
+  for (const engine of discoverPreviewEngines().engines) {
+    if (engine.binary_ok) previewURL.searchParams.append("availableEngine", engine.id);
+  }
+  await win.loadURL(previewURL.href);
 }).catch((error) => {
   console.error(error);
   app.exit(1);

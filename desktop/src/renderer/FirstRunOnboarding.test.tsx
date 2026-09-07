@@ -507,7 +507,10 @@ describe("FirstRunOnboarding", () => {
     if (mode !== "retry") expect(save).not.toHaveBeenCalled();
   });
 
-  it.each(["skip", "connect"])("previews a clean installation through %s without using or writing local settings", async (mode) => {
+  it.each([
+    ["skip", "codex", "claude"],
+    ["connect", "claude", "codex"],
+  ])("previews %s with installed %s and missing %s without writing local settings", async (mode, installed, missing) => {
     // The standalone preview has no product preload bridge at all.
     Reflect.deleteProperty(window, "wuu");
     vi.spyOn(navigator, "language", "get").mockReturnValue("zh-CN");
@@ -526,7 +529,10 @@ describe("FirstRunOnboarding", () => {
               { name: "openai", type: "openai-compatible", model: "gpt-5", api_key_configured: true },
               { name: "local-codex", type: "openai-codex", model: "test-model", codex_credential_source: "codex-cli" },
             ]}
-            engines={{ engines: [{ id: "codex", enabled: true, binary_ok: true }], settings: { default_engine: "codex" } }}
+            engines={{ engines: [
+              { id: installed, enabled: true, binary_ok: true },
+              { id: missing, enabled: false, binary_ok: false },
+            ], settings: { default_engine: installed } }}
             onDismissPreview={onDismissPreview}
             onUpdateExtensionPackage={updateExtension}
             onSaveProvider={save}
@@ -541,7 +547,11 @@ describe("FirstRunOnboarding", () => {
     await clickButton("开始设置");
     expect(container.querySelectorAll('.onboarding-plugin[aria-pressed="true"]').length).toBeGreaterThan(0);
     await clickButton("继续");
-    expect(container.querySelector<HTMLButtonElement>('[data-testid="onboarding-engine-codex"]')?.disabled).toBe(true);
+    const installedChoice = container.querySelector<HTMLButtonElement>(`[data-testid="onboarding-engine-${installed}"]`)!;
+    expect(installedChoice.disabled).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>(`[data-testid="onboarding-engine-${missing}"]`)?.disabled).toBe(true);
+    await act(async () => installedChoice.click());
+    expect(installedChoice.getAttribute("aria-checked")).toBe("true");
     await clickButton("继续");
     expect(container.querySelector('[data-testid="onboarding-reuse-codex"]')).toBeNull();
     const inputs = [...container.querySelectorAll<HTMLInputElement>("input")];

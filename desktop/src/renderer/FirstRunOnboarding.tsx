@@ -99,10 +99,10 @@ export function FirstRunOnboarding({
   onComplete: () => Promise<void>;
 }): JSX.Element {
   const { t } = useI18n();
-  // A clean preview must not inherit this machine's connections or discovery.
+  // Preview keeps connections isolated but uses real CLI discovery.
   const inventory = preview ? PREVIEW_PLUGINS : liveInventory;
   const providers = preview ? undefined : liveProviders;
-  const engines = preview ? undefined : liveEngines;
+  const engines = liveEngines;
   const bundledPlugins = useMemo(() => bundledOnboardingPlugins(inventory), [inventory]);
   const [step, setStep] = useState<OnboardingStep>("welcome");
   const [selectedPluginIDs, setSelectedPluginIDs] = useState<Set<string>>(
@@ -135,11 +135,10 @@ export function FirstRunOnboarding({
   const selectableEngines = useMemo(
     () => ONBOARDING_ENGINES.flatMap((choice) => {
       if (choice.id === "wuu") return [{ ...choice, ready: true }];
-      if (preview) return [{ ...choice, ready: false }];
       const engine = engines?.engines.find((item) => item.id === choice.id);
       return engine ? [{ ...choice, ready: engine.enabled && engine.binary_ok }] : [];
     }),
-    [engines, preview],
+    [engines],
   );
 
   useLayoutEffect(() => {

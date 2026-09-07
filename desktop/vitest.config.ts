@@ -12,7 +12,7 @@ export default defineConfig({
           name: "main",
           environment: "node",
           globals: false,
-          include: ["src/main/**/*.test.ts"],
+          include: ["src/main/**/*.test.ts", "dev/**/*.test.ts"],
         },
       },
       {
