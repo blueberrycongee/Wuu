@@ -2,7 +2,7 @@
    theme overrides these in base.css theme blocks. */
 :root {
   --turn-collapsed-focus-ring: var(--focus-ring);
-  --user-message-bg-color: var(--wuu-message-user-background, #F3F3F4);
+  --user-message-bg-color: var(--wuu-message-user-background, #000);
   --user-message-jump-flash-bg: var(--surface-3);
   --message-copy-bg: rgba(255, 255, 255, 0.72);
   --message-file-bg: rgba(255, 255, 255, 0.82);
@@ -303,7 +303,7 @@
   background: var(--user-message-background);
   border: var(--wuu-message-user-border, 0);
   box-shadow: var(--wuu-message-user-shadow, none);
-  color: var(--wuu-message-user-color, var(--ink));
+  color: var(--wuu-message-user-color, #fff);
   /* A small tail corner (bottom-right) marks the outgoing bubble as
      the user's own, echoing the mascot's speech-bubble language. */
   border-radius: var(--wuu-message-user-radius, var(--radius-md) var(--radius-md) 4px var(--radius-md));
@@ -412,7 +412,7 @@
 .user-message-raw-query {
   width: 100%;
   min-width: 0;
-  color: var(--ink);
+  color: inherit;
   line-height: var(--conversation-reading-line-height);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -428,7 +428,8 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink-muted);
+  color: inherit;
+  opacity: 0.65;
   cursor: pointer;
   font-size: var(--font-xs);
   font-weight: var(--weight-semibold);
@@ -436,13 +437,13 @@
   padding: 0;
   transition:
     background-color var(--motion-fast) var(--ease-out),
-    color var(--motion-fast) var(--ease-out);
+    opacity var(--motion-fast) var(--ease-out);
 }
 
 .user-message-expand-toggle:hover,
 .user-message-expand-toggle:focus-visible {
   outline: 0;
-  color: var(--ink);
+  opacity: 1;
 }
 
 .user-message-expand-toggle svg {
