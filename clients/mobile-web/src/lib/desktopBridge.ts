@@ -85,6 +85,73 @@ function storedPluginConflictPreferences(): PluginConflictPreferences {
   }
 }
 
+
+export class UnavailableHostOperationError extends Error {
+  readonly code = "host_operation_unavailable";
+  constructor(readonly operation: keyof WuuDesktopApi) {
+    super(`${operation} is unavailable in this browser host`);
+    this.name = "UnavailableHostOperationError";
+  }
+}
+
+const unavailableWebMethods = [
+  "createBlankProject",
+  "chooseProjectFolder",
+  "removeProject",
+  "cleanupProjectState",
+  "relocateProject",
+  "selectNoProject",
+  "gitStatus",
+  "listGitChanges",
+  "readGitFileDiff",
+  "checkoutGitBranch",
+  "createCheckoutGitBranch",
+  "commitGitChanges",
+  "generateCommitMessage",
+  "createPullRequest",
+  "listWorkspaceFiles",
+  "listWorkspaceDirectory",
+  "readWorkspaceFile",
+  "writeWorkspaceFile",
+  "resolveWorkspaceFileReference",
+  "startTerminalSession",
+  "writeTerminalSession",
+  "resizeTerminalSession",
+  "stopTerminalSession",
+  "getBuildInfo",
+  "startSpeechRecognition",
+  "stopSpeechRecognition",
+  "installPluginPackage",
+  "loadPluginDesktopModule",
+  "loadPluginIcon",
+  "readSkillContent",
+  "listInstructionFiles",
+  "getRemoteControlSnapshot",
+  "setRemoteRelay",
+  "setRemoteHostEnabled",
+  "startRemotePairing",
+  "removeRemoteDevice",
+  "updateVoiceInputSettings",
+  "openVoicePrivacySettings",
+  "listCodexPets",
+  "updateCodexPetSettings",
+  "updateCodexPetRuntime",
+  "updateCodexPetHints",
+  "revealSession",
+  "revealWorkspaceItem",
+  "showWorkspaceItemMenu",
+  "popOutSession",
+  "popOutClosed",
+] as const satisfies readonly (keyof WuuDesktopApi)[];
+
+// An explicit, type-checked list keeps new protocol members from silently
+// becoming pretend functions. Every unsupported action rejects consistently.
+const unavailableWebActions = Object.fromEntries(
+  unavailableWebMethods.map((method) => [method, async () => {
+    throw new UnavailableHostOperationError(method);
+  }]),
+) as { [K in typeof unavailableWebMethods[number]]: (...args: unknown[]) => Promise<never> };
+
 /** Browser host adapter for the shared desktop renderer. */
 export class RemoteDesktopBridge {
   private readonly client: RemoteClient;
@@ -211,7 +278,10 @@ export class RemoteDesktopBridge {
       polish_enabled: false,
       language: "system",
     };
-    const target: Partial<WuuDesktopApi> & Record<string, unknown> = {
+    const target: WuuDesktopApi = {
+      ...unavailableWebActions,
+      hostKind: "web",
+      unsupportedMethods: unavailableWebMethods,
       platform: browserPlatform(),
       initialThemePreference: storedTheme(),
       initialLanguagePreference: storedLanguage(),
@@ -220,13 +290,12 @@ export class RemoteDesktopBridge {
       initialChannelRoomPreferences: storedChannelRoomPreferences(),
       initialMessageFlowFontSize: storedMessageSize(),
       popOutInit: () => ({ kind: null, threadID: null, context: null }),
-      // Electron uses this to route native CUA overlay windows. The Web host
-      // has no native overlay, so tracking an active CUA thread is inapplicable.
-      setActiveCUAThread: () => {},
 
       listProjects: async () => this.projectState(),
-      selectProject: async () => this.projectState(),
-      selectNoProject: async () => this.projectState(),
+      selectProject: async (id) => {
+        if (id !== this.projectID) throw new Error("Unknown remote workspace");
+        return this.projectState();
+      },
 
       initialize: async () => {
         const result = await this.call<InitializeResult>("initialize", {
@@ -338,8 +407,99 @@ export class RemoteDesktopBridge {
         pending?.resolve({ error: { code: "rejected", message } });
       },
 
-      listEngines: async () => ({ engines: [] }),
-      gitStatus: async () => ({ is_repo: false, dirty_count: 0 }),
+      listEngines: () => this.call("engine/list"),
+      refreshModelCatalog: () => this.call("config/model-catalog/refresh"),
+      listMCPServers: () => this.call("mcp/list"),
+      startXAILogin: () => this.call("auth/xai/login/start"),
+      listSkills: () => this.call("skill/list"),
+      getNamedAgentInsights: () => this.call("channel/agent/insights"),
+      bootstrapChannels: () => this.call("channel/bootstrap"),
+      getChannelHumanMentionStatus: () => this.call("channel/human-mention/status"),
+      ackChannelHumanMentions: () => this.call("channel/human-mention/ack"),
+      getSessionOrganization: () => this.call("sessionOrganization/list"),
+      getSettingsUsage: () => this.call("settings/usage"),
+      refreshExtensionCatalog: () => this.call("extension/catalog/refresh"),
+      updateAdvancedSettings: (params) => this.call("config/advanced/update", params),
+      updateGeneralSettings: (params) => this.call("config/general/update", params),
+      updateEngines: (params) => this.call("engine/update", params),
+      updateExtensionPackage: (params) => this.call("extension/package/update", params),
+      getPluginSetting: (params) => this.call("plugin/setting/get", params),
+      setPluginSetting: (params) => this.call("plugin/setting/set", params),
+      getPluginDiagnostics: (params) => this.call("plugin/diagnostics/list", params),
+      getPluginStorage: (params) => this.call("plugin/storage/get", params),
+      setPluginStorage: (params) => this.call("plugin/storage/set", params),
+      requestPluginRuntime: (params) => this.call("plugin/client/request", params),
+      createNamedAgent: (params) => this.call("channel/agent/create", params),
+      updateNamedAgent: (params) => this.call("channel/agent/update", params),
+      deleteNamedAgent: (params) => this.call("channel/agent/delete", params),
+      startNamedAgent: (params) => this.call("channel/agent/start", params),
+      resetNamedAgent: (params) => this.call("channel/agent/reset", params),
+      resolveChannelAgentCreation: (params) => this.call("channel/agent-creation/resolve", params),
+      createChannelRoom: (params) => this.call("channel/room/create", params),
+      openChannelDirectMessage: (params) => this.call("channel/direct-message/open", params),
+      updateChannelRoom: (params) => this.call("channel/room/update", params),
+      deleteChannelRoom: (params) => this.call("channel/room/delete", params),
+      markChannelRoomRead: (params) => this.call("channel/room/read", params),
+      listChannelMessages: (params) => this.call("channel/message/list", params),
+      sendChannelMessage: (params) => this.call("channel/message/send", params),
+      createChannelTask: (params) => this.call("channel/task/create", params),
+      updateChannelTask: (params) => this.call("channel/task/update", params),
+      readManagedProcess: (params) => this.call("process/read", params),
+      holdUserQuestion: (request_id) => this.call("user-question/hold", { request_id }),
+      loadCodexModels: (provider) => this.call("config/codex/models", { provider }),
+      removePluginPackage: (id) => this.call("plugin/package/remove", { id }),
+      connectMCPServer: (name) => this.call("mcp/connect", { name }),
+      disconnectMCPServer: (name) => this.call("mcp/disconnect", { name }),
+      refreshMCPServer: (name) => this.call("mcp/refresh", { name }),
+      startMCPAuth: (name) => this.call("mcp/auth/start", { name }),
+      getMCPAuthStatus: (name) => this.call("mcp/auth/status", { name }),
+      removeMCPAuth: (name) => this.call("mcp/auth/remove", { name }),
+      pollXAILogin: (login_id) => this.call("auth/xai/login/poll", { login_id }),
+      cancelXAILogin: (login_id) => this.call("auth/xai/login/cancel", { login_id }),
+      listActivities: (thread_id) => this.call("activity/list", { thread_id }),
+      getThreadContextComposition: (thread_id) => this.call("thread/context-composition", { thread_id }),
+      polishText: (text) => this.call("text/polish", { text }),
+      createSessionFolder: (name) => this.call("sessionFolder/create", { name }),
+      reorderSessionFolders: (ids) => this.call("sessionFolder/reorder", { ids }),
+      deleteSessionFolder: (id) => this.call("sessionFolder/delete", { id }),
+      listManagedProcesses: (thread_id) => this.call("process/list", { thread_id }),
+      takeoverActivity: (thread_id, activity_id) => this.call("activity/takeover", { thread_id, activity_id }),
+      releaseActivity: (thread_id, activity_id) => this.call("activity/release", { thread_id, activity_id }),
+      stopActivity: (thread_id, activity_id) => this.call("activity/stop", { thread_id, activity_id }),
+      updateRuntimeSettings: (provider, model, effort, connection, variant, permissionMode, threadId) =>
+        this.call("config/model/update", {
+          ...(provider ? { provider } : {}),
+          ...(model ? { model } : {}),
+          ...(threadId ? { thread_id: threadId } : {}),
+          ...connection,
+          ...(effort === undefined ? {} : { effort }),
+          ...(variant === undefined ? {} : { variant }),
+          ...(permissionMode === undefined ? {} : { permission_mode: permissionMode }),
+        }),
+      removeProvider: (provider, options) => this.call("config/provider/remove", {
+        provider, fallback_provider: options?.fallbackProvider, fallback_model: options?.fallbackModel,
+      }),
+      finishMCPAuth: (name, state, code) => this.call("mcp/auth/finish", { name, state, code }),
+      forkThread: (thread_id, turn_id, item_id, mode, target) =>
+        this.call("thread/fork", { thread_id, turn_id, item_id, mode, target }),
+      editThreadMessage: (thread_id, turn_id, item_id) =>
+        this.call("thread/edit-message", { thread_id, turn_id, item_id }),
+      renameSessionFolder: (id, name) => this.call("sessionFolder/update", { id, name }),
+      updateThreadOrganization: (thread_id, folder_id) =>
+        this.call("thread/organization/update", { thread_id, folder_id }),
+      writeManagedProcess: (thread_id, process_id, input) =>
+        this.call("process/write", { thread_id, process_id, input }),
+      resizeManagedProcess: (thread_id, process_id, cols, rows) =>
+        this.call("process/resize", { thread_id, process_id, cols, rows }),
+      stopManagedProcess: (thread_id, process_id) =>
+        this.call("process/stop", { thread_id, process_id }),
+      // Native event sources do not exist in a browser. These subscriptions
+      // are inert; their actions are explicitly unavailable below.
+      onSpeechRecognitionEvent: () => () => {},
+      onRemoteControlEvent: () => () => {},
+      onCodexPetJumpRequest: () => () => {},
+      onTerminalEvent: () => () => {},
+      onWindowResizeState: () => () => {},
       getThemePreference: async () => storedTheme(),
       setThemePreference: async (theme: ThemePreference) => {
         localStorage.setItem(THEME_KEY, theme);
@@ -365,10 +525,6 @@ export class RemoteDesktopBridge {
         microphone_permission: "unavailable",
         speech_permission: "unavailable",
       }),
-      updateVoiceInputSettings: async (settings: VoiceInputSettings) => {
-        for (const listener of this.voiceListeners) listener(settings);
-        return settings;
-      },
       onVoiceInputSettingsChange: (listener: PreferenceListener<VoiceInputSettings>) => {
         this.voiceListeners.add(listener);
         return () => this.voiceListeners.delete(listener);
@@ -389,7 +545,11 @@ export class RemoteDesktopBridge {
         return preferences;
       },
       openExternal: async (url: string) => {
-        window.open(url, "_blank", "noopener,noreferrer");
+        const parsed = new URL(url);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+          throw new Error("Only HTTP and HTTPS links can be opened");
+        }
+        window.open(parsed.href, "_blank", "noopener,noreferrer");
       },
       showSystemNotification: async ({ title, body }: { title: string; body: string }) => {
         if ("Notification" in window && Notification.permission === "granted") {
@@ -400,16 +560,6 @@ export class RemoteDesktopBridge {
       },
     };
 
-    return new Proxy(target, {
-      get(object, property, receiver) {
-        if (Reflect.has(object, property)) return Reflect.get(object, property, receiver);
-        if (typeof property === "string" && property.startsWith("on")) {
-          return () => () => {};
-        }
-        return () => Promise.reject(new Error(
-          `${String(property)} is not available from the web client yet`,
-        ));
-      },
-    }) as WuuDesktopApi;
+    return target;
   }
 }

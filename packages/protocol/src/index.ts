@@ -2665,6 +2665,10 @@ export type SpeechRecognitionStartResult =
   | { ok: false; error: string };
 
 export type WuuDesktopApi = {
+  /** Host operations that this adapter cannot perform. Omitted means the
+   * desktop contract; renderers must hide or disable unavailable actions. */
+  unsupportedMethods?: readonly (keyof WuuDesktopApi)[];
+  hostKind?: "desktop" | "web";
   // Pre-paint first-run gate. Optional so browser fixtures and older preload
   // mocks continue to enter the normal shell unless they explicitly exercise
   // onboarding.
