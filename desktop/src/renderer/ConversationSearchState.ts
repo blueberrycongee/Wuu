@@ -82,7 +82,7 @@ export function useConversationSearch({
   handleConversationSearchKeyDown: (
     event: ReactKeyboardEvent<HTMLInputElement>,
   ) => void;
-  setConversationSearchQuery: (query: string) => void;
+  setConversationSearchQuery: (query: string, composing?: boolean) => void;
   clearConversationSearchQuery: () => void;
   setConversationSearchSelectedIndex: (index: number) => void;
 } {
@@ -91,6 +91,9 @@ export function useConversationSearch({
   const conversationSearchRef = useRef<HTMLDivElement>(null);
   const conversationSearchInputRef = useRef<HTMLInputElement>(null);
   const conversationSearchRequestRef = useRef(0);
+  const queryRef = useRef({ query: "", composing: false });
+  const [composing, setComposing] = useState(false);
+  const resultsRequestRef = useRef(-1);
   const conversationSearchPreviewRequestRef = useRef(0);
   const conversationSearchCloseTimerRef = useRef<number | undefined>(
     undefined,
@@ -99,6 +102,8 @@ export function useConversationSearch({
 
   useEffect(() => {
     return () => {
+      conversationSearchRequestRef.current += 1;
+      conversationSearchPreviewRequestRef.current += 1;
       if (conversationSearchCloseTimerRef.current !== undefined) {
         window.clearTimeout(conversationSearchCloseTimerRef.current);
         conversationSearchCloseTimerRef.current = undefined;
@@ -107,7 +112,7 @@ export function useConversationSearch({
   }, []);
 
   useEffect(() => {
-    if (!conversationSearch.open || conversationSearch.closing) {
+    if (!conversationSearch.open || conversationSearch.closing || composing) {
       return undefined;
     }
     const delay = conversationSearch.query.trim() ? 140 : 0;
@@ -119,6 +124,7 @@ export function useConversationSearch({
     conversationSearch.closing,
     conversationSearch.open,
     conversationSearch.query,
+    composing,
   ]);
 
   // Preview pane: when the selected search result points at a thread we have
@@ -204,6 +210,8 @@ export function useConversationSearch({
       conversationSearchCloseTimerRef.current = undefined;
     }
     onOpen();
+    queryRef.current.composing = false;
+    setComposing(false);
     setConversationSearch((current) => ({
       ...current,
       open: true,
@@ -211,9 +219,8 @@ export function useConversationSearch({
       loading: true,
       error: "",
       selectedIndex: 0,
-      // Reset preview so the effect kicks off a fresh fetch on the first
-      // selection — a stale preview from the previous session would be
-      // misleading.
+      results: [],
+      // Refresh the preview only after fresh search results arrive.
       previewedThreadID: "",
       previewedTurns: [],
       previewLoading: false,
@@ -285,6 +292,7 @@ export function useConversationSearch({
         return;
       }
       const threads = search.results.map((result) => result.thread);
+      resultsRequestRef.current = requestID;
       cacheThreads(threads);
       setConversationSearch((current) => ({
         ...current,
@@ -312,6 +320,10 @@ export function useConversationSearch({
   }
 
   function selectConversationSearchResult(result: ThreadSearchResultItem): void {
+    if (
+      resultsRequestRef.current !== conversationSearchRequestRef.current ||
+      !conversationSearchResults.includes(result)
+    ) return;
     closeConversationSearch();
     onSelectThread(result.thread.id);
   }
@@ -319,6 +331,9 @@ export function useConversationSearch({
   function handleConversationSearchKeyDown(
     event: ReactKeyboardEvent<HTMLInputElement>,
   ): void {
+    if (
+      queryRef.current.composing || event.nativeEvent.isComposing || event.keyCode === 229
+    ) return;
     if (event.key === "Escape") {
       event.preventDefault();
       closeConversationSearch();
@@ -368,10 +383,24 @@ export function useConversationSearch({
     }
   }
 
-  function setConversationSearchQuery(query: string): void {
+  function setConversationSearchQuery(query: string, composing = false): void {
+    if (queryRef.current.query === query && queryRef.current.composing === composing) return;
+    queryRef.current = { query, composing };
+    setComposing(composing);
+    // Invalidate before debounce: old responses cannot become selectable
+    // under a new query, even before its request has been sent.
+    conversationSearchRequestRef.current += 1;
+    conversationSearchPreviewRequestRef.current += 1;
     setConversationSearch((current) => ({
       ...current,
       query,
+      loading: true,
+      error: "",
+      results: [],
+      previewedThreadID: "",
+      previewedTurns: [],
+      previewLoading: false,
+      previewError: "",
       selectedIndex: 0,
     }));
   }

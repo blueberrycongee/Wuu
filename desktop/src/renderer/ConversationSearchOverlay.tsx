@@ -1,4 +1,5 @@
 import { Search, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   RefObject,
@@ -61,13 +62,15 @@ export function ConversationSearchOverlay({
   dialogRef: RefObject<HTMLDivElement | null>;
   inputRef: RefObject<HTMLInputElement | null>;
   onClose: () => void;
-  onQueryChange: (query: string) => void;
+  onQueryChange: (query: string, composing?: boolean) => void;
   onClearQuery: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
   onSelectIndex: (index: number) => void;
   onSelectResult: (result: ThreadSearchResultItem) => void;
 }): JSX.Element | null {
   const { t } = useI18n();
+  const composingRef = useRef(false);
+  useEffect(() => { composingRef.current = false; }, [state.open]);
   if (!state.open && !state.closing) {
     return null;
   }
@@ -94,7 +97,15 @@ export function ConversationSearchOverlay({
             ref={inputRef}
             value={state.query}
             placeholder={t("search.placeholder")}
-            onChange={(event) => onQueryChange(event.target.value)}
+            onChange={(event) => onQueryChange(event.target.value, composingRef.current)}
+            onCompositionStart={(event) => {
+              composingRef.current = true;
+              onQueryChange(event.currentTarget.value, true);
+            }}
+            onCompositionEnd={(event) => {
+              composingRef.current = false;
+              onQueryChange(event.currentTarget.value, false);
+            }}
             onKeyDown={onKeyDown}
           />
           {state.query ? (
