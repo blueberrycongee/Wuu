@@ -280,7 +280,11 @@ func (s *Server) inspectPluginSessionOnce(pluginID string, params pluginhost.Ses
 		return pluginhost.SessionInspectResult{}, session.ErrSessionNotFound
 	}
 	if metadata.Owner != "plugin:"+strings.TrimSpace(pluginID) {
-		return pluginhost.SessionInspectResult{}, errors.New("plugin does not own the session")
+		// Shared-session senders may inspect their own correlated request. Goal
+		// continuations and automation heartbeats both need recovery here.
+		if metadata.Visibility == pluginhost.SessionVisibilityPlugin || params.RequestID == "" {
+			return pluginhost.SessionInspectResult{}, errors.New("shared session inspection requires a plugin request_id")
+		}
 	}
 	th, err := s.ensureThreadLoaded(params.SessionID)
 	if err != nil {
@@ -508,7 +512,20 @@ func (s *Server) cancelPluginSession(_ context.Context, pluginID string, params 
 		return pluginhost.SessionCancelResult{}, session.ErrSessionNotFound
 	}
 	if metadata.Owner != "plugin:"+pluginID {
-		return pluginhost.SessionCancelResult{}, errors.New("plugin does not own the session")
+		if metadata.Visibility == pluginhost.SessionVisibilityPlugin || (turnID == "" && queueID == "") {
+			return pluginhost.SessionCancelResult{}, errors.New("shared session cancellation requires an owned turn_id or queue_id")
+		}
+		if turnID != "" {
+			th, err := s.ensureThreadLoaded(sessionID)
+			if err != nil {
+				return pluginhost.SessionCancelResult{}, err
+			}
+			requestID := latestPluginRequestID(th, pluginID, turnID)
+			sent, found := s.findPluginSessionRequest(th, pluginSessionRequestClientID(pluginID, requestID))
+			if requestID == "" || !found || sent.TurnID != turnID || sent.Steered {
+				return pluginhost.SessionCancelResult{}, errors.New("plugin does not own the turn")
+			}
+		}
 	}
 	if queueID != "" {
 		entry, ok := s.removePluginQueuedTurn(sessionID, pluginID, queueID)
