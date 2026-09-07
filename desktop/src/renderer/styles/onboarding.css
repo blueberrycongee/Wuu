@@ -192,6 +192,33 @@
   width: min(704px, 100%);
 }
 
+.onboarding-stage-plugins {
+  align-self: start;
+  gap: 16px;
+}
+
+.onboarding-stage-plugins .onboarding-masthead {
+  min-height: clamp(64px, calc(100vh - 600px), 120px);
+}
+
+.onboarding-stage-plugins .onboarding-masthead .onboarding-plugin-mascot-stage {
+  width: 144px;
+  height: clamp(64px, calc(100vh - 600px), 120px);
+}
+
+.onboarding-stage-plugins .onboarding-masthead .onboarding-mascot-pack {
+  transform: translate(-50%, -50%) scale(0.5);
+}
+
+.onboarding-plugins-panel .onboarding-plugin {
+  min-height: 68px;
+  padding-block: 8px;
+}
+
+.onboarding-plugins-panel .onboarding-actions {
+  margin-top: 16px;
+}
+
 /* Sparse steps form one focal group, not an empty form with a pinned footer. */
 .onboarding-stage-welcome,
 .onboarding-stage-ready {
