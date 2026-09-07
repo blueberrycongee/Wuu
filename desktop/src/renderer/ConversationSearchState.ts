@@ -20,7 +20,7 @@ const CONVERSATION_SEARCH_EXIT_MS = motionDurationMs(
   "--search-exit-duration",
   180,
 );
-const CONVERSATION_SEARCH_RESULT_LIMIT = 40;
+const CONVERSATION_SEARCH_RESULT_LIMIT = 100;
 const CONVERSATION_SEARCH_PREVIEW_LIMIT = 4;
 
 export type CloseConversationSearchOptions = {

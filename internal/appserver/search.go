@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultThreadSearchLimit = 40
+	defaultThreadSearchLimit = 100
 	maxThreadSearchLimit     = 100
 	threadSearchSnippetRunes = 180
 )
