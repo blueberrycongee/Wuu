@@ -154,7 +154,7 @@ func TestReadFileByteContinuationReturnsDisjointWindowsAndRejectsMutation(t *tes
 	}
 }
 
-func TestReadFileProjectorPointsAtOnlyOmittedMiddle(t *testing.T) {
+func TestReadFileProjectorPointsAtRemainingRequestedLines(t *testing.T) {
 	rawText, _, _ := readFileEnvelope(5000)
 	raw := parseOut(t, rawText)
 	raw["content_sha256"] = "file-hash"
@@ -166,8 +166,8 @@ func TestReadFileProjectorPointsAtOnlyOmittedMiddle(t *testing.T) {
 	m := parseOut(t, out)
 	next := m["continuation"].(map[string]any)["next"].(map[string]any)
 	continuation, err := decodeReadFileContinuation(next["continuation"].(string))
-	if err != nil || continuation.ExpectedSHA256 != "file-hash" || continuation.Offset <= 1 || continuation.Limit <= 0 {
-		t.Fatalf("invalid omitted-middle continuation: %+v", next)
+	if err != nil || continuation.ExpectedSHA256 != "file-hash" || continuation.Offset != 1+lineCount(m["content"].(string)) || continuation.Limit != 5000-lineCount(m["content"].(string)) {
+		t.Fatalf("invalid remaining-range continuation: %+v", next)
 	}
 }
 
@@ -249,5 +249,53 @@ func TestStructuredGenericProjectionHasSnapshotBoundByteContinuation(t *testing.
 	continuation, err := decodeReadFileContinuation(next["continuation"].(string))
 	if err != nil || continuation.ExpectedSHA256 == "" || continuation.ByteEndOffset == nil || *continuation.ByteEndOffset != len(contextual) {
 		t.Fatalf("structured continuation is not an exact snapshot range: %+v", next)
+	}
+}
+
+func TestReadFileProjectedPagesPreserveRequestedRange(t *testing.T) {
+	t.Setenv(projectionModeEnvVar, "active")
+	root := t.TempDir()
+	kit, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kit.env.SessionDir = t.TempDir()
+	var file, expected strings.Builder
+	for i := 1; i <= 600; i++ {
+		line := fmt.Sprintf("record-%04d %s", i, strings.Repeat("x", 100))
+		fmt.Fprintln(&file, line)
+		if i >= 51 && i <= 450 {
+			fmt.Fprintf(&expected, "%6d\t%s\n", i, line)
+		}
+	}
+	path := filepath.Join(root, "records.txt")
+	mustWriteFile(t, path, file.String())
+	tool := NewReadFileTool(kit.env)
+	args := `{"path":"records.txt","offset":51,"limit":400}`
+	var actual strings.Builder
+	var savedNext string
+	pages := 0
+	for ; pages < 100; pages++ {
+		raw, err := tool.Execute(context.Background(), args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, _ := finalizeBuiltInToolResult(kit.env.SessionDir, "read_file", fmt.Sprintf("read-%d", pages), toolresult.FromText(raw), defaultProjectionTokenBudget)
+		page := parseOut(t, result.TextProjection())
+		actual.WriteString(page["content"].(string))
+		if continuation, ok := page["continuation"].(map[string]any); ok && continuation["has_more"] == true {
+			next, _ := json.Marshal(continuation["next"])
+			args = string(next)
+			savedNext = args
+		} else {
+			break
+		}
+	}
+	if pages == 0 || pages == 100 || actual.String() != expected.String() {
+		t.Fatalf("projected pages changed requested content: pages=%d, got bytes=%d want=%d", pages+1, actual.Len(), expected.Len())
+	}
+	mustWriteFile(t, path, "changed\n")
+	if _, err := tool.Execute(context.Background(), savedNext); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("projected continuation accepted changed file: %v", err)
 	}
 }

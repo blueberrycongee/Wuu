@@ -119,6 +119,7 @@ func NewCodeModeWaitTool(toolkit *Toolkit) *CodeModeWaitTool {
 func (*CodeModeWaitTool) Name() string            { return codeModeWaitToolName }
 func (*CodeModeWaitTool) IsReadOnly() bool        { return true }
 func (*CodeModeWaitTool) IsConcurrencySafe() bool { return true }
+func (*CodeModeWaitTool) IsOrchestrator() bool    { return true }
 
 func (*CodeModeWaitTool) Execute(context.Context, string) (string, error) {
 	return "", errors.New("code-mode wait requires the rich tool execution path")

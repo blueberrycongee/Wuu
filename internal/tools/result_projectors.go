@@ -262,8 +262,8 @@ func contentLines(content string) []string {
 	return lines
 }
 
-// projectReadFileResult keeps whole head and tail lines of the read content,
-// never cutting mid-line, and marks the omitted middle range explicitly.
+// projectReadFileResult keeps a continuous prefix of whole lines. Continuation
+// covers only the remainder of the requested range, without preview text in content.
 func projectReadFileResult(rawText string, pc projectorContext) (string, projectionOmission, bool) {
 	m, ok := parseToolEnvelope(rawText)
 	if !ok {
@@ -276,7 +276,7 @@ func projectReadFileResult(rawText string, pc projectorContext) (string, project
 	lines := contentLines(content)
 	numLines := len(lines)
 	path, _ := m["path"].(string)
-	recover := fmt.Sprintf("use continuation.next to read the omitted range without overlap, or open the full saved result at %s", pc.ArtifactRef)
+	recover := fmt.Sprintf("use continuation.next to read the remaining requested lines without overlap, or open the full saved result at %s", pc.ArtifactRef)
 	startLine := intJSONNumber(m["start_line"])
 	if startLine <= 0 {
 		startLine = 1
@@ -285,32 +285,21 @@ func projectReadFileResult(rawText string, pc projectorContext) (string, project
 	setContinuation := func(candidate map[string]any, keep, omitted int) {
 		continuation := map[string]any{"has_more": omitted > 0}
 		if omitted > 0 {
-			head := (keep + 1) / 2
 			continuation["next"] = map[string]any{
-				"continuation": encodeReadFileContinuation(path, startLine+head, omitted, contentSHA),
+				"continuation": encodeReadFileContinuation(path, startLine+keep, omitted, contentSHA),
 			}
 		}
 		candidate["continuation"] = continuation
+		candidate["num_lines"] = keep
+		candidate["range"] = readFileRangeMetadata(startLine, keep)
+		candidate["omitted_ranges"] = readFileOmittedRanges(intJSONNumber(m["total_lines"]), startLine, keep)
 	}
 
 	build := func(keep int) (string, int) {
 		if keep >= numLines {
 			return content, 0
 		}
-		head := (keep + 1) / 2
-		tail := keep - head
-		omitted := numLines - head - tail
-		var b strings.Builder
-		for i := 0; i < head; i++ {
-			b.WriteString(lines[i])
-			b.WriteByte('\n')
-		}
-		fmt.Fprintf(&b, "... omitted %d lines; %s ...\n", omitted, recover)
-		for i := numLines - tail; i < numLines; i++ {
-			b.WriteString(lines[i])
-			b.WriteByte('\n')
-		}
-		return b.String(), omitted
+		return strings.Join(lines[:keep], "\n") + "\n", numLines - keep
 	}
 
 	size := func(keep int) int {
@@ -330,6 +319,10 @@ func projectReadFileResult(rawText string, pc projectorContext) (string, project
 	}
 
 	keep := largestFitting(numLines, pc.BudgetTokens, size)
+	// An oversized single line must not produce a non-advancing cursor.
+	if numLines > 0 && keep == 0 {
+		return "", projectionOmission{}, false
+	}
 	c, omitted := build(keep)
 	m["content"] = c
 	setContinuation(m, keep, omitted)

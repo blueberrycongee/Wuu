@@ -36,7 +36,7 @@ func readFileEnvelope(numLines int) (rawText string, firstLine, lastLine string)
 
 func TestProjectReadFileResult(t *testing.T) {
 	const numLines, budget = 5000, defaultProjectionTokenBudget
-	raw, firstLine, lastLine := readFileEnvelope(numLines)
+	raw, firstLine, _ := readFileEnvelope(numLines)
 	pc := projectorContext{CallID: "c1", BudgetTokens: budget, ArtifactRef: "/s/tool-results/c1.txt"}
 
 	out, om, ok := projectReadFileResult(raw, pc)
@@ -51,15 +51,15 @@ func TestProjectReadFileResult(t *testing.T) {
 	}
 	m := parseOut(t, out)
 	content, _ := m["content"].(string)
-	// Whole lines preserved head and tail (no mid-line cut).
 	if !strings.HasPrefix(content, firstLine+"\n") {
-		t.Fatalf("head line not preserved whole:\n%s", snip(content, 120))
+		t.Fatalf("first line not preserved: %q", content)
 	}
-	if !strings.HasSuffix(strings.TrimRight(content, "\n"), lastLine) {
-		t.Fatalf("tail line not preserved whole:\n...%s", content[len(content)-120:])
+	original := parseOut(t, raw)["content"].(string)
+	if !strings.HasPrefix(original, content) || lineCount(content) != numLines-om.Lines {
+		t.Fatalf("projected content is not a continuous prefix of whole lines")
 	}
-	if !strings.Contains(content, "... omitted ") {
-		t.Fatalf("missing explicit omission marker")
+	if int(m["num_lines"].(float64)) != lineCount(content) {
+		t.Fatalf("displayed line count does not match content")
 	}
 	// File facts preserved.
 	if fmt.Sprint(m["total_lines"]) != fmt.Sprint(numLines) || m["path"] != "internal/pkg/handlers.go" {
@@ -199,5 +199,13 @@ func TestProjectBash_EndToEndReusesFullLogRef(t *testing.T) {
 	}
 	if !strings.Contains(got.TextProjection(), "/s/tool-results/shell-logs/x.log") {
 		t.Fatalf("projected bash should reference the full log")
+	}
+}
+
+func TestProjectReadFileOversizedLineDoesNotOfferNonAdvancingContinuation(t *testing.T) {
+	raw := mustMarshalMap(map[string]any{"path": "long.txt", "content": strings.Repeat("x", 20000) + "\n", "start_line": 1, "total_lines": 1})
+	_, _, ok := projectReadFileResult(raw, projectorContext{BudgetTokens: defaultProjectionTokenBudget, ArtifactRef: "/s/long.txt"})
+	if ok {
+		t.Fatal("a line that cannot fit must use the existing generic artifact recovery instead of a non-advancing line cursor")
 	}
 }

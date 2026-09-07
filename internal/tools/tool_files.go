@@ -33,10 +33,14 @@ func (t *ReadFileTool) IsConcurrencySafe() bool { return true }
 func (t *ReadFileTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name:        "read_file",
-		Description: "Read a workspace file with line numbers. Use offset and limit for focused line reads. Results include workspace_revision, omitted ranges, and follow-up suggestions. Use list_files for directories.",
+		Description: "Read a continuous range of a workspace file with line numbers. Use offset and limit for focused reads. If projected, pass continuation.next as the next call arguments to read the rest of the requested range. Results include displayed range, omitted ranges, and workspace_revision. Use list_files for directories.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
+				"continuation": map[string]any{
+					"type":        "string",
+					"description": "Opaque continuation from the previous result. Supplies the path, remaining range, and content hash; pass it without offset or limit.",
+				},
 				"path": map[string]any{
 					"type":        "string",
 					"description": "File path relative to workspace root, or a supported artifact path.",
@@ -50,7 +54,7 @@ func (t *ReadFileTool) Definition() providers.ToolDefinition {
 					"description": "Max lines to return. Omit to read the whole file when it fits size limits.",
 				},
 			},
-			"required": []string{"path"},
+			"anyOf": []any{map[string]any{"required": []string{"path"}}, map[string]any{"required": []string{"continuation"}}},
 		},
 	}
 }
