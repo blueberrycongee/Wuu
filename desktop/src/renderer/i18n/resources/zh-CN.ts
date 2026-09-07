@@ -350,7 +350,6 @@ export const zhCN = {
   "sidebar.collaborationEmpty": "还没有频道",
   "sidebar.conversations": "对话",
   "sidebar.settings": "设置",
-  "sidebar.replayOnboarding": "预览首次设置",
   "sidebar.expandSection": "展开{section}",
   "sidebar.collapseSection": "收起{section}",
   "sidebar.addWorkspace": "添加工作区",

@@ -352,7 +352,6 @@ export const enUS = {
   "sidebar.collaborationEmpty": "No channels yet",
   "sidebar.conversations": "Conversations",
   "sidebar.settings": "Settings",
-  "sidebar.replayOnboarding": "Preview setup",
   "sidebar.expandSection": "Expand {section}",
   "sidebar.collapseSection": "Collapse {section}",
   "sidebar.addWorkspace": "Add workspace",

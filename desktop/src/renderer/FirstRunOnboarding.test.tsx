@@ -508,6 +508,9 @@ describe("FirstRunOnboarding", () => {
   });
 
   it.each(["skip", "connect"])("previews a clean installation through %s without using or writing local settings", async (mode) => {
+    // The standalone preview has no product preload bridge at all.
+    Reflect.deleteProperty(window, "wuu");
+    vi.spyOn(navigator, "language", "get").mockReturnValue("zh-CN");
     const updateExtension = vi.fn(async () => undefined);
     const save = vi.fn(async () => undefined);
     const updateEngines = vi.fn(async () => undefined);

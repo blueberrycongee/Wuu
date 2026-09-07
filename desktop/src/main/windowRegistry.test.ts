@@ -97,17 +97,6 @@ describe("windowRegistry", () => {
       expect(registry.allWindows()).toHaveLength(1);
     });
 
-    it("tracks a dedicated onboarding preview window", () => {
-      const registry = createWindowRegistry();
-      const win = makeWindow(8);
-      registry.registerWindow(win, "onboarding");
-      expect(registry.roleForWindow(8)).toBe("onboarding");
-      expect(registry.onboardingPreviewWindow()).toBe(win);
-      expect(registry.mainWindow()).toBeNull();
-      registry.unregisterWindow(8);
-      expect(registry.onboardingPreviewWindow()).toBeNull();
-    });
-
     it("lists main and popped-out windows in allWindows() in registration order", () => {
       const registry = createWindowRegistry();
       const main = makeWindow(1);

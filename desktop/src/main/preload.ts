@@ -173,7 +173,6 @@ try {
 const api: WuuDesktopApi = {
   initialOnboardingComplete,
   completeOnboarding: () => ipcRenderer.invoke("wuu:onboarding-complete"),
-  openOnboardingPreview: () => ipcRenderer.invoke("wuu:onboarding-preview-open"),
   platform: desktopPlatform,
   listProjects: () => ipcRenderer.invoke("wuu:project-list"),
   createBlankProject: () => ipcRenderer.invoke("wuu:project-create-blank"),

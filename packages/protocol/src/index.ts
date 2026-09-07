@@ -3046,12 +3046,6 @@ export type WuuDesktopApi = {
    * routed by that window identity.
    */
   popOutInit: () => PopOutInitResult;
-  /**
-   * Dev-only first-run preview window. Production preload may omit this.
-   * Opens a dedicated BrowserWindow at the real onboarding size instead of
-   * overlaying a card on the resizable main window.
-   */
-  openOnboardingPreview?: () => Promise<{ windowID: number }>;
   // Side-thread IPC is keyed by the owning main thread.
   // Non-Electron hosts may omit these optional methods.
   openSideThread?: (
@@ -3108,7 +3102,7 @@ export type WuuDesktopApi = {
  */
 export type PopOutInitResult = {
   /** Window kind, or null when this is the main window. */
-  kind: "thread" | "draft" | "onboarding-preview" | null;
+  kind: "thread" | "draft" | null;
   /** The popped-out thread id, or null when this is the main window. */
   threadID: string | null;
   /** Runtime context pinned to the popped-out window. */

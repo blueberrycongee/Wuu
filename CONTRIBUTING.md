@@ -46,6 +46,20 @@ The current supported build targets are macOS and Linux for the CLI and arm64
 macOS for the desktop preview. Mobile and remote control are experimental and
 do not yet have a stable public mobile release.
 
+### Onboarding UI preview
+
+After `make setup`, run `npm --prefix desktop run dev:onboarding` to open the
+real first-run UI in a standalone Electron window. It starts with clean preview
+data, without building or starting the Go core or native helpers. There is no
+product preload bridge, and it does not read your Wuu settings, discover local
+credentials, or save choices. Use dummy values in model fields.
+
+Renderer edits update through Vite. Reload the window (Cmd+R / Ctrl+R) to start
+the flow again; exit the preview and stop the command with Ctrl+C when finished.
+Electron uses a temporary profile, removed on normal exit. This tool is for UI
+iteration, not end-to-end verification of authentication or persistence. The
+entry points live in `desktop/dev/onboarding/`, outside the product build.
+
 ### AI-assisted contributions
 
 AI-assisted pull requests are welcome. The author remains responsible for the

@@ -204,7 +204,6 @@ import {
   ENABLE_EMBEDDED_BROWSER,
   ENABLE_GROUP_CHAT,
   ENABLE_MANAGEMENT_ASSISTANT,
-  ENABLE_ONBOARDING_PREVIEW,
 } from "./FeatureFlags";
 import { ArchiveTip } from "./ArchiveTip";
 import { TopNotice } from "./TopNotice";
@@ -358,7 +357,6 @@ function useStableCallback<T extends (...args: any[]) => any>(callback: T): T {
 function readPopOutInit(): PopOutInitResult | null {
   try {
     const init = window.wuu.popOutInit();
-    if (init.kind === "onboarding-preview") return init;
     return init.kind && init.context ? init : null;
   } catch {
     return null;
@@ -375,8 +373,7 @@ type MainComposerFocusRequest = {
 export function App(): JSX.Element {
   const { locale, t } = useI18n();
   const [popOutInit] = useState<PopOutInitResult | null>(() => readPopOutInit());
-  const onboardingPreviewWindow = popOutInit?.kind === "onboarding-preview";
-  const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context) && !onboardingPreviewWindow;
+  const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
   const [state, setState] = useState<AppState>(initialState);
   const [userQuestions, setUserQuestions] = useState<UserQuestionRequest[]>([]);
   const resolvedUserQuestionIDsRef = useRef(new Set<string>());
@@ -587,13 +584,9 @@ export function App(): JSX.Element {
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState(
-    () => onboardingPreviewWindow || (window.wuu?.initialOnboardingComplete ?? true),
+    () => window.wuu?.initialOnboardingComplete ?? true,
   );
 
-  const openOnboardingPreviewWindow = useCallback(() => {
-    if (typeof window.wuu.openOnboardingPreview !== "function") return;
-    void window.wuu.openOnboardingPreview();
-  }, []);
   const [appMode, setAppMode] = useState<AppMode>("harness");
   const [collaborationSection, setCollaborationSection] = useState<ChannelSection>("rooms");
   const [newRoomRequest, setNewRoomRequest] = useState(0);
@@ -4836,25 +4829,19 @@ export function App(): JSX.Element {
     );
   }
 
-  if (!onboardingComplete || onboardingPreviewWindow) {
+  if (!onboardingComplete) {
     return (
       <WuuMascotRuntimeProvider>
         <FirstRunOnboarding
           inventory={state.initialized?.extension_inventory}
           providers={state.initialized?.providers}
           engines={engineInventory}
-          preview={onboardingPreviewWindow}
-          onDismissPreview={onboardingPreviewWindow ? () => window.close() : undefined}
           onUpdateExtensionPackage={updateExtensionPackage}
           onSaveProvider={async (provider, model, connection) => {
             await updateRuntimeSettings(provider, model, undefined, connection, undefined);
           }}
           onUpdateEngines={updateEngineInventory}
           onComplete={async () => {
-            if (onboardingPreviewWindow) {
-              window.close();
-              return;
-            }
             if (!window.wuu?.completeOnboarding) {
               throw new Error(t("onboarding.finishFailed"));
             }
@@ -4947,10 +4934,6 @@ export function App(): JSX.Element {
                 setSettingsInitialPage("providers");
                 setSettingsOpen(true);
               }}
-              onReplayOnboarding={ENABLE_ONBOARDING_PREVIEW ? () => {
-                setSettingsOpen(false);
-                openOnboardingPreviewWindow();
-              } : undefined}
             />
           ) : (
           <AppSidebar
@@ -5057,13 +5040,6 @@ export function App(): JSX.Element {
               setSettingsInitialPage("providers");
               setSettingsOpen(true);
             }}
-            onReplayOnboarding={ENABLE_ONBOARDING_PREVIEW ? () => {
-              setProjectMenuOpen(false);
-              setRuntimeMenuOpen(false);
-              setCodexRuntimeMenu(null);
-              setSettingsOpen(false);
-              openOnboardingPreviewWindow();
-            } : undefined}
           />
           )}
 

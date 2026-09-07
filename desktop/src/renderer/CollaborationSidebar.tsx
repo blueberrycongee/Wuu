@@ -4,7 +4,6 @@ import {
   Plus,
   Search,
   Settings,
-  Sparkles,
   UserRound,
   UsersRound,
 } from "lucide-react";
@@ -93,7 +92,6 @@ export function CollaborationSidebar({
   onCreateRoom,
   onSwitchToHarness,
   onOpenSettings,
-  onReplayOnboarding,
   onPointerEnter,
   onPointerLeave,
 }: {
@@ -108,7 +106,6 @@ export function CollaborationSidebar({
   onCreateRoom: () => void;
   onSwitchToHarness: () => void;
   onOpenSettings: () => void;
-  onReplayOnboarding?: () => void;
   onPointerEnter?: () => void;
   onPointerLeave?: (event: ReactPointerEvent<HTMLElement>) => void;
 }): JSX.Element {
@@ -320,17 +317,6 @@ export function CollaborationSidebar({
         </DndContext>
 
         <div className="sidebar-settings">
-          {onReplayOnboarding ? (
-            <button
-              className="sidebar-settings-button"
-              type="button"
-              data-testid="sidebar-replay-onboarding"
-              onClick={onReplayOnboarding}
-            >
-              <Sparkles className="icon-lg" aria-hidden="true" />
-              <span>{t("sidebar.replayOnboarding")}</span>
-            </button>
-          ) : null}
           <button className="sidebar-settings-button" type="button" disabled={!initialized} onClick={onOpenSettings}>
             <Settings className="icon-lg" aria-hidden="true" />
             <span>{t("sidebar.settings")}</span>

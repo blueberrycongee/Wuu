@@ -9,9 +9,8 @@ import type { RuntimeContext } from "../shared/protocol";
  *  - "main"        — the primary application window.
  *  - "popped-out"  — a thread or draft in its own window.
  *  - "activity"    — a window dedicated to one background activity.
- *  - "onboarding"  — a first-run or first-run preview window.
  */
-export type WindowRole = "main" | "popped-out" | "activity" | "onboarding";
+export type WindowRole = "main" | "popped-out" | "activity";
 
 /**
  * Single source of truth for the live windows the main process created.
@@ -60,9 +59,6 @@ export interface WindowRegistry {
 
   /** Role pinned to a window, or undefined after it was removed. */
   roleForWindow(windowID: number): WindowRole | undefined;
-
-  /** Live first-run preview window, or null when none is registered. */
-  onboardingPreviewWindow(): BrowserWindow | null;
 
   activityWindow(activityID: string): BrowserWindow | null;
   setActivityWindow(activityID: string, windowID: number): void;
@@ -181,15 +177,6 @@ class WindowRegistryImpl implements WindowRegistry {
 
   roleForWindow(windowID: number): WindowRole | undefined {
     return this.windowsByID.get(windowID)?.role;
-  }
-
-  onboardingPreviewWindow(): BrowserWindow | null {
-    for (const entry of this.windowsByID.values()) {
-      if (entry.role === "onboarding") {
-        return entry.window;
-      }
-    }
-    return null;
   }
 
   activityWindow(activityID: string): BrowserWindow | null {
