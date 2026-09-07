@@ -1,0 +1,2 @@
+# Rust build artifacts (from-source V8 build is huge)
+/target/
