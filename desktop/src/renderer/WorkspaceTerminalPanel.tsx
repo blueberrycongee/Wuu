@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITerminalOptions, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
@@ -322,6 +323,7 @@ export function WorkspaceTerminalPanel({
   }, [runs, selectedResourceID, selectedRun, userTerminals]);
 
   function createUserTerminal(): void {
+    if (!hostSupports("startTerminalSession")) return;
     const ordinal = nextUserTerminalOrdinalRef.current;
     nextUserTerminalOrdinalRef.current += 1;
     const id = `user-terminal:${ordinal}`;
@@ -398,6 +400,7 @@ export function WorkspaceTerminalPanel({
           type="button"
           aria-label={t("workspace.terminal.newTerminal")}
           title={t("workspace.terminal.newTerminal")}
+          disabled={!hostSupports("startTerminalSession")}
           onClick={createUserTerminal}
         >
           <Plus size={16} />
@@ -818,6 +821,7 @@ function AgentTerminalPane({
             type="button"
             aria-label={t("workspace.terminal.newTerminal")}
             title={t("workspace.terminal.newTerminal")}
+            disabled={!hostSupports("startTerminalSession")}
             onClick={onCreateTerminal}
           >
             <Plus size={14} />

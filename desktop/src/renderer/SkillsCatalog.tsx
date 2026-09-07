@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import {
   AlertCircle,
   AlertTriangle,
@@ -322,7 +323,7 @@ export function SkillsCatalog({
           <button
             className="secondary-button catalog-install"
             type="button"
-            disabled={Boolean(packageMutation)}
+            disabled={Boolean(packageMutation) || !hostSupports("installPluginPackage")}
             onClick={() => void installPluginPackage()}
           >
             <PackagePlus className="icon" aria-hidden="true" />
@@ -695,7 +696,7 @@ function PluginDetailDialog({
               className="icon-button extension-package-more"
               aria-label={t("skills.pluginMoreActions", { name: record.name })}
               aria-haspopup="menu"
-              disabled={Boolean(packageMutation)}
+              disabled={Boolean(packageMutation) || !hostSupports("installPluginPackage")}
               onClick={(event) => onMoreActions(event.currentTarget)}
             >
               <MoreHorizontal className="icon" aria-hidden="true" />

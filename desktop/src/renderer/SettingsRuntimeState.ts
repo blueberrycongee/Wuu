@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import { useCallback, useEffect, useState } from "react";
 import type {
   CodexPetSettingsUpdate,
@@ -40,7 +41,7 @@ export function useSettingsRuntimeState({
   const refreshCodexPets =
     useCallback(async (): Promise<CodexPetsSnapshot> => {
       const api = window.wuu as Partial<typeof window.wuu>;
-      if (typeof api.listCodexPets !== "function") {
+      if (typeof api.listCodexPets !== "function" || !hostSupports("listCodexPets")) {
         setCodexPetsError(codexPetsUnsupportedMessage());
         setCodexPetsLoading(false);
         throw new Error(codexPetsUnsupportedMessage());
@@ -66,7 +67,7 @@ export function useSettingsRuntimeState({
       settings: CodexPetSettingsUpdate,
     ): Promise<CodexPetsSnapshot> => {
       const api = window.wuu as Partial<typeof window.wuu>;
-      if (typeof api.updateCodexPetSettings !== "function") {
+      if (typeof api.updateCodexPetSettings !== "function" || !hostSupports("updateCodexPetSettings")) {
         setCodexPetsError(codexPetsUnsupportedMessage());
         setCodexPetsLoading(false);
         throw new Error(codexPetsUnsupportedMessage());
@@ -134,7 +135,7 @@ export function useSettingsRuntimeState({
   useEffect(() => {
     let cancelled = false;
     const api = window.wuu as Partial<typeof window.wuu>;
-    if (typeof api.listCodexPets !== "function") {
+    if (typeof api.listCodexPets !== "function" || !hostSupports("listCodexPets")) {
       setCodexPetsLoading(false);
       setCodexPetsError(codexPetsUnsupportedMessage());
       return () => {

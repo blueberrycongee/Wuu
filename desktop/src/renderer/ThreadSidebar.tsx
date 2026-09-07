@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import { Archive, Folder, FolderOpen, GitFork, MessageSquare, MessageSquarePlus, MessagesSquare, Pin } from "lucide-react";
 import {
   type DragEvent as ReactDragEvent,
@@ -443,11 +444,11 @@ export function ProjectGroup({
             }, ...(!isScratchPseudo ? [{ separator: true } as const] : [])] : []),
             ...(!isScratchPseudo ? [{
               label: t("threadSidebar.relocate"),
-              disabled: !onRelocateProject,
+              disabled: !onRelocateProject || !hostSupports("relocateProject"),
               onSelect: () => onRelocateProject?.(project.id),
             }, {
               label: t("threadSidebar.removeWorkspace"),
-              disabled: !onRemoveProject,
+              disabled: !onRemoveProject || !hostSupports("removeProject"),
               onSelect: () => onRemoveProject?.(project.id),
             }] : []),
           ]}
@@ -969,6 +970,7 @@ function ThreadRows({
             },
             {
               label: revealInFileManagerLabel(),
+              disabled: !hostSupports("revealSession"),
               onSelect: () => {
                 void window.wuu.revealSession(contextMenu.thread.id);
               },

@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 /// <reference path="../shared/jsx-compat.d.ts" />
 
 import {
@@ -2596,7 +2597,7 @@ export function App(): JSX.Element {
   // state tracks what the app is doing.
   useEffect(() => {
     const api = window.wuu as Partial<typeof window.wuu>;
-    if (typeof api.updateCodexPetRuntime !== "function") {
+    if (typeof api.updateCodexPetRuntime !== "function" || !hostSupports("updateCodexPetRuntime")) {
       return;
     }
     void api
@@ -2635,7 +2636,7 @@ export function App(): JSX.Element {
   ]);
   useEffect(() => {
     const api = window.wuu as Partial<typeof window.wuu>;
-    if (typeof api.updateCodexPetHints !== "function") return;
+    if (typeof api.updateCodexPetHints !== "function" || !hostSupports("updateCodexPetHints")) return;
     const hints = deriveActiveSessionHints({
       thread: state.thread ?? undefined,
       secondaryThread: state.secondaryThread ?? undefined,

@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import {
   Bug,
   Check,
@@ -1372,7 +1373,7 @@ export function BranchMenu({
             key={branch}
             role="menuitem"
             type="button"
-            disabled={selected}
+            disabled={selected || !hostSupports("checkoutGitBranch")}
             onClick={() => onSelectBranch(branch)}
           >
             <GitBranch className="icon-lg" />
@@ -1430,15 +1431,15 @@ export function ProjectPickerMenu({
         })}
       </div>
       <div className="project-picker-divider" />
-      <button type="button" role="menuitem" onClick={onOpenProject}>
+      <button type="button" role="menuitem" disabled={!hostSupports("chooseProjectFolder")} onClick={onOpenProject}>
         <FolderOpen className="icon-lg" />
         <span>{t("runtime.useExistingFolder")}</span>
       </button>
-      <button type="button" role="menuitem" onClick={onCreateProject}>
+      <button type="button" role="menuitem" disabled={!hostSupports("createBlankProject")} onClick={onCreateProject}>
         <FolderPlus className="icon-lg" />
         <span>{t("runtime.createBlankProject")}</span>
       </button>
-      <button type="button" role="menuitem" onClick={onSelectNoProject}>
+      <button type="button" role="menuitem" disabled={!hostSupports("selectNoProject")} onClick={onSelectNoProject}>
         <FolderX className="icon-lg" />
         <span>{t("runtime.noProject")}</span>
         {activeContext?.kind === "no_project" ? <Check className="icon-lg" /> : null}

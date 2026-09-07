@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import {
   Archive,
   Bell,
@@ -1869,11 +1870,11 @@ export function AppSidebar({
                       </button>
                       {projectMenuOpen ? (
                         <div className="project-add-menu" role="menu">
-                          <button role="menuitem" onClick={onCreateProject}>
+                          <button role="menuitem" disabled={!hostSupports("createBlankProject")} onClick={onCreateProject}>
                             <FolderPlus className="icon-xl" />
                             <span>{t("sidebar.newBlankProject")}</span>
                           </button>
-                          <button role="menuitem" onClick={onOpenProjectFolder}>
+                          <button role="menuitem" disabled={!hostSupports("chooseProjectFolder")} onClick={onOpenProjectFolder}>
                             <FolderOpen className="icon-xl" />
                             <span>{t("sidebar.useExistingFolder")}</span>
                           </button>

@@ -624,6 +624,27 @@ describe("SessionTabStrip right-click menu", () => {
     ]);
   });
 
+  it("disables native pop-out while keeping tab close available", () => {
+    vi.stubGlobal("wuu", { unsupportedMethods: ["popOutSession"] });
+    try {
+      const context = projectContext();
+      const thread = makeThread("thread-a", "A");
+      const captured = makeCaptured();
+      renderWith({ ...initialState, thread, activeContext: context,
+        threads: [thread], sessionTabs: [createThreadSessionTab(thread, context)],
+        activeSessionTabID: threadSessionTabID(thread.id) }, captured);
+      rightClickTab(0);
+      const popOut = getMenuItems().find((item) => item.textContent === "在新窗口打开");
+      expect(popOut?.disabled).toBe(true);
+      popOut?.click();
+      expect(captured.poppedOut).toEqual([]);
+      clickMenuItem("关闭");
+      expect(captured.closed).toEqual([threadSessionTabID(thread.id)]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("calls onPopOut with the right-clicked thread tab", () => {
     const context = projectContext();
     const threadA = makeThread("thread-a", "A");

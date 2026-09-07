@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import { LoaderCircle, Mic } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type {
@@ -51,7 +52,8 @@ export const ComposerVoiceInput = forwardRef<ComposerVoiceInputHandle, {
   const polishEnabledRef = useRef(settings.polish_enabled);
   const supported =
     window.wuu?.platform === "darwin" &&
-    typeof window.wuu.startSpeechRecognition === "function";
+    typeof window.wuu.startSpeechRecognition === "function" &&
+    hostSupports("startSpeechRecognition");
 
   function setPhase(next: VoicePhase): void {
     phaseRef.current = next;

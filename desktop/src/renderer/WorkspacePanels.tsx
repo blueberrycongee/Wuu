@@ -1111,7 +1111,7 @@ function WorkspaceToolPicker({
       aria-label={t("workspace.tools")}
       data-wuu-component="workspace-tool-picker"
     >
-      {WORKSPACE_TOOL_ITEMS.map((item) => (
+      {WORKSPACE_TOOL_ITEMS.filter((item) => item.id !== "browser" || typeof window.wuu?.reportBrowserBounds === "function").map((item) => (
         <button
           key={item.id}
           className={`workspace-tool-menu-item${tabs.some((tab) => tab.kind === item.id) ? " active" : ""}`}
@@ -1183,7 +1183,7 @@ export function WorkspaceBottomPanel({
           className="workspace-tool-grid"
           aria-label={t("workspace.tools")}
         >
-          {WORKSPACE_TOOL_ITEMS.map((item) => (
+          {WORKSPACE_TOOL_ITEMS.filter((item) => item.id !== "browser" || typeof window.wuu?.reportBrowserBounds === "function").map((item) => (
             <button
               key={item.id}
               className={`workspace-tool-card${item.id === selectedView ? " active" : ""}`}

@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import {
   AlertCircle,
   Check,
@@ -158,7 +159,7 @@ export function EnvironmentPanel({
         <button
           className="environment-row"
           type="button"
-          disabled={!hasChanges || running}
+          disabled={!hasChanges || running || !hostSupports("commitGitChanges")}
           onClick={onOpenCommit}
         >
           <CornerDownRight className="icon-lg" />
@@ -170,7 +171,7 @@ export function EnvironmentPanel({
           <button
             className="environment-row"
             type="button"
-            disabled={prDisabled || running}
+            disabled={prDisabled || running || (!gitStatus?.pr_url && !hostSupports("createPullRequest"))}
             onClick={onOpenPullRequest}
           >
             <Github className="icon-lg" />
@@ -247,7 +248,7 @@ function EnvironmentBranchMenu({
         {branches.map((branch) => {
           const selected = branch === gitStatus.branch;
           return (
-            <button key={branch} role="menuitem" type="button" disabled={selected} onClick={() => onSelectBranch(branch)}>
+            <button key={branch} role="menuitem" type="button" disabled={selected || !hostSupports("checkoutGitBranch")} onClick={() => onSelectBranch(branch)}>
               <GitBranch className="icon" />
               <span>{branch}</span>
               {selected ? <Check className="icon" /> : null}
@@ -257,7 +258,7 @@ function EnvironmentBranchMenu({
       </div>
       <form className="environment-create-branch" onSubmit={(event) => void submitNewBranch(event)}>
         <input value={newBranch} placeholder={t("environment.newBranchName")} onChange={(event) => setNewBranch(event.target.value)} />
-        <button type="submit" disabled={!newBranch.trim() || submitting}>
+        <button type="submit" disabled={!newBranch.trim() || submitting || !hostSupports("createCheckoutGitBranch")}>
           <Plus className="icon" />
         </button>
       </form>

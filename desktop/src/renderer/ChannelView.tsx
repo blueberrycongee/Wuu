@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import { Bot, ChevronDown, ChevronUp, ClipboardList, ImagePlus, MessageCircle, Network, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChannelAgentInsight, ChannelMessage, ChannelRoom, EngineInfo, InitializeResult, NamedAgent } from "../shared/protocol";
@@ -2017,6 +2018,7 @@ export function ChannelView({ initialized, engines = [], section = "rooms", arch
                               className="channel-agent-memory-link"
                               type="button"
                               title={selectedAgent.memory_dir}
+                              disabled={!onOpenMemoryDirectory && !hostSupports("revealWorkspaceItem")}
                               onClick={() => {
                                 if (onOpenMemoryDirectory) {
                                   onOpenMemoryDirectory(selectedAgent.memory_dir);

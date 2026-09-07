@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import {
   closestCenter,
   DndContext,
@@ -123,6 +124,7 @@ export function SessionTabStrip({
     const activeTab = state.sessionTabs.find((tab) => tab.id === activeID);
     if (
       (activeTab?.kind === "thread" || activeTab?.kind === "draft") &&
+      hostSupports("popOutSession") &&
       Math.abs(event.delta.y) >= POP_OUT_DRAG_DISTANCE_PX
     ) {
       onPopOut(activeID);
@@ -572,7 +574,8 @@ function buildTabContextMenuItems({
     {
       label: translate("tabs.openInNewWindow"),
       disabled:
-        rightClickedTab?.kind !== "thread" && rightClickedTab?.kind !== "draft",
+        !hostSupports("popOutSession") ||
+        (rightClickedTab?.kind !== "thread" && rightClickedTab?.kind !== "draft"),
       onSelect: () => onPopOut(rightClickedTabID),
     },
     { separator: true },

@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import { preparePresortedFileTreeInput } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import { AlertCircle, FileText, FolderOpen, FolderX } from "lucide-react";
@@ -298,7 +299,7 @@ const WorkspaceFileTreeView = memo(function WorkspaceFileTreeView({ directories,
       <FileTree
         model={model}
         style={WORKSPACE_FILE_TREE_STYLE}
-        renderContextMenu={(item, context) => desktopPlatform() === "darwin" ? (
+        renderContextMenu={(item, context) => desktopPlatform() === "darwin" && hostSupports("showWorkspaceItemMenu") ? (
           <MacWorkspaceTreeContextMenu
             absolutePath={absoluteWorkspacePath(workspaceRoot, item.path)}
             onClose={() => context.close()}
@@ -490,6 +491,7 @@ function WorkspaceTreeContextMenu({
           type="button"
           role="menuitem"
           className="workspace-tree-context-menu-item"
+          disabled={!hostSupports("revealWorkspaceItem")}
           onClick={revealInFolder}
         >
           {t("workspace.files.revealInFileManager")}
@@ -800,7 +802,7 @@ export function WorkspaceFilePreview({
       error={error}
       fallback={fallback}
       open={onOpenFile}
-      reveal={(path) => window.wuu.revealWorkspaceItem(`${activeContext.cwd}/${path}`)}
+      reveal={hostSupports("revealWorkspaceItem") ? (path) => window.wuu.revealWorkspaceItem(`${activeContext.cwd}/${path}`) : undefined}
       reload={() => setPresenterReloadKey((value) => value + 1)}
     />
   );

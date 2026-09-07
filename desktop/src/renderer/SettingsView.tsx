@@ -1,3 +1,4 @@
+import { hostSupports } from "./HostCapabilities";
 import {
   ArrowLeft,
   Archive,
@@ -112,7 +113,7 @@ const COPY_RESET_MS = 1500;
 
 function availableSettingsPage(page: SettingsPage | undefined): SettingsPage {
   const next = page ?? "providers";
-  if (next === "remote" && !ENABLE_REMOTE_CONTROL) {
+  if (next === "remote" && (!ENABLE_REMOTE_CONTROL || !hostSupports("getRemoteControlSnapshot"))) {
     return "providers";
   }
   return next;
@@ -301,6 +302,7 @@ export function SettingsView({
 
   useEffect(() => {
     let cancelled = false;
+    if (!hostSupports("getBuildInfo")) return;
     void window.wuu.getBuildInfo().then((info) => {
       if (!cancelled) {
         setDesktopBuild(info.desktop);
@@ -890,7 +892,7 @@ export function SettingsView({
     Object.freeze({ id: "collaboration", label: settingsPageTitle("collaboration", t) }),
     Object.freeze({ id: "advanced", label: settingsPageTitle("advanced", t) }),
     Object.freeze({ id: "general", label: settingsPageTitle("general", t) }),
-    ...(ENABLE_REMOTE_CONTROL
+    ...(ENABLE_REMOTE_CONTROL && hostSupports("getRemoteControlSnapshot")
       ? [Object.freeze({ id: "remote", label: settingsPageTitle("remote", t) })]
       : []),
     Object.freeze({ id: "usage", label: settingsPageTitle("usage", t) }),
@@ -955,7 +957,7 @@ export function SettingsView({
               <SettingsNavItem icon={<Settings className="icon-lg" />} active={activePage === "general"} onClick={() => setActivePage("general")}>
                 {t("settings.general")}
               </SettingsNavItem>
-              {ENABLE_REMOTE_CONTROL ? (
+              {ENABLE_REMOTE_CONTROL && hostSupports("getRemoteControlSnapshot") ? (
                 <SettingsNavItem icon={<Smartphone className="icon-lg" />} active={activePage === "remote"} onClick={() => setActivePage("remote")}>
                   {t("settings.remote")}
                 </SettingsNavItem>
@@ -1176,7 +1178,7 @@ export function SettingsView({
                 copyState={copyState}
                 onCopyVersion={copyVersionInfo}
               />
-            ) : activePage === "remote" && ENABLE_REMOTE_CONTROL ? (
+            ) : activePage === "remote" && ENABLE_REMOTE_CONTROL && hostSupports("getRemoteControlSnapshot") ? (
               <SettingsRemotePageContainer />
             ) : activePage === "archive" ? (
               <SettingsArchivePage
@@ -2082,6 +2084,7 @@ function SettingsGeneralPage({
           <SettingsRow title={t("settings.language")}>
             <LanguagePreferenceControl />
           </SettingsRow>
+          {hostSupports("listCodexPets") ? <>
           <SettingsRow
             title={t("settings.codexPet")}
             description={t("settings.petSource", { path: codexPets?.home ?? "~/.wuu/pets" })}
@@ -2145,10 +2148,11 @@ function SettingsGeneralPage({
               {codexPetStatus ? <small className="settings-muted-line settings-error">{codexPetStatus}</small> : null}
             </div>
           ) : null}
+          </> : null}
         </SettingsCard>
       </SettingsSection>
 
-      {ENABLE_VOICE_INPUT ? (
+      {ENABLE_VOICE_INPUT && hostSupports("startSpeechRecognition") ? (
         <VoiceInputSettingsSection
           polishAvailable={Boolean(
             initialized && initialized.status !== "needs_setup",

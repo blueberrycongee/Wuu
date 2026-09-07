@@ -204,6 +204,17 @@ function renderSettings(props: {
 }
 
 describe("SettingsView shell", () => {
+  it("omits native settings and does not request desktop build info on a browser host", async () => {
+    installBuildInfoStub({ core: undefined, desktop: { version: "test", date: "1970-01-01" } });
+    window.wuu.unsupportedMethods = ["getBuildInfo", "listCodexPets", "startSpeechRecognition", "getRemoteControlSnapshot"];
+    renderSettings({ initialized: baseInitialized(), initialPage: "general" });
+    await act(async () => { await Promise.resolve(); });
+    expect(window.wuu.getBuildInfo).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="settings-codex-pet-enabled"]')).toBeNull();
+    expect(container.querySelector('[data-testid="settings-voice-input"]')).toBeNull();
+    expect(container.querySelector('[data-testid="settings-appearance"]')).not.toBeNull();
+  });
+
   it("hides remote control by default and redirects a remote initial page", () => {
     installBuildInfoStub({
       core: undefined,

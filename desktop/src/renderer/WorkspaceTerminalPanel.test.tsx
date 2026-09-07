@@ -449,7 +449,8 @@ describe("WorkspaceTerminalPanel", () => {
     expect(writeManagedProcess).not.toHaveBeenCalled();
   });
 
-  it("streams, writes, resizes, and stops a managed tty without starting a user terminal", async () => {
+  it("keeps managed tty controls working when native terminal creation is unavailable", async () => {
+    window.wuu.unsupportedMethods = ["startTerminalSession", "writeTerminalSession", "resizeTerminalSession", "stopTerminalSession"];
     listManagedProcesses.mockResolvedValue({ processes: [runningProcess] });
     readManagedProcess
       .mockResolvedValueOnce({
@@ -477,6 +478,11 @@ describe("WorkspaceTerminalPanel", () => {
         requestedRun={{ threadID: "thread-1", turnID: "turn-live", requestID: 1 }}
       />,
     );
+
+    const nativeTerminalButton = container.querySelector<HTMLButtonElement>('button[aria-label="新建终端"]');
+    expect(nativeTerminalButton?.disabled).toBe(true);
+    nativeTerminalButton?.click();
+    expect(startTerminalSession).not.toHaveBeenCalled();
 
     await vi.waitFor(() => {
       expect(readManagedProcess).toHaveBeenCalledWith(expect.objectContaining({
