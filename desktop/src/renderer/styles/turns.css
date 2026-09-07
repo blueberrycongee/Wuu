@@ -4,6 +4,34 @@
   --turn-collapsed-focus-ring: var(--focus-ring);
   --user-message-bg-color: var(--wuu-message-user-background, #000);
   --user-message-jump-flash-bg: var(--surface-3);
+  /* Links inside the black outgoing bubble use the light-on-dark link palette
+     so they keep enough contrast instead of falling back to the dark blue
+     meant for light prose surfaces. */
+  --user-message-link-color: var(--wuu-color-link, #60a5fa);
+  --user-message-link-hover-color: var(--wuu-color-link-hover, #79b8ff);
+  /* The inline edit surface mirrors the outgoing bubble (black on white text)
+     and derives its white-on-black chrome from the user message color. */
+  --user-message-edit-border: color-mix(
+    in srgb,
+    var(--wuu-message-user-color, #fff) 16%,
+    transparent
+  );
+  --user-message-edit-border-strong: color-mix(
+    in srgb,
+    var(--wuu-message-user-color, #fff) 55%,
+    transparent
+  );
+  --user-message-edit-hover-bg: color-mix(
+    in srgb,
+    var(--wuu-message-user-color, #fff) 10%,
+    transparent
+  );
+  --user-message-edit-drop-bg: color-mix(
+    in srgb,
+    var(--wuu-message-user-color, #fff) 22%,
+    transparent
+  );
+  --user-message-edit-drop-ring: var(--wuu-message-user-color, #fff);
   --message-copy-bg: rgba(255, 255, 255, 0.72);
   --message-file-bg: rgba(255, 255, 255, 0.82);
   --message-file-fg: var(--wuu-color-text, var(--gray-800));
@@ -566,10 +594,11 @@
 }
 
 /*
- * Draft surface: a noticeably darker background than the conversation,
- * a stronger border, and a soft lift so the eye knows it's actively
- * editing and not just hovering a finished message. The transition makes
- * the drag-over state feel like a deliberate target, not a flash.
+ * Draft surface: mirrors the outgoing bubble's black-and-white palette so
+ * editing feels like working inside the query itself. The light border and
+ * the soft lift are what mark it as an active draft now that the background
+ * no longer differs from the bubble. The transition keeps the drag-over
+ * state feeling like a deliberate target, not a flash.
  */
 .user-message-edit {
   display: grid;
@@ -578,17 +607,17 @@
   justify-self: stretch;
   gap: 8px;
   border-radius: var(--radius-lg);
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
+  background: var(--wuu-message-user-background, var(--user-message-bg-color));
+  border: 1px solid var(--user-message-edit-border);
   padding: 10px 12px;
-  color: var(--ink);
+  color: var(--wuu-message-user-color, #fff);
   transition: background-color var(--motion-base) var(--ease-out), border-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out);
 }
 
 .user-message-edit.user-message-edit-drop-active {
-  border-color: var(--ink);
-  background: var(--surface-3);
-  box-shadow: inset 0 0 0 1px var(--ink-overlay-18);
+  border-color: var(--user-message-edit-border-strong);
+  background: var(--user-message-edit-drop-bg);
+  box-shadow: inset 0 0 0 1px var(--user-message-edit-drop-ring);
 }
 
 .user-message-edit-file-input {
@@ -613,6 +642,22 @@
   margin: 0;
 }
 
+/* File chips in the draft use white-on-black glass instead of the light
+ * prose card so attachments don't glare against the black edit surface. */
+.user-message-edit .message-file {
+  background: var(--user-message-edit-hover-bg);
+  color: var(--wuu-message-user-color, #fff);
+}
+
+.user-message-edit .message-file:hover {
+  background: var(--user-message-edit-drop-bg);
+}
+
+.user-message-edit .message-file-meta {
+  color: inherit;
+  opacity: 0.65;
+}
+
 .user-message-edit-input {
   width: 100%;
   min-width: 0;
@@ -624,7 +669,8 @@
   display: block;
   border: 0;
   background: transparent;
-  color: var(--ink);
+  color: inherit;
+  caret-color: var(--wuu-message-user-color, #fff);
   font: inherit;
   line-height: var(--conversation-reading-line-height);
   outline: none;
@@ -674,14 +720,16 @@
   border-radius: var(--radius-sm);
   border: 0;
   background: transparent;
-  color: var(--ink-muted);
+  color: inherit;
+  opacity: 0.65;
   cursor: pointer;
-  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+  transition: background-color var(--motion-fast) var(--ease-out), opacity var(--motion-fast) var(--ease-out);
 }
 
 .user-message-edit .user-message-edit-attach-button:hover:not(:disabled) {
-  background: var(--surface-3);
-  color: var(--ink);
+  background: var(--user-message-edit-hover-bg);
+  color: inherit;
+  opacity: 1;
 }
 
 .user-message-edit .user-message-edit-attach-button:disabled {
@@ -713,12 +761,13 @@
   border-radius: var(--radius-sm);
   border: 0;
   background: transparent;
-  color: var(--ink-soft);
+  color: inherit;
+  opacity: 0.65;
 }
 
 .user-message-edit-button.secondary:hover:not(:disabled) {
-  background: var(--surface-3);
-  color: var(--ink);
+  background: var(--user-message-edit-hover-bg);
+  opacity: 1;
 }
 
 .user-message-edit-button:focus-visible {
@@ -2910,6 +2959,28 @@
 .rich-link {
   color: var(--rich-link-color);
   text-decoration-line: none;
+}
+
+/* Inside the black outgoing bubble the default link blue (tuned for light
+ * prose) is nearly invisible, so links switch to the light-on-dark palette.
+ * File links drop their inherited-ink color for the same reason and keep the
+ * underline as the click affordance. */
+.user-message .rich-link {
+  color: var(--user-message-link-color);
+}
+
+.user-message .rich-link:hover,
+.user-message .rich-link:focus-visible {
+  color: var(--user-message-link-hover-color);
+}
+
+.user-message .rich-file-link {
+  color: var(--user-message-link-color);
+  text-decoration-color: currentColor;
+}
+
+.user-message .rich-file-link:hover {
+  color: var(--user-message-link-hover-color);
 }
 
 .rich-web-link,

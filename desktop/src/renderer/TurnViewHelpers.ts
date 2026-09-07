@@ -327,7 +327,7 @@ function scrollAnchorIntoContainer(
   });
 }
 
-function attemptJump(turnID: string, itemID: string): boolean {
+function attemptJump(turnID: string, itemID: string, highlight: boolean): boolean {
   if (typeof document === "undefined") {
     return false;
   }
@@ -353,28 +353,39 @@ function attemptJump(turnID: string, itemID: string): boolean {
   if (!container) {
     // Fallback: still flash the target so the user gets feedback, even
     // if we couldn't locate the scroll container for an exact offset.
-    flashJumpTarget(node);
+    if (highlight) {
+      flashJumpTarget(node);
+    }
     return true;
   }
   scrollAnchorIntoContainer(node, container);
-  flashJumpTarget(node);
+  if (highlight) {
+    flashJumpTarget(node);
+  }
   return true;
 }
 
 /**
  * Scroll the user message at `turnID`/`itemID` into the visible area of
  * the conversation scroll surface. Adds a short highlight pulse to the
- * target so the jump is unmistakable. Safe to call before the anchor is
- * mounted — retries a few frames before giving up.
+ * target so the jump is unmistakable, unless `highlight: false` is passed
+ * (used when opening the inline editor, where the bubble→editor swap must
+ * not replay the pulse). Safe to call before the anchor is mounted —
+ * retries a few frames before giving up.
  */
-export function scrollToUserMessage(turnID: string, itemID: string): void {
+export function scrollToUserMessage(
+  turnID: string,
+  itemID: string,
+  options?: { highlight?: boolean },
+): void {
+  const highlight = options?.highlight ?? true;
   if (typeof window === "undefined") {
     return;
   }
   requestConversationTurnReveal(turnID);
   let attemptIndex = 0;
   const tryOnce = (): void => {
-    if (attemptJump(turnID, itemID)) {
+    if (attemptJump(turnID, itemID, highlight)) {
       return;
     }
     const nextDelay = JUMP_RETRY_DELAYS_MS[attemptIndex + 1];

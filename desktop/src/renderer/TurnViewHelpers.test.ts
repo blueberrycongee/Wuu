@@ -167,6 +167,21 @@ describe("scrollToUserMessage", () => {
     expect(node.classList.contains("user-message-jump-flash")).toBe(true);
   });
 
+  it("scrolls without the highlight pulse when highlight is disabled", async () => {
+    const { container, node } = mountAnchor({
+      variant: "scroll-region",
+      containerHeight: 800,
+      containerScrollHeight: 1800,
+      nodeOffsetTop: 600,
+    });
+
+    scrollToUserMessage("turn-1", "item-1", { highlight: false });
+    await flushTimers();
+
+    expect(container.scrollTop).toBe(600 - 64);
+    expect(node.classList.contains("user-message-jump-flash")).toBe(false);
+  });
+
   it("also scrolls the split-pane container when split mode is active", async () => {
     const { container, node } = mountAnchor({
       variant: "conversation-split-body",

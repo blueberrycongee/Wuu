@@ -385,6 +385,7 @@ describe("createConversationHistoryActions", () => {
     expect(TurnViewHelpers.scrollToUserMessage).toHaveBeenCalledWith(
       "turn-1",
       "item-1",
+      { highlight: false },
     );
 
     harness.actions.cancelEditingThreadMessage();

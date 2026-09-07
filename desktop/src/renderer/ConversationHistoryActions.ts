@@ -303,10 +303,12 @@ deps.rememberConversationScrollForEdit();
     // Bring the editor into view deliberately — `scrollToUserMessage` is the
     // same helper the query-history popover uses, so the jump matches the
     // existing scroll contract (smooth scroll, 64px headroom, no surprise
-    // auto-follow disarms). The helper retries on a short cadence, which
-    // covers the case where the editor hasn't mounted yet on the first
-    // synchronous attempt.
-    scrollToUserMessage(turnID, item.id);
+    // auto-follow disarms). The highlight pulse is skipped here: replaying
+    // the light flash over the bubble as it swaps into the black editor
+    // reads as a glitch instead of jump feedback. The helper retries on a
+    // short cadence, which covers the case where the editor hasn't mounted
+    // yet on the first synchronous attempt.
+    scrollToUserMessage(turnID, item.id, { highlight: false });
   }
 
   function cancelEditingThreadMessage(): void {

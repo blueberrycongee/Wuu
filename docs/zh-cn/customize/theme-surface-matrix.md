@@ -24,7 +24,7 @@ Wuu 桌面端把界面外观收敛为一组公开的 CSS 自定义属性（desig
 ## Token 一览
 
 合同共定义 **82 个公开 token**（其中 **7 个**
-旧名称兼容别名）与 **16 个语法高亮 token**；当前 **74 个**
+旧名称兼容别名）与 **16 个语法高亮 token**；当前 **56 个**
 已接入宿主界面。「已接入」表示宿主样式已在引用该 token，覆盖会立即生效；
 「未接入（预留）」表示 token 已声明但宿主尚未引用，覆盖暂不改变任何界面。
 
@@ -68,24 +68,24 @@ Wuu 桌面端把界面外观收敛为一组公开的 CSS 自定义属性（desig
 | `--wuu-message-user-color` | 用户消息文字颜色 | 已接入 |
 | `--wuu-nav-item-hover-background` | 导航项悬停背景 | 已接入 |
 | `--wuu-nav-item-hover-ring` | 导航项悬停描边 | 已接入 |
-| `--wuu-skill-mark-browser-a` | 浏览器技能标记渐变起始色 | 已接入 |
-| `--wuu-skill-mark-browser-b` | 浏览器技能标记渐变中段色 | 已接入 |
-| `--wuu-skill-mark-browser-c` | 浏览器技能标记渐变终点色 | 已接入 |
-| `--wuu-skill-mark-commit-a` | 提交类技能标记渐变起始色 | 已接入 |
-| `--wuu-skill-mark-commit-b` | 提交类技能标记渐变中段色 | 已接入 |
-| `--wuu-skill-mark-commit-c` | 提交类技能标记渐变终点色 | 已接入 |
-| `--wuu-skill-mark-presentation-a` | 演示类技能标记渐变起始色 | 已接入 |
-| `--wuu-skill-mark-presentation-b` | 演示类技能标记渐变中段色 | 已接入 |
-| `--wuu-skill-mark-presentation-c` | 演示类技能标记渐变终点色 | 已接入 |
-| `--wuu-skill-mark-creator-a` | 技能创作器标记渐变起始色 | 已接入 |
-| `--wuu-skill-mark-creator-b` | 技能创作器标记渐变中段色 | 已接入 |
-| `--wuu-skill-mark-creator-c` | 技能创作器标记渐变终点色 | 已接入 |
-| `--wuu-skill-mark-plugin-a` | 插件类标记渐变起始色 | 已接入 |
-| `--wuu-skill-mark-plugin-b` | 插件类标记渐变中段色 | 已接入 |
-| `--wuu-skill-mark-plugin-c` | 插件类标记渐变终点色 | 已接入 |
-| `--wuu-skill-mark-default-a` | 默认技能标记渐变起始色 | 已接入 |
-| `--wuu-skill-mark-default-b` | 默认技能标记渐变中段色 | 已接入 |
-| `--wuu-skill-mark-default-c` | 默认技能标记渐变终点色 | 已接入 |
+| `--wuu-skill-mark-browser-a` | 浏览器技能标记渐变起始色 | 未接入（预留） |
+| `--wuu-skill-mark-browser-b` | 浏览器技能标记渐变中段色 | 未接入（预留） |
+| `--wuu-skill-mark-browser-c` | 浏览器技能标记渐变终点色 | 未接入（预留） |
+| `--wuu-skill-mark-commit-a` | 提交类技能标记渐变起始色 | 未接入（预留） |
+| `--wuu-skill-mark-commit-b` | 提交类技能标记渐变中段色 | 未接入（预留） |
+| `--wuu-skill-mark-commit-c` | 提交类技能标记渐变终点色 | 未接入（预留） |
+| `--wuu-skill-mark-presentation-a` | 演示类技能标记渐变起始色 | 未接入（预留） |
+| `--wuu-skill-mark-presentation-b` | 演示类技能标记渐变中段色 | 未接入（预留） |
+| `--wuu-skill-mark-presentation-c` | 演示类技能标记渐变终点色 | 未接入（预留） |
+| `--wuu-skill-mark-creator-a` | 技能创作器标记渐变起始色 | 未接入（预留） |
+| `--wuu-skill-mark-creator-b` | 技能创作器标记渐变中段色 | 未接入（预留） |
+| `--wuu-skill-mark-creator-c` | 技能创作器标记渐变终点色 | 未接入（预留） |
+| `--wuu-skill-mark-plugin-a` | 插件类标记渐变起始色 | 未接入（预留） |
+| `--wuu-skill-mark-plugin-b` | 插件类标记渐变中段色 | 未接入（预留） |
+| `--wuu-skill-mark-plugin-c` | 插件类标记渐变终点色 | 未接入（预留） |
+| `--wuu-skill-mark-default-a` | 默认技能标记渐变起始色 | 未接入（预留） |
+| `--wuu-skill-mark-default-b` | 默认技能标记渐变中段色 | 未接入（预留） |
+| `--wuu-skill-mark-default-c` | 默认技能标记渐变终点色 | 未接入（预留） |
 
 ### 排版
 
