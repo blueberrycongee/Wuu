@@ -18,6 +18,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agentcontrol"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/channels"
+	"github.com/blueberrycongee/wuu/internal/codemode"
 	"github.com/blueberrycongee/wuu/internal/mcp"
 	"github.com/blueberrycongee/wuu/internal/modelprofile"
 	proc "github.com/blueberrycongee/wuu/internal/process"
@@ -63,6 +64,9 @@ type Toolkit struct {
 	boundary                WorkspaceBoundary
 	permissionRequestHook   func(context.Context, *Toolkit, ToolInfo, providers.ToolCall) error
 	authorizer              Authorizer
+	codeModeMu              sync.RWMutex
+	codeMode                *codemode.Service
+	codeModeOnly            bool
 	// mcpManager, when set, exposes MCP server tools alongside built-in
 	// tools. MCP tools are appended after built-ins to preserve prompt
 	// cache stability (the built-in prefix stays constant).
@@ -269,6 +273,13 @@ func (t *Toolkit) CloneForRoot(rootDir string) (*Toolkit, error) {
 	clone.toolSearchEnabled = t.toolSearchEnabled
 	clone.nativeDeferredDiscovery = t.nativeDeferredDiscovery
 	t.exposureMu.RUnlock()
+	// The code-mode service owns one host connection per Wuu session. Thread
+	// clones share the pointer so every conversation in the workspace keeps
+	// using the same runtime; per-thread mutable state stays independent.
+	t.codeModeMu.RLock()
+	clone.codeMode = t.codeMode
+	clone.codeModeOnly = t.codeModeOnly
+	t.codeModeMu.RUnlock()
 	t.activeProfileMu.RLock()
 	clone.activeProfile = t.activeProfile
 	clone.activeSurface = cloneSurface(t.activeSurface)
@@ -340,7 +351,49 @@ func (t *Toolkit) rebuildRegistry() {
 			registered = append(registered, NewChatSendTool(e))
 		}
 	}
+	// Code-mode entry tools appear only when a host service is attached to the
+	// session. They stay out of the registry otherwise, so Direct mode never
+	// advertises a runtime it cannot reach.
+	t.codeModeMu.RLock()
+	hasCodeMode := t.codeMode != nil
+	t.codeModeMu.RUnlock()
+	if hasCodeMode {
+		registered = append(registered, NewCodeModeExecTool(t), NewCodeModeWaitTool(t))
+	}
 	t.registry = NewRegistry(registered...)
+}
+
+// SetCodeModeService attaches the session-scoped code-mode runtime and makes
+// its exec/wait entry tools visible to the model. Setting nil removes them.
+func (t *Toolkit) SetCodeModeService(service *codemode.Service) {
+	t.codeModeMu.Lock()
+	t.codeMode = service
+	t.codeModeMu.Unlock()
+	t.rebuildRegistry()
+}
+
+// CodeModeService returns the session's code-mode runtime, if enabled.
+func (t *Toolkit) CodeModeService() *codemode.Service {
+	t.codeModeMu.RLock()
+	defer t.codeModeMu.RUnlock()
+	return t.codeMode
+}
+
+// SetCodeModeOnly switches the model-visible surface between the full tool
+// list and only the code-mode exec/wait entries. Underlying tools are hidden,
+// not disabled: they stay executable because live cells invoke them through
+// the nested execution pipeline.
+func (t *Toolkit) SetCodeModeOnly(only bool) {
+	t.codeModeMu.Lock()
+	t.codeModeOnly = only
+	t.codeModeMu.Unlock()
+}
+
+// CodeModeOnly reports whether only the code-mode entry tools are visible.
+func (t *Toolkit) CodeModeOnly() bool {
+	t.codeModeMu.RLock()
+	defer t.codeModeMu.RUnlock()
+	return t.codeModeOnly
 }
 
 // ── Dependency setters ─────────────────────────────────────────────
@@ -669,6 +722,9 @@ func (t *Toolkit) isToolDisabled(name string) bool {
 // callers that have not migrated yet (replay, debugging, internal
 // admin tools) keep working.
 func (t *Toolkit) Definitions() []providers.ToolDefinition {
+	if t.CodeModeOnly() {
+		return t.codeModeEntryDefinitions()
+	}
 	t.refreshMCPToolSnapshot(false)
 	all := t.registry.Definitions()
 	surface := t.activeCompiledSurface()
@@ -1269,7 +1325,12 @@ func (t *Toolkit) ToolMetadata(call providers.ToolCall) (agent.ToolMetadata, boo
 		return agent.ToolMetadata{}, false
 	}
 	info := buildToolInfoForArgs(tool, t.toolExposure(call.Name), call.Arguments)
+	orchestrator := false
+	if marker, ok := tool.(OrchestratorTool); ok {
+		orchestrator = marker.IsOrchestrator()
+	}
 	return agent.ToolMetadata{
+		Orchestrator:    orchestrator,
 		ReadOnly:        info.ReadOnly,
 		ConcurrencySafe: info.ConcurrencySafe,
 		Destructive:     info.Destructive,

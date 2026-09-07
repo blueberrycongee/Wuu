@@ -155,7 +155,9 @@ func (t *Toolkit) executeKnownToolResultWithRepeatPolicy(ctx context.Context, ca
 
 	var result toolresult.Result
 	var err error
-	if richTool, ok := tool.(RichTool); ok {
+	if callAware, ok := tool.(CallAwareRichTool); ok {
+		result, err = callAware.ExecuteResultCall(ctx, call)
+	} else if richTool, ok := tool.(RichTool); ok {
 		result, err = richTool.ExecuteResult(ctx, call.Arguments)
 	} else {
 		var text string

@@ -45,6 +45,22 @@ type RichTool interface {
 	ExecuteResult(ctx context.Context, args string) (toolresult.Result, error)
 }
 
+// CallAwareRichTool is a RichTool that needs the full model tool call, in
+// particular its provider-level call ID. Code-mode exec uses the call ID as
+// the runtime's tool_call_id, which ties the cell to the model step that
+// requested it. Toolkit prefers ExecuteResultCall whenever it is available.
+type CallAwareRichTool interface {
+	ExecuteResultCall(ctx context.Context, call providers.ToolCall) (toolresult.Result, error)
+}
+
+// OrchestratorTool marks tools that coordinate nested child tool calls without
+// performing leaf operations themselves. The turn runtime gives them a nested
+// executor and does not hold a leaf execution slot while they run, so a
+// yielded orchestrator (a live code-mode cell) never starves leaf scheduling.
+type OrchestratorTool interface {
+	IsOrchestrator() bool
+}
+
 // ToolClassification describes the expected behavior of one concrete tool
 // invocation. Static Tool methods are the fallback; tools with argument-driven
 // behavior can implement InputClassifyingTool.

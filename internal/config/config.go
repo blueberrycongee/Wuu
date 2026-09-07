@@ -112,6 +112,52 @@ type Config struct {
 	// Engines configures external agent engines (codex, claude) in the
 	// desktop settings. Nil means auto-detection from the CLI binaries.
 	Engines *EnginesConfig `json:"engines,omitempty"`
+	// CodeMode configures the isolated code-mode runtime. The default
+	// invocation mode is CodeModeEnabled; an empty Host leaves the runtime
+	// unconfigured and the session runs with direct tools only.
+	CodeMode CodeModeConfig `json:"code_mode,omitempty"`
+}
+
+// CodeModeInvocationMode selects how a session invokes tools.
+type CodeModeInvocationMode string
+
+const (
+	// CodeModeDirect runs the classic model tool loop only. The code-mode
+	// runtime is not offered to the model.
+	CodeModeDirect CodeModeInvocationMode = "direct"
+	// CodeModeEnabled offers the code-mode exec/wait entry tools alongside
+	// the ordinary tool surface.
+	CodeModeEnabled CodeModeInvocationMode = "code"
+	// CodeModeOnly hides the ordinary top-level tools from the model while
+	// keeping them executable for nested calls from live code-mode cells.
+	CodeModeOnly CodeModeInvocationMode = "code_only"
+)
+
+// CodeModeConfig configures the isolated code-mode runtime.
+type CodeModeConfig struct {
+	// Host is the absolute path to the wuu-code-mode-host executable. The
+	// launcher rejects relative paths and never searches for a model CLI.
+	Host string `json:"host,omitempty"`
+	// Mode selects the invocation mode: "direct", "code" (default), or
+	// "code_only".
+	Mode string `json:"mode,omitempty"`
+	// DefaultYieldMS is applied to exec calls that leave yield_time_ms unset.
+	DefaultYieldMS uint64 `json:"default_yield_ms,omitempty"`
+	// MaxHeapSizeBytes caps one cell's V8 heap. Zero leaves the host default.
+	MaxHeapSizeBytes uint64 `json:"max_heap_size_bytes,omitempty"`
+}
+
+// InvocationMode normalizes Mode. Unknown values fall back to code mode,
+// which is the product default.
+func (c CodeModeConfig) InvocationMode() CodeModeInvocationMode {
+	switch strings.ToLower(strings.TrimSpace(c.Mode)) {
+	case "direct":
+		return CodeModeDirect
+	case "code_only", "code-mode-only", "code_mode_only":
+		return CodeModeOnly
+	default:
+		return CodeModeEnabled
+	}
 }
 
 // InstructionFilesConfig overrides project and user instruction discovery.

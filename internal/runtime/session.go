@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/blueberrycongee/wuu/internal/agentthread"
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/claudeengine"
+	"github.com/blueberrycongee/wuu/internal/codemode"
 	"github.com/blueberrycongee/wuu/internal/codexengine"
 	"github.com/blueberrycongee/wuu/internal/config"
 	wuucontext "github.com/blueberrycongee/wuu/internal/context"
@@ -129,14 +131,19 @@ type Session struct {
 	UserQuestions     *pluginhost.UserQuestionBroker
 	// DriverProfile records the driver profile bound at construction, for
 	// diagnostics; the driver itself lives on the stream runner template.
-	DriverProfile            string
-	PluginSessionRouter      *PluginSessionRouter
-	systemPrompts            *agent.SystemPromptAssembler
-	InstructionFiles         []instructions.File
-	AgentControl             *agentcontrol.AgentControl
-	ProcessManager           *process.Manager
-	Toolkit                  *tools.Toolkit
-	ActivityRegistry         *activity.Registry
+	DriverProfile       string
+	PluginSessionRouter *PluginSessionRouter
+	systemPrompts       *agent.SystemPromptAssembler
+	InstructionFiles    []instructions.File
+	AgentControl        *agentcontrol.AgentControl
+	ProcessManager      *process.Manager
+	Toolkit             *tools.Toolkit
+	ActivityRegistry    *activity.Registry
+	// CodeMode is the session-scoped code-mode runtime. One host connection
+	// serves every thread of this session; cells are owned per turn and
+	// terminate when their owning turn ends.
+	CodeMode                 *codemode.Service
+	codeModeStop             context.CancelFunc
 	WorkerClient             providers.StreamClient
 	ModelRoles               modelroles.Set
 	ModelBudget              modelbudget.Budget
@@ -224,6 +231,7 @@ func (s *Session) cloneForThreadModel() *Session {
 		AgentControl:                s.AgentControl,
 		ProcessManager:              s.ProcessManager,
 		Toolkit:                     s.Toolkit,
+		CodeMode:                    s.CodeMode,
 		ActivityRegistry:            s.ActivityRegistry,
 		WorkerClient:                s.WorkerClient,
 		ModelRoles:                  s.ModelRoles,
@@ -477,6 +485,66 @@ func NewSession(opts Options) (*Session, error) {
 		connectMCPServers(cfg, activePlugins, toolkit)
 	}
 
+	// Code Mode is on by default. The service owns one host connection for the
+	// whole workspace session; every thread toolkit shares it through clones.
+	// Direct mode or a missing host path leaves the entry tools unregistered,
+	// so the model falls back to the ordinary tool surface.
+	var codeModeService *codemode.Service
+	codeModeLife, codeModeStop := context.WithCancel(context.Background())
+	// The lifetime context must not leak when the constructor bails out before
+	// the session takes ownership of it.
+	defer func() {
+		if codeModeService == nil {
+			codeModeStop()
+		}
+	}()
+	if !opts.NoTools && toolkit != nil && cfg.CodeMode.InvocationMode() != config.CodeModeDirect {
+		executable := strings.TrimSpace(cfg.CodeMode.Host)
+		if executable == "" {
+			executable = strings.TrimSpace(os.Getenv("WUU_CODE_MODE_HOST"))
+		}
+		if executable == "" {
+			// Packaged desktop layouts keep the runtime next to wuu-core in
+			// the app's bin directory. This is an explicit, absolute,
+			// pinned-binary lookup — never a PATH search.
+			if self, err := os.Executable(); err == nil {
+				candidate := filepath.Join(filepath.Dir(self), "wuu-code-mode-host")
+				if runtime.GOOS == "windows" {
+					candidate += ".exe"
+				}
+				if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
+					executable = candidate
+				}
+			}
+		}
+		if executable != "" {
+			var heapLimit *uint64
+			if cfg.CodeMode.MaxHeapSizeBytes > 0 {
+				value := cfg.CodeMode.MaxHeapSizeBytes
+				heapLimit = &value
+			}
+			service, serviceErr := codemode.NewService(codemode.ServiceConfig{
+				Executable:     executable,
+				SessionID:      workspaceID,
+				Limits:         codemode.CellLimits{MaxHeapSizeBytes: heapLimit},
+				DefaultYieldMS: cfg.CodeMode.DefaultYieldMS,
+				Stderr:         os.Stderr,
+				Notify: func(ctx context.Context, callID, cellID, text string) error {
+					fmt.Fprintf(os.Stderr, "code-mode notification (cell %s): %s\n", cellID, text)
+					return nil
+				},
+				Life: codeModeLife,
+			})
+			if serviceErr == nil {
+				codeModeService = service
+				toolkit.SetCodeModeService(service)
+				if cfg.CodeMode.InvocationMode() == config.CodeModeOnly {
+					toolkit.SetCodeModeOnly(true)
+				}
+			}
+		}
+	}
+
 	instructionFiles := discoverInstructions(rootDir, opts.HomeDir, cfg.Instructions)
 	// Freeze the environment date once at session start. Every system-prompt
 	// build in this session (base, worker, per-thread rebuild) reuses this
@@ -691,6 +759,8 @@ func NewSession(opts Options) (*Session, error) {
 		AgentControl:                agentControl,
 		ProcessManager:              processMgr,
 		Toolkit:                     toolkit,
+		CodeMode:                    codeModeService,
+		codeModeStop:                codeModeStop,
 		ActivityRegistry:            activityRegistry,
 		WorkerClient:                workerClient,
 		ModelRoles:                  roleSelections,
@@ -1879,6 +1949,15 @@ func (s *Session) Cleanup() (process.CleanupResult, error) {
 	if s.UserQuestions != nil {
 		s.UserQuestions.Close()
 		s.UserQuestions = nil
+	}
+	if s.codeModeStop != nil {
+		// Killing the process is the termination authority for stuck cells.
+		s.codeModeStop()
+		s.codeModeStop = nil
+	}
+	if s.CodeMode != nil {
+		cleanupErr = errors.Join(cleanupErr, s.CodeMode.Close())
+		s.CodeMode = nil
 	}
 	if s.PluginHost != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
