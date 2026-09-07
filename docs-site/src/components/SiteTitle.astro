@@ -1,0 +1,11 @@
+---
+const chinese = Astro.url.pathname.split("/").includes("zh-cn")
+const base = import.meta.env.BASE_URL.replace(/\/$/, "")
+---
+<div class="docs-brand">
+  <a class="site-title" href={`${base}/${chinese ? "zh/" : ""}`} aria-label={chinese ? "Wuu 官网" : "Wuu home"}>
+    <img src={`${base}/site-assets/brand/wuu.svg`} width="36" height="36" alt="" />
+    <span translate="no">wuu</span>
+  </a>
+  <a class="docs-brand-section" href={`${base}/${chinese ? "zh-cn" : "en"}/`}>{chinese ? "文档" : "Docs"}</a>
+</div>

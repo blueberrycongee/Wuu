@@ -54,6 +54,8 @@ export default defineConfig({
       routeMiddleware: "./src/route-data.ts",
       components: {
         Head: "./src/components/Head.astro",
+        SiteTitle: "./src/components/SiteTitle.astro",
+        PageTitle: "./src/components/PageTitle.astro",
         LanguageSelect: "./src/components/LanguageMenu.astro",
         ThemeSelect: "./src/components/ThemeMenu.astro",
       },
@@ -71,7 +73,7 @@ export default defineConfig({
       expressiveCode: {
         themes: ["github-light", "github-dark"],
       },
-      favicon: "/favicon.png",
+      favicon: "/site-assets/brand/wuu.svg",
       pagination: false,
       credits: false,
     }),

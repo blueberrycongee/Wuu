@@ -7,11 +7,13 @@ on:
     paths:
       - "docs/**"
       - "docs-site/**"
+      - "landing/**"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
       - "docs-site/**"
+      - "landing/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 

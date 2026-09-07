@@ -22,11 +22,11 @@ const ASSETS = {
   appIcon: path.resolve(__dirname, "../../assets/app-icon-256.png"),
   desktop: path.resolve(__dirname, "../../landing/assets/desktop.png"),
   desktopApp: path.resolve(__dirname, "../../landing/assets/desktop-app.png"),
-  mascotFace: path.resolve(__dirname, "../../desktop/src/renderer/assets/mascot-face.png"),
-  scout: path.resolve(__dirname, "../../landing/assets/mascot/wuu-mascot-concept-30.png"),
-  forge: path.resolve(__dirname, "../../landing/assets/mascot/wuu-mascot-concept-29.png"),
-  sage: path.resolve(__dirname, "../../landing/assets/mascot/wuu-mascot-concept-28.png"),
-  wave: path.resolve(__dirname, "../../landing/assets/mascot/wuu-mascot-concept-07.png"),
+  mascotFace: path.resolve(__dirname, "../../landing/assets/brand/wuu.png"),
+  scout: path.resolve(__dirname, "../../landing/assets/brand/wuu.png"),
+  forge: path.resolve(__dirname, "../../landing/assets/brand/wuu.png"),
+  sage: path.resolve(__dirname, "../../landing/assets/brand/wuu.png"),
+  wave: path.resolve(__dirname, "../../landing/assets/brand/wuu.png"),
 };
 
 function makeShadow(opacity = 0.16, blur = 4, offset = 2) {

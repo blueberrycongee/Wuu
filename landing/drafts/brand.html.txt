@@ -4,10 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f0eee6" />
-    <title>Wuu — Make room for your next idea</title>
+    <title>Wuu — Brand assets</title>
     <meta
       name="description"
-      content="An open-source workspace for coding with AI. Bring your models, work in your own projects, and take an idea all the way to working code."
+      content="Download the Wuu mascot and brand photography."
     />
     <link rel="icon" href="assets/brand/wuu.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
@@ -29,7 +29,7 @@
         <nav aria-label="Main navigation">
           <a
             class="language-switch"
-            href="zh.html"
+            href="zh-brand.html"
             lang="zh-CN"
             hreflang="zh-CN"
             aria-label="切换到当前页面的中文版"
@@ -124,84 +124,81 @@
     </div>
     <main id="main" class="wrap">
       <section class="introduction">
-        <h1>Make room for<br />your next idea</h1>
-        <p>
-          An open-source workspace for coding with AI. Bring your models, work
-          in your own projects, and take an idea all the way to working code.
-        </p>
+        <h1>Brand resources.</h1>
+        <p>The Wuu mascot and imagery,<br />ready for your story.</p>
       </section>
-      <section
-        class="photo-feature"
-        id="download"
-        aria-labelledby="photo-title"
-      >
-        <img
-          class="landscape"
-          src="assets/brand/dusk.webp"
-          alt="A quiet coastline with distant lights at dusk"
-          width="1086"
-          height="476"
-          fetchpriority="high"
-        />
-        <div class="photo-content">
+      <section class="identity">
+        <div class="mascot-canvas">
           <img
-            class="mascot"
             src="assets/brand/wuu.svg"
-            width="90"
-            height="90"
-            alt="Wuu mascot"
+            width="180"
+            height="180"
+            alt="The Wuu mascot with two upright eyes"
           />
-          <h2 id="photo-title">Meet Wuu</h2>
+        </div>
+        <div class="identity-copy">
+          <h2>Wuu mascot</h2>
+          <p>Keep its shape and proportions.<br />Give it a little room.</p>
+          <div class="asset-links">
+            <a class="button" href="assets/brand/wuu.svg" download
+              >Download SVG <span>↓</span></a
+            ><a class="text-link" href="assets/brand/wuu.png" download
+              >Transparent PNG <span>↓</span></a
+            >
+          </div>
           <a
-            class="button button-light"
-            href="https://github.com/blueberrycongee/wuu/releases/latest"
-            >Download for Mac <span>↗</span></a
+            class="license-link"
+            href="assets/brand/LICENSE-blobatar.txt"
+            download
+            >Based on blobatar. Include the MIT license when sharing.</a
           >
         </div>
       </section>
-      <section class="product-section" id="workspace">
-        <h2 class="section-label">Your work, your way</h2>
-        <div class="product-grid">
-          <article>
-            <h3>One place to build</h3>
-            <p>
-              Conversations, files, diffs, and a terminal. Stay with your idea,
-              from the first question to the final change.
-            </p>
-            <a class="text-link" href="features.html#workspace"
-              >Explore the workspace <span>↗</span></a
-            >
-          </article>
-          <article>
-            <h3>Bring your models</h3>
-            <p>
-              Connect Anthropic or any OpenAI-compatible service. Choose the
-              model for the task, with your own credentials.
-            </p>
-            <a class="text-link" href="features.html#models"
-              >Connect a model <span>↗</span></a
-            >
-          </article>
-          <article id="extensions">
-            <h3>Make it your own</h3>
-            <p>
-              Add tools, skills, views, and themes. Shape your workspace with
-              extensions that fit the way you work.
-            </p>
-            <a class="text-link" href="features.html#extensions"
-              >Explore extensions <span>↗</span></a
-            >
-          </article>
+      <section class="photography">
+        <div class="gallery-heading">
+          <h2>Brand photography</h2>
+          <p>Original coastal photography, reinterpreted with AI.</p>
         </div>
-      </section>
-      <section class="resources">
-        <h2>Built in the open<br />Ready for your ideas</h2>
-        <div class="resource-links">
-          <a href="https://blueberrycongee.github.io/wuu/en/getting-started/"
-            >Getting started<span>↗</span></a
-          ><a href="https://github.com/blueberrycongee/wuu"
-            >Source code<span>↗</span></a
-          >
+        <div class="photo-grid">
+          <figure>
+            <img
+              src="assets/brand/shore.webp"
+              alt="Yellow steps leading to turquoise water"
+              width="1086"
+              height="477"
+              loading="lazy"
+            />
+            <figcaption>
+              <span>Coast</span
+              ><a href="assets/brand/shore.webp" download>Download ↓</a>
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src="assets/brand/dusk.webp"
+              alt="The coastline at blue hour"
+              width="1086"
+              height="476"
+              loading="lazy"
+            />
+            <figcaption>
+              <span>Dusk</span
+              ><a href="assets/brand/dusk.webp" download>Download ↓</a>
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src="assets/brand/meadow.webp"
+              alt="Wind moving through grass beneath a mountain"
+              width="1086"
+              height="477"
+              loading="lazy"
+            />
+            <figcaption>
+              <span>Meadow</span
+              ><a href="assets/brand/meadow.webp" download>Download ↓</a>
+            </figcaption>
+          </figure>
         </div>
       </section>
     </main>
@@ -211,6 +208,7 @@
       >
       <nav aria-label="Footer">
         <a href="features.html">Product</a><a href="blog.html">Blog</a
+        ><a href="brand.html">Brand assets</a
         ><a href="https://github.com/blueberrycongee/wuu">GitHub ↗</a>
       </nav>
     </footer>

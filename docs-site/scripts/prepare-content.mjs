@@ -101,3 +101,17 @@ for (const directory of assetDirectories) {
 }
 
 console.log(`Prepared ${pages.length} documentation pages from docs/site.json`)
+
+// Keep the standalone landing page and the documentation host on one asset set.
+const landingRoot = path.join(repositoryRoot, "landing")
+const landingPublic = path.join(siteRoot, "public/site-assets")
+await rm(landingPublic, { recursive: true, force: true })
+await mkdir(landingPublic, { recursive: true })
+for (const directory of ["brand", "logos"]) {
+  await cp(path.join(landingRoot, "assets", directory), path.join(landingPublic, directory), { recursive: true })
+}
+await cp(path.join(landingRoot, "styles.css"), path.join(landingPublic, "styles.css"))
+
+await cp(path.join(landingRoot, "mascot-motion.mjs"), path.join(landingPublic, "mascot-motion.mjs"))
+
+await cp(path.join(landingRoot, "site-nav.mjs"), path.join(landingPublic, "site-nav.mjs"))
