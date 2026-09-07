@@ -61,7 +61,8 @@ type ToolSurfaceFreezer interface {
 // Behavior:
 //   - Loops up to cfg.MaxSteps rounds (0 = unlimited).
 //   - On context-overflow errors from the step, calls cfg.Compact
-//     once and re-issues the step. Subsequent overflows propagate.
+//     once and re-issues the step. Consecutive overflows propagate;
+//     fresh context windows allow recovery again after a successful step.
 //   - Output truncation is treated as a completed model response with
 //     FinishReason=length. The caller/UI can surface that reason without
 //     classifying the turn as a user interruption or transport failure.
@@ -151,7 +152,8 @@ func RunToolLoop(
 	var (
 		totalIn, totalOut, totalCacheCreation, totalCacheRead int
 		// Reactive auto-compact (overflow recovery) runs at most once
-		// per Run; if a single compaction isn't enough, surfacing the
+		// between successful steps for fresh windows (once per Run for
+		// legacy compaction); if a single compaction isn't enough, surfacing the
 		// error is more honest than silently looping. Proactive compact
 		// runs before provider requests, including mid-turn continuation
 		// requests after completed tool results. A failed or no-op
@@ -209,6 +211,24 @@ func RunToolLoop(
 	if state := cfg.RetainedRequestContext; state.validFor(messages) {
 		pendingRetainedContext = state.Messages
 	}
+	// A replacement remains speculative until request validation and durable
+	// commit succeed. Restore it on every early return, before the retained
+	// context defer constructs the next run's state.
+	var rollbackFreshContext func()
+	defer func() {
+		if rollbackFreshContext != nil {
+			rollbackFreshContext()
+			loopResult.NewMessages = newMessagesForReturn(messages, startLen, historyRewritten)
+			loopResult.HistoryRewritten = historyRewritten
+			if runErr != nil {
+				emitCompactAttempt(cfg, CompactAttemptInfo{
+					Reason: CompactReasonNewContext, Status: CompactAttemptFailed,
+					TokensBefore:   estimateFreshContextMessages(messages),
+					MessagesBefore: compactNoticeMessageCount(messages), Error: runErr.Error(),
+				})
+			}
+		}
+	}()
 	threshold := proactiveCompactThreshold(cfg)
 	// resetTranscript re-bases the live history and the provider transcript
 	// after a history rewrite (compaction, tool-call repair, post-tool
@@ -426,6 +446,20 @@ func RunToolLoop(
 			if freshErr == nil && compactChanged(messages, replacement) {
 				freshRollbackMessages = providers.CloneChatMessages(messages)
 				freshRollbackProviderMessages = providers.CloneChatMessages(providerMessages)
+				rollbackRetainedContext := retainedContext
+				rollbackPendingContext := pendingRetainedContext
+				rollbackSentContext := sentRequestContext
+				rollbackFreshContext = func() {
+					messages = freshRollbackMessages
+					providerMessages = freshRollbackProviderMessages
+					historyRewritten = freshRollbackHistoryRewritten
+					retainedContext = append(append([]RetainedContextMessage(nil), rollbackRetainedContext...), rollbackPendingContext...)
+					pendingRetainedContext = rollbackPendingContext
+					sentRequestContext = rollbackSentContext
+					usage.Reset()
+					usage.SetAdjustment(UsageAdjustmentRequestShapeReset)
+					usage.RecordPendingMessages(messages)
+				}
 				resetTranscript(replacement)
 				newContextRequested = false
 				lowBudgetReminderSent = false
@@ -577,33 +611,13 @@ func RunToolLoop(
 				targetTokens = FreshContextTargetTokens
 			}
 			if estimated := estimateOutboundRequestTokens(req); estimated > targetTokens {
-				messages = freshRollbackMessages
-				providerMessages = freshRollbackProviderMessages
-				historyRewritten = freshRollbackHistoryRewritten
-				usage.Reset()
-				usage.SetAdjustment(UsageAdjustmentRequestShapeReset)
-				usage.RecordPendingMessages(messages)
 				err := fmt.Errorf("%w after request transforms: estimated=%d target=%d", ErrFreshContextTooLarge, estimated, targetTokens)
-				emitCompactAttempt(cfg, CompactAttemptInfo{
-					Reason: CompactReasonNewContext, Status: CompactAttemptFailed,
-					TokensBefore: estimateFreshContextMessages(messages), MessagesBefore: compactNoticeMessageCount(messages), Error: err.Error(),
-				})
 				return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), err
 			}
 			rebuildCommittedRequest := false
 			if cfg.AcceptFreshContext != nil {
 				committed, head, err := cfg.AcceptFreshContext(ctx, providers.CloneChatMessages(messages), historyArchiveHeadSeq)
 				if err != nil {
-					messages = freshRollbackMessages
-					providerMessages = freshRollbackProviderMessages
-					historyRewritten = freshRollbackHistoryRewritten
-					usage.Reset()
-					usage.SetAdjustment(UsageAdjustmentRequestShapeReset)
-					usage.RecordPendingMessages(messages)
-					emitCompactAttempt(cfg, CompactAttemptInfo{
-						Reason: CompactReasonNewContext, Status: CompactAttemptFailed,
-						TokensBefore: estimateFreshContextMessages(messages), MessagesBefore: compactNoticeMessageCount(messages), Error: err.Error(),
-					})
 					return loopResultSnapshot(messages, startLen, historyRewritten, totalIn, totalOut, totalCacheCreation, totalCacheRead), err
 				}
 				seqs := make([]int, len(messages))
@@ -617,6 +631,7 @@ func RunToolLoop(
 				messages = committed
 				historyArchiveHeadSeq = head
 			}
+			rollbackFreshContext = nil
 			if freshContextAttempt != nil {
 				emitCompactAttempt(cfg, *freshContextAttempt)
 			}
@@ -822,6 +837,11 @@ func RunToolLoop(
 				CacheCreationTokens: totalCacheCreation,
 				CacheReadTokens:     totalCacheRead,
 			}, err
+		}
+
+		if freshContextEnabled {
+			// Successful progress ends the previous overflow recovery attempt.
+			overflowCompacted = false
 		}
 
 		if result.Usage != nil {
