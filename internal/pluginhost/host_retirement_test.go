@@ -49,3 +49,38 @@ func TestHostRetirePluginLeavesUnrelatedPluginActive(t *testing.T) {
 		t.Fatalf("stale capability invocation error = %v", err)
 	}
 }
+
+type cleanupServiceClient struct {
+	*fakeServiceProcess
+	cleanup func(context.Context) error
+}
+
+func (c *cleanupServiceClient) Close(ctx context.Context) error { return c.cleanup(ctx) }
+
+func TestRetirementAllowsCleanupBeforeRevokingServices(t *testing.T) {
+	provider := &fakeServiceProcess{id: "storage", state: StateActive, provided: []ServiceDescriptor{searchService("1.0.0")}}
+	consumer := &cleanupServiceClient{fakeServiceProcess: &fakeServiceProcess{id: "workflow", state: StateActive, required: []ServiceRequirement{{Name: "search.provider", MajorVersion: 1, Required: true}}}}
+	host := New(provider, consumer)
+	registry, conflicts := BuildServiceRegistry(provider, consumer)
+	host.AttachServiceRegistry(registry, conflicts)
+	registry.Activate()
+	consumer.cleanup = func(ctx context.Context) error {
+		for _, status := range host.Statuses() {
+			if status.ID == consumer.id {
+				t.Error("plugin still registered during shutdown")
+			}
+		}
+		_, err := registry.Call(ctx, consumer.id, ServiceCallParams{Service: "search.provider", Method: "query"})
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	result, ok := host.RetirePlugin(context.Background(), consumer.id, nil)
+	if !ok || result.Err != nil {
+		t.Fatalf("shutdown cleanup failed: %+v", result)
+	}
+	if _, err := registry.Call(context.Background(), consumer.id, ServiceCallParams{Service: "search.provider", Method: "query"}); err == nil {
+		t.Fatal("services remained available after retirement")
+	}
+}

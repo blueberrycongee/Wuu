@@ -360,16 +360,19 @@ func (g *PluginGeneration) close() error {
 		g.host.CancelExecutions(&pluginhost.UserQuestionError{Code: "generation_closed", Message: "plugin generation retired"})
 		report.record("", "plugin-executions", RevocationPhaseCancelExecutions, nil)
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		if registry := g.host.ServiceRegistry(); registry != nil {
-			registry.Close(ctx)
-			report.record("", "service-registry", RevocationPhaseRevokeServices, nil)
-		}
 		for _, outcome := range g.host.CloseWithOutcomes(ctx) {
 			report.record(outcome.PluginID, "plugin-process", RevocationPhaseShutdown, outcome.Err)
 			if outcome.Err != nil {
 				err = errors.Join(err, fmt.Errorf("close plugin %q: %w", outcome.PluginID, outcome.Err))
 			}
 		}
+		// Shutdown hooks need host storage and session cancellation to release
+		// plugin-owned background work before service routing is revoked.
+		if registry := g.host.ServiceRegistry(); registry != nil {
+			registry.Close(ctx)
+			report.record("", "service-registry", RevocationPhaseRevokeServices, nil)
+		}
+
 		cancel()
 		g.host = nil
 	}

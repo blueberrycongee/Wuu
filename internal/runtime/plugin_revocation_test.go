@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -148,5 +149,47 @@ func TestGenerationRevocationPersistenceSkipsCorruptLines(t *testing.T) {
 	}
 	if len(reports) != 1 || reports[0].GenerationID != "gen-kept" {
 		t.Fatalf("reports = %+v", reports)
+	}
+}
+
+type cleanupGenerationClient struct {
+	*generationClient
+	registry *pluginhost.ServiceRegistry
+	host     *pluginhost.Host
+}
+
+func (c *cleanupGenerationClient) ProvidedServices() []pluginhost.ServiceDescriptor {
+	return []pluginhost.ServiceDescriptor{{Name: "cleanup.state", Version: "1.0.0", Methods: []pluginhost.ServiceMethodDescriptor{{Name: "save", InputSchema: "cleanup.input.v1", OutputSchema: "cleanup.output.v1"}}}}
+}
+func (c *cleanupGenerationClient) RequiredServices() []pluginhost.ServiceRequirement {
+	return []pluginhost.ServiceRequirement{{Name: "cleanup.state", MajorVersion: 1, Required: true}}
+}
+func (c *cleanupGenerationClient) InvokeService(context.Context, pluginhost.ServiceInvokeParams) (json.RawMessage, error) {
+	return json.RawMessage(`{}`), nil
+}
+func (c *cleanupGenerationClient) Close(ctx context.Context) error {
+	if len(c.host.Statuses()) != 0 {
+		return errors.New("contributions still registered during cleanup")
+	}
+	_, err := c.registry.Call(ctx, c.id, pluginhost.ServiceCallParams{Service: "cleanup.state", Method: "save"})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func TestGenerationShutdownCanPersistBeforeServicesClose(t *testing.T) {
+	client := &cleanupGenerationClient{generationClient: &generationClient{id: "workflow"}}
+	registry, conflicts := pluginhost.BuildServiceRegistry(client)
+	host := pluginhost.New(client)
+	host.AttachServiceRegistry(registry, conflicts)
+	registry.Activate()
+	client.registry = registry
+	client.host = host
+	generation := &PluginGeneration{id: "cleanup", host: host}
+	if err := generation.close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.Call(context.Background(), client.id, pluginhost.ServiceCallParams{Service: "cleanup.state", Method: "save"}); err == nil {
+		t.Fatal("services survived generation shutdown")
 	}
 }

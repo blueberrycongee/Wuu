@@ -516,10 +516,13 @@ func (h *Host) RetirePlugin(ctx context.Context, pluginID string, cause error) (
 	if h.executions != nil {
 		h.executions.CancelPlugin(pluginID, cause)
 	}
+	// Contributions and executions are already detached. Keep declared host
+	// services available while the plugin persists state and cancels its work.
+	closeErr := client.Close(ctx)
 	if registry != nil {
 		registry.RevokePlugin(ctx, pluginID)
 	}
-	return ClientShutdownOutcome{PluginID: pluginID, Err: client.Close(ctx)}, true
+	return ClientShutdownOutcome{PluginID: pluginID, Err: closeErr}, true
 }
 
 // ExecutionSnapshots returns the host's live execution table for diagnostics.
