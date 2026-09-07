@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/codemode"
 	"github.com/blueberrycongee/wuu/internal/providers"
 	"github.com/blueberrycongee/wuu/internal/toolctx"
@@ -41,7 +42,9 @@ func (*CodeModeExecTool) Definition() providers.ToolDefinition {
 	return providers.ToolDefinition{
 		Name: codeModeExecToolName,
 		Description: "Execute a code-mode program in Wuu's isolated runtime. The program receives the " +
-			"enabled tools as JavaScript globals and runs until it yields or finishes. Prefer this tool " +
+			"enabled tools as tools.<name>(arguments) and runs until it yields or finishes. " +
+			"Use await for tool calls and text(value) to return output, for example: " +
+			"const result = await tools.read_file({path: 'README.md'}); text(result). Prefer this tool " +
 			"for multi-step reasoning, data transformation, and batched tool orchestration; each program " +
 			"starts with a clean sandbox (no process, network, or file access unless provided by tools). " +
 			"After starting, use wait to collect output or terminate the cell.",
@@ -197,6 +200,24 @@ func codeModeResponseResult(response codemode.Response) toolresult.Result {
 		return toolresult.FromErrorText(fmt.Sprintf("encode code-mode response: %v", err))
 	}
 	return toolresult.FromText(string(data))
+}
+
+// Code-mode entry tools belong to the runtime, independently of the model's
+// leaf-tool profile. Project both discovery and execution from the same surface.
+func (t *Toolkit) withCodeModeSurface(surface capability.Surface) capability.Surface {
+	if surface.ProfileName == "" || t.CodeModeService() == nil {
+		return surface
+	}
+	out := cloneSurface(surface)
+	if out.Tools == nil {
+		out.Tools = make(map[string]capability.Capability)
+	}
+	out.Tools[codeModeExecToolName] = capability.CapabilityCodeMode
+	out.Tools[codeModeWaitToolName] = capability.CapabilityCodeMode
+	if !surfaceHasCapability(out.Capabilities, capability.CapabilityCodeMode) {
+		out.Capabilities = append(out.Capabilities, capability.CapabilityCodeMode)
+	}
+	return out
 }
 
 // codeModeEntryDefinitions returns only the code-mode exec/wait entries for

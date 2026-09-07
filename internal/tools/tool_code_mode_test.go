@@ -63,6 +63,40 @@ func TestCodeModeEntryToolsRegisteredWithService(t *testing.T) {
 	}
 }
 
+func TestCodeModeEntriesSurviveModelProfilesAndThreadClones(t *testing.T) {
+	for _, model := range []string{"gpt-5-codex", "gpt-5", "claude-sonnet-4", "generic-model"} {
+		t.Run(model, func(t *testing.T) {
+			kit := newCodeModeTestToolkit(t)
+			kit.ConfigureSurfaceForProviderModel("test", model, true)
+			clone, err := kit.CloneForRoot(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, active := range []*Toolkit{kit, clone} {
+				for _, name := range []string{"exec", "wait"} {
+					if !contains(name, active.Definitions()) || !active.SupportsTool(name) {
+						t.Fatalf("%s is unavailable with model %s", name, model)
+					}
+					if err := active.ensureToolAvailableForExecution(name); err != nil {
+						t.Fatal(err)
+					}
+					if _, ok := active.ActiveSurface().Tools[name]; !ok {
+						t.Fatalf("active surface omitted %s", name)
+					}
+				}
+			}
+			kit.DisableTools("exec")
+			if contains("exec", kit.Definitions()) || kit.SupportsTool("exec") {
+				t.Fatal("disabled exec remains available")
+			}
+			clone.SetCodeModeService(nil)
+			if contains("exec", clone.Definitions()) || clone.SupportsTool("exec") {
+				t.Fatal("detached runtime still advertises exec")
+			}
+		})
+	}
+}
+
 func TestCodeModeExecIsOrchestrator(t *testing.T) {
 	kit := newCodeModeTestToolkit(t)
 	metadata, ok := kit.ToolMetadata(providers.ToolCall{Name: codeModeExecToolName})

@@ -518,6 +518,11 @@ func NewSession(opts Options) (*Session, error) {
 			}
 		}
 		if executable != "" {
+			codeModeSessionID := workspaceID
+			if codeModeSessionID == "" {
+				// SDK/CLI sessions can identify their workspace by path only.
+				codeModeSessionID = workspaceStateDir
+			}
 			var heapLimit *uint64
 			if cfg.CodeMode.MaxHeapSizeBytes > 0 {
 				value := cfg.CodeMode.MaxHeapSizeBytes
@@ -525,7 +530,7 @@ func NewSession(opts Options) (*Session, error) {
 			}
 			service, serviceErr := codemode.NewService(codemode.ServiceConfig{
 				Executable:     executable,
-				SessionID:      workspaceID,
+				SessionID:      codeModeSessionID,
 				Limits:         codemode.CellLimits{MaxHeapSizeBytes: heapLimit},
 				DefaultYieldMS: cfg.CodeMode.DefaultYieldMS,
 				Stderr:         os.Stderr,

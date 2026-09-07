@@ -72,6 +72,9 @@ const (
 	// can keep it open while the rest of the surface stays locked.
 	CapabilityDiscovery Capability = "tool.discovery"
 
+	// Code mode orchestrates the active tools without granting leaf capabilities.
+	CapabilityCodeMode Capability = "tool.code_mode"
+
 	// Embedded browser automation: the single browser tool backed by a
 	// desktop-hosted hidden WebContentsView + CDP session. Its own capability
 	// so permission routing and telemetry can reason about browser control
@@ -105,6 +108,7 @@ func All() []Capability {
 		CapabilityChat,
 		CapabilityMCP,
 		CapabilityDiscovery,
+		CapabilityCodeMode,
 		CapabilityBrowser,
 	}
 }

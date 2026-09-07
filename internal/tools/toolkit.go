@@ -370,6 +370,9 @@ func (t *Toolkit) SetCodeModeService(service *codemode.Service) {
 	t.codeMode = service
 	t.codeModeMu.Unlock()
 	t.rebuildRegistry()
+	t.activeProfileMu.Lock()
+	t.publishActiveSurfaceLocked()
+	t.activeProfileMu.Unlock()
 }
 
 // CodeModeService returns the session's code-mode runtime, if enabled.
@@ -991,7 +994,7 @@ func (t *Toolkit) ActiveSurface() capability.Surface {
 // tool-loading mode with disabled tools removed. Callers must hold
 // activeProfileMu (read or write).
 func (t *Toolkit) exposedSurfaceLocked() capability.Surface {
-	return t.withDisabledToolsRemoved(cloneSurface(t.surfaceForToolLoadingMode(t.activeSurface)))
+	return t.withDisabledToolsRemoved(t.withCodeModeSurface(cloneSurface(t.surfaceForToolLoadingMode(t.activeSurface))))
 }
 
 // publishActiveSurfaceLocked is the single write path for env.ActiveSurface.
@@ -1016,7 +1019,7 @@ func (t *Toolkit) activeCompiledSurface() capability.Surface {
 	}
 	t.activeProfileMu.RLock()
 	defer t.activeProfileMu.RUnlock()
-	return t.withDisabledToolsRemoved(t.surfaceForToolLoadingMode(t.activeSurface))
+	return t.withDisabledToolsRemoved(t.withCodeModeSurface(t.surfaceForToolLoadingMode(t.activeSurface)))
 }
 
 func (t *Toolkit) withDisabledToolsRemoved(surface capability.Surface) capability.Surface {

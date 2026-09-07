@@ -113,8 +113,8 @@ type Config struct {
 	// desktop settings. Nil means auto-detection from the CLI binaries.
 	Engines *EnginesConfig `json:"engines,omitempty"`
 	// CodeMode configures the isolated code-mode runtime. The default
-	// invocation mode is CodeModeEnabled; an empty Host leaves the runtime
-	// unconfigured and the session runs with direct tools only.
+	// invocation mode is CodeModeEnabled. The runtime resolves an empty Host
+	// from WUU_CODE_MODE_HOST or the binary next to the core executable.
 	CodeMode CodeModeConfig `json:"code_mode,omitempty"`
 }
 
