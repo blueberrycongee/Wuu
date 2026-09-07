@@ -32,6 +32,8 @@ type toolRun struct {
 	streamSafe      bool
 	streamStarted   bool
 	invocationID    string
+	parent          *toolRun
+	depth           int
 
 	mu     sync.Mutex
 	state  toolRunState
@@ -49,7 +51,7 @@ type TurnToolRuntime struct {
 	ledger      *toolledger.Ledger
 	operationID string
 	runContext  context.Context
-	sem         chan struct{}
+	gate        *ToolExecutionGate
 
 	mu       sync.Mutex
 	runs     []*toolRun
@@ -64,6 +66,8 @@ type TurnToolRuntime struct {
 }
 
 type ToolRuntimeConfig struct {
+	// Gate must be shared when multiple runtimes can have live nested work.
+	Gate        *ToolExecutionGate
 	Executor    ToolExecutor
 	Ledger      *toolledger.Ledger
 	OperationID string
@@ -92,8 +96,11 @@ func NewTurnToolRuntime(config ToolRuntimeConfig) *TurnToolRuntime {
 		ledger:      config.Ledger,
 		operationID: strings.TrimSpace(config.OperationID),
 		runContext:  config.RunContext,
-		sem:         make(chan struct{}, maxToolConcurrency),
+		gate:        config.Gate,
 		byID:        map[string]*toolRun{},
+	}
+	if runtime.gate == nil {
+		runtime.gate = NewToolExecutionGate(maxToolConcurrency)
 	}
 	runtime.SetStepIndex(config.StepIndex)
 	return runtime
@@ -297,6 +304,7 @@ func (r *TurnToolRuntime) startRunLocked(ctx context.Context, run *toolRun, stre
 
 	go func() {
 		finish := func(result toolresult.Result, executionErr error) {
+			defer cancel()
 			if executionErr != nil {
 				result = toolresult.FromErrorText(errorJSON(executionErr))
 			}
@@ -314,12 +322,16 @@ func (r *TurnToolRuntime) startRunLocked(ctx context.Context, run *toolRun, stre
 			return
 		default:
 		}
-		select {
-		case r.sem <- struct{}{}:
-			defer func() { <-r.sem }()
-		case <-runCtx.Done():
-			finish(toolresult.Result{}, runCtx.Err())
-			return
+		if toolIsOrchestrator(r.executor, call) {
+			runCtx = toolctx.WithNestedExecutor(runCtx, &nestedToolScope{runtime: r, parent: run, ctx: runCtx, calls: make(map[string]*toolRun)})
+		} else {
+			runCtx = toolctx.WithNestedExecutor(runCtx, nil)
+			release, err := r.gate.acquire(runCtx, run.concurrencySafe)
+			if err != nil {
+				finish(toolresult.Result{}, err)
+				return
+			}
+			defer release()
 		}
 		select {
 		case <-runCtx.Done():
@@ -329,6 +341,12 @@ func (r *TurnToolRuntime) startRunLocked(ctx context.Context, run *toolRun, stre
 		}
 		result, err := executeToolResult(runCtx, r.executor, call)
 		finish(result, err)
+		if run.parent != nil {
+			settled, settleErr := run.wait(context.Background())
+			if settleErr == nil {
+				r.notifyResult(call, settled, nil)
+			}
+		}
 	}()
 }
 
@@ -338,6 +356,20 @@ func (r *TurnToolRuntime) prepareRunLocked(ctx context.Context, run *toolRun) er
 	}
 	if r.ledgerErr != nil {
 		return r.ledgerErr
+	}
+	// Nested calls get separate batches: the parent model batch may already
+	// be finalized when JavaScript or another orchestrator submits a child.
+	if run.parent != nil {
+		batchID, err := r.ledger.BeginBatch(ctx, r.operationID, r.currentStepIndexLocked())
+		if err != nil {
+			return err
+		}
+		invocation, err := r.ledger.PrepareNested(ctx, batchID, run.parent.invocationID, run.call, toolledger.ReplayAtMostOnce)
+		if err != nil {
+			return err
+		}
+		run.invocationID = invocation.ID
+		return r.ledger.FinalizeBatch(ctx, batchID)
 	}
 	if r.batchID == "" {
 		batchID, err := r.ledger.BeginBatch(ctx, r.operationID, r.currentStepIndexLocked())

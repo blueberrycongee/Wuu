@@ -36,6 +36,9 @@ type ToolSupportProvider interface {
 
 // ToolMetadata describes a tool's scheduling and policy characteristics.
 type ToolMetadata struct {
+	// Orchestrator tools coordinate child calls but perform no leaf operations
+	// themselves. Their children, not the parent, consume execution slots.
+	Orchestrator    bool
 	ReadOnly        bool
 	ConcurrencySafe bool
 	Destructive     bool

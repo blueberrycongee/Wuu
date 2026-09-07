@@ -197,6 +197,9 @@ type ToolDisplay struct {
 }
 
 type ToolActivity struct {
+	// Orchestrator delegates effects through execution.invoke-tool. It does not
+	// occupy a leaf scheduling slot while its child calls execute.
+	Orchestrator    bool   `json:"orchestrator,omitempty"`
 	ReadOnly        bool   `json:"read_only,omitempty"`
 	ConcurrencySafe bool   `json:"concurrency_safe,omitempty"`
 	Destructive     bool   `json:"destructive,omitempty"`

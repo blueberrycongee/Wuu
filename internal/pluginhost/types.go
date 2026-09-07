@@ -54,6 +54,9 @@ type ToolRegistration struct {
 // registered tool. It is host metadata and is not included in provider tool
 // definitions.
 type ToolActivityMetadata struct {
+	// Orchestrator delegates effects through execution.invoke-tool rather than
+	// holding a leaf scheduling slot while waiting for its children.
+	Orchestrator    bool   `json:"orchestrator,omitempty"`
 	ReadOnly        bool   `json:"read_only,omitempty"`
 	ConcurrencySafe bool   `json:"concurrency_safe,omitempty"`
 	Destructive     bool   `json:"destructive,omitempty"`

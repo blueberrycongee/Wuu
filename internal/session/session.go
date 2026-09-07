@@ -1626,6 +1626,9 @@ WHERE workflow_id = ''`); err != nil {
 		ON inference_operations(workflow_id, created_at, id)`); err != nil {
 		return fmt.Errorf("migrate inference workflow index: %w", err)
 	}
+	if err := addColumnIfMissing(db, "tool_invocations", "parent_invocation_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if err := addColumnIfMissing(db, "session_messages", "phase", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}

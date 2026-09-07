@@ -25,7 +25,7 @@ type delegateRun struct {
 
 // Client owns one host connection and one in-memory session. A connection must
 // not be shared between Wuu sessions. Transport failure or cancellation of an
-// in-flight observation invalidates the session and cancels its delegates; the
+// in-flight execution invalidates the session and cancels its delegates; the
 // client never reconnects or replays code with potentially completed effects.
 // Close must also stop the host process when using a process-backed transport.
 type Client struct {
@@ -45,6 +45,7 @@ type Client struct {
 	nextID    int64
 	pending   map[int64]chan hostMessage
 	delegates map[int64]delegateRun
+	waits     map[string]*cellWait
 }
 
 // Connect takes ownership of transport even on failure. ctx bounds handshake
@@ -115,9 +116,12 @@ func (c *Client) Execute(ctx context.Context, request ExecuteRequest) (Response,
 	return decodeResponse(data)
 }
 
+// Wait observes cell output. Canceling ctx detaches only this observer; the
+// next Wait for this cell consumes the retained response before issuing a new
+// host wait. Concurrent observers of the same cell are rejected. To stop the
+// cell itself, use Terminate or Close.
 func (c *Client) Wait(ctx context.Context, cellID string, yieldTimeMS uint64) (Response, error) {
-	return c.observe(ctx, cellID, map[string]any{"method": "session/wait", "sessionId": c.sessionID,
-		"request": map[string]any{"cell_id": cellID, "yield_time_ms": yieldTimeMS}})
+	return c.waitCell(ctx, cellID, yieldTimeMS)
 }
 
 func (c *Client) Terminate(ctx context.Context, cellID string) (Response, error) {

@@ -536,6 +536,7 @@ export type HostServiceMethod = (typeof HOST_SERVICE_METHODS)[number];
 
 export const KERNEL_SERVICE_METHOD = "call" as const;
 export const EXECUTION_UPDATE_SERVICE = "execution.update" as const;
+export const INVOKE_TOOL_SERVICE = "execution.invoke-tool" as const;
 export const USER_QUESTION_ASK_SERVICE = "host.user-question.ask" as const;
 export const ARTIFACT_IMPORT_SERVICE = "host.artifact.import" as const;
 export const SECURITY_AUTHORIZE_SERVICE = "security.authorize" as const;
@@ -668,6 +669,8 @@ export interface JSONSchemaObject {
 }
 
 export interface ToolActivityMetadata {
+  /** Delegate effects through execution.invoke-tool without holding a leaf scheduling slot. */
+  orchestrator?: boolean;
   read_only?: boolean;
   concurrency_safe?: boolean;
   destructive?: boolean;
@@ -1154,6 +1157,23 @@ export interface ExecutionUpdate {
   execution_id: string;
   message?: string;
   detail?: unknown;
+}
+
+export interface InvokeToolParams {
+  execution_id: string;
+  /** Scope-local idempotency key; retries must keep name and arguments identical. */
+  call_id: string;
+  name: string;
+  arguments: unknown;
+}
+
+/** Invoke an enabled child tool from a live orchestrator execution. Requires execution.invoke-tool v1. */
+export async function invokeTool(host: RuntimeHost, params: InvokeToolParams): Promise<ToolResult> {
+  return await host.call("host.service.call", {
+    service: INVOKE_TOOL_SERVICE,
+    method: KERNEL_SERVICE_METHOD,
+    params,
+  }) as ToolResult;
 }
 
 export interface ArtifactImportParams {

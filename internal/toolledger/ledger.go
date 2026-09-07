@@ -89,16 +89,17 @@ func (e *ReplayBlockedError) ReplayReasonCode() string {
 }
 
 type Invocation struct {
-	ID             string
-	BatchID        string
-	ProviderCallID string
-	ToolName       string
-	ToolKind       providers.ToolCallKind
-	Arguments      string
-	ReplayPolicy   ReplayPolicy
-	State          InvocationState
-	Result         toolresult.Result
-	Projected      bool
+	ParentInvocationID string
+	ID                 string
+	BatchID            string
+	ProviderCallID     string
+	ToolName           string
+	ToolKind           providers.ToolCallKind
+	Arguments          string
+	ReplayPolicy       ReplayPolicy
+	State              InvocationState
+	Result             toolresult.Result
+	Projected          bool
 }
 
 type Ledger struct {
@@ -163,6 +164,20 @@ WHERE id = ? AND owner_id = ? AND status = ?`, BatchFinalized, now, batchID, l.o
 }
 
 func (l *Ledger) Prepare(ctx context.Context, batchID string, call providers.ToolCall, policy ReplayPolicy) (Invocation, error) {
+	return l.prepare(ctx, batchID, "", call, policy)
+}
+
+// PrepareNested records a child independently from its parent's model batch.
+// The parent must belong to this ledger's owner. Nested results are not projected
+// as provider tool messages: the provider never issued their generated call IDs.
+func (l *Ledger) PrepareNested(ctx context.Context, batchID, parentID string, call providers.ToolCall, policy ReplayPolicy) (Invocation, error) {
+	if strings.TrimSpace(parentID) == "" {
+		return Invocation{}, errors.New("nested tool requires a parent invocation")
+	}
+	return l.prepare(ctx, batchID, parentID, call, policy)
+}
+
+func (l *Ledger) prepare(ctx context.Context, batchID, parentID string, call providers.ToolCall, policy ReplayPolicy) (Invocation, error) {
 	if l == nil {
 		return Invocation{}, errors.New("tool ledger is required")
 	}
@@ -182,14 +197,19 @@ func (l *Ledger) Prepare(ctx context.Context, batchID string, call providers.Too
 		if err := l.assertBatchOwnerTx(ctx, tx, batchID, BatchCollecting); err != nil {
 			return err
 		}
+		if parentID != "" {
+			if _, err := l.invocationStateTx(ctx, tx, parentID); err != nil {
+				return err
+			}
+		}
 		var existing Invocation
 		var kind, storedPolicy, state string
 		err := tx.QueryRowContext(ctx, `
-SELECT id, tool_name, tool_kind, arguments_json, replay_policy, state
+SELECT id, tool_name, tool_kind, arguments_json, replay_policy, state, parent_invocation_id
 FROM tool_invocations WHERE batch_id = ? AND provider_call_id = ?`, batchID, call.ID).
-			Scan(&existing.ID, &existing.ToolName, &kind, &existing.Arguments, &storedPolicy, &state)
+			Scan(&existing.ID, &existing.ToolName, &kind, &existing.Arguments, &storedPolicy, &state, &existing.ParentInvocationID)
 		if err == nil {
-			if existing.ToolName != call.Name || kind != string(call.Kind) || existing.Arguments != call.Arguments || storedPolicy != string(policy) {
+			if existing.ToolName != call.Name || kind != string(call.Kind) || existing.Arguments != call.Arguments || storedPolicy != string(policy) || existing.ParentInvocationID != parentID {
 				return fmt.Errorf("provider tool call %q metadata changed within batch %q", call.ID, batchID)
 			}
 			existing.BatchID = batchID
@@ -206,14 +226,15 @@ FROM tool_invocations WHERE batch_id = ? AND provider_call_id = ?`, batchID, cal
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO tool_invocations (
     id, batch_id, provider_call_id, tool_name, tool_kind, arguments_json,
-    replay_policy, state, prepared_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    replay_policy, state, prepared_at, parent_invocation_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			id, batchID, call.ID, call.Name, string(call.Kind), call.Arguments,
-			policy, InvocationPrepared, now,
+			policy, InvocationPrepared, now, parentID,
 		)
 		if err == nil {
 			out = Invocation{
-				ID: id, BatchID: batchID, ProviderCallID: call.ID, ToolName: call.Name,
+				ParentInvocationID: parentID,
+				ID:                 id, BatchID: batchID, ProviderCallID: call.ID, ToolName: call.Name,
 				ToolKind: call.Kind, Arguments: call.Arguments, ReplayPolicy: policy, State: InvocationPrepared,
 			}
 		}
@@ -336,7 +357,7 @@ SELECT i.id, i.batch_id, i.provider_call_id, i.tool_name, i.tool_kind,
        i.arguments_json, i.replay_policy, i.state, i.result_json
 FROM tool_invocations i
 JOIN tool_batches b ON b.id = i.batch_id
-WHERE b.owner_id = ? AND i.state IN (?, ?) AND i.projected_at = 0
+WHERE b.owner_id = ? AND i.state IN (?, ?) AND i.projected_at = 0 AND i.parent_invocation_id = ''
 ORDER BY b.created_at, b.id, i.prepared_at, i.id`, l.ownerID, InvocationSucceeded, InvocationFailed)
 	if err != nil {
 		return nil, err

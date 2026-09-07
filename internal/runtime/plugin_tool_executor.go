@@ -170,6 +170,7 @@ func (e *pluginToolExecutor) ToolMetadata(call providers.ToolCall) (agent.ToolMe
 		}
 		activity := tool.Registration.Activity
 		return agent.ToolMetadata{
+			Orchestrator:    activity.Orchestrator,
 			ReadOnly:        activity.ReadOnly,
 			ConcurrencySafe: activity.ConcurrencySafe,
 			Destructive:     activity.Destructive,

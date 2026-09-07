@@ -444,6 +444,10 @@ func (k *kernelHostServices) KernelServiceRegistrations() []pluginhost.ServiceRe
 			Invoker:    &executionUpdateInvoker{parent: k}, Kernel: true,
 		},
 		pluginhost.ServiceRegistration{
+			Descriptor: pluginhost.KernelInvokeToolDescriptor(),
+			Invoker:    &nestedToolInvoker{parent: k}, Kernel: true,
+		},
+		pluginhost.ServiceRegistration{
 			Descriptor: pluginhost.KernelUserQuestionAskDescriptor(),
 			Invoker:    &userQuestionAskInvoker{parent: k}, Kernel: true,
 		},
