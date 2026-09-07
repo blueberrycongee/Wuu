@@ -50,7 +50,39 @@ func (s *Server) handleThreadSearch(req Request) error {
 		return s.writeResponse(req.ID, nil, err)
 	}
 	results := make([]threadSearchResultEntry, 0, min(len(sources), limit))
+	// Resolve every possible title match before opening transcripts. Sources
+	// already use the tie-break order, so later titles cannot displace a full page.
+	titleMatches := make(map[string]bool)
+	if query != "" {
+		for _, source := range sources {
+			title := source.entry.thread.Title
+			if strings.TrimSpace(title) == "" {
+				title = source.entry.thread.Preview
+			}
+			if !strings.Contains(normalizeThreadSearchText(title), query) {
+				continue
+			}
+			titleMatches[source.entry.thread.ID] = true
+			results = append(results, threadSearchResultEntry{
+				entry:  source.entry,
+				result: ThreadSearchResultItem{Thread: source.entry.thread, Snippet: threadSearchExcerpt(title, query)},
+				rank:   threadSearchTitleRank,
+			})
+			if len(results) >= limit {
+				break
+			}
+		}
+	}
+	strongMatches := len(results)
 	for _, source := range sources {
+		// All titles are accounted for. Once a page of conversation-or-better
+		// matches exists, remaining sources can only lose the tie-break.
+		if strongMatches >= limit {
+			break
+		}
+		if titleMatches[source.entry.thread.ID] {
+			continue
+		}
 		// Resolve metadata first. Only a technical match or a miss needs
 		// history: it may contain a higher-ranked conversation match.
 		candidates := threadSearchCandidates(source.entry.thread, nil)
@@ -81,6 +113,9 @@ func (s *Server) handleThreadSearch(req Request) error {
 			result: ThreadSearchResultItem{Thread: source.entry.thread, Snippet: snippet},
 			rank:   rank,
 		})
+		if rank >= threadSearchConversationRank {
+			strongMatches++
+		}
 		if query == "" && len(results) >= limit {
 			break
 		}
@@ -230,8 +265,8 @@ func threadSearchCandidatesFromMessage(msg providers.ChatMessage) []threadSearch
 	candidates := make([]threadSearchCandidate, 0, 4+len(msg.ToolCalls)*3)
 	rank := threadSearchTechnicalRank
 	add := func(text string) {
-		if compact := compactThreadSearchText(text); compact != "" {
-			candidates = append(candidates, threadSearchCandidate{text: compact, rank: rank})
+		if text != "" {
+			candidates = append(candidates, threadSearchCandidate{text: text, rank: rank})
 		}
 	}
 	if msg.Role == "user" || msg.Role == "assistant" {

@@ -104,6 +104,60 @@ func TestThreadSearchRanksBeforeLimiting(t *testing.T) {
 	}
 }
 
+func TestThreadSearchLimitedPageMatchesFullRanking(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	now := time.Now()
+	for i := 0; i < 16; i++ {
+		id := fmt.Sprintf("thread-%02d", i)
+		th := &threadState{ID: id, Title: "unrelated", UpdatedAt: now.Add(time.Duration(i/2) * time.Hour)}
+		switch i % 4 {
+		case 0:
+			th.Title = "needle title"
+		case 1:
+			th.History = []providers.ChatMessage{{Role: "tool", Content: "needle log"}, {Role: "user", Content: "needle discussion"}}
+		case 2:
+			th.History = []providers.ChatMessage{{Role: "tool", Content: "needle log"}}
+		case 3:
+			th.History = []providers.ChatMessage{{Role: "user", Content: "needle hidden", Hidden: true}}
+		}
+		if i%3 == 0 {
+			th.PinnedAt = &now
+		}
+		srv.threads[id] = th
+	}
+	search := func(limit int) []ThreadSearchResultItem {
+		t.Helper()
+		id := fmt.Sprint(limit)
+		params, _ := json.Marshal(ThreadSearchParams{Query: "needle", Limit: limit})
+		rawID, _ := json.Marshal(id)
+		if err := srv.handleThreadSearch(Request{ID: rawID, Params: params}); err != nil {
+			t.Fatal(err)
+		}
+		response := responseByID(t, parseOutput(t, out.String()), id)
+		if response["error"] != nil {
+			t.Fatalf("search failed: %+v", response)
+		}
+		return remarshal[ThreadSearchResult](t, response["result"]).Results
+	}
+	full := search(100)
+	if len(full) != 12 {
+		t.Fatalf("expected 12 visible matches, got %d", len(full))
+	}
+	for limit := 1; limit <= len(full); limit++ {
+		page := search(limit)
+		if len(page) != limit {
+			t.Fatalf("limit %d: got %d results", limit, len(page))
+		}
+		for i := range page {
+			if page[i].Thread.ID != full[i].Thread.ID || page[i].Snippet != full[i].Snippet {
+				t.Fatalf("limit %d: result %d differs from full ranking", limit, i)
+			}
+		}
+	}
+}
+
 // Opening the dialog should scale with conversation metadata, not transcript
 // size. Keep a large-history workload to make eager transcript loads visible.
 func BenchmarkThreadSearchOpen(b *testing.B) {
@@ -114,7 +168,11 @@ func BenchmarkThreadSearchOpen(b *testing.B) {
 		if _, err := session.CreateWithMetadata(rt.SessionDir, id, root); err != nil {
 			b.Fatal(err)
 		}
-		if err := session.UpdateIndex(rt.SessionDir, id, 1, "conversation summary"); err != nil {
+		preview := "unrelated conversation"
+		if i < 40 {
+			preview = "conversation summary"
+		}
+		if err := session.UpdateIndex(rt.SessionDir, id, 1, preview); err != nil {
 			b.Fatal(err)
 		}
 		if err := rewriteChatHistory(rt.SessionDir, id, []providers.ChatMessage{{Role: "user", Content: strings.Repeat("history text ", 10000)}}); err != nil {
@@ -122,12 +180,16 @@ func BenchmarkThreadSearchOpen(b *testing.B) {
 		}
 	}
 	srv := New(rt, io.Discard)
-	params, _ := json.Marshal(ThreadSearchParams{Limit: 40})
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if err := srv.handleThreadSearch(Request{ID: json.RawMessage(`"bench"`), Params: params}); err != nil {
-			b.Fatal(err)
-		}
+	for _, query := range []string{"", "summary", "history", "missing"} {
+		b.Run("query="+query, func(b *testing.B) {
+			params, _ := json.Marshal(ThreadSearchParams{Query: query, Limit: 40})
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := srv.handleThreadSearch(Request{ID: json.RawMessage(`"bench"`), Params: params}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
