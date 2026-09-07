@@ -2919,7 +2919,11 @@
 }
 
 .rich-file-link {
-  color: var(--rich-link-color);
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--wuu-color-text-muted, var(--gray-550));
+  text-underline-offset: 0.18em;
   appearance: none;
   -webkit-appearance: none;
   border: 0;
@@ -2982,6 +2986,7 @@
 
 .rich-file-link:hover {
   color: var(--rich-link-hover-color);
+  text-decoration-color: currentColor;
   background: transparent;
 }
 
@@ -2993,26 +2998,6 @@
   border-radius: 3px;
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-}
-
-/*
- * Pending state: shown on the first render for a workspace file reference
- * before the IPC roundtrip that confirms the file exists completes. It keeps
- * the same link color so the visual layout is stable — the user never
- * sees a flash of plain text that flips to a link. The placeholder is a
- * <span>, not a <button>, so it is not clickable and the cursor stays
- * neutral.
- */
-.rich-file-link--pending {
-  cursor: default;
-  opacity: 0.72;
-  pointer-events: none;
-}
-
-.rich-file-link--pending:hover,
-.rich-file-link--pending:focus-visible {
-  color: var(--rich-link-color);
-  background: transparent;
 }
 
 .rich-content :not(pre) > code {
@@ -3071,21 +3056,6 @@
 .rich-image-block.inline {
   display: block;
   margin-top: 14px;
-}
-
-.rich-image-block--auto {
-  width: fit-content;
-  max-width: 100%;
-}
-
-.rich-image-caption {
-  display: block;
-  max-width: 100%;
-  margin-top: 6px;
-  color: var(--ink-muted);
-  font-size: 11px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
 }
 
 .rich-image {

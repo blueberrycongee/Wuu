@@ -1,11 +1,10 @@
 import { Children, cloneElement, isValidElement, memo, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { FileText, Github, Globe2, Mail } from "lucide-react";
+import { Github, Globe2, Mail } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform, type Components, type UrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import remarkCjkAutolinkBoundary from "./remarkCjkAutolinkBoundary";
 import remarkCjkStrongBoundary from "./remarkCjkStrongBoundary";
-import type { WorkspaceFileReferenceResolveResult } from "../shared/protocol";
 import { useImagePreview } from "./ImagePreview";
 import {
   formatWorkspaceFileTarget,
@@ -34,16 +33,6 @@ type RichContentProps = {
   allowRawHtml?: boolean;
 };
 
-export type RichBlock =
-  | { kind: "paragraph"; text: string }
-  | { kind: "image"; source: string; alt?: string }
-  | { kind: "code"; language: string; code: string }
-  | { kind: "mermaid"; code: string };
-
-export type RichBlockWithOffset = RichBlock & {
-  startOffset: number;
-};
-
 export type RichTextRenderContext = {
   startOffset: number;
   endOffset: number;
@@ -58,10 +47,7 @@ export type RichTextRenderer = (
 ) => Array<JSX.Element | string>;
 
 type RichTextRenderOptions = {
-  cwd?: string;
-  onOpenFile?: (path: string) => void;
   renderText?: RichTextRenderer;
-  autoLinkFiles?: boolean;
 };
 
 type MermaidState =
@@ -122,93 +108,7 @@ function mermaidRenderKey(theme: AppliedTheme, codeToRender: string): string {
   return `${theme}\u0000${codeToRender}`;
 }
 
-const IMAGE_MARKDOWN_PATTERN = /!\[([^\]\n]*)\]\(([^)\n]+)\)/g;
 const IMAGE_FILE_PATTERN = /\.(apng|avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i;
-const AUTO_IMAGE_REFERENCE_LIMIT = 12;
-const AUTO_FILE_REFERENCE_PREFIX_SOURCE = String.raw`(^|[\s([{"'])`;
-const AUTO_FILE_PATH_SOURCE = String.raw`(?:(?:~|\.{1,2})\/|\/)?(?:[A-Za-z0-9_@+.-]+\/)*[A-Za-z0-9_@+.-]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}`;
-const AUTO_FILE_LINE_RANGE_SEPARATOR_SOURCE = String.raw`[-:\u2013\u2014]`;
-const AUTO_FILE_LINE_SUFFIX_SOURCE = String.raw`(?::\d+(?:${AUTO_FILE_LINE_RANGE_SEPARATOR_SOURCE}\d+)?|\s+\((?:line|lines)\s+\d+(?:${AUTO_FILE_LINE_RANGE_SEPARATOR_SOURCE}\d+)?\))`;
-// File-reference auto-link detection. The regex matches a path-shaped token
-// (relative or absolute, with a known extension) sitting at a sentence
-// boundary or after common open brackets/quotes. The leading negative
-// lookbehind and trailing negative lookahead exclude `: ` (colon-space).
-// `: ` is the standard shell separator in `program: path: error message`
-// output (e.g. `bash: scripts/desktop-dev.sh: No such file or directory`),
-// and paths sandwiched in that format are not user-intentional file
-// references — turning them into clickable workspace links is a false
-// positive that misrepresents the error and confuses the file viewer on
-// click. Whitespace-only boundaries (regular prose) and `:digits` (line
-// ranges) are unaffected because `:` is followed by a digit or whitespace,
-// not `: `.
-const AUTO_FILE_REFERENCE_PATTERN = new RegExp(
-  `(?<!:\\s)${AUTO_FILE_REFERENCE_PREFIX_SOURCE}${AUTO_FILE_PATH_SOURCE}${AUTO_FILE_LINE_SUFFIX_SOURCE}?(?!:\\s)`,
-  "gi",
-);
-const AUTO_FILE_LINE_SUFFIX_PATTERN = new RegExp(`^(.*?)${AUTO_FILE_LINE_SUFFIX_SOURCE}$`, "i");
-const AUTO_LINK_FILE_EXTENSIONS = new Set([
-  ".avif",
-  ".bash",
-  ".c",
-  ".cc",
-  ".cjs",
-  ".cpp",
-  ".cs",
-  ".css",
-  ".csv",
-  ".dart",
-  ".dockerignore",
-  ".env",
-  ".fish",
-  ".gif",
-  ".gitignore",
-  ".go",
-  ".h",
-  ".hpp",
-  ".htm",
-  ".html",
-  ".java",
-  ".jpeg",
-  ".jpg",
-  ".js",
-  ".json",
-  ".jsonl",
-  ".jsx",
-  ".kt",
-  ".kts",
-  ".less",
-  ".lock",
-  ".lua",
-  ".md",
-  ".mdx",
-  ".mjs",
-  ".mod",
-  ".pdf",
-  ".php",
-  ".png",
-  ".py",
-  ".rb",
-  ".rs",
-  ".sass",
-  ".scss",
-  ".sh",
-  ".sql",
-  ".sum",
-  ".svg",
-  ".svelte",
-  ".swift",
-  ".toml",
-  ".ts",
-  ".tsv",
-  ".tsx",
-  ".txt",
-  ".vue",
-  ".webp",
-  ".xml",
-  ".yaml",
-  ".yml",
-  ".zsh"
-]);
 
 export const RichContent = memo(function RichContent({
   text = "",
@@ -268,6 +168,8 @@ function MarkdownContentView({
   return (
     <ReactMarkdown
       components={components}
+      // CommonMark links and GFM autolinks are the only text-to-link rules.
+      // File mentions stay literal; file navigation uses explicit link targets.
       remarkPlugins={[remarkGfm, remarkCjkAutolinkBoundary, remarkCjkStrongBoundary]}
       rehypePlugins={allowRawHtml ? [rehypeRaw, rehypeHeadingIDs] : [rehypeHeadingIDs]}
       urlTransform={richMarkdownUrlTransform}
@@ -278,160 +180,6 @@ function MarkdownContentView({
 }
 
 export const MarkdownContent = memo(MarkdownContentView);
-
-export function RichContentBlock({
-  block,
-  blockKey,
-  cwd,
-  renderText,
-  onOpenFile
-}: {
-  block: RichBlock;
-  blockKey: string;
-  cwd?: string;
-  renderText?: RichTextRenderer;
-  onOpenFile?: (path: string) => void;
-}): JSX.Element {
-  if (block.kind === "image") {
-    return <RichImage source={block.source} alt={block.alt ?? ""} cwd={cwd} />;
-  }
-  if (block.kind === "mermaid") {
-    return <MermaidDiagram code={block.code} />;
-  }
-  if (block.kind === "code") {
-    return (
-      <pre className="rich-code">
-        <code>{block.code}</code>
-      </pre>
-    );
-  }
-  return (
-    <p className="rich-paragraph">
-      {renderInlineContent(block.text, cwd, blockKey, renderText, onOpenFile)}
-    </p>
-  );
-}
-
-export function parseRichBlocks(text: string): RichBlock[] {
-  return parseRichBlocksWithOffsets(text).map(({ startOffset: _startOffset, ...block }) => block);
-}
-
-export function parseRichBlocksWithOffsets(
-  text: string,
-  { allowOpenFence = false }: { allowOpenFence?: boolean } = {}
-): RichBlockWithOffset[] {
-  const blocks: RichBlockWithOffset[] = [];
-  const fencePattern = allowOpenFence ? /```([^\n`]*)\n([\s\S]*?)(```|$)/g : /```([^\n`]*)\n([\s\S]*?)```/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = fencePattern.exec(text))) {
-    pushParagraphBlocks(blocks, text.slice(cursor, match.index), cursor);
-    const language = match[1].trim().toLowerCase();
-    const code = match[2].replace(/\n$/, "");
-    blocks.push(
-      language === "mermaid"
-        ? { kind: "mermaid", code, startOffset: match.index }
-        : { kind: "code", language, code, startOffset: match.index }
-    );
-    cursor = match.index + match[0].length;
-  }
-
-  pushParagraphBlocks(blocks, text.slice(cursor), cursor);
-  return blocks.length > 0 ? blocks : [{ kind: "paragraph", text, startOffset: 0 }];
-}
-
-function pushParagraphBlocks(blocks: RichBlockWithOffset[], text: string, baseOffset: number): void {
-  const separatorPattern = /\n{2,}/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = separatorPattern.exec(text))) {
-    pushParagraphSegment(blocks, text.slice(cursor, match.index), baseOffset + cursor);
-    cursor = match.index + match[0].length;
-  }
-  pushParagraphSegment(blocks, text.slice(cursor), baseOffset + cursor);
-}
-
-function pushParagraphSegment(blocks: RichBlockWithOffset[], paragraph: string, baseOffset: number): void {
-  const leadingTrim = paragraph.match(/^\n+/)?.[0].length ?? 0;
-  const trailingTrim = paragraph.match(/\n+$/)?.[0].length ?? 0;
-  const content = paragraph.slice(leadingTrim, paragraph.length - trailingTrim);
-  if (content.trim()) {
-    pushParagraphOrImageBlocks(blocks, content, baseOffset + leadingTrim);
-  }
-}
-
-function pushParagraphOrImageBlocks(blocks: RichBlockWithOffset[], content: string, baseOffset: number): void {
-  const textLines: string[] = [];
-  let textStartOffset = baseOffset;
-  let lineOffset = 0;
-  for (const line of content.split("\n")) {
-    const imageSource = bareImageSource(line);
-    if (!imageSource) {
-      if (textLines.length === 0) {
-        textStartOffset = baseOffset + lineOffset;
-      }
-      textLines.push(line);
-      lineOffset += line.length + 1;
-      continue;
-    }
-    pushTextLines(blocks, textLines, textStartOffset);
-    blocks.push({ kind: "image", source: imageSource, startOffset: baseOffset + lineOffset });
-    lineOffset += line.length + 1;
-  }
-  pushTextLines(blocks, textLines, textStartOffset);
-}
-
-function pushTextLines(blocks: RichBlockWithOffset[], lines: string[], baseOffset: number): void {
-  const rawText = lines.join("\n");
-  lines.length = 0;
-  const leadingTrim = rawText.length - rawText.trimStart().length;
-  const text = rawText.trim();
-  if (text) {
-    blocks.push({ kind: "paragraph", text, startOffset: baseOffset + leadingTrim });
-  }
-}
-
-function renderInlineContent(
-  text: string,
-  cwd: string | undefined,
-  keyPrefix: string,
-  renderText: RichTextRenderer | undefined,
-  onOpenFile: ((path: string) => void) | undefined
-): Array<JSX.Element | string> {
-  const output: Array<JSX.Element | string> = [];
-  const pushText = (value: string, key: string): void => {
-    if (!value) {
-      return;
-    }
-    output.push(
-      ...renderRichText(value, key, {
-        cwd,
-        onOpenFile,
-        renderText,
-        autoLinkFiles: true
-      })
-    );
-  };
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  IMAGE_MARKDOWN_PATTERN.lastIndex = 0;
-
-  while ((match = IMAGE_MARKDOWN_PATTERN.exec(text))) {
-    if (match.index > cursor) {
-      pushText(text.slice(cursor, match.index), `${keyPrefix}-text-${cursor}`);
-    }
-    const alt = match[1].trim();
-    output.push(<RichImage key={`${keyPrefix}-image-${match.index}`} source={match[2]} alt={alt} cwd={cwd} inline />);
-    cursor = match.index + match[0].length;
-  }
-
-  if (cursor < text.length) {
-    pushText(text.slice(cursor), `${keyPrefix}-text-${cursor}`);
-  }
-  return output;
-}
 
 type CodeElementProps = {
   className?: string;
@@ -446,26 +194,12 @@ function markdownComponents(
   onOpenFile: ((path: string) => void) | undefined
 ): Components {
   const richTextOptions: RichTextRenderOptions = {
-    cwd,
-    onOpenFile,
     renderText,
-    // File-reference detection on bare prose paths has been removed. Markdown
-    // link targets are routed to RichFileLink by the `a` handler below; bare
-    // paths in prose stay plain text.
-    autoLinkFiles: false
-  };
-  const plainTextOptions: RichTextRenderOptions = {
-    renderText,
-    autoLinkFiles: false
   };
   return {
     p({ children }) {
-      const autoImageReferences = autoImageReferencesFromMarkdownChildren(children);
       return (
-        <>
-          <p className="rich-paragraph">{renderMarkdownText(children, richTextOptions, "p")}</p>
-          <RichAutoImageReferences references={autoImageReferences} cwd={cwd} keyPrefix="p" />
-        </>
+        <p className="rich-paragraph">{renderMarkdownText(children, richTextOptions, "p")}</p>
       );
     },
     // Heading levels share the same flat `rich-heading` shape so streamed
@@ -515,7 +249,7 @@ function markdownComponents(
       );
     },
     a({ href, title, children }) {
-      const inner = renderMarkdownText(children, plainTextOptions, "a");
+      const inner = renderMarkdownText(children, richTextOptions, "a");
       const target = parseLinkTarget(href);
       if (target.kind === "workspace-file") {
         if (!onOpenFile) {
@@ -573,16 +307,12 @@ function markdownComponents(
       return <pre className="rich-code">{children}</pre>;
     },
     code({ className, children }) {
-      return <code className={className}>{renderMarkdownText(children, plainTextOptions, "code")}</code>;
+      return <code className={className}>{renderMarkdownText(children, richTextOptions, "code")}</code>;
     },
     li({ children }) {
-      const autoImageReferences = autoImageReferencesFromMarkdownChildren(children, {
-        directTextOnly: true
-      });
       return (
         <li>
           {renderMarkdownText(children, richTextOptions, "li")}
-          <RichAutoImageReferences references={autoImageReferences} cwd={cwd} keyPrefix="li" />
         </li>
       );
     },
@@ -701,7 +431,8 @@ function renderMarkdownTextWithContext(
   keyPrefix: string,
   traversal: MarkdownTextTraversal,
 ): ReactNode {
-  if (!options.renderText && (!options.autoLinkFiles || !options.onOpenFile)) {
+  const renderText = options.renderText;
+  if (!renderText) {
     return children;
   }
   return Children.toArray(children).flatMap((child, index): ReactNode[] => {
@@ -710,7 +441,7 @@ function renderMarkdownTextWithContext(
       const text = String(child);
       const startOffset = traversal.offset;
       traversal.offset += text.length;
-      return renderRichText(text, childKey, options, {
+      return renderText(text, childKey, {
         startOffset,
         endOffset: traversal.offset,
         totalLength: traversal.totalLength,
@@ -743,279 +474,6 @@ function markdownNodeText(node: ReactNode): string {
     }
     return "";
   }).join("");
-}
-
-function renderRichText(
-  text: string,
-  keyPrefix: string,
-  options: RichTextRenderOptions,
-  context?: RichTextRenderContext,
-): Array<JSX.Element | string> {
-  if (!options.autoLinkFiles || !options.onOpenFile) {
-    return options.renderText ? options.renderText(text, keyPrefix, context) : [text];
-  }
-
-  const output: Array<JSX.Element | string> = [];
-  const pushPlain = (value: string, key: string, relativeOffset: number): void => {
-    if (!value) {
-      return;
-    }
-    const childContext = context ? {
-      ...context,
-      startOffset: context.startOffset + relativeOffset,
-      endOffset: context.startOffset + relativeOffset + value.length,
-    } : undefined;
-    output.push(...(options.renderText ? options.renderText(value, key, childContext) : [value]));
-  };
-
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  AUTO_FILE_REFERENCE_PATTERN.lastIndex = 0;
-  while ((match = AUTO_FILE_REFERENCE_PATTERN.exec(text))) {
-    const prefixLength = match[1].length;
-    const referenceStart = match.index + prefixLength;
-    const reference = match[0].slice(prefixLength);
-    const candidatePath = filePathFromReference(reference);
-    if (!isFileReferenceCandidate(candidatePath)) {
-      continue;
-    }
-    pushPlain(text.slice(cursor, referenceStart), `${keyPrefix}-text-${cursor}`, cursor);
-    output.push(
-      <RichResolvedFileReference
-        key={`${keyPrefix}-file-${referenceStart}`}
-        display={reference}
-        cwd={options.cwd}
-        onOpenFile={options.onOpenFile}
-      />
-    );
-    cursor = referenceStart + reference.length;
-  }
-
-  pushPlain(text.slice(cursor), `${keyPrefix}-text-${cursor}`, cursor);
-  return output;
-}
-
-// Resolved file references are cached at the module level so that switching
-// sessions or tabs does not force every previously-rendered file reference to
-// re-issue an IPC roundtrip and visually flip from plain text to the red link.
-// The cache is keyed by (display, cwd) so different worktrees stay separate.
-type ResolvedFileReference =
-  | { status: "resolved"; path: string; absolutePath?: string }
-  | { status: "unresolved" };
-
-const fileReferenceResolutionCache = new Map<string, ResolvedFileReference>();
-const fileReferenceResolutionInflight = new Map<string, Promise<ResolvedFileReference>>();
-
-function fileReferenceCacheKey(display: string, cwd: string | undefined): string {
-  return `${cwd ?? ""}::${display}`;
-}
-
-function lookupCachedFileReference(
-  display: string,
-  cwd: string | undefined
-): ResolvedFileReference | undefined {
-  return fileReferenceResolutionCache.get(fileReferenceCacheKey(display, cwd));
-}
-
-function subscribeToFileReferenceResolution(
-  display: string,
-  cwd: string | undefined,
-  onResolved: (result: ResolvedFileReference) => void
-): void {
-  const key = fileReferenceCacheKey(display, cwd);
-  const cached = fileReferenceResolutionCache.get(key);
-  if (cached) {
-    onResolved(cached);
-    return;
-  }
-
-  const resolver = window.wuu?.resolveWorkspaceFileReference;
-  if (!resolver) {
-    const result: ResolvedFileReference = { status: "unresolved" };
-    fileReferenceResolutionCache.set(key, result);
-    onResolved(result);
-    return;
-  }
-
-  let inflight = fileReferenceResolutionInflight.get(key);
-  if (!inflight) {
-    inflight = resolveWorkspaceFileReference(display, cwd)
-      .then(
-        (result): ResolvedFileReference =>
-          result.status === "resolved" && result.path
-            ? { status: "resolved", path: result.path, absolutePath: result.absolute_path }
-            : { status: "unresolved" }
-      )
-      .catch((): ResolvedFileReference => ({ status: "unresolved" }));
-    fileReferenceResolutionInflight.set(key, inflight);
-    void inflight.then((result) => {
-      fileReferenceResolutionCache.set(key, result);
-      fileReferenceResolutionInflight.delete(key);
-    });
-  }
-  void inflight.then((result) => {
-    onResolved(result);
-  });
-}
-
-function RichResolvedFileReference({
-  display,
-  cwd,
-  onOpenFile
-}: {
-  display: string;
-  cwd: string | undefined;
-  onOpenFile: (path: string) => void;
-}): JSX.Element {
-  const [resolved, setResolved] = useState<ResolvedFileReference | undefined>(
-    () => lookupCachedFileReference(display, cwd)
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    setResolved(lookupCachedFileReference(display, cwd));
-    subscribeToFileReferenceResolution(display, cwd, (result) => {
-      if (cancelled) {
-        return;
-      }
-      setResolved(result);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [cwd, display]);
-
-  if (resolved === undefined) {
-    // First render for a reference we have not resolved yet. Render a
-    // link-shaped placeholder so the visual layout is stable; the real
-    // link replaces it once the IPC roundtrip completes.
-    return (
-      <span
-        className="rich-link rich-file-link rich-file-link--pending"
-        aria-busy="true"
-        data-pending-file-reference={display}
-      >
-        <span className="rich-link-content">
-          <span className="rich-link-icon" aria-hidden="true">
-            <FileText className="icon-xs" />
-          </span>
-          <span className="rich-link-label">{display}</span>
-        </span>
-      </span>
-    );
-  }
-
-  // Any reference that survived the candidate check (extension whitelist,
-  // not a URL) is rendered as a red link for visual consistency, even if
-  // the workspace does not actually contain the file. Otherwise a list
-  // like "段二改了 → a.ts, b.ts, c.ts" would mix highlighted and plain
-  // entries whenever one of the files has been deleted or is ambiguous,
-  // which is the exact UX regression the user reported. When the IPC
-  // reports missing/ambiguous/invalid, the link still points at the
-  // display string and the file viewer surfaces its own "not found"
-  // feedback on click.
-  const linkPath = resolved.status === "resolved" ? resolved.path : display;
-  return (
-    <RichFileLink
-      display={display}
-      cwd={cwd}
-      target={{ kind: "workspace-file", path: linkPath }}
-      onOpenFile={onOpenFile}
-    />
-  );
-}
-
-function RichAutoImageReferences({
-  references,
-  cwd,
-  keyPrefix
-}: {
-  references: readonly string[];
-  cwd: string | undefined;
-  keyPrefix: string;
-}): JSX.Element | null {
-  if (!cwd || references.length === 0) {
-    return null;
-  }
-
-  return (
-    <>
-      {references.map((reference, index) => (
-        <RichResolvedImageReference
-          key={`${keyPrefix}-auto-image-${index}-${reference}`}
-          reference={reference}
-          cwd={cwd}
-        />
-      ))}
-    </>
-  );
-}
-
-function RichResolvedImageReference({
-  reference,
-  cwd,
-}: {
-  reference: string;
-  cwd: string;
-}): JSX.Element | null {
-  const [resolved, setResolved] = useState<ResolvedFileReference | undefined>(
-    () => lookupCachedFileReference(reference, cwd)
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    setResolved(lookupCachedFileReference(reference, cwd));
-    subscribeToFileReferenceResolution(reference, cwd, (result) => {
-      if (cancelled) {
-        return;
-      }
-      setResolved(result);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [cwd, reference]);
-
-  if (resolved?.status !== "resolved") {
-    return null;
-  }
-
-  const source = resolved.absolutePath ?? resolved.path;
-  return (
-    <RichImage
-      source={source}
-      alt={reference}
-      cwd={resolved.absolutePath ? undefined : cwd}
-      caption={resolved.path}
-      autoPreview
-    />
-  );
-}
-
-function resolveWorkspaceFileReference(
-  reference: string,
-  cwd: string | undefined,
-): Promise<WorkspaceFileReferenceResolveResult> {
-  const resolver = window.wuu?.resolveWorkspaceFileReference;
-  if (!resolver) {
-    return Promise.resolve({
-      root: cwd ?? "",
-      reference,
-      status: "missing",
-    });
-  }
-
-  return resolver(reference, cwd).catch(() => ({
-    root: cwd ?? "",
-    reference,
-    status: "invalid" as const,
-  }));
-}
-
-// Exposed for tests so the module-level cache does not leak between cases.
-export function __resetRichFileReferenceResolutionCacheForTests(): void {
-  fileReferenceResolutionCache.clear();
-  fileReferenceResolutionInflight.clear();
 }
 
 function RichFileLink({
@@ -1054,12 +512,7 @@ function RichFileLink({
             setContextMenu({ x: event.clientX, y: event.clientY });
           }}
         >
-          <span className="rich-link-content">
-            <span className="rich-link-icon" aria-hidden="true">
-              <FileText className="icon-xs" />
-            </span>
-            <span className="rich-link-label">{display}</span>
-          </span>
+          <span className="rich-link-label">{display}</span>
         </button>
       </Tooltip>
       {contextMenu ? (
@@ -1191,102 +644,6 @@ function RichWebLinkIcon({ href }: { href: string }): JSX.Element {
   );
 }
 
-function filePathFromReference(reference: string): string | undefined {
-  const match = reference.match(AUTO_FILE_LINE_SUFFIX_PATTERN);
-  const path = (match?.[1] ?? reference).trim();
-  return path ? path : undefined;
-}
-
-function isFileReferenceCandidate(path: string | undefined): boolean {
-  const normalizedPath = path?.trim() ?? "";
-  if (!normalizedPath || /^https?:\/\//i.test(normalizedPath)) {
-    return false;
-  }
-  return AUTO_LINK_FILE_EXTENSIONS.has(fileExtension(normalizedPath));
-}
-
-function isImageReferenceCandidate(path: string | undefined): boolean {
-  const normalizedPath = path?.trim() ?? "";
-  return Boolean(normalizedPath) && IMAGE_FILE_PATTERN.test(normalizedPath);
-}
-
-function autoImageReferencesFromMarkdownChildren(
-  children: ReactNode,
-  { directTextOnly = false }: { directTextOnly?: boolean } = {},
-): string[] {
-  const references: string[] = [];
-  const seen = new Set<string>();
-  const addReference = (reference: string): void => {
-    if (references.length >= AUTO_IMAGE_REFERENCE_LIMIT || seen.has(reference)) {
-      return;
-    }
-    seen.add(reference);
-    references.push(reference);
-  };
-
-  const visit = (node: ReactNode): void => {
-    for (const child of Children.toArray(node)) {
-      if (typeof child === "string" || typeof child === "number") {
-        collectAutoImageReferences(String(child), addReference);
-        continue;
-      }
-      type MarkdownElementProps = {
-        children?: ReactNode;
-        className?: string;
-        node?: { tagName?: string };
-      };
-      if (
-        directTextOnly ||
-        !isValidElement<MarkdownElementProps>(child) ||
-        child.props.children === undefined ||
-        skipsAutoImageReferenceScan(child)
-      ) {
-        continue;
-      }
-      visit(child.props.children);
-    }
-  };
-
-  visit(children);
-  return references;
-}
-
-function collectAutoImageReferences(text: string, addReference: (reference: string) => void): void {
-  let match: RegExpExecArray | null;
-  AUTO_FILE_REFERENCE_PATTERN.lastIndex = 0;
-  while ((match = AUTO_FILE_REFERENCE_PATTERN.exec(text))) {
-    const prefixLength = match[1].length;
-    const reference = match[0].slice(prefixLength);
-    if (isImageReferenceCandidate(filePathFromReference(reference))) {
-      addReference(reference);
-    }
-  }
-}
-
-function skipsAutoImageReferenceScan(element: {
-  type: unknown;
-  props?: { className?: string; node?: { tagName?: string } };
-}): boolean {
-  const tagName = element.props?.node?.tagName;
-  return (
-    element.type === "a" ||
-    element.type === "code" ||
-    element.type === "img" ||
-    tagName === "a" ||
-    tagName === "code" ||
-    tagName === "img"
-  );
-}
-
-function fileExtension(path: string): string {
-  const fileName = path.split("/").pop() ?? "";
-  const dotIndex = fileName.lastIndexOf(".");
-  if (dotIndex < 0) {
-    return "";
-  }
-  return fileName.slice(dotIndex).toLowerCase();
-}
-
 function faviconSource(href: string): string | undefined {
   try {
     const url = new URL(href);
@@ -1383,20 +740,16 @@ function RichImage({
   alt,
   cwd,
   inline = false,
-  caption,
-  autoPreview = false,
 }: {
   source: string;
   alt: string;
   cwd: string | undefined;
   inline?: boolean;
-  caption?: string;
-  autoPreview?: boolean;
 }): JSX.Element {
   const { t } = useI18n();
   const resolvedSource = resolveImageSource(source, cwd);
   const { openPreview } = useImagePreview();
-  const titleText = caption ?? imageTarget(source);
+  const titleText = imageTarget(source);
   const handleActivate = (): void => {
     openPreview({ src: resolvedSource, alt, title: titleText });
   };
@@ -1407,10 +760,7 @@ function RichImage({
     }
   };
   const image = (
-    // A visible <figcaption> already carries the caption, so the hover
-    // tooltip only fills the gap when there is no caption: it reveals the
-    // image source path instead of repeating what's on screen.
-    <Tooltip content={caption ? undefined : titleText}>
+    <Tooltip content={titleText}>
       <img
         className="rich-image"
         src={resolvedSource}
@@ -1430,32 +780,10 @@ function RichImage({
     return <span className="rich-image-block inline">{image}</span>;
   }
   return (
-    <figure
-      className={autoPreview ? "rich-image-block rich-image-block--auto rich-auto-image-reference" : "rich-image-block"}
-      data-auto-image-reference={autoPreview ? alt : undefined}
-    >
+    <figure className="rich-image-block">
       {image}
-      {caption ? <figcaption className="rich-image-caption">{caption}</figcaption> : null}
     </figure>
   );
-}
-
-function bareImageSource(line: string): string | undefined {
-  const source = imageTarget(stripListMarker(line));
-  if (!source || !IMAGE_FILE_PATTERN.test(source)) {
-    return undefined;
-  }
-  if (isWebImageSource(source) || source.startsWith("file://")) {
-    return source;
-  }
-  if (source.startsWith("/") || source.startsWith("~/") || source.startsWith("./") || source.startsWith("../")) {
-    return source;
-  }
-  return source.includes("/") ? source : undefined;
-}
-
-function stripListMarker(line: string): string {
-  return stripWrappers(line.trim().replace(/^[-*]\s+/, ""));
 }
 
 function stripWrappers(value: string): string {

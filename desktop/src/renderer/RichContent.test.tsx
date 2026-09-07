@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileReferenceResolveResult } from "../shared/protocol";
 import { ImagePreviewProvider } from "./ImagePreview";
-import { RichContent, __resetRichFileReferenceResolutionCacheForTests } from "./RichContent";
+import { MarkdownContent, RichContent } from "./RichContent";
 import { StreamingMarkdown } from "./StreamingMarkdown";
 
 const { mermaidInitialize, mermaidRender } = vi.hoisted(() => ({
@@ -62,7 +62,6 @@ afterEach(() => {
   container.remove();
   delete (window as { wuu?: unknown }).wuu;
   delete document.documentElement.dataset.theme;
-  __resetRichFileReferenceResolutionCacheForTests();
 });
 
 function render(element: JSX.Element): void {
@@ -103,6 +102,27 @@ function resolvedFileReference(
 }
 
 describe("RichContent code block", () => {
+  it.each(["message", "markdown"])("uses the same link rules in %s rendering", (mode) => {
+    const openFile = vi.fn();
+    const text = [
+      "See src/main.ts and `src/main.ts:12`, or [source](src/main.ts#L12).",
+      "Visit https://example.com/docs and www.example.org, or mail reader@example.com.",
+      "`https://example.net/code` stays code. [unsafe](javascript:alert%281%29)",
+    ].join("\n\n");
+    const props = { text, cwd: "/repo/wuu", onOpenFile: openFile };
+    render(mode === "message" ? <RichContent {...props} /> : <MarkdownContent {...props} />);
+
+    const fileLinks = container.querySelectorAll<HTMLButtonElement>(".rich-file-link");
+    expect(fileLinks).toHaveLength(1);
+    act(() => fileLinks[0].click());
+    expect(openFile).toHaveBeenCalledWith("src/main.ts#L12");
+    expect(Array.from(container.querySelectorAll("a"), (link) => link.getAttribute("href"))).toEqual([
+      "https://example.com/docs", "http://www.example.org/", "mailto:reader@example.com",
+    ]);
+    expect(container.querySelector("code a, code button")).toBeNull();
+    expect(resolveWorkspaceFileReferenceMock).not.toHaveBeenCalled();
+  });
+
   it("renders inline code inside bold CJK prose without exposing markdown markers", () => {
     render(<RichContent text={BOLD_TEXT_WITH_INLINE_CODE} />);
 
@@ -188,7 +208,6 @@ describe("RichContent code block", () => {
     const link = container.querySelector(".rich-file-link") as HTMLButtonElement | null;
     expect(link).not.toBeNull();
     expect(link?.textContent).toContain("README_zh.md (line 19)");
-    expect(link?.querySelector(".rich-link-icon")).not.toBeNull();
 
     act(() => {
       link?.click();
@@ -269,7 +288,7 @@ describe("RichContent code block", () => {
     expect(resolveWorkspaceFileReferenceMock).not.toHaveBeenCalled();
   });
 
-  it("renders a resolved bare image path as a preview without turning it into a file link", async () => {
+  it("keeps bare image paths as mentions even when the file exists", async () => {
     const reference = "clients/mobile/assets/icon.png";
     resolveWorkspaceFileReferenceMock.mockImplementation(async (candidate: string) =>
       candidate === reference
@@ -286,13 +305,10 @@ describe("RichContent code block", () => {
     );
     await settleFileReferenceResolution();
 
-    const image = container.querySelector(".rich-auto-image-reference img.rich-image") as HTMLImageElement | null;
-    expect(image).not.toBeNull();
-    expect(image?.getAttribute("src")).toMatch(/^wuu-file:\/\/local\//);
+    expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector(".rich-file-link")).toBeNull();
-    expect(container.querySelector(".rich-image-caption")?.textContent).toBe(reference);
     expect(container.textContent).toContain(reference);
-    expect(resolveWorkspaceFileReferenceMock).toHaveBeenCalledWith(reference, "/repo/wuu");
+    expect(resolveWorkspaceFileReferenceMock).not.toHaveBeenCalled();
   });
 
   it("keeps missing bare image paths as text only", async () => {
@@ -301,7 +317,7 @@ describe("RichContent code block", () => {
     );
     await settleFileReferenceResolution();
 
-    expect(container.querySelector(".rich-auto-image-reference")).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toContain("missing-icon.png");
   });
 
@@ -311,7 +327,7 @@ describe("RichContent code block", () => {
     );
     await settleFileReferenceResolution();
 
-    expect(container.querySelector(".rich-auto-image-reference")).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
     expect(resolveWorkspaceFileReferenceMock).not.toHaveBeenCalled();
   });
 

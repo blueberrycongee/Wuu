@@ -3682,14 +3682,6 @@ html.resizing-workspace-terminal-split * {
   margin: 14px auto;
 }
 
-.workspace-markdown-reading .rich-image-caption {
-  display: block;
-  margin-top: 6px;
-  color: var(--ink-muted);
-  font-size: 12px;
-  text-align: center;
-}
-
 /* The README uses <div align="center"> for the badge row. When
    allowRawHtml is on, react-markdown leaves the wrapper div alone, so we
    just style the inline attribute here. */
