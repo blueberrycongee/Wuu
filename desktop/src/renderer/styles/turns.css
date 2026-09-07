@@ -4830,15 +4830,25 @@ pre {
 
 .turn-edit-summary-toggle {
   display: flex;
+  width: 100%;
+  min-height: 20px;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 0;
   border: 0;
   background: none;
   color: var(--conversation-process-control-color, var(--process-control-color-fallback));
   font: inherit;
+  font-size: var(--conversation-process-font-size);
+  font-weight: var(--conversation-process-font-weight);
+  line-height: var(--conversation-process-line-height);
   cursor: pointer;
   text-align: left;
+}
+
+.turn-edit-summary-toggle > svg {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .turn-edit-summary-toggle[aria-expanded="true"] > svg {

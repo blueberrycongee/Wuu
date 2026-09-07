@@ -42,8 +42,9 @@ type HistoryArchiveFunc func(ctx context.Context, messages []providers.ChatMessa
 // returned history includes assigned addresses and any concurrently saved tail.
 type FreshContextCommitFunc func(context.Context, []providers.ChatMessage, int, string, CompactionNote) ([]providers.ChatMessage, int, error)
 
-// FreshContextBuilder constructs a bounded replacement without making a model
-// request. fixedTokens accounts for current world state and tool schemas.
+// FreshContextBuilder constructs a bounded replacement, using traditional model
+// compaction when no usable note is available. fixedTokens accounts for current
+// world state and tool schemas.
 type FreshContextBuilder func(ctx context.Context, messages []providers.ChatMessage, historyHeadSeq, fixedTokens, targetTokens int) ([]providers.ChatMessage, error)
 
 func buildFreshContext(
@@ -292,7 +293,7 @@ func (r *StreamRunner) contextWindowStatus(ctx context.Context, providerKey stri
 	if inFlight {
 		state += " A background refresh is scheduled or running."
 	} else if backingOff {
-		state += " The last background refresh failed; the host will retry at a later safe boundary."
+		state += " Only the background note refresh failed; this is not a context-window transition or durable-history recovery failure. Continue the task using available history; the host will retry the note at a later safe boundary."
 	}
-	return state + " Do not wait, poll, or write a note yourself. new_context requests a transition; only a host completion confirms it. A transition may use a bounded workset and history recovery without a note."
+	return state + " Do not wait, poll, or write a note yourself. new_context requests a transition; only a host completion confirms it. If no usable note is available, the host will attempt traditional compaction before installing a new context."
 }

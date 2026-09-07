@@ -175,7 +175,6 @@ func generateCompactionNote(
 		if plan.MaxBytes <= 0 || plan.MaxBytes > maxBytes {
 			plan.MaxBytes = maxBytes
 		}
-		plan.Prompt += fmt.Sprintf("\nThe current model budget limits the complete replacement note to %d UTF-8 bytes. Prefer task state and exact history addresses over copied detail.", plan.MaxBytes)
 	}
 	if !force && plan.IntervalTokens > 0 && estimateCompactionMessagesTokens(delta) < plan.IntervalTokens {
 		return previous, nil, ErrCompactionNoteNotDue

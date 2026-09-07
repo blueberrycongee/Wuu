@@ -615,7 +615,9 @@ func (r *StreamRunner) runModelToolLoop(ctx context.Context, history []providers
 		var pendingReanchor CompactionNote
 		cfg.ArchiveHistory = r.ArchiveHistory
 		cfg.FreshContextTokens = r.freshContextTargetTokens(compactThresholdTokens)
-		cfg.FreshContext = r.freshContextBuilder(contextWindowProvider, &pendingReanchor)
+		cfg.FreshContext = r.freshContextBuilder(contextWindowProvider, &pendingReanchor, cfg.Compact, func(err error) {
+			emitCompactionNoteEvent(effectiveOnEvent, "failed", err)
+		})
 		cfg.ContextWindowStatus = func(statusCtx context.Context, messages []providers.ChatMessage) string {
 			return r.contextWindowStatus(statusCtx, contextWindowProvider.CompactionKey(), messages)
 		}
@@ -900,20 +902,42 @@ func (r *StreamRunner) contextWindowProvider() ForkingCompactionProvider {
 	return provider
 }
 
-func (r *StreamRunner) freshContextBuilder(provider ForkingCompactionProvider, pendingReanchor *CompactionNote) FreshContextBuilder {
+func (r *StreamRunner) freshContextBuilder(provider ForkingCompactionProvider, pendingReanchor *CompactionNote, fallback CompactFn, onNoteFailure func(error)) FreshContextBuilder {
 	return func(ctx context.Context, messages []providers.ChatMessage, historyHeadSeq, fixedTokens, targetTokens int) ([]providers.ChatMessage, error) {
-		note, ok, err := loadValidCompactionNote(ctx, r.CompactionNoteStore, provider.CompactionKey(), messages)
-		if err != nil {
-			return nil, fmt.Errorf("load fresh-context note: %w", err)
-		}
-		replacement, reanchored, err := buildFreshContext(messages, note, ok, historyHeadSeq, fixedTokens, targetTokens)
-		if err != nil {
-			return nil, err
-		}
 		if pendingReanchor != nil {
-			*pendingReanchor = reanchored
+			*pendingReanchor = CompactionNote{}
 		}
-		return replacement, nil
+		note, ok, err := loadValidCompactionNote(ctx, r.CompactionNoteStore, provider.CompactionKey(), messages)
+		var replacement []providers.ChatMessage
+		var reanchored CompactionNote
+		if err == nil && ok {
+			replacement, reanchored, err = buildFreshContext(messages, note, ok, historyHeadSeq, fixedTokens, targetTokens)
+			if err == nil && reanchored.Markdown != "" {
+				if pendingReanchor != nil {
+					*pendingReanchor = reanchored
+				}
+				return replacement, nil
+			}
+		}
+		if err == nil {
+			err = errors.New("no usable context note for the current history and budget")
+		}
+		if onNoteFailure != nil {
+			onNoteFailure(err)
+		}
+		if targetTokens <= 0 {
+			targetTokens = FreshContextTargetTokens
+		}
+		available := targetTokens - fixedTokens - min(freshContextTransformReserveTokens, targetTokens/10)
+		if available <= 0 {
+			return nil, errors.Join(err, ErrFreshContextTooLarge)
+		}
+		fallbackCtx := withCompactBudgetHint(ctx, compactBudgetHint{Reason: CompactReasonNewContext, TargetTotalTokens: available})
+		replacement, err = fallbackAfterNoteFailure(fallbackCtx, messages, err, fallback)
+		if err == nil && fixedTokens+estimateFreshContextMessages(replacement) > targetTokens {
+			err = ErrFreshContextTooLarge
+		}
+		return replacement, err
 	}
 }
 
@@ -1074,7 +1098,7 @@ func (r *StreamRunner) compactionNoteFork(retained *RetainedRequestContextState)
 	promptCacheKey := r.PromptCacheKey
 	inferenceJournal := r.InferenceJournal
 	inputBudget := r.freshContextTargetTokens(0)
-	return func(ctx context.Context, history []providers.ChatMessage, plan CompactionNotePlan) (CompactionNoteForkResult, error) {
+	return boundedCompactionNoteFork(func(ctx context.Context, history []providers.ChatMessage, plan CompactionNotePlan) (CompactionNoteForkResult, error) {
 		if client == nil {
 			return CompactionNoteForkResult{}, errors.New("context note client is unavailable")
 		}
@@ -1099,6 +1123,8 @@ func (r *StreamRunner) compactionNoteFork(retained *RetainedRequestContextState)
 			MediaInput:                  mediaInput,
 		}
 		if plan.MaxBytes > 0 {
+			// A cost ceiling, not a UTF-8 size guarantee. The bounded fork
+			// validates actual bytes and regenerates overlong/truncated output.
 			req.MaxTokens = max(1, plan.MaxBytes/3)
 		}
 		if beforeRequest != nil {
@@ -1127,14 +1153,14 @@ func (r *StreamRunner) compactionNoteFork(retained *RetainedRequestContextState)
 			return CompactionNoteForkResult{Usage: result.Usage}, errors.New("context note fork attempted to call a tool")
 		}
 		if result.Truncated || result.FinishReason == providers.FinishReasonLength {
-			return CompactionNoteForkResult{Usage: result.Usage}, errors.New("context note fork output was truncated")
+			return CompactionNoteForkResult{Usage: result.Usage}, errCompactionNoteTruncated
 		}
 		markdown := strings.TrimSpace(result.Content)
 		if markdown == "" {
 			return CompactionNoteForkResult{Usage: result.Usage}, errors.New("context note fork returned empty Markdown")
 		}
 		return CompactionNoteForkResult{Markdown: markdown, Usage: result.Usage}, nil
-	}
+	})
 }
 
 // commitUsageTracker publishes a run-local usage snapshot as the new

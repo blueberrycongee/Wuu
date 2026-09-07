@@ -135,7 +135,7 @@ func estimateOutboundRequestTokens(req providers.ChatRequest) int {
 
 func applyAdaptiveCompactBudget(ctx context.Context, messages []providers.ChatMessage, budget compact.Budget) (compact.Budget, error) {
 	hint, ok := compactBudgetHintFromContext(ctx)
-	if !ok || hint.Reason != CompactReasonOverflow {
+	if !ok || (hint.Reason != CompactReasonOverflow && hint.Reason != CompactReasonNewContext) {
 		return budget, nil
 	}
 

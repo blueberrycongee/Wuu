@@ -1146,9 +1146,9 @@ func canProactivelyCompact(messages []providers.ChatMessage, cfg LoopConfig) boo
 	})
 }
 
-// resolveEffectiveCompaction picks the compaction strategy for a run. A
-// registered provider that reports ErrCompactionUnavailable hands the same
-// transcript to cfg.Compact; any other provider error propagates unchanged.
+// resolveEffectiveCompaction picks the compaction strategy for a run.
+// Note failures fall back to traditional compaction of the original transcript.
+// Other providers retain their explicit ErrCompactionUnavailable opt-out.
 func resolveEffectiveCompaction(cfg LoopConfig) CompactFn {
 	fallback := cfg.Compact
 	if cfg.CompactionRegistry == nil {
@@ -1158,13 +1158,19 @@ func resolveEffectiveCompaction(cfg LoopConfig) CompactFn {
 	if resolved == nil {
 		return fallback
 	}
-	return func(ctx context.Context, messages []providers.ChatMessage) ([]providers.ChatMessage, error) {
+	return func(ctx context.Context, messages []providers.ChatMessage) (result []providers.ChatMessage, resultErr error) {
 		if forked, ok := resolved.(ForkingCompactionProvider); ok && forked.CompactionNotesEnabled() {
+			original := providers.CloneChatMessages(messages)
+			defer func() {
+				if resultErr != nil {
+					if cfg.OnCompactionNote != nil {
+						cfg.OnCompactionNote("failed", resultErr)
+					}
+					result, resultErr = fallbackAfterNoteFailure(ctx, original, resultErr, fallback)
+				}
+			}()
 			note, valid, err := loadValidCompactionNote(ctx, cfg.CompactionNoteStore, forked.CompactionKey(), messages)
 			if err != nil {
-				if cfg.OnCompactionNote != nil {
-					cfg.OnCompactionNote("failed", err)
-				}
 				return nil, fmt.Errorf("load context note: %w", err)
 			}
 			if !valid {
@@ -1178,19 +1184,9 @@ func resolveEffectiveCompaction(cfg LoopConfig) CompactFn {
 					}
 				}
 				if errors.Is(err, ErrCompactionNoteUnsupported) {
-					compacted, legacyErr := resolved.Compact(ctx, cfg.Model, messages)
-					if legacyErr == nil || !errors.Is(legacyErr, ErrCompactionUnavailable) {
-						return compacted, legacyErr
-					}
-					if fallback == nil {
-						return messages, nil
-					}
-					return fallback(ctx, messages)
+					return resolved.Compact(ctx, cfg.Model, messages)
 				}
 				if err != nil {
-					if cfg.OnCompactionNote != nil {
-						cfg.OnCompactionNote("failed", err)
-					}
 					return nil, fmt.Errorf("forced context note: %w", err)
 				}
 				if cfg.OnCompactionNote != nil {
@@ -1205,6 +1201,12 @@ func resolveEffectiveCompaction(cfg LoopConfig) CompactFn {
 			}
 			if replacement.CoveredMessages <= 0 || replacement.CoveredMessages > len(replacement.Messages) {
 				return nil, fmt.Errorf("context note replacement returned invalid coverage %d for %d messages", replacement.CoveredMessages, len(replacement.Messages))
+			}
+			if err := providers.ValidateToolCallHistory(replacement.Messages); err != nil {
+				return nil, fmt.Errorf("context note replacement: %w", err)
+			}
+			if estimateFreshContextMessages(replacement.Messages) >= estimateFreshContextMessages(original) {
+				return nil, errors.New("context note replacement did not shrink active history")
 			}
 			note.CoveredMessages = replacement.CoveredMessages
 			note.CoveredHash = CompactionHistoryHash(replacement.Messages[:replacement.CoveredMessages])

@@ -411,9 +411,9 @@ export function TurnEditSummaryCard({
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
-          <ChevronRight className="icon-xs" aria-hidden="true" />
           <span>{t(turn.status === "interrupted" ? "turnEdits.retainedStopped" : "turnEdits.retained", { count: formatNumber(edits.length) })}</span>
           <EditStats additions={additions} deletions={deletions} />
+          <ChevronRight className="icon-xs" aria-hidden="true" />
         </button>
         {expanded ? (
           <TurnEditSummaryCard
