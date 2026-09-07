@@ -154,10 +154,10 @@
   --conversation-user-message-trailing-gap: 8px;
   --conversation-rule-process-gap: 16px;
   --conversation-process-detail-gap: 16px;
-  --conversation-process-answer-gap: 16px;
+  --conversation-process-answer-gap: var(--conversation-answer-hover-action-gap);
   /* Public message-action rhythm. Themes may tune these without depending on
    * the private action-bar DOM or taking over its interaction semantics. */
-  --conversation-answer-hover-action-gap: var(--wuu-message-actions-overlay-gap, 6px);
+  --conversation-answer-hover-action-gap: var(--wuu-message-actions-overlay-gap, 16px);
   --conversation-message-action-size: var(--wuu-message-action-size, 24px);
   --conversation-activity-gap: 8px;
   --conversation-visible-inset-left: 0px;
