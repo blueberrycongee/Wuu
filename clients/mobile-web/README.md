@@ -49,7 +49,17 @@ Web bridge 使用完整的类型检查接口，并通过 `unsupportedMethods` �
 文本预览上限为 512 KiB；PNG、JPEG、GIF、WebP 和 PDF 在 2 MiB 内通过同一加密通道返回。
 文件编辑没有现有 renderer 调用方，因此没有增加远程写入接口。
 
-仍需完成注册工作区选择、git 状态和 diff、手机视口布局及真实浏览器端到端验证。
+工作区选择复用 `workspace/list`，新会话通过现有 `thread/start` 传递所选目录和工作区 ID。
+后台事件按会话所属项目路由，重连保留工作区与跨工作区打开的会话。
+
+Git 审阅面板需要仓库状态、变更列表和单文件 diff，因此增加三个只读 RPC：
+`workspace/git/status`、`workspace/git/changes`、`workspace/git/diff`。
+它们读取已知工作区或会话仓库，比较 HEAD 与工作目录（包含暂存改动和未跟踪文件），
+支持首次提交前的仓库、重命名和二进制文件。单份 patch 或文本最多返回 512 KiB，
+仓库列表超过 8 MiB 或读取超过 25 秒会明确报错。外部 diff 和 textconv 不会执行。
+提交、切分支和创建 PR 仍由电脑上的 Agent 或桌面操作完成，没有新增远程 Git 写入接口。
+
+仍需完成手机视口布局及真实浏览器端到端验证。
 Web 扩展模块加载暂时关闭，直到存在与 Electron 自定义协议同等的公共加载路径。
 
 浏览器凭据保存在当前 origin 的 `localStorage`，隔离强度低于 Keychain/Keystore。

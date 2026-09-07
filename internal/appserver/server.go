@@ -1252,6 +1252,15 @@ func (s *Server) handleLine(ctx context.Context, raw []byte) error {
 		return s.handleThreadRename(req)
 	case MethodThreadDelete:
 		return s.handleThreadDelete(req)
+	case MethodWorkspaceGitStatus, MethodWorkspaceGitChanges, MethodWorkspaceGitDiff:
+		if !s.startBackground(func() {
+			if err := s.handleWorkspaceGit(ctx, req); err != nil {
+				log.Printf("wuu: workspace git view: %v", err)
+			}
+		}) {
+			return s.writeResponse(req.ID, nil, errServerClosed)
+		}
+		return nil
 	case MethodWorkspaceDirectoryList, MethodWorkspaceFileRead, MethodWorkspaceFileResolve:
 		return s.handleWorkspaceView(req)
 	case MethodWorkspaceList:

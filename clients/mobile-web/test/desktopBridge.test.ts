@@ -41,7 +41,7 @@ describe("browser host contract", () => {
     expect(host.onBrowserInvalidate).toBeUndefined();
     expect(host.unsupportedMethods).toContain("startTerminalSession");
     await expect(host.startTerminalSession()).rejects.toBeInstanceOf(UnavailableHostOperationError);
-    await expect(host.gitStatus()).rejects.toMatchObject({ code: "host_operation_unavailable" });
+    await expect(host.checkoutGitBranch("main")).rejects.toMatchObject({ code: "host_operation_unavailable" });
     await expect(host.updateVoiceInputSettings({ polish_enabled: true, language: "en-US" }))
       .rejects.toBeInstanceOf(UnavailableHostOperationError);
     await expect(host.selectProject("another-computer")).rejects.toThrow("Unknown remote workspace");
@@ -85,6 +85,16 @@ describe("browser host contract", () => {
     expect(remote.call).toHaveBeenLastCalledWith("workspace/file/read", { path: "src/main.go", root: "/paired/worktree" }, 30_000);
     await bridge.api.resolveWorkspaceFileReference("main.go:12");
     expect(remote.call).toHaveBeenLastCalledWith("workspace/file/resolve", { reference: "main.go:12", root: "/paired/workspace" }, 30_000);
+  });
+
+  it("reads repository changes from the selected host worktree", async () => {
+    const bridge = await connectBridge();
+    await bridge.api.gitStatus();
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/git/status", { root: "/paired/workspace" }, 30_000);
+    await bridge.api.listGitChanges("/paired/worktree");
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/git/changes", { root: "/paired/worktree" }, 30_000);
+    await bridge.api.readGitFileDiff("src/main.go", "/paired/worktree");
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/git/diff", { path: "src/main.go", root: "/paired/worktree" }, 30_000);
   });
 
   it("does not open executable URL schemes", async () => {
