@@ -74,7 +74,8 @@ export type ArchivedRoomView = {
 };
 import { normalizedVariantForProviderModel, providerModelReasoningMode, providerModelVariantOptions, variantLabel } from "./RuntimeHelpers";
 import { ENABLE_REMOTE_CONTROL, ENABLE_VOICE_INPUT } from "./FeatureFlags";
-import { MessageFlowFontSizeControl } from "./MessageFlowFontSizeSection";
+import { AppearanceTypography } from "./AppearanceTypography";
+import { SettingsRow } from "./SettingsRow";
 import { EngineSettingsSection } from "./EngineSettingsSection";
 import { SettingsRemotePage } from "./SettingsRemotePage";
 import { ThemePreferenceControl } from "./ThemePreferenceSection";
@@ -1254,30 +1255,6 @@ function SettingsCard({ children }: { children: ReactNode }): JSX.Element {
   return <div className="settings-group" data-wuu-component="settings-group">{children}</div>;
 }
 
-function SettingsRow({
-  title,
-  description,
-  children,
-  block = false
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-  block?: boolean;
-}): JSX.Element {
-  return (
-    <div
-      className={`settings-row${block ? " settings-row-block" : ""}`}
-      data-wuu-component="settings-row"
-    >
-      <div className="settings-row-label">
-        <span className="settings-row-label-title">{title}</span>
-        {description ? <span className="settings-row-label-description">{description}</span> : null}
-      </div>
-      <div className={block ? "settings-row-control-block" : "settings-row-control"}>{children}</div>
-    </div>
-  );
-}
 
 
 
@@ -2058,14 +2035,22 @@ function SettingsGeneralPage({
     <>
       <SettingsSection title={t("settings.appearance")} testID="settings-appearance">
         <SettingsCard>
+          <SettingsRow title={t("settings.theme")} block>
+            <ThemePreferenceControl />
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
+      <SettingsSection title={t("settings.typography")} testID="settings-typography">
+        <SettingsCard><AppearanceTypography /></SettingsCard>
+      </SettingsSection>
+      <SettingsSection title={t("settings.fonts")} testID="settings-fonts">
+        <SettingsCard><AppearanceTypography section="fonts" /></SettingsCard>
+      </SettingsSection>
+      <SettingsSection title={t("settings.personalization")} testID="settings-personalization">
+        <SettingsCard>
+          <AppearanceTypography section="motion" />
           <SettingsRow title={t("settings.language")}>
             <LanguagePreferenceControl />
-          </SettingsRow>
-          <SettingsRow title={t("settings.theme")} block>
-            <ThemePreferenceControl extensionInventory={initialized?.extension_inventory} />
-          </SettingsRow>
-          <SettingsRow title={t("settings.messageFontSize")}>
-            <MessageFlowFontSizeControl />
           </SettingsRow>
           <SettingsRow
             title={t("settings.codexPet")}

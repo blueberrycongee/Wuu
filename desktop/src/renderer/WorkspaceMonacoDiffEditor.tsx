@@ -1,4 +1,5 @@
 import * as monaco from "monaco-editor";
+import { codeEditorTypography, observeAppearance } from "./AppearancePreferences";
 import { useEffect, useMemo, useRef } from "react";
 import { currentAppliedTheme, observeAppliedTheme } from "./Theme";
 import {
@@ -49,8 +50,7 @@ export function WorkspaceMonacoDiffEditor({
       diffCodeLens: false,
       diffWordWrap: "on",
       enableSplitViewResizing: true,
-      fontFamily: "\"SFMono-Regular\", Consolas, \"Liberation Mono\", monospace",
-      fontSize: 12,
+      ...codeEditorTypography(),
       glyphMargin: false,
       hideUnchangedRegions: {
         enabled: true,
@@ -58,7 +58,6 @@ export function WorkspaceMonacoDiffEditor({
         minimumLineCount: 8,
         revealLineCount: 12,
       },
-      lineHeight: 20,
       lineNumbersMinChars: 3,
       minimap: { enabled: false },
       originalEditable: false,
@@ -83,9 +82,11 @@ export function WorkspaceMonacoDiffEditor({
     const stopObservingTheme = observeAppliedTheme((theme) => {
       monaco.editor.setTheme(workspaceMonacoTheme(theme));
     });
+    const stopObservingAppearance = observeAppearance(() => editor.updateOptions(codeEditorTypography()));
 
     return () => {
       stopObservingTheme();
+      stopObservingAppearance();
       editor.dispose();
       originalModel.dispose();
       modifiedModel.dispose();

@@ -37,6 +37,7 @@ export function applyMessageFlowFontSize(size: MessageFlowFontSize): void {
       "--conversation-message-font-size",
       `${clamped}px`,
     );
+    window.dispatchEvent(new Event("wuu-content-size-change"));
   } catch {
     // Same fall-back story as Theme.ts — losing the inline stamp only
     // costs a one-frame flash at the default size.
@@ -122,7 +123,7 @@ export function MessageFlowFontSizeControl(): JSX.Element {
       onChange={onChange}
       onBlur={(event) => commit(event.currentTarget.value)}
       onKeyDown={onKeyDown}
-      aria-label={t("settings.messageFontSize")}
+      aria-label={t("settings.contentSize")}
       data-testid="settings-message-flow-font-size-input"
     />
   );

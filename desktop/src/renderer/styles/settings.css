@@ -494,22 +494,21 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Font-size field: a short typed value, not a right-aligned quantity.
- * Native number steppers reserve a right-hand column, so the digits
- * sit off the box center; hide them and center the value instead. */
+/* Keep native steppers available on hover and keyboard focus. */
 .settings-input-num-center {
   width: 72px;
   padding: 0;
   text-align: center;
-  appearance: textfield;
-  -moz-appearance: textfield;
 }
 
-.settings-input-num-center::-webkit-inner-spin-button,
-.settings-input-num-center::-webkit-outer-spin-button {
-  appearance: none;
-  -webkit-appearance: none;
+.settings-input-num-center::-webkit-inner-spin-button {
+  opacity: 0;
   margin: 0;
+}
+
+.settings-input-num-center:hover::-webkit-inner-spin-button,
+.settings-input-num-center:focus::-webkit-inner-spin-button {
+  opacity: 1;
 }
 
 /* Card footer row: feedback text left, the form's submit action right. */

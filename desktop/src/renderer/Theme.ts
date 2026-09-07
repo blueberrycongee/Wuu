@@ -30,6 +30,7 @@ const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
 let systemListenerCleanup: (() => void) | undefined;
 const EXTENSION_THEME_KEY = "wuu.extension-theme";
 const appliedExtensionTokens = new Set<string>();
+let themeInventory: readonly ExtensionInventoryRecord[] | undefined;
 
 export type AvailableExtensionTheme = ExtensionThemeDescriptor & {
   key: string;
@@ -84,11 +85,12 @@ export function observeAppliedTheme(
  * changes live until a different preference is applied.
  */
 export function applyThemePreference(preference: ThemePreference): void {
-  clearExtensionTheme();
+  clearExtensionThemeTokens();
   systemListenerCleanup?.();
   systemListenerCleanup = undefined;
 
   document.documentElement.dataset.theme = resolveThemePreference(preference);
+  applySelectedTheme();
 
   if (preference !== "system" || typeof window === "undefined") {
     return;
@@ -99,6 +101,7 @@ export function applyThemePreference(preference: ThemePreference): void {
   }
   const onChange = (event: MediaQueryListEvent): void => {
     document.documentElement.dataset.theme = event.matches ? "dark" : "light";
+    applySelectedTheme();
   };
   query.addEventListener("change", onChange);
   systemListenerCleanup = () => query.removeEventListener("change", onChange);
@@ -130,13 +133,17 @@ export function availableExtensionThemes(
   });
 }
 
-export function selectedExtensionThemeKey(): string {
-  return window.localStorage?.getItem(EXTENSION_THEME_KEY) ?? "";
+export function selectedExtensionThemeKey(mode: AppliedTheme = currentAppliedTheme()): string {
+  return window.localStorage?.getItem(`${EXTENSION_THEME_KEY}.${mode}`) ?? "";
 }
 
 export function applyExtensionTheme(theme: AvailableExtensionTheme): void {
-  systemListenerCleanup?.();
-  systemListenerCleanup = undefined;
+  window.localStorage?.setItem(`${EXTENSION_THEME_KEY}.${theme.base}`, theme.key);
+  if (theme.base !== currentAppliedTheme()) return;
+  paintExtensionTheme(theme);
+}
+
+function paintExtensionTheme(theme: AvailableExtensionTheme): void {
   clearExtensionThemeTokens();
   document.documentElement.dataset.theme = theme.base;
   const explicitTokens = new Set(Object.keys(theme.tokens));
@@ -155,30 +162,47 @@ export function applyExtensionTheme(theme: AvailableExtensionTheme): void {
     document.documentElement.style.setProperty(token, value);
     appliedExtensionTokens.add(token);
   }
-  window.localStorage?.setItem(EXTENSION_THEME_KEY, theme.key);
 }
 
 export function clearExtensionTheme(): void {
   clearExtensionThemeTokens();
   window.localStorage?.removeItem(EXTENSION_THEME_KEY);
+  window.localStorage?.removeItem(`${EXTENSION_THEME_KEY}.light`);
+  window.localStorage?.removeItem(`${EXTENSION_THEME_KEY}.dark`);
+}
+
+export function selectExtensionTheme(mode: AppliedTheme, key: string): void {
+  window.localStorage.setItem(`${EXTENSION_THEME_KEY}.${mode}`, key);
+  applySelectedTheme();
+  window.dispatchEvent(new Event("wuu-theme-selection"));
+}
+
+function applySelectedTheme(): void {
+  clearExtensionThemeTokens();
+  const selected = selectedExtensionThemeKey();
+  const theme = availableExtensionThemes(themeInventory).find(
+    (candidate) => candidate.base === currentAppliedTheme() &&
+      (candidate.key === selected || candidate.legacyKeys.includes(selected)),
+  );
+  if (theme) paintExtensionTheme(theme);
 }
 
 export function syncExtensionTheme(
   inventory: readonly ExtensionInventoryRecord[] | undefined,
 ): void {
-  const selected = selectedExtensionThemeKey();
-  if (!selected) {
-    clearExtensionThemeTokens();
-    return;
+  themeInventory = inventory;
+  // Migrate only once inventory is available; disabled themes retain the selection.
+  const legacy = window.localStorage?.getItem(EXTENSION_THEME_KEY);
+  if (legacy && inventory) {
+    const theme = availableExtensionThemes(inventory).find(
+      (candidate) => candidate.key === legacy || candidate.legacyKeys.includes(legacy),
+    );
+    if (theme && window.localStorage.getItem(`${EXTENSION_THEME_KEY}.${theme.base}`) === null) {
+      window.localStorage.setItem(`${EXTENSION_THEME_KEY}.${theme.base}`, theme.key);
+    }
+    if (theme) window.localStorage.removeItem(EXTENSION_THEME_KEY);
   }
-  const theme = availableExtensionThemes(inventory).find(
-    (candidate) => candidate.key === selected || candidate.legacyKeys.includes(selected),
-  );
-  if (theme) {
-    applyExtensionTheme(theme);
-    return;
-  }
-  clearExtensionTheme();
+  applySelectedTheme();
 }
 
 function clearExtensionThemeTokens(): void {
@@ -196,9 +220,20 @@ function clearExtensionThemeTokens(): void {
  * window-lifetime, so it only matters for tests.
  */
 export function startThemePreferenceSync(): () => void {
-  return (
+  const onStorage = (event: StorageEvent): void => {
+    if (event.key === null || event.key.startsWith(EXTENSION_THEME_KEY)) {
+      applySelectedTheme();
+      window.dispatchEvent(new Event("wuu-theme-selection"));
+    }
+  };
+  window.addEventListener("storage", onStorage);
+  const unsubscribe = (
     window.wuu?.onThemePreferenceChange?.((theme) => {
       applyThemePreference(theme);
     }) ?? (() => {})
   );
+  return () => {
+    unsubscribe();
+    window.removeEventListener("storage", onStorage);
+  };
 }

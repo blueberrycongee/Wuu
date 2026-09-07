@@ -1,4 +1,5 @@
 import * as monaco from "monaco-editor";
+import { codeEditorTypography, observeAppearance } from "./AppearancePreferences";
 import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import HtmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
@@ -96,10 +97,8 @@ export function WorkspaceMonacoEditor({
       automaticLayout: true,
       contextmenu: false,
       detectIndentation: true,
-      fontFamily: "\"SFMono-Regular\", Consolas, \"Liberation Mono\", monospace",
-      fontSize: 12,
+      ...codeEditorTypography(),
       glyphMargin: false,
-      lineHeight: 20,
       lineDecorationsWidth: 6,
       lineNumbersMinChars: 3,
       minimap: { enabled: false },
@@ -122,6 +121,7 @@ export function WorkspaceMonacoEditor({
     const stopObservingTheme = observeAppliedTheme((theme) => {
       monaco.editor.setTheme(workspaceMonacoTheme(theme));
     });
+    const stopObservingAppearance = observeAppearance(() => editor.updateOptions(codeEditorTypography()));
 
     const changeDisposable = editor.onDidChangeModelContent(() => {
       onChangeRef.current?.(model.getValue());
@@ -141,6 +141,7 @@ export function WorkspaceMonacoEditor({
     return () => {
       onViewStateChangeRef.current?.(editor.saveViewState());
       stopObservingTheme();
+      stopObservingAppearance();
       changeDisposable.dispose();
       editor.dispose();
       model.dispose();

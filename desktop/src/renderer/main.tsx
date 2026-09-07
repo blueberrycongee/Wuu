@@ -1,6 +1,7 @@
 import ReactDOM from "react-dom/client";
 import { MESSAGE_FLOW_FONT_SIZE_RANGE } from "../shared/protocol";
 import { App } from "./App";
+import { startAppearanceSync } from "./AppearancePreferences";
 import { applyMessageFlowFontSize } from "./MessageFlowFontSizeSection";
 import { applyPlatformStamp } from "./platform";
 import { startRendererVisibilitySync } from "./RendererVisibility";
@@ -20,6 +21,7 @@ applyThemePreference(window.wuu?.initialThemePreference ?? "system");
 // main-process broadcast; keep this window's data-theme in step for the
 // rest of its lifetime.
 startThemePreferenceSync();
+startAppearanceSync();
 
 // Same story for data-platform: the preload stamps it pre-paint; this
 // covers boots whose preload was replaced (e2e mocks).

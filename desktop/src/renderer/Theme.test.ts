@@ -10,6 +10,8 @@ import {
   resolveThemePreference,
   startThemePreferenceSync,
   syncExtensionTheme,
+  selectExtensionTheme,
+  selectedExtensionThemeKey,
 } from "./Theme";
 
 type MediaListener = (event: { matches: boolean }) => void;
@@ -82,6 +84,7 @@ describe("extension themes", () => {
   it("lists active plugin themes and applies their declared tokens", () => {
     const [theme] = availableExtensionThemes(inventory);
     expect(theme?.key).toBe("calm-ui:violet");
+    applyThemePreference("dark");
     applyExtensionTheme(theme!);
 
     expect(document.documentElement.dataset.theme).toBe("dark");
@@ -112,9 +115,39 @@ describe("extension themes", () => {
     expect(theme?.legacyKeys).toEqual(["plugin:dev:calm-ui:violet"]);
 
     window.localStorage.setItem("wuu.extension-theme", "plugin:dev:calm-ui:violet");
+    applyThemePreference("dark");
     syncExtensionTheme(subjectInventory);
-    expect(window.localStorage.getItem("wuu.extension-theme")).toBe("calm-ui:violet");
+    expect(selectedExtensionThemeKey("dark")).toBe("calm-ui:violet");
     expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("#7659ff");
+  });
+});
+
+describe("independent mode and palette selection", () => {
+  it("keeps both selections across OS changes and restores a temporarily disabled theme", () => {
+    const media = stubMatchMedia(false);
+    const inventory: ExtensionInventoryRecord[] = [{
+      id: "paired", name: "Paired", kind: "plugin", state: "active", enabled: true,
+      provenance: { kind: "plugin", source: "local", scope: "user", plugin_id: "paired" },
+      contributions: { themes: [
+        { id: "day", name: "Day", base: "light", tokens: { "--wuu-accent": "red" } },
+        { id: "night", name: "Night", base: "dark", tokens: { "--wuu-accent": "blue" } },
+      ] },
+    }];
+    applyThemePreference("system");
+    syncExtensionTheme(inventory);
+    selectExtensionTheme("light", "paired:day");
+    selectExtensionTheme("dark", "paired:night");
+    expect(currentAppliedTheme()).toBe("light");
+    expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("red");
+    media.fire(true);
+    expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("blue");
+    syncExtensionTheme([{ ...inventory[0]!, enabled: false }]);
+    expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("");
+    expect(selectedExtensionThemeKey("dark")).toBe("paired:night");
+    syncExtensionTheme(inventory);
+    expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("blue");
+    media.fire(false);
+    expect(document.documentElement.style.getPropertyValue("--wuu-accent")).toBe("red");
   });
 });
 
