@@ -1052,20 +1052,6 @@ p {
 .article-body code {
   font-size: 0.86em;
 }
-.article-references {
-  border-top: 1px solid var(--line);
-  margin-top: 50px;
-  padding-top: 12px;
-}
-.article-references h2 {
-  font-size: 20px;
-  margin-top: 20px;
-}
-.article-references p,
-.zh-page .article-references p {
-  font: 15px/1.8 var(--sans);
-  overflow-wrap: anywhere;
-}
 .article-next {
   display: block;
   margin-top: 40px;
