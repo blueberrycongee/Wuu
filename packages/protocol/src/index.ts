@@ -1316,6 +1316,7 @@ export type CodexModelSummary = {
 };
 
 export type ConfigCodexModelsResult = {
+  providers: ProviderSummary[];
   provider: string;
   model: string;
   effort?: string;

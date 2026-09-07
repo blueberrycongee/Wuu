@@ -517,11 +517,14 @@ export function SettingsView({
       return;
     }
     const variant = normalizedVariantForProviderModel(variantDraft, selectedProvider, model);
+    const previousVariant = variantDraft;
     setVariantDraft(variant);
     setError("");
     try {
       await onSave(providerDraft, model, undefined, undefined, variant);
     } catch (saveError) {
+      setModelDraft(selectedProvider?.model ?? "");
+      setVariantDraft(previousVariant);
       setError(saveError instanceof Error ? saveError.message : t("provider.saveFailed"));
     }
   }

@@ -177,7 +177,7 @@ describe("providerModelVariantOptions", () => {
     expect(providerModelVariantOptions(provider, "with-variants", "")).toEqual(["", "fast", "thorough"]);
   });
 
-  it("preserves an unknown current variant so the user can still see it selected", () => {
+  it("does not offer an incompatible inherited variant", () => {
     const provider = providerWithModel({
       id: "with-levels",
       supported_efforts: ["low", "medium"],
@@ -187,7 +187,6 @@ describe("providerModelVariantOptions", () => {
       "",
       "low",
       "medium",
-      "xhigh"
     ]);
   });
 

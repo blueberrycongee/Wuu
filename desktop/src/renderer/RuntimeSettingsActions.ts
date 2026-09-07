@@ -17,7 +17,7 @@ import type {
   CodexRuntimeMenu,
   PermissionMode,
 } from "./ComposerTypes";
-import { isCodexProvider } from "./RuntimeHelpers";
+import { isCodexProvider, normalizedVariantForProviderModel } from "./RuntimeHelpers";
 import { runtimeViewForSession } from "./SessionRuntimeState";
 import { showErrorToast } from "./Toast";
 import { translateCurrent } from "./i18n";
@@ -60,7 +60,7 @@ export type RuntimeSettingsActions = {
     options?: { fallbackProvider?: string; fallbackModel?: string },
   ) => Promise<void>;
   toggleCodexRuntimeMenu: (menu: Exclude<CodexRuntimeMenu, null>) => void;
-  loadCodexModelsForProvider: (provider: string) => Promise<void>;
+  loadCodexModelsForProvider: (provider: string, refresh?: boolean) => Promise<void>;
   selectRuntimeModel: (
     provider: string,
     model: string,
@@ -92,10 +92,8 @@ export function createRuntimeSettingsActions(
     return JSON.stringify([scope, provider.trim(), model.trim()]);
   }
 
-  // Sends only the fields the caller explicitly changed. The server inherits
-  // omitted provider/model/variant/effort/permission from the target thread
-  // and leaves the workspace defaults for them untouched, so forwarding
-  // unchanged thread values here would rewrite the workspace defaults.
+  // Settings save workspace defaults; composer changes only the target
+  // conversation (or a local selection before its first send).
   async function sendRuntimeSelection(
     update: RuntimeSelectionUpdate,
     scope: "session" | "workspace" = "session",
@@ -105,6 +103,24 @@ export function createRuntimeSettingsActions(
       return;
     }
     const targetThread = scope === "session" ? activeThreadForState(state) : undefined;
+    if (scope === "session" && !targetThread && !update.connection) {
+      // Before thread/start this is a window-local draft selection, not a
+      // provider default. The first send passes it explicitly to thread/start.
+      deps.setAppState((current) => ({
+        ...current,
+        initialized: current.initialized ? {
+          ...current.initialized,
+          provider: update.provider ?? current.initialized.provider,
+          model: update.model ?? current.initialized.model,
+          variant: update.variant ?? update.effort ?? current.initialized.variant,
+          effort: update.variant ?? update.effort ?? current.initialized.effort,
+          permissions: update.permissionMode === undefined
+            ? current.initialized.permissions
+            : { mode: update.permissionMode as PermissionMode },
+        } : current.initialized,
+      }));
+      return;
+    }
     let nextProvider = update.provider?.trim() || undefined;
     let nextModel = update.model?.trim() || undefined;
     const nextEffort =
@@ -440,20 +456,28 @@ export function createRuntimeSettingsActions(
     }
   }
 
-  async function loadCodexModelsForProvider(provider: string): Promise<void> {
+  async function loadCodexModelsForProvider(provider: string, refresh = false): Promise<void> {
     if (!provider) {
       return;
     }
     const codexModels = deps.getCodexModels();
     if (
       codexModels.provider === provider &&
-      (codexModels.loading || codexModels.models.length > 0)
+      (codexModels.loading || (!refresh && codexModels.models.length > 0))
     ) {
       return;
     }
     deps.setCodexModels({ provider, loading: true, error: "", models: [] });
+    const workspace = deps.getAppState().initialized?.workspace_root;
     try {
       const result = await window.wuu.loadCodexModels(provider);
+      if (deps.getAppState().initialized?.workspace_root !== workspace) return;
+      deps.setAppState((current) => ({
+        ...current,
+        initialized: current.initialized && result.providers
+          ? { ...current.initialized, providers: result.providers }
+          : current.initialized,
+      }));
       deps.setCodexModels({
         provider: result.provider,
         loading: false,
@@ -495,9 +519,14 @@ export function createRuntimeSettingsActions(
       currentVariant,
     );
     const targetKey = modelSelectionKey(selectionScope, provider, model);
-    const nextVariant = deps.variantByModel.has(targetKey)
+    const rememberedVariant = deps.variantByModel.has(targetKey)
       ? deps.variantByModel.get(targetKey)
       : variant;
+    const nextVariant = normalizedVariantForProviderModel(
+      rememberedVariant ?? "",
+      state.initialized.providers?.find((item) => item.name === provider),
+      model,
+    );
     // The model panel stays open after a selection: the row highlight and the
     // effort pills update optimistically inside the panel, so the user can
     // chain "switch model → tune effort" in one visit instead of reopening the

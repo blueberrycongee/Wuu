@@ -32,7 +32,7 @@ describe("RuntimePicker", () => {
     onSelectEffort = vi.fn(),
     onSelectModel = vi.fn(),
     anchorRef = createRef<HTMLDivElement>(),
-    engineProps: Pick<
+    engineProps: Partial<Pick<
       ComponentProps<typeof RuntimePicker>,
       | "engines"
       | "activeEngine"
@@ -42,7 +42,8 @@ describe("RuntimePicker", () => {
       | "onSelectEngine"
       | "onSelectEngineModel"
       | "onSelectEngineEffort"
-    > = {}
+      | "state"
+    >> = {}
   ): void {
     act(() => {
       root ??= createRoot(container);
@@ -99,6 +100,19 @@ describe("RuntimePicker", () => {
     act(() => trigger?.click());
 
     expect(onToggleMenu).toHaveBeenCalledWith("model");
+  });
+
+  it("uses the configured inventory even when stale discovery contains a removed model", () => {
+    const initialized = runtimeWithEffort();
+    initialized.providers![0].type = "openai-codex";
+    renderPicker("model", initialized, vi.fn(), vi.fn(), vi.fn(), createRef(), {
+      state: { provider: "work", loading: false, error: "", models: [
+        { slug: "removed-live-model", supported_in_api: true },
+      ] },
+    });
+    act(() => document.querySelector<HTMLButtonElement>(".runtime-panel-model")?.click());
+    const rows = Array.from(document.querySelectorAll<HTMLButtonElement>(".codex-model-item"));
+    expect(rows.map((row) => row.textContent?.trim())).toEqual(["Claude Sonnet"]);
   });
 
   it("opens as a compact summary and drills into the model list", () => {

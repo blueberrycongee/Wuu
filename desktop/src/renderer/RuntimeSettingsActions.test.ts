@@ -466,7 +466,12 @@ describe("createRuntimeSettingsActions", () => {
     const harness = buildActions({
       initial: {
         ...initialState,
-        initialized: initialized({ model: "model-b", variant: "medium" }),
+        initialized: initialized({ model: "model-b", variant: "medium", providers: [
+          { name: "codex", type: "openai-codex", model: "model-b", models: [
+            { id: "model-a", supported_efforts: ["medium", "max"] },
+            { id: "model-b", supported_efforts: ["medium", "max"] },
+          ] },
+        ] }),
         thread: primary,
         threads: [primary],
         status: "ready",
@@ -593,6 +598,12 @@ describe("createRuntimeSettingsActions", () => {
   it("loads Codex models once without rewriting the active selection", async () => {
     const api = installWuuApi();
     const harness = buildActions();
+    const providers = [{ name: "codex", type: "openai-codex", model: "gpt-5", models: [
+      { id: "gpt-6-discovered", supported_efforts: ["medium", "high"] },
+    ] }];
+    api.loadCodexModels.mockResolvedValue({ provider: "codex", models: [
+      { slug: "gpt-5.1", supported_in_api: true },
+    ], providers });
 
     await harness.actions.loadCodexModelsForProvider("codex");
     await harness.actions.loadCodexModelsForProvider("codex");
@@ -602,6 +613,18 @@ describe("createRuntimeSettingsActions", () => {
       { slug: "gpt-5.1", supported_in_api: true },
     ]);
     expect(harness.getAppState().initialized?.model).toBe("gpt-5");
+    expect(harness.getAppState().initialized?.providers).toEqual(providers);
+  });
+
+  it("keeps a pre-conversation model choice local instead of saving provider defaults", async () => {
+    const api = installWuuApi();
+    const harness = buildActions({ initial: { ...initialState, initialized: initialized(), thread: undefined } });
+    const providers = harness.getAppState().initialized?.providers;
+    await harness.actions.selectRuntimeModel("codex", "draft-model", "max");
+    expect(api.updateRuntimeSettings).not.toHaveBeenCalled();
+    expect(harness.getAppState().initialized?.model).toBe("draft-model");
+    expect(harness.getAppState().initialized?.variant).toBe("");
+    expect(harness.getAppState().initialized?.providers).toEqual(providers);
   });
 
   it("toggles the Codex runtime menu and closes sibling menus", () => {

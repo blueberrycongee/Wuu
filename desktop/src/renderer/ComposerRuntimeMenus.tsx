@@ -775,12 +775,7 @@ export function RuntimeModelMenu({
     : scopedGroups;
 
   const effectiveCodex = providerIsCodex(initialized, effectiveProviderName);
-  const effectiveCodexModel = effectiveCodex
-    ? state.models.find((model) => model.slug === effectiveModelID)
-    : undefined;
-  const effortOptions = effectiveCodex
-    ? codexEffortOptions(effectiveCodexModel, effectiveVariant)
-    : providerModelVariantOptions(effectiveProvider, effectiveModelID, effectiveVariant);
+  const effortOptions = providerModelVariantOptions(effectiveProvider, effectiveModelID, effectiveVariant);
   const effectiveModel = scopedGroups
     .flatMap((group) => group.models)
     .find((model) => model.id === effectiveModelID);
@@ -1104,18 +1099,7 @@ function configuredRuntimeModelForProvider(
   );
 }
 
-function runtimeModelsForProvider(provider: ProviderSummary, state: CodexModelLoadState): ProviderModelSummary[] {
-  const type = provider.type.trim().toLowerCase().replaceAll("_", "-");
-  const isCodex = type === "openai-codex" || type === "codex-subscription" || type === "chatgpt-codex";
-  if (isCodex && state.provider === provider.name && state.models.length > 0) {
-    return state.models.map((model) => ({
-      id: model.slug,
-      display_name: displayCodexModelName(model),
-      default_effort: model.default_reasoning_level,
-      supported_efforts: model.supported_reasoning,
-      source: "live"
-    }));
-  }
+function runtimeModelsForProvider(provider: ProviderSummary, _state: CodexModelLoadState): ProviderModelSummary[] {
   if (provider.models?.length) {
     return provider.models;
   }

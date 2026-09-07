@@ -1078,11 +1078,12 @@ type ConfigCodexModelsParams struct {
 }
 
 type ConfigCodexModelsResult struct {
-	Provider string              `json:"provider"`
-	Model    string              `json:"model"`
-	Effort   string              `json:"effort,omitempty"`
-	Variant  string              `json:"variant,omitempty"`
-	Models   []CodexModelSummary `json:"models"`
+	Providers []ProviderSummary   `json:"providers"`
+	Provider  string              `json:"provider"`
+	Model     string              `json:"model"`
+	Effort    string              `json:"effort,omitempty"`
+	Variant   string              `json:"variant,omitempty"`
+	Models    []CodexModelSummary `json:"models"`
 }
 
 type SkillSummary struct {

@@ -794,6 +794,24 @@ describe("SettingsView provider configuration", () => {
 });
 
 describe("SettingsView provider model catalog", () => {
+  it("resets incompatible effort on model changes and restores selection after a failed save", async () => {
+    installBuildInfoStub({ core: undefined, desktop: { version: "test", date: "1970-01-01T00:00:00Z" } });
+    const onSave = vi.fn().mockRejectedValue(new Error("connection unavailable"));
+    renderSettings({ initialPage: "providers", onSave, initialized: baseInitialized({
+      provider: "kimi", model: "k3", variant: "max", providers: [
+        { name: "kimi", type: "openai", model: "k3", models: [
+          { id: "k3", variants: [{ id: "max" }] }, { id: "kimi-for-coding-highspeed" },
+        ] },
+      ],
+    }) });
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('form button[aria-pressed]'));
+    await act(async () => { buttons[1].click(); });
+    expect(onSave).toHaveBeenCalledWith("kimi", "kimi-for-coding-highspeed", undefined, undefined, "");
+    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
+    expect(buttons[1].getAttribute("aria-pressed")).toBe("false");
+    expect(container.textContent).toContain("connection unavailable");
+  });
+
   it("removes tags without selecting them, switches away from a removed default, and protects the last model", async () => {
     installBuildInfoStub({ core: undefined, desktop: { version: "test", date: "1970-01-01T00:00:00Z" } });
     const onSave = vi.fn().mockResolvedValue(undefined);

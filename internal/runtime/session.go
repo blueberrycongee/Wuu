@@ -1013,8 +1013,11 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 		currentVariant = strings.TrimSpace(s.StreamRunner.Variant)
 		currentEffort = strings.TrimSpace(s.StreamRunner.Effort)
 	}
-	if providerName == "" || model == "" || (providerName == s.ProviderName && model == s.Model && requested.Variant == currentVariant && requested.Effort == currentEffort && permissions.Mode == config.NormalizePermissionMode(s.Permissions.Mode)) {
-		threadRuntime, err := s.NewThreadRuntimeForRoot(sessionID, rootDir)
+	if providerName == "" || model == "" || (providerName == s.ProviderName && model == s.Model && requested.Variant == currentVariant && requested.Effort == currentEffort) {
+		// Permission changes do not require rebuilding an unchanged model client.
+		shadow := *s
+		shadow.Permissions = permissions
+		threadRuntime, err := shadow.NewThreadRuntimeForRoot(sessionID, rootDir)
 		if err != nil {
 			return nil, err
 		}
@@ -1075,6 +1078,7 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	shadow.StreamRunner.OutputReserveTokens = shadow.ModelBudget.OutputReserveTokens
 	shadow.StreamRunner.CompactThresholdTokens = shadow.ModelBudget.CompactThresholdTokens
 	shadow.ToolLoadingMode, shadow.ToolSearchEnabled, shadow.NativeDeferredToolDiscovery = resolveToolLoadingForProvider(cfg.Agent, ruleProviderCfg, apiModel, selection.ProviderOptions)
+	shadow.StreamRunner.NativeDeferredToolDiscovery = shadow.NativeDeferredToolDiscovery
 
 	threadRoot := strings.TrimSpace(rootDir)
 	if threadRoot == "" {

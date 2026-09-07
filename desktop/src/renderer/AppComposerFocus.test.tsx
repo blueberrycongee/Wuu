@@ -102,6 +102,8 @@ function initialized(cwd: string): InitializeResult {
     protocol_version: "wuu-app-server/v0.1",
     provider: "fake",
     model: "fake-model",
+    variant: "high",
+    effort: "high",
     workspace_root: cwd,
     permissions: { mode: "standard" },
     providers: [
@@ -576,6 +578,13 @@ describe("main composer focus continuity", () => {
     await enterCommand(hero, "first query");
 
     await waitForMainComposerFocus("dock");
+    expect(window.wuu.startThread).toHaveBeenCalledWith({
+      provider: "fake",
+      model: "fake-model",
+      effort: "high",
+      permission_mode: "standard",
+    });
+    expect(window.wuu.startTurn).toHaveBeenCalled();
   });
 
   it("shows the first query while thread creation is still pending", async () => {

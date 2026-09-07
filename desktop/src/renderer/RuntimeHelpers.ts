@@ -89,7 +89,7 @@ export function providerModelContextWindow(
 export function providerModelVariantOptions(
   provider: ProviderSummary | undefined,
   modelID: string,
-  currentVariant: string
+  _currentVariant: string
 ): string[] {
   const model = provider?.models?.find((item) => item.id === modelID);
   const variants = (model?.variants ?? []).map((item) => item.id).filter(Boolean);
@@ -100,9 +100,6 @@ export function providerModelVariantOptions(
   // of silently locking them to the model's default behavior.
   if (supported.length === 0 && model?.capabilities?.reasoning === true && !options.includes("none")) {
     options.push("none");
-  }
-  if (currentVariant && !options.includes(currentVariant)) {
-    options.push(currentVariant);
   }
   return options;
 }
@@ -161,7 +158,8 @@ export function normalizedVariantForProviderModel(
   const model = provider?.models?.find((item) => item.id === modelID);
   const variants = (model?.variants ?? []).map((item) => item.id).filter(Boolean);
   const supported = variants.length > 0 ? variants : model?.supported_efforts ?? [];
-  if (supported.length === 0 || supported.includes(currentVariant)) {
+  if (supported.includes(currentVariant) ||
+      (supported.length === 0 && model?.capabilities?.reasoning === true && currentVariant === "none")) {
     return currentVariant;
   }
   if (model?.default_variant && supported.includes(model.default_variant)) {

@@ -33,6 +33,7 @@ import type {
   SkillSummary,
   Thread,
   ThreadItem,
+  ThreadStartParams,
   Turn,
   UserQuestionAnswer,
   UserQuestionRequest,
@@ -3078,6 +3079,11 @@ export function App(): JSX.Element {
             }
           : current,
       );
+      for (const provider of result.providers) {
+        if (["openai-codex", "codex-subscription", "chatgpt-codex"].includes(provider.type.replaceAll("_", "-").toLowerCase())) {
+          await loadCodexModelsForProvider(provider.name, true);
+        }
+      }
       setModelCatalogTip({
         message: t("settings.modelCatalogUpdated", { count: result.model_count }),
         isError: false,
@@ -3656,6 +3662,7 @@ export function App(): JSX.Element {
     updateGeneralSettings,
     removeProvider,
     toggleCodexRuntimeMenu,
+    loadCodexModelsForProvider,
     selectRuntimeModel,
     selectRuntimeEffort,
     selectPermissionMode,
@@ -4192,8 +4199,13 @@ export function App(): JSX.Element {
               ? {
                   ...newThreadEngineRuntime,
                   permission_mode: draftPermissionMode || "unconfined",
-                }
-              : {}),
+                } satisfies ThreadStartParams
+              : {
+                  provider: currentState.initialized?.provider,
+                  model: currentState.initialized?.model,
+                  effort: currentState.initialized?.variant || currentState.initialized?.effort,
+                  permission_mode: currentState.initialized?.permissions?.mode,
+                } satisfies ThreadStartParams),
           }),
           "thread/start did not return a thread",
         );

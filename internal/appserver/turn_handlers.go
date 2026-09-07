@@ -1130,6 +1130,11 @@ func (s *Server) ensureThreadRuntime(th *threadState) (*runtime.ThreadRuntime, e
 		return nil, errServerClosed
 	}
 	if th.execRuntime == nil {
+		if threadRuntime.StreamRunner != nil {
+			if prompt := strings.TrimSpace(threadRuntime.StreamRunner.SystemPrompt); prompt != "" {
+				th.History = replaceBaseSystemPrompt(th.History, prompt)
+			}
+		}
 		th.execRuntime = threadRuntime
 		th.runtimeSubscription = sub
 		th.runtimePluginEpoch = s.pluginGenerationEpoch.Load()

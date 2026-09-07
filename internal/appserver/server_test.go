@@ -1777,7 +1777,7 @@ func TestServerConfigModelUpdateRejectsTargetOwnedByAnotherServer(t *testing.T) 
 	}
 }
 
-func TestServerConfigModelUpdateScopesSelectionToTargetAndFutureThreads(t *testing.T) {
+func TestServerConfigModelUpdateScopesSelectionToTargetOnly(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.Permissions = config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}
 	if err := os.WriteFile(rt.ConfigPath, []byte(`{
@@ -1821,11 +1821,11 @@ func TestServerConfigModelUpdateScopesSelectionToTargetAndFutureThreads(t *testi
 	if response["error"] != nil {
 		t.Fatalf("unexpected update error: %+v", response["error"])
 	}
-	if rt.Model != "new-model" || rt.Permissions.Mode != config.PermissionModeUnconfined {
-		t.Fatalf("workspace defaults not updated: model=%q permission=%q", rt.Model, rt.Permissions.Mode)
+	if rt.Model != "fake-model" || rt.Permissions.Mode != config.PermissionModeReadOnly {
+		t.Fatalf("conversation selection changed workspace defaults: model=%q permission=%q", rt.Model, rt.Permissions.Mode)
 	}
 	target.mu.Lock()
-	if target.Model != "new-model" || target.ModelEffort != "xhigh" || target.PermissionMode != config.PermissionModeUnconfined {
+	if target.Model != "new-model" || target.ModelEffort != "" || target.PermissionMode != config.PermissionModeUnconfined {
 		t.Fatalf("target selection not updated: model=%q effort=%q permission=%q", target.Model, target.ModelEffort, target.PermissionMode)
 	}
 	target.mu.Unlock()
@@ -1845,8 +1845,8 @@ func TestServerConfigModelUpdateScopesSelectionToTargetAndFutureThreads(t *testi
 		t.Fatalf("thread/start after default update: %v", err)
 	}
 	created := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "2")["result"]).Thread
-	if created.Model != "new-model" || created.ModelEffort != "xhigh" || created.PermissionMode != config.PermissionModeUnconfined {
-		t.Fatalf("future thread did not inherit updated defaults: %+v", created)
+	if created.Model != "fake-model" || created.ModelEffort != "" || created.PermissionMode != config.PermissionModeReadOnly {
+		t.Fatalf("future thread inherited another conversation's selection: %+v", created)
 	}
 }
 
@@ -1904,8 +1904,8 @@ func TestServerConfigModelUpdatePermissionOnlyTargetKeepsModelSelection(t *testi
 	if response["error"] != nil {
 		t.Fatalf("unexpected update error: %+v", response["error"])
 	}
-	if rt.Permissions.Mode != config.PermissionModeUnconfined {
-		t.Fatalf("workspace permission not updated: %q", rt.Permissions.Mode)
+	if rt.Permissions.Mode != config.PermissionModeReadOnly {
+		t.Fatalf("workspace permission changed: %q", rt.Permissions.Mode)
 	}
 	if rt.Model != "fake-model" || rt.StreamRunner.Model != "fake-model" ||
 		rt.StreamRunner.Effort != "high" || rt.StreamRunner.Variant != "" {
@@ -1916,7 +1916,7 @@ func TestServerConfigModelUpdatePermissionOnlyTargetKeepsModelSelection(t *testi
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	if !strings.Contains(string(data), `"permission_mode": "unconfined"`) ||
+	if !strings.Contains(string(data), `"permission_mode": "read_only"`) ||
 		!strings.Contains(string(data), `"model": "fake-model"`) ||
 		!strings.Contains(string(data), `"effort": "high"`) {
 		t.Fatalf("persisted config drifted beyond permission mode: %s", data)
@@ -1937,7 +1937,7 @@ func TestServerConfigModelUpdatePermissionOnlyTargetKeepsModelSelection(t *testi
 	}
 }
 
-func TestServerConfigModelUpdateModelOnlyTargetKeepsEffortAndPermission(t *testing.T) {
+func TestServerConfigModelUpdateModelOnlyTargetResetsUnsupportedEffortAndKeepsPermission(t *testing.T) {
 	rt := newTestRuntime(t, &fakeClient{})
 	rt.Permissions = config.ResolvedPermissions{Mode: config.PermissionModeReadOnly}
 	rt.StreamRunner.Effort = "high"
@@ -1953,8 +1953,8 @@ func TestServerConfigModelUpdateModelOnlyTargetKeepsEffortAndPermission(t *testi
 	if response["error"] != nil {
 		t.Fatalf("unexpected update error: %+v", response["error"])
 	}
-	if rt.Model != "new-model" || rt.StreamRunner.Model != "new-model" {
-		t.Fatalf("workspace model not updated: model=%q runner=%q", rt.Model, rt.StreamRunner.Model)
+	if rt.Model != "fake-model" || rt.StreamRunner.Model != "fake-model" {
+		t.Fatalf("workspace model changed: model=%q runner=%q", rt.Model, rt.StreamRunner.Model)
 	}
 	if rt.StreamRunner.Effort != "high" || rt.StreamRunner.Variant != "" || rt.Permissions.Mode != config.PermissionModeReadOnly {
 		t.Fatalf("model-only update changed workspace effort/variant/permission: effort=%q variant=%q permission=%q",
@@ -1964,13 +1964,13 @@ func TestServerConfigModelUpdateModelOnlyTargetKeepsEffortAndPermission(t *testi
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	if !strings.Contains(string(data), `"model": "new-model"`) ||
+	if !strings.Contains(string(data), `"model": "fake-model"`) ||
 		!strings.Contains(string(data), `"effort": "high"`) ||
 		!strings.Contains(string(data), `"permission_mode": "read_only"`) {
 		t.Fatalf("persisted config drifted beyond model: %s", data)
 	}
 	target.mu.Lock()
-	if target.Model != "new-model" || target.ModelEffort != "low" || target.PermissionMode != config.PermissionModeReadOnly {
+	if target.Model != "new-model" || target.ModelEffort != "" || target.PermissionMode != config.PermissionModeReadOnly {
 		t.Fatalf("target selection wrong: model=%q effort=%q permission=%q",
 			target.Model, target.ModelEffort, target.PermissionMode)
 	}
@@ -1979,7 +1979,7 @@ func TestServerConfigModelUpdateModelOnlyTargetKeepsEffortAndPermission(t *testi
 	if err != nil || !ok {
 		t.Fatalf("find target session: ok=%v err=%v", ok, err)
 	}
-	if metadata.Model != "new-model" || metadata.Effort != "low" || metadata.PermissionMode != config.PermissionModeReadOnly {
+	if metadata.Model != "new-model" || metadata.Effort != "" || metadata.PermissionMode != config.PermissionModeReadOnly {
 		t.Fatalf("persisted target selection wrong: %+v", metadata)
 	}
 }
@@ -2000,8 +2000,8 @@ func TestServerConfigModelUpdateExplicitEmptyVariantClearsSelection(t *testing.T
 	if response["error"] != nil {
 		t.Fatalf("unexpected update error: %+v", response["error"])
 	}
-	if rt.StreamRunner.Effort != "" || rt.StreamRunner.Variant != "" {
-		t.Fatalf("explicit empty variant did not clear workspace selection: effort=%q variant=%q",
+	if rt.StreamRunner.Effort != "high" || rt.StreamRunner.Variant != "" {
+		t.Fatalf("explicit empty variant changed workspace selection: effort=%q variant=%q",
 			rt.StreamRunner.Effort, rt.StreamRunner.Variant)
 	}
 	if rt.Model != "fake-model" {
@@ -2011,8 +2011,8 @@ func TestServerConfigModelUpdateExplicitEmptyVariantClearsSelection(t *testing.T
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	if strings.Contains(string(data), `"effort"`) || strings.Contains(string(data), `"variant"`) {
-		t.Fatalf("cleared selection still persisted: %s", data)
+	if !strings.Contains(string(data), `"effort": "high"`) || strings.Contains(string(data), `"variant"`) {
+		t.Fatalf("workspace selection changed: %s", data)
 	}
 	target.mu.Lock()
 	if target.Model != "thread-model" || target.ModelEffort != "" || target.ModelVariant != "" {
@@ -2615,6 +2615,7 @@ func TestServerConfigModelUpdateAppliesPermissionBoundary(t *testing.T) {
 }
 
 func TestServerConfigModelUpdateReconfiguresEditTools(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
 	rt := newTestRuntime(t, &fakeClient{})
 	kit, err := tools.New(rt.RootDir)
 	if err != nil {
@@ -2664,29 +2665,11 @@ func TestServerConfigModelUpdateReconfiguresEditTools(t *testing.T) {
 		t.Fatalf("config/model/update: %v", err)
 	}
 	result := remarshal[ConfigModelUpdateResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
-	if result.ModelProfile == nil {
-		t.Fatalf("config/model/update missing model profile summary: %+v", result)
+	if result.Model != "fake-model" || rt.Model != "fake-model" {
+		t.Fatalf("thread switch changed workspace model: %+v", result)
 	}
-	if result.ModelProfile.Model != "gpt-5.5" || result.ModelProfile.EditPrimitive != "apply_patch" || !result.ModelProfile.BashFirst {
-		t.Fatalf("unexpected update model profile summary: %+v", result.ModelProfile)
-	}
-	if result.ToolSurface == nil || result.ToolSurface.ToolCapabilityMap["apply_patch"] != "file.edit" {
-		t.Fatalf("unexpected update tool surface summary: %+v", result.ToolSurface)
-	}
-
-	if rt.StreamRunner.APIModel != "gpt-5.5" {
-		t.Fatalf("runtime APIModel not updated: %q", rt.StreamRunner.APIModel)
-	}
-	if !strings.Contains(rt.StreamRunner.SystemPrompt, "[Tool surface: openai_gpt]") ||
-		!strings.Contains(rt.StreamRunner.SystemPrompt, "Use apply_patch for file changes and bash for command execution") ||
-		strings.Contains(rt.StreamRunner.SystemPrompt, "fake-model") {
-		t.Fatalf("runtime system prompt not rebuilt for model profile:\n%s", rt.StreamRunner.SystemPrompt)
-	}
-	if defs := toolDefinitionNames(rt.Toolkit.Definitions()); !defs["apply_patch"] || defs["edit_file"] || defs["write_file"] {
-		t.Fatalf("runtime toolkit should switch to patch edit mode: %+v", defs)
-	}
-	if rt.Toolkit.ActiveSurface().ProfileName == "" {
-		t.Fatal("runtime toolkit should install active model surface")
+	if defs := toolDefinitionNames(rt.Toolkit.Definitions()); defs["apply_patch"] || !defs["edit_file"] {
+		t.Fatalf("thread switch changed workspace tools: %+v", defs)
 	}
 	if _, err := srv.ensureThreadRuntime(thread); err != nil {
 		t.Fatalf("rebuild target thread runtime: %v", err)
@@ -2833,17 +2816,15 @@ func TestServerConfigModelUpdateRecomputesToolLoadingForSessionProviderSelection
 		t.Fatalf("config/model/update: %v", err)
 	}
 
-	if rt.ProviderName != "kimi-code" || rt.Model != "k3" {
-		t.Fatalf("runtime selection not updated: provider=%q model=%q", rt.ProviderName, rt.Model)
+	if rt.ProviderName != "fake-provider" || rt.Model != "fake-model" || rt.ToolLoadingMode != config.ToolLoadingNative {
+		t.Fatalf("conversation switch changed workspace runtime: provider=%q model=%q", rt.ProviderName, rt.Model)
 	}
-	if rt.ToolLoadingMode != config.ToolLoadingFlat || rt.ToolSearchEnabled || rt.NativeDeferredToolDiscovery {
-		t.Fatalf("provider switch retained stale loading state: mode=%q search=%v native=%v", rt.ToolLoadingMode, rt.ToolSearchEnabled, rt.NativeDeferredToolDiscovery)
+	exec, err := srv.ensureThreadRuntime(target)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if rt.Toolkit.ToolSearchEnabled() || rt.Toolkit.NativeDeferredToolDiscovery() || rt.StreamRunner.NativeDeferredToolDiscovery {
-		t.Fatal("provider switch retained native discovery in toolkit or runner")
-	}
-	if rt.DeferredToolCatalogPrompt != "" || strings.Contains(rt.StreamRunner.SystemPrompt, "# Deferred Tool Catalog") {
-		t.Fatal("provider switch retained the previous provider's deferred catalog")
+	if exec.Toolkit.NativeDeferredToolDiscovery() || exec.StreamRunner.NativeDeferredToolDiscovery {
+		t.Fatal("conversation retained native discovery from the workspace provider")
 	}
 	target.mu.Lock()
 	if target.ModelProvider != "kimi-code" || target.Model != "k3" {
@@ -3221,12 +3202,12 @@ func TestServerConfigModelUpdatePersistsEffort(t *testing.T) {
 	out := &lockedBuffer{}
 	srv := New(rt, out)
 
-	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"model":"new-model","effort":"xhigh"}}`)); err != nil {
+	if err := srv.handleLine(context.Background(), []byte(`{"id":"1","method":"config/model/update","params":{"model":"fake-model","effort":"xhigh"}}`)); err != nil {
 		t.Fatalf("config/model/update: %v", err)
 	}
 
 	result := remarshal[ConfigModelUpdateResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
-	if result.Model != "new-model" || result.Effort != "xhigh" {
+	if result.Model != "fake-model" || result.Effort != "xhigh" {
 		t.Fatalf("unexpected update result: %+v", result)
 	}
 	if rt.StreamRunner.Effort != "xhigh" {
@@ -3408,6 +3389,20 @@ func TestServerConfigCodexModels(t *testing.T) {
 	srv.backgroundWG.Wait()
 
 	result := remarshal[ConfigCodexModelsResult](t, responseByID(t, parseOutput(t, out.String()), "1")["result"])
+	var discovered *ProviderModelSummary
+	for _, provider := range result.Providers {
+		if provider.Name != "openai-codex" {
+			continue
+		}
+		for i := range provider.Models {
+			if provider.Models[i].ID == "spark" {
+				discovered = &provider.Models[i]
+			}
+		}
+	}
+	if discovered == nil {
+		t.Fatal("live model missing from shared settings/composer inventory")
+	}
 	if result.Provider != "openai-codex" || result.Model != "gpt-5.5" || result.Effort != "xhigh" {
 		t.Fatalf("unexpected result: %+v", result)
 	}

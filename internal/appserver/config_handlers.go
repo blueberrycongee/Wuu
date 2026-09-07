@@ -1138,25 +1138,17 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	providerName := strings.TrimSpace(params.Provider)
 	model := strings.TrimSpace(params.Model)
 	threadID := strings.TrimSpace(params.ThreadID)
-	// Provider/model/variant/effort/permission are selection state and
-	// dual-write (target thread + workspace defaults) when explicitly
-	// provided. base_url/api_key/auth_token are workspace connection
-	// configuration and never thread-scoped.
+	// A conversation selection must never persist workspace defaults.
+	if threadID != "" && params.BaseURL == nil && params.APIKey == nil && params.AuthToken == nil && params.Type == nil && !params.CreateProvider && params.RemoveModel == "" && params.ReuseCodexCredentials == nil {
+		return s.handleThreadModelSelection(req, params)
+	}
+	if threadID != "" && (providerName != "" || model != "" || params.Variant != nil || params.Effort != nil || params.PermissionMode != nil) {
+		return s.writeResponse(req.ID, nil, errors.New("save provider configuration separately from conversation selection"))
+	}
 	explicitSelection := providerName != "" || model != "" ||
 		params.Effort != nil || params.Variant != nil || params.PermissionMode != nil
 	if model == "" && (threadID == "" || params.CreateProvider) {
 		return s.writeResponse(req.ID, nil, errors.New("model is required"))
-	}
-	var targetThread *threadState
-	if threadID != "" && explicitSelection {
-		// Only selection changes race turn admission; a connection-only
-		// update stays allowed while the target thread runs.
-		th, releaseTarget, err := s.beginThreadRuntimeSelectionMutation(threadID)
-		if err != nil {
-			return s.writeResponse(req.ID, nil, err)
-		}
-		defer releaseTarget()
-		targetThread = th
 	}
 	if providerName == "" {
 		providerName = s.rt.ProviderName
@@ -1266,36 +1258,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 			return s.writeResponse(req.ID, nil, errors.New("model is required"))
 		}
 	}
-	// A targeted update inherits omitted provider/model from the target
-	// conversation, so validation and the thread write run against that
-	// effective pair. The workspace dual-write only stays coherent when the
-	// effective provider is the workspace provider itself: a model repin on
-	// a foreign-provider thread must not graft its model onto the workspace
-	// provider's config. An explicit provider param still moves the
-	// workspace pair together, exactly as before.
-	effectiveProvider, effectiveModel := resolvedName, model
-	if targetThread != nil {
-		targetThread.mu.Lock()
-		pinnedProvider := strings.TrimSpace(targetThread.ModelProvider)
-		pinnedModel := strings.TrimSpace(targetThread.Model)
-		targetThread.mu.Unlock()
-		if strings.TrimSpace(params.Provider) == "" && pinnedProvider != "" {
-			effectiveProvider = pinnedProvider
-		}
-		if strings.TrimSpace(params.Model) == "" && pinnedModel != "" {
-			effectiveModel = pinnedModel
-		}
-	}
-	dualWriteWorkspace := strings.TrimSpace(params.Provider) != "" || effectiveProvider == resolvedName
-	if !dualWriteWorkspace {
-		// Thread-scoped selection update: every workspace-side write below
-		// keeps the workspace's current model; the thread write layers the
-		// explicit params over the thread's own pins.
-		model = strings.TrimSpace(s.rt.Model)
-		if model == "" {
-			model = strings.TrimSpace(providerCfg.Model)
-		}
-	}
 	previousProviderCfg := providerCfg
 	previousModel := strings.TrimSpace(providerCfg.Model)
 	providerCfg.Model = model
@@ -1388,39 +1350,33 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	ruleProviderName, ruleProviderCfg := modelcatalog.EnrichProvider(resolvedName, providerCfg, model)
 	_, previousRuleProviderCfg := modelcatalog.EnrichProvider(resolvedName, previousProviderCfg, previousModel)
 	providerClientChanged := providerClientConfigChanged(previousRuleProviderCfg, ruleProviderCfg)
-	// Variant/effort params validate against the effective model they will
-	// pin, not the workspace model: rejecting an effort change on a thread
-	// pinned to a different model against the workspace model would break
-	// the documented inherit-from-target-conversation contract.
-	validationRuleName, validationRuleCfg := ruleProviderName, ruleProviderCfg
-	if effectiveProvider != resolvedName || effectiveModel != model {
-		if effectiveProviderCfg, effectiveResolvedName, resolveErr := cfg.ResolveProvider(effectiveProvider); resolveErr == nil {
-			effectiveProviderCfg = s.withCachedCodexModels(effectiveResolvedName, effectiveProviderCfg)
-			validationRuleName, validationRuleCfg = modelcatalog.EnrichProvider(effectiveResolvedName, effectiveProviderCfg, effectiveModel)
+	// Model choice takes precedence over a stale effort inherited by a caller.
+	if resolvedName != s.rt.ProviderName || model != previousModel {
+		if variant == "" {
+			variant = legacyEffort
+		}
+		if variant != "" {
+			if _, ok := modelvariant.OptionsForProvider(ruleProviderName, ruleProviderCfg, model, variant); !ok {
+				variant, legacyEffort = "", ""
+				selectionTouched = true
+			}
 		}
 	}
 	if params.Variant != nil && variant != "" {
-		if _, ok := modelvariant.OptionsForProvider(validationRuleName, validationRuleCfg, effectiveModel, variant); !ok {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("model %s does not support variant %s", effectiveModel, variant))
+		if _, ok := modelvariant.OptionsForProvider(ruleProviderName, ruleProviderCfg, model, variant); !ok {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("model %s does not support variant %s", model, variant))
 		}
 	}
-	if params.Effort != nil && params.Variant == nil && variant != "" && len(modelvariant.SummariesForProvider(validationRuleName, validationRuleCfg, effectiveModel)) > 0 {
-		if _, ok := modelvariant.OptionsForProvider(validationRuleName, validationRuleCfg, effectiveModel, variant); !ok {
-			return s.writeResponse(req.ID, nil, fmt.Errorf("model %s does not support effort %s", effectiveModel, variant))
+	if params.Effort != nil && params.Variant == nil && variant != "" && len(modelvariant.SummariesForProvider(ruleProviderName, ruleProviderCfg, model)) > 0 {
+		if _, ok := modelvariant.OptionsForProvider(ruleProviderName, ruleProviderCfg, model, variant); !ok {
+			return s.writeResponse(req.ID, nil, fmt.Errorf("model %s does not support effort %s", model, variant))
 		}
 	}
-	workspaceVariant, workspaceEffort := variant, legacyEffort
-	if !dualWriteWorkspace {
-		// The selection params stay thread-scoped; the workspace keeps its
-		// current variant/effort in the resolved selection, the runtime
-		// writes, and the workspace-effective result payload.
-		workspaceVariant, workspaceEffort = s.currentVariant(), s.currentEffort()
-	}
-	selection := modelvariant.ResolveForProvider(ruleProviderName, ruleProviderCfg, model, workspaceVariant, workspaceEffort)
+	selection := modelvariant.ResolveForProvider(ruleProviderName, ruleProviderCfg, model, variant, legacyEffort)
 	effort := selection.DisplayEffort
 	effortForConfig, variantForConfig := selectionConfigPointers(selection, selectionTouched, s.currentVariant())
-	if !explicitSelection || !dualWriteWorkspace {
-		// Connection-only or thread-scoped update: leave the persisted
+	if !explicitSelection {
+		// Connection-only update: leave the persisted
 		// workspace selection untouched.
 		effortForConfig, variantForConfig = nil, nil
 	}
@@ -1495,58 +1451,6 @@ func (s *Server) handleConfigModelUpdate(req Request) error {
 	}
 	if err := s.applyModelSelectionToRuntime(cfg, resolvedName, model, ruleProviderName, ruleProviderCfg, selection, roleSelections, connectionChanged, providerClientChanged, previousRuntimeProvider, client, explicitSelection); err != nil {
 		return s.writeResponse(req.ID, nil, err)
-	}
-	if targetThread != nil {
-		// The thread pins explicit params layered over its own current
-		// selection, never over workspace-derived values.
-		targetThread.mu.Lock()
-		threadProvider := strings.TrimSpace(targetThread.ModelProvider)
-		threadModel := strings.TrimSpace(targetThread.Model)
-		threadVariant := strings.TrimSpace(targetThread.ModelVariant)
-		threadEffort := strings.TrimSpace(targetThread.ModelEffort)
-		threadPermission := strings.TrimSpace(targetThread.PermissionMode)
-		targetThread.mu.Unlock()
-		if strings.TrimSpace(params.Provider) != "" || threadProvider == "" {
-			threadProvider = resolvedName
-		}
-		if strings.TrimSpace(params.Model) != "" || threadModel == "" {
-			// effectiveModel, not model: on a thread-scoped update the
-			// workspace-side model variable stays the workspace's own model.
-			threadModel = effectiveModel
-		}
-		if params.Variant != nil {
-			threadVariant = strings.TrimSpace(*params.Variant)
-			if threadVariant == "" && params.Effort == nil {
-				threadEffort = ""
-			}
-		}
-		if params.Effort != nil {
-			threadEffort = strings.TrimSpace(*params.Effort)
-			if params.Variant == nil {
-				threadVariant = threadEffort
-			}
-		}
-		if selectionTouched {
-			threadRuleName, threadRuleCfg := ruleProviderName, ruleProviderCfg
-			if threadProvider != resolvedName || threadModel != model {
-				if threadProviderCfg, threadResolvedName, resolveErr := cfg.ResolveProvider(threadProvider); resolveErr == nil {
-					threadProviderCfg = s.withCachedCodexModels(threadResolvedName, threadProviderCfg)
-					threadRuleName, threadRuleCfg = modelcatalog.EnrichProvider(threadResolvedName, threadProviderCfg, threadModel)
-				}
-			}
-			threadSelection := modelvariant.ResolveForProvider(threadRuleName, threadRuleCfg, threadModel, threadVariant, threadEffort)
-			threadVariant = threadSelection.Variant
-			threadEffort = threadSelection.LegacyEffort
-		}
-		if threadPermission == "" {
-			threadPermission = config.NormalizePermissionMode(s.rt.Permissions.Mode)
-		}
-		if params.PermissionMode != nil {
-			threadPermission = config.NormalizePermissionMode(*params.PermissionMode)
-		}
-		if err := s.updateThreadRuntimeForModelUpdate(targetThread, threadProvider, threadModel, threadVariant, threadEffort, threadPermission); err != nil {
-			return s.writeResponse(req.ID, nil, err)
-		}
 	}
 	// The RPC response is the notification path for this in-process mutation.
 	// Mark the just-applied file revision as observed so the periodic watcher
@@ -1754,11 +1658,12 @@ func (s *Server) handleConfigCodexModels(ctx context.Context, req Request) error
 		variant = s.currentVariant()
 	}
 	return s.writeResponse(req.ID, ConfigCodexModelsResult{
-		Provider: resolvedName,
-		Model:    providerCfg.Model,
-		Effort:   effort,
-		Variant:  variant,
-		Models:   out,
+		Providers: s.providerSummaries(),
+		Provider:  resolvedName,
+		Model:     providerCfg.Model,
+		Effort:    effort,
+		Variant:   variant,
+		Models:    out,
 	}, nil)
 }
 
@@ -1948,6 +1853,84 @@ func (s *Server) beginThreadRuntimeSelectionMutation(threadID string) (*threadSt
 	return th, release, nil
 }
 
+func (s *Server) handleThreadModelSelection(req Request, params ConfigModelUpdateParams) error {
+	th, release, err := s.beginThreadRuntimeSelectionMutation(params.ThreadID)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	defer release()
+	th.mu.Lock()
+	provider, model := th.ModelProvider, th.Model
+	variant, effort, permission := th.ModelVariant, th.ModelEffort, th.PermissionMode
+	th.mu.Unlock()
+	if provider == "" {
+		provider = s.rt.ProviderName
+	}
+	if model == "" {
+		model = s.rt.Model
+	}
+	previousProvider, previousModel := provider, model
+	if strings.TrimSpace(params.Provider) != "" {
+		provider = strings.TrimSpace(params.Provider)
+	}
+	if strings.TrimSpace(params.Model) != "" {
+		model = strings.TrimSpace(params.Model)
+	}
+	cfg, _, err := s.rt.LoadEffectiveConfig()
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	providerCfg, resolvedName, err := cfg.ResolveProvider(provider)
+	if err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	providerCfg = s.withCachedCodexModels(resolvedName, providerCfg)
+	if providerCfg.Models[model].Disabled {
+		return s.writeResponse(req.ID, nil, fmt.Errorf("model %s is disabled", model))
+	}
+	ruleName, ruleCfg := modelcatalog.EnrichProvider(resolvedName, providerCfg, model)
+	if params.Variant != nil {
+		variant = strings.TrimSpace(*params.Variant)
+		effort = ""
+	}
+	if params.Effort != nil {
+		effort = strings.TrimSpace(*params.Effort)
+		if params.Variant == nil {
+			variant = effort
+		}
+	}
+	if (provider != previousProvider || model != previousModel) && variant == "" {
+		variant = effort
+	}
+	if variant != "" {
+		if _, ok := modelvariant.OptionsForProvider(ruleName, ruleCfg, model, variant); !ok {
+			if provider == previousProvider && model == previousModel && (params.Variant != nil || params.Effort != nil) {
+				return s.writeResponse(req.ID, nil, fmt.Errorf("model %s does not support variant %s", model, variant))
+			}
+			variant, effort = "", ""
+		}
+	}
+	selection := modelvariant.ResolveForProvider(ruleName, ruleCfg, model, variant, effort)
+	if permission == "" {
+		permission = config.NormalizePermissionMode(s.rt.Permissions.Mode)
+	}
+	if params.PermissionMode != nil {
+		permission = config.NormalizePermissionMode(*params.PermissionMode)
+	}
+	if err := s.updateThreadRuntimeForModelUpdate(th, resolvedName, model, selection.Variant, selection.LegacyEffort, permission); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
+	modelProfile, toolSurface := s.currentModelSurfaceSummaries()
+	return s.writeResponse(req.ID, ConfigModelUpdateResult{
+		Provider: s.rt.ProviderName, Model: s.rt.Model,
+		Effort: s.currentDisplayEffort(), Variant: s.currentVariant(),
+		MaxParallel: s.rt.MaxParallel(), Permissions: s.currentPermissionSummary(),
+		ExtensionTrust: s.currentExtensionTrustSummary(), ModelProfile: modelProfile,
+		ToolSurface: toolSurface, ModelRoles: s.currentModelRoleSummaries(),
+		Providers: s.providerSummaries(), AdvancedSettings: s.currentAdvancedSettingsSummary(),
+	}, nil)
+}
+
 func (s *Server) updateThreadRuntimeForModelUpdate(th *threadState, providerName, model, variant, effort, permissionMode string) error {
 	if th == nil {
 		return nil
@@ -1971,11 +1954,6 @@ func (s *Server) updateThreadRuntimeForModelUpdate(th *threadState, providerName
 		th.ModelVariant != strings.TrimSpace(selection.Variant) ||
 		th.ModelEffort != strings.TrimSpace(selection.Effort)
 	applyThreadRuntimeSelection(th, selection)
-	if modelSelectionChanged && s.rt.StreamRunner != nil {
-		if prompt := strings.TrimSpace(s.rt.StreamRunner.SystemPrompt); prompt != "" {
-			th.History = replaceBaseSystemPrompt(th.History, prompt)
-		}
-	}
 	if modelSelectionChanged && th.execRuntime != nil {
 		detached = detachThreadRuntimeLocked(th)
 	}
@@ -2286,6 +2264,13 @@ func (s *Server) providerSummaries() []ProviderSummary {
 		cfg.Providers = providers
 		autoDiscovered = true
 	}
+	// Discovery enriches the same inventory used by settings and selection;
+	// it must not mutate the persisted provider configuration.
+	enriched := make(map[string]config.ProviderConfig, len(cfg.Providers))
+	for name, provider := range cfg.Providers {
+		enriched[name] = s.withCachedCodexModels(name, provider)
+	}
+	cfg.Providers = enriched
 	summaries := providerSummariesFromConfig(cfg, home)
 	if autoDiscovered {
 		for index := range summaries {
