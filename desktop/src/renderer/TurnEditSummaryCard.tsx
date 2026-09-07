@@ -354,14 +354,17 @@ export function TurnEditSummaryCard({
   cwd,
   onOpenFile,
   onOpenFileDiff,
+  compact = false,
 }: {
   turn: Turn;
   cwd?: string;
   onOpenFile?: (path: string) => void;
   onOpenFileDiff?: (selection: TurnFileDiffSelection) => void;
+  compact?: boolean;
 }): JSX.Element | null {
   const { t, formatNumber } = useI18n();
   const [visibleCount, setVisibleCount] = useState(FILE_BATCH_SIZE);
+  const [expanded, setExpanded] = useState(false);
 
   if (turn.status === "in_progress" && !turnIsAnswerReady(turn)) return null;
 
@@ -398,6 +401,31 @@ export function TurnEditSummaryCard({
       newFile: edit.newFile,
     });
   };
+
+  if (compact) {
+    return (
+      <div className="turn-edit-summary-compact">
+        <button
+          type="button"
+          className="turn-edit-summary-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <ChevronRight className="icon-xs" aria-hidden="true" />
+          <span>{t(turn.status === "interrupted" ? "turnEdits.retainedStopped" : "turnEdits.retained", { count: formatNumber(edits.length) })}</span>
+          <EditStats additions={additions} deletions={deletions} />
+        </button>
+        {expanded ? (
+          <TurnEditSummaryCard
+            turn={turn}
+            cwd={cwd}
+            onOpenFile={onOpenFile}
+            onOpenFileDiff={onOpenFileDiff}
+          />
+        ) : null}
+      </div>
+    );
+  }
 
   const singleEdit = edits.length === 1 ? edits[0] : undefined;
   if (singleEdit) {

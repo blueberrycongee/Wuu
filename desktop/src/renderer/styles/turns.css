@@ -4829,6 +4829,58 @@ pre {
  * A compact receipt for files created or edited during the turn. The stable
  * right-side artifact panel owns the full diff and current-file preview.
  */
+.turn-edit-presentation {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-bottom: 0;
+  transition: grid-template-rows 220ms ease, opacity 160ms ease, margin-bottom 220ms ease;
+}
+
+.assistant-turn-shell > .turn-edit-presentation {
+  --turn-edit-exit-gap: var(--conversation-process-answer-gap);
+}
+
+.turn > .turn-edit-presentation {
+  --turn-edit-exit-gap: var(--conversation-turn-item-gap);
+}
+
+.turn-edit-presentation.is-exiting {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  /* Collapse the parent's gap too, so unmounting does not cause a final jump. */
+  margin-bottom: calc(-1 * var(--turn-edit-exit-gap, 0px));
+}
+
+.turn-edit-presentation-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.turn-edit-summary-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--conversation-process-control-color, var(--process-control-color-fallback));
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.turn-edit-summary-toggle[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-edit-presentation {
+    transition: none;
+  }
+}
+
 .turn-edit-summary-card {
   margin: 14px 0 0;
   width: 100%;
@@ -4843,11 +4895,8 @@ pre {
   box-shadow: none;
 }
 
-/* The card is turn-owned output: when it cannot attach to an actionable
- * answer message, it trails the turn content inside the assistant shell
- * (not the turn-level governance layer below). The shell's flex gap already
- * separates it from the answer, so drop the card's own top margin. */
-.assistant-turn-shell > .turn-edit-summary-card {
+/* The shell gap already separates successful output from the answer. */
+.assistant-turn-shell > .turn-edit-presentation .turn-edit-summary-card {
   margin-top: 0;
 }
 

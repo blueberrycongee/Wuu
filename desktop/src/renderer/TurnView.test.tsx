@@ -97,6 +97,7 @@ function rerender(turn: Turn, isLatestTurn = false): void {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   act(() => {
     root?.unmount();
   });
@@ -291,9 +292,9 @@ describe("TurnView", () => {
     expect(view.querySelector(".message-edit-button")).toBeNull();
   });
 
-  it("keeps completed turn outputs visible after the turn is no longer latest", () => {
-    const view = render(
-      makeTurn("completed", [
+  it("removes the temporary review card when the next turn begins, retaining tool history", () => {
+    vi.useFakeTimers();
+    const turn = makeTurn("completed", [
         {
           id: "write-1",
           type: "tool_call",
@@ -305,11 +306,78 @@ describe("TurnView", () => {
             diff: { new_file: true, lines: 1 },
           }),
         },
-      ]),
-    );
+      ]);
+    const view = render(turn, true);
+    expect(view.querySelector(".turn-edit-summary-card")).not.toBeNull();
+    rerender(turn, false);
+    expect(view.querySelector("[inert] .turn-edit-summary-card")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(220));
+    expect(view.querySelector(".turn-edit-summary-card")).toBeNull();
+    expect(view.querySelector(".turn-edit-presentation")).toBeNull();
+    expect(view.querySelector(".assistant-turn-shell")).not.toBeNull();
+    expect(turn.items).toHaveLength(1);
+  });
 
-    expect(view.textContent).toContain("本轮修改 1 个文件");
-    expect(view.textContent).toContain("brief.md");
+  it.each(["failed", "interrupted"] as const)(
+    "keeps %s edits collapsed after execution events and available on demand",
+    (status) => {
+      vi.useFakeTimers();
+      const turn = makeTurn(status, [{
+        id: "write-1",
+        type: "tool_call",
+        name: "write_file",
+        status: "completed",
+        result: JSON.stringify({ path: "partial.ts", diff: { new_file: true, lines: 1 } }),
+      }], status === "failed" ? "network connection lost" : undefined);
+      const view = render(turn, true);
+      const edits = view.querySelector(".turn-edit-presentation")!;
+      expect(view.querySelector(".turn-edit-summary-card")).toBeNull();
+      const process = view.querySelector(".assistant-turn-shell")!;
+      expect(process.compareDocumentPosition(edits) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      const notice = view.querySelector(".system-event-notice");
+      if (status === "failed") {
+        expect(notice).not.toBeNull();
+        expect(notice!.compareDocumentPosition(edits) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+      const editToggle = edits.querySelector<HTMLButtonElement>("button")!;
+      expect(editToggle.getAttribute("aria-expanded")).toBe("false");
+      act(() => editToggle.click());
+      expect(editToggle.getAttribute("aria-expanded")).toBe("true");
+      expect(edits.querySelector(".turn-edit-summary-card")?.textContent).toContain("partial.ts");
+      rerender(turn, false);
+      act(() => vi.advanceTimersByTime(220));
+      expect(view.querySelector(".turn-edit-presentation")).toBeNull();
+      if (notice) expect(view.contains(notice)).toBe(true);
+    },
+  );
+
+  it("does not resurrect historical cards on mount", () => {
+    const view = render(makeTurn("completed", [{
+      id: "write-old",
+      type: "tool_call",
+      name: "write_file",
+      status: "completed",
+      result: JSON.stringify({ path: "old.ts", diff: { new_file: true, lines: 1 } }),
+    }]), false);
+    expect(view.querySelector(".turn-edit-presentation")).toBeNull();
+  });
+
+  it("removes old cards immediately when reduced motion is requested", () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    const turn = makeTurn("completed", [{
+      id: "write-1", type: "tool_call", name: "write_file", status: "completed",
+      result: JSON.stringify({ path: "brief.md", diff: { new_file: true, lines: 1 } }),
+    }]);
+    const view = render(turn, true);
+    expect(view.querySelector(".turn-edit-summary-card")).not.toBeNull();
+    rerender(turn, false);
+    expect(view.querySelector(".turn-edit-presentation")).toBeNull();
+  });
+
+  it("does not offer retained edits when a failed turn made no changes", () => {
+    const view = render(makeTurn("failed", [makeError("network connection lost")], "network connection lost"), true);
+    expect(view.querySelector(".system-event-notice")).not.toBeNull();
+    expect(view.querySelector(".turn-edit-presentation")).toBeNull();
   });
 
   it("attaches the edit summary to an answer before turn settlement", () => {

@@ -1281,6 +1281,8 @@ export const enUS = {
   "toolDiff.preview": "Change preview",
   "toolDiff.truncated": "Truncated",
   "turnEdits.countOne": "Changed {count} file this turn",
+  "turnEdits.retained": "Turn incomplete · Changes retained in {count} file(s)",
+  "turnEdits.retainedStopped": "Stopped · Changes retained in {count} file(s)",
   "turnEdits.count": "Changed {count} files this turn",
   "turnEdits.openFile": "Open file {path}",
   "turnEdits.moreFileOne": "{count} more file",

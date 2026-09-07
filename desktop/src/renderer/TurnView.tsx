@@ -12,7 +12,7 @@ import { buildAssistantTurnDisplay } from "./AssistantTurnDisplay";
 import { useAssistantTurnPresentation } from "./AssistantTurnPresentation";
 import { AssistantTurnShell } from "./AssistantTurnShell";
 import { ThreadItemView } from "./ThreadItemView";
-import { TurnEditSummaryCard } from "./TurnEditSummaryCard";
+import { TurnEditSummaryPresentation } from "./TurnEditSummaryPresentation";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 import { TurnEventNotice, StreamStatusNotice } from "./TurnNotice";
 import { turnEventForTurn } from "./TurnEvents";
@@ -189,6 +189,17 @@ function TurnContent({
     rawAssistantDisplay,
   );
   const event = turnEventForTurn(turn);
+  const incomplete = turn.status === "failed" || turn.status === "interrupted";
+  const editSummary = (
+    <TurnEditSummaryPresentation
+      turn={turn}
+      isLatestTurn={Boolean(isLatestTurn)}
+      cwd={cwd}
+      onOpenFile={onOpenFile}
+      onOpenFileDiff={onOpenFileDiff}
+      onCollapseComplete={onCollapseComplete}
+    />
+  );
 
   return (
     <section
@@ -216,24 +227,10 @@ function TurnContent({
           onCollapseComplete={onCollapseComplete}
           onOpenAgent={onOpenAgent}
           editSummaryCard={
-            runActionAttachedToMessage ? (
-              <TurnEditSummaryCard
-                turn={turn}
-                cwd={cwd}
-                onOpenFile={onOpenFile}
-                onOpenFileDiff={onOpenFileDiff}
-              />
-            ) : undefined
+            !incomplete && runActionAttachedToMessage ? editSummary : undefined
           }
           trailingContent={
-            runActionAttachedToMessage ? undefined : (
-              <TurnEditSummaryCard
-                turn={turn}
-                cwd={cwd}
-                onOpenFile={onOpenFile}
-                onOpenFileDiff={onOpenFileDiff}
-              />
-            )
+            !incomplete && !runActionAttachedToMessage ? editSummary : undefined
           }
         />
       ) : null}
@@ -241,6 +238,7 @@ function TurnContent({
         <StreamStatusNotice status={streamStatus} />
       ) : null}
       {event ? <TurnEventNotice event={event} /> : null}
+      {incomplete ? editSummary : null}
     </section>
   );
 }

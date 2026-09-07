@@ -1279,6 +1279,8 @@ export const zhCN = {
   "toolDiff.preview": "变更预览",
   "toolDiff.truncated": "已截断",
   "turnEdits.countOne": "本轮修改 {count} 个文件",
+  "turnEdits.retained": "本轮未完成 · 已保留 {count} 个文件的修改",
+  "turnEdits.retainedStopped": "已停止 · 已保留 {count} 个文件的修改",
   "turnEdits.count": "本轮修改 {count} 个文件",
   "turnEdits.openFile": "打开文件 {path}",
   "turnEdits.moreFileOne": "还有 {count} 个文件",
