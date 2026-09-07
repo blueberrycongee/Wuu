@@ -2669,6 +2669,10 @@ export type WuuDesktopApi = {
    * desktop contract; renderers must hide or disable unavailable actions. */
   unsupportedMethods?: readonly (keyof WuuDesktopApi)[];
   hostKind?: "desktop" | "web";
+  /** Reconcile server-owned state after transport reattachment without
+   * remounting the renderer or discarding local drafts. The host remains
+   * restoring until all subscribers finish; failure is retryable. */
+  onRuntimeRestore?: (handler: () => Promise<void>) => () => void;
   // Pre-paint first-run gate. Optional so browser fixtures and older preload
   // mocks continue to enter the normal shell unless they explicitly exercise
   // onboarding.

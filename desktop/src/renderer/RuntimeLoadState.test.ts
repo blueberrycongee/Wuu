@@ -9,8 +9,13 @@ import type {
 import {
   emptyRuntimeState,
   loadRuntime,
+  loadRuntimeRestore,
+  applyRuntimeRestore,
   selectRuntimeContext,
 } from "./RuntimeLoadState";
+
+import { initialState, createThreadSessionTab } from "./AppState";
+import { streamTextStore, streamTextKey } from "./StreamText";
 
 afterEach(() => {
   delete (window as unknown as { wuu?: unknown }).wuu;
@@ -304,5 +309,64 @@ describe("runtime load helpers", () => {
     const archived = state.threads?.find((t) => t.id === "archived-2");
     expect(archived?.archived).toBe(true);
     expect(archived?.cwd).toBe("/tmp/another-workspace");
+  });
+});
+
+
+describe("runtime restoration", () => {
+  const context: RuntimeContext = { kind: "no_project", cwd: "/tmp/wuu" };
+
+  it("restores opened histories and streaming text without discarding tab drafts", async () => {
+    const running = thread("opened", {
+      status: "in_progress",
+      turns: [{ id: "restore-turn", status: "in_progress", items_view: "full", items: [
+        { id: "restore-item", type: "agent_message", status: "in_progress", text: "Before disconnect, and after reconnect" },
+      ] }],
+    } as Partial<Thread>);
+    const cached = thread("opened", { status: "in_progress", turns: [
+      { ...running.turns[0], items: [{ ...running.turns[0].items[0], text: "Before disconnect" }] },
+    ] });
+    const key = streamTextKey("restore-turn", "restore-item", "text");
+    streamTextStore.set(key, "Before disconnect");
+    const tab = { ...createThreadSessionTab(cached, context), prompt: "Unsent draft" };
+    const state = { ...initialState, activeContext: context, thread: cached, threads: [cached],
+      sessionTabs: [tab], activeSessionTabID: tab.id, running: true };
+    const resumeThread = vi.fn().mockResolvedValue({ thread: running, pending_user_messages: [] });
+    installWuuStub({
+      initialize: vi.fn().mockResolvedValue({ status: "ready", model: "updated" }),
+      listThreads: vi.fn().mockResolvedValue({ threads: [thread("opened"), thread("not-opened")] }),
+      listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
+      resumeThread,
+    });
+    const snapshot = await loadRuntimeRestore(state);
+    const restored = applyRuntimeRestore(state, snapshot);
+    expect(resumeThread).toHaveBeenCalledExactlyOnceWith("opened");
+    expect(restored.thread?.turns[0].items[0].text).toBe("Before disconnect, and after reconnect");
+    expect(streamTextStore.get(key)).toBe("Before disconnect, and after reconnect");
+    expect(restored.sessionTabs[0]).toMatchObject({ prompt: "Unsent draft" });
+    expect(restored.activeSessionTabID).toBe(tab.id);
+    expect(restored.running).toBe(true);
+    streamTextStore.clearTurn("restore-turn");
+  });
+
+  it("reconciles completion, unarchive and deletion performed while disconnected", () => {
+    const running = thread("running", { status: "in_progress", turns: [
+      { id: "turn", status: "in_progress", items_view: "full", items: [] },
+    ] } as Partial<Thread>);
+    const completed = { ...running, status: "idle", turns: [{ ...running.turns[0], status: "completed" }] } as Thread;
+    const archived = thread("archived", { archived: true });
+    const removed = thread("removed");
+    const tabs = [running, removed].map((item) => createThreadSessionTab(item, context));
+    const state = { ...initialState, thread: running, secondaryThread: removed, threads: [running, archived, removed],
+      sessionTabs: tabs, activeSessionTabID: tabs[0].id, running: true };
+    const restored = applyRuntimeRestore(state, {
+      initialized: { status: "ready" } as InitializeResult,
+      threads: [completed, { ...archived, archived: false }], resumed: [],
+    });
+    expect(restored.running).toBe(false);
+    expect(restored.secondaryThread).toBeUndefined();
+    expect(restored.threads.map((item) => item.id)).not.toContain("removed");
+    expect(restored.threads.find((item) => item.id === "archived")?.archived).toBe(false);
+    expect(restored.sessionTabs).toHaveLength(1);
   });
 });

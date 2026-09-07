@@ -3,9 +3,12 @@ import type {
   ProjectListResult,
   RuntimeContext,
   ThreadResumeResult,
+  InitializeResult,
+  Thread,
 } from "../shared/protocol";
 import {
   activeProjectID,
+  reconcileListedThreadState,
   createDraftSessionTab,
   createThreadSessionTab,
   isThreadRunning,
@@ -193,4 +196,57 @@ export async function selectRuntimeContext(
     return window.wuu.selectProject(context.project_id);
   }
   return window.wuu.selectNoProject(false, context.cwd);
+}
+
+
+export type RuntimeRestoreSnapshot = {
+  initialized: InitializeResult;
+  threads: Thread[];
+  resumed: ThreadResumeResult[];
+};
+
+/** Refresh the server-owned portion of an existing workbench. Drafts and
+ * pane selection stay in the renderer while opened threads regain history. */
+export async function loadRuntimeRestore(state: AppState): Promise<RuntimeRestoreSnapshot> {
+  const [initialized, listed, archived] = await Promise.all([
+    window.wuu.initialize(),
+    window.wuu.listThreads(),
+    window.wuu.listArchivedThreads(),
+  ]);
+  const threads = [...listed.threads, ...archived.threads];
+  const available = new Set(threads.map((thread) => thread.id));
+  const openIDs = new Set([
+    state.thread?.id,
+    state.secondaryThread?.id,
+    ...state.sessionTabs.flatMap((tab) => tab.kind === "thread" ? [tab.threadID] : []),
+  ].filter((id): id is string => Boolean(id && available.has(id))));
+  const resumed = await Promise.all([...openIDs].map(async (id) => {
+    const result = await window.wuu.resumeThread(id);
+    // Synchronize the streaming text buffer at the response boundary, before
+    // subsequent deltas append to a value cached before the disconnect.
+    requireThread(result, translateCurrent("thread.resumeMissing"));
+    return result;
+  }));
+  const byID = new Map(resumed.map((result) => [result.thread.id, result.thread]));
+  return { initialized, threads: threads.map((thread) => byID.get(thread.id) ?? thread), resumed };
+}
+
+export function applyRuntimeRestore(state: AppState, snapshot: RuntimeRestoreSnapshot): AppState {
+  const available = new Set(snapshot.threads.map((thread) => thread.id));
+  const sessionTabs = state.sessionTabs.filter((tab) => tab.kind !== "thread" || available.has(tab.threadID));
+  const current = {
+    ...state,
+    // The snapshot includes archives; stale local archive copies must not
+    // override an unarchive or deletion performed while disconnected.
+    threads: state.threads.filter((thread) => !thread.archived),
+    thread: state.thread && available.has(state.thread.id) ? state.thread : undefined,
+    secondaryThread: state.secondaryThread && available.has(state.secondaryThread.id) ? state.secondaryThread : undefined,
+    sessionTabs,
+    activeSessionTabID: sessionTabs.some((tab) => tab.id === state.activeSessionTabID)
+      ? state.activeSessionTabID : sessionTabs[0]?.id ?? "",
+  };
+  return {
+    ...reconcileListedThreadState(current, snapshot.threads),
+    initialized: snapshot.initialized,
+  };
 }

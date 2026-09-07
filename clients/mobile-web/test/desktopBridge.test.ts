@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Credentials } from "@wuu/remote-core";
+import type { Credentials, RemoteClientOptions } from "@wuu/remote-core";
 
-const remote = vi.hoisted(() => ({ call: vi.fn() }));
+const remote = vi.hoisted(() => ({ call: vi.fn(), options: {} as RemoteClientOptions, attached: true }));
 vi.mock("@wuu/remote-core", () => ({
   RemoteClient: class {
     call = remote.call;
+    constructor(_credentials: Credentials, options: RemoteClientOptions) { remote.options = options; }
+    isAttached = () => remote.attached;
+    start = () => remote.options.onAttach?.({ session: "first", resumed: false });
+    waitAttached = async () => {};
+    latestState = () => null;
+    stop = async () => { remote.attached = false; remote.options.onDetach?.(); };
   },
   pair: vi.fn(),
 }));
@@ -12,7 +18,8 @@ vi.mock("@wuu/remote-core", () => ({
 import { RemoteDesktopBridge, UnavailableHostOperationError } from "../src/lib/desktopBridge";
 
 beforeEach(() => {
-  remote.call.mockReset().mockResolvedValue({});
+  remote.attached = true;
+  remote.call.mockReset().mockResolvedValue({ current: "/paired/workspace" });
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => values.get(key) ?? null,
@@ -76,5 +83,93 @@ describe("browser host contract", () => {
     expect(window.open).not.toHaveBeenCalled();
     await host.openExternal("https://example.com/docs");
     expect(window.open).toHaveBeenCalledWith("https://example.com/docs", "_blank", "noopener,noreferrer");
+  });
+});
+
+
+async function connectBridge() {
+  const bridge = new RemoteDesktopBridge({ host_pub: "paired-host" } as Credentials);
+  await bridge.connect();
+  return bridge;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+describe("connection recovery", () => {
+  it("waits for a real host workspace before presenting the workbench", async () => {
+    const bridge = await connectBridge();
+    expect(bridge.getConnectionSnapshot().phase).toBe("connected");
+    expect((await bridge.api.listProjects()).active_context?.cwd).toBe("/paired/workspace");
+  });
+
+  it("restores fresh and resumed connections in place and waits for subscribers", async () => {
+    const bridge = await connectBridge();
+    for (const resumed of [false, true]) {
+      const restore = deferred<void>();
+      const handler = vi.fn(() => restore.promise);
+      const off = bridge.api.onRuntimeRestore!(handler);
+      remote.options.onDetach?.();
+      expect(bridge.getConnectionSnapshot().phase).toBe("reconnecting");
+      remote.options.onAttach?.({ session: "next", resumed });
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
+      expect(bridge.getConnectionSnapshot().phase).toBe("restoring");
+      restore.resolve();
+      await vi.waitFor(() => expect(bridge.getConnectionSnapshot().phase).toBe("connected"));
+      off();
+    }
+  });
+
+  it("ignores stale restoration completion after another disconnect", async () => {
+    const bridge = await connectBridge();
+    const restore = deferred<void>();
+    bridge.api.onRuntimeRestore!(() => restore.promise);
+    remote.options.onAttach?.({ session: "next", resumed: false });
+    await Promise.resolve();
+    remote.options.onDetach?.();
+    restore.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(bridge.getConnectionSnapshot().phase).toBe("reconnecting");
+  });
+
+  it("surfaces restore failure and retries without pairing or replacing the bridge", async () => {
+    const bridge = await connectBridge();
+    const restore = vi.fn().mockRejectedValueOnce(new Error("snapshot failed")).mockResolvedValue(undefined);
+    bridge.api.onRuntimeRestore!(restore);
+    remote.options.onAttach?.({ session: "next", resumed: false });
+    await vi.waitFor(() => expect(bridge.getConnectionSnapshot().phase).toBe("error"));
+    expect(bridge.getConnectionSnapshot().error).toBe("snapshot failed");
+    await bridge.retryRestore();
+    expect(bridge.getConnectionSnapshot().phase).toBe("connected");
+    expect(restore).toHaveBeenCalledTimes(2);
+  });
+
+  it("never queues offline sends and rejects responses from replaced connections", async () => {
+    const bridge = await connectBridge();
+    remote.call.mockClear();
+    remote.attached = false;
+    remote.options.onDetach?.();
+    await expect(bridge.api.startTurn("thread", "do work")).rejects.toThrow("disconnected");
+    expect(remote.call).not.toHaveBeenCalled();
+    remote.attached = true;
+    const pending = deferred<unknown>();
+    remote.call.mockReturnValueOnce(pending.promise);
+    const request = bridge.api.listThreads();
+    remote.options.onDetach?.();
+    pending.resolve({ threads: [] });
+    await expect(request).rejects.toThrow("connection changed");
+  });
+
+  it("blocks writes until restoration finishes", async () => {
+    const bridge = await connectBridge();
+    const restore = deferred<void>();
+    bridge.api.onRuntimeRestore!(() => restore.promise);
+    remote.options.onAttach?.({ session: "next", resumed: false });
+    await expect(bridge.api.startTurn("thread", "do work")).rejects.toThrow("restoring");
+    restore.resolve();
   });
 });

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Credentials } from "@wuu/remote-core";
 
 import { webCredStore } from "./lib/credStore";
@@ -57,6 +57,8 @@ export default function App(): React.JSX.Element {
       if (!active) return;
       if (credentials) void connect(credentials);
       else setPhase({ kind: "pair" });
+    }).catch((error) => {
+      if (active) setPhase({ kind: "error", message: error instanceof Error ? error.message : "无法读取配对信息" });
     });
     return () => {
       active = false;
@@ -66,7 +68,7 @@ export default function App(): React.JSX.Element {
   if (phase.kind === "ready") {
     return (
       <Suspense fallback={<StatusCard title="正在载入工作台…" />}>
-        <SharedWorkbench />
+        <ConnectedWorkbench bridge={bridgeRef.current!} onReset={() => void resetPairing()} />
       </Suspense>
     );
   }
@@ -95,6 +97,12 @@ export default function App(): React.JSX.Element {
   if (phase.kind === "error") {
     return (
       <StatusCard title="连接失败" detail={phase.message}>
+        <button type="button" onClick={() => void webCredStore.load().then((credentials) => {
+          if (credentials) return connect(credentials);
+          setPhase({ kind: "pair" });
+        }).catch((error) => setPhase({ kind: "error", message: String(error) }))}>
+          重试连接
+        </button>
         <button
           type="button"
           onClick={() => void resetPairing()}
@@ -177,5 +185,31 @@ function StatusCard({
         {children}
       </section>
     </main>
+  );
+}
+
+
+function ConnectedWorkbench({ bridge, onReset }: {
+  bridge: RemoteDesktopBridge;
+  onReset: () => void;
+}): React.JSX.Element {
+  const connection = useSyncExternalStore(bridge.subscribeConnection, bridge.getConnectionSnapshot);
+  const ready = connection.phase === "connected";
+  return (
+    <>
+      <div className="web-workbench" inert={!ready}>
+        <SharedWorkbench />
+      </div>
+      {!ready ? (
+        <aside className="web-connection-status" role="status" aria-live="polite">
+          <span>{connection.phase === "restoring" ? "正在恢复工作区…" : connection.phase === "error"
+            ? `恢复失败：${connection.error}` : "与电脑的连接已断开，正在重连…"}</span>
+          {connection.phase === "error" ? (
+            <button type="button" onClick={() => void bridge.retryRestore().catch(() => {})}>重试恢复</button>
+          ) : null}
+          <button type="button" onClick={onReset}>重新配对</button>
+        </aside>
+      ) : null}
+    </>
   );
 }

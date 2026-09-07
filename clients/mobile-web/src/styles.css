@@ -65,3 +65,24 @@ button, input, textarea { font: inherit; }
 .web-gate button:disabled { opacity: 0.35; cursor: not-allowed; }
 .web-gate-error { margin: 0; color: #a63228; line-height: 1.5; overflow-wrap: anywhere; }
 .web-gate-status { text-align: center; }
+
+
+.web-workbench { height: 100%; min-width: 0; }
+.web-connection-status {
+  position: fixed;
+  z-index: 10000;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+}
+.web-connection-status span { flex: 1 1 180px; overflow-wrap: anywhere; }
+.web-connection-status button { min-height: 44px; }

@@ -262,6 +262,8 @@ import {
 import {
   loadPopOutRuntime,
   loadRuntime,
+  loadRuntimeRestore,
+  applyRuntimeRestore,
   selectRuntimeContext,
 } from "./RuntimeLoadState";
 import { createProjectRuntimeActions } from "./ProjectRuntimeActions";
@@ -1930,6 +1932,27 @@ export function App(): JSX.Element {
       }
     };
   }, [popOutInit]);
+
+  useEffect(() => {
+    let mounted = true;
+    const unsubscribe = window.wuu.onRuntimeRestore?.(async () => {
+      const snapshot = await loadRuntimeRestore(appStateRef.current);
+      const questions = await window.wuu.listUserQuestions();
+      if (!mounted) return;
+      setState((current) => applyRuntimeRestore(current, snapshot));
+      for (const resumed of snapshot.resumed) {
+        syncPendingComposerMessagesFromServerEvent({
+          workdir: resumed.thread.cwd,
+          kind: "notification",
+          message: { method: "thread/resumed", params: resumed },
+        });
+      }
+      setUserQuestions(questions.questions.filter(
+        (request) => !resolvedUserQuestionIDsRef.current.has(request.request_id),
+      ));
+    });
+    return () => { mounted = false; unsubscribe?.(); };
+  }, []);
 
   // Cross-process session pickup: sessions started from a paired phone are
   // written to the shared store by the remote host process, which emits no

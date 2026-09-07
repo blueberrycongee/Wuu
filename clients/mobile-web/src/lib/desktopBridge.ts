@@ -22,6 +22,12 @@ import type {
   WuuDesktopApi,
 } from "@wuu/protocol";
 
+export type WebConnectionSnapshot = {
+  phase: "connecting" | "connected" | "reconnecting" | "restoring" | "error" | "disconnected";
+  revision: number;
+  error?: string;
+};
+
 type ServerEventListener = (event: ServerEvent) => void;
 type RunningListener = (snapshot: RunningThreadSnapshot[]) => void;
 type PreferenceListener<T> = (value: T) => void;
@@ -166,6 +172,53 @@ export class RemoteDesktopBridge {
   >();
   private hostState: HostState | null = null;
   private attachedOnce = false;
+  private defaultWorkdir = "";
+  private connection: WebConnectionSnapshot = { phase: "connecting", revision: 0 };
+  private readonly connectionListeners = new Set<() => void>();
+  private readonly restoreListeners = new Set<() => Promise<void>>();
+  private attachSync: Promise<void> = Promise.resolve();
+  private stopped = false;
+
+  getConnectionSnapshot = (): WebConnectionSnapshot => this.connection;
+  subscribeConnection = (listener: () => void): (() => void) => {
+    this.connectionListeners.add(listener);
+    return () => this.connectionListeners.delete(listener);
+  };
+
+  private setConnection(phase: WebConnectionSnapshot["phase"], error?: string): number {
+    this.connection = { phase, revision: this.connection.revision + 1, ...(error ? { error } : {}) };
+    for (const listener of this.connectionListeners) listener();
+    return this.connection.revision;
+  }
+
+  private clearPendingRequests(): void {
+    for (const pending of this.pendingServerRequests.values()) {
+      pending.resolve({ error: { code: "connection_replaced", message: "The remote connection was replaced" } });
+    }
+    this.pendingServerRequests.clear();
+  }
+
+  private async synchronize(first: boolean): Promise<void> {
+    const revision = this.setConnection(first ? "connecting" : "restoring");
+    try {
+      const workspace = await this.client.call<{ current: string }>("workspace/list", undefined, 30_000);
+      if (this.connection.revision !== revision || this.stopped) return;
+      if (!workspace.current) throw new Error("Remote host did not provide a workspace");
+      this.defaultWorkdir = workspace.current;
+      if (!first) await Promise.all([...this.restoreListeners].map((restore) => restore()));
+      if (this.connection.revision !== revision || this.stopped) return;
+      this.setConnection("connected");
+    } catch (error) {
+      if (this.connection.revision !== revision || this.stopped) return;
+      this.setConnection("error", error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  retryRestore = async (): Promise<void> => {
+    if (!this.client.isAttached() || this.connection.phase === "restoring") return;
+    await this.synchronize(false);
+  };
   private readonly projectID: string;
 
   readonly api: WuuDesktopApi;
@@ -188,14 +241,16 @@ export class RemoteDesktopBridge {
         this.emitRunning();
       },
       onAttach: ({ resumed }) => {
-        if (this.attachedOnce && !resumed) {
-          // Replay preserves renderer state. A fresh app-server does not yet
-          // have a reconciliation handshake, so reload instead of showing
-          // plausible but stale state.
-          window.location.reload();
-          return;
-        }
+        const first = !this.attachedOnce;
         this.attachedOnce = true;
+        if (!resumed) this.clearPendingRequests();
+        this.attachSync = this.synchronize(first);
+        // connect() awaits the first sync; later failures are visible through
+        // the connection snapshot and an explicit retry, never a page reload.
+        void this.attachSync.catch(() => {});
+      },
+      onDetach: () => {
+        if (!this.stopped) this.setConnection("reconnecting");
       },
     });
     this.api = this.createApi();
@@ -208,10 +263,14 @@ export class RemoteDesktopBridge {
   async connect(): Promise<void> {
     this.client.start();
     await this.client.waitAttached(30_000);
+    await this.attachSync;
     this.hostState = this.client.latestState();
   }
 
   async disconnect(): Promise<void> {
+    this.stopped = true;
+    this.setConnection("disconnected");
+    this.clearPendingRequests();
     await this.client.stop();
   }
 
@@ -219,12 +278,23 @@ export class RemoteDesktopBridge {
     window.wuu = this.api;
   }
 
-  private call<T>(method: string, params?: unknown): Promise<T> {
-    return this.client.call<T>(method, params, 30_000);
+  private async call<T>(method: string, params?: unknown): Promise<T> {
+    // Do not queue UI actions while offline: a delayed send after reconnect
+    // would execute an instruction the user already saw fail.
+    if (this.stopped || !this.client.isAttached()) throw new Error("Remote host is disconnected");
+    if (this.connection.phase === "restoring" && ![
+      "initialize", "thread/list", "thread/listArchived", "thread/resume", "user-question/list",
+    ].includes(method)) throw new Error("Remote workspace is restoring; retry after it reconnects");
+    const revision = this.connection.revision;
+    const result = await this.client.call<T>(method, params, 30_000);
+    if (this.stopped || this.connection.revision !== revision) {
+      throw new Error("Remote connection changed while the request was in flight");
+    }
+    return result;
   }
 
   private workdir(): string {
-    return this.hostState?.host.workdir ?? "";
+    return this.defaultWorkdir || this.hostState?.host.workdir || "";
   }
 
   private projectState(): ProjectListResult {
@@ -281,6 +351,10 @@ export class RemoteDesktopBridge {
     const target: WuuDesktopApi = {
       ...unavailableWebActions,
       hostKind: "web",
+      onRuntimeRestore: (listener) => {
+        this.restoreListeners.add(listener);
+        return () => this.restoreListeners.delete(listener);
+      },
       unsupportedMethods: unavailableWebMethods,
       platform: browserPlatform(),
       initialThemePreference: storedTheme(),
