@@ -587,6 +587,7 @@
 
 .conversation-search-results {
   display: grid;
+  grid-auto-rows: max-content;
   min-height: 0;
   align-content: start;
   gap: 2px;
@@ -740,6 +741,10 @@
 .conversation-search-preview[data-state="no-turns"] {
   align-items: stretch;
   justify-content: flex-start;
+}
+
+.conversation-search-preview > * {
+  flex-shrink: 0;
 }
 
 .conversation-search-preview-header {
