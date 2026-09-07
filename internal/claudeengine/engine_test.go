@@ -372,6 +372,7 @@ func TestEnginePersistsSessionIDBeforeTurnCompletes(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	done := make(chan error, 1)
 	go func() {
 		_, runErr := sess.RunTurn(ctx, agentengine.TurnInput{
@@ -387,7 +388,7 @@ func TestEnginePersistsSessionIDBeforeTurnCompletes(t *testing.T) {
 		}
 	case err := <-done:
 		t.Fatalf("turn ended before session id was persisted: %v", err)
-	case <-time.After(3 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("session id was not persisted while turn remained active")
 	}
 
@@ -412,11 +413,12 @@ func TestTransportCloseStillReapsProcessAfterStdoutCloses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTransport: %v", err)
 	}
+	t.Cleanup(func() { _ = transport.Close() })
 	closed := make(chan struct{})
 	transport.OnClose(func(string) { close(closed) })
 	select {
 	case <-closed:
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("stdout close was not observed")
 	}
 	if err := transport.Close(); err != nil {

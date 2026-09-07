@@ -433,7 +433,9 @@ func NewWithCredentialStore(rt *runtime.Session, out io.Writer, store credential
 	}
 	s.startInferenceJournalMaintenance()
 	if s.channelService != nil {
-		s.startBackground(s.restoreNamedAgentWakes)
+		// Finish boot recovery before accepting new channel work. Otherwise a
+		// newly delivered wake can also be picked up as an outstanding boot wake.
+		s.restoreNamedAgentWakes()
 	}
 	s.startPluginGenerationWatch()
 	s.startConfigWatch()

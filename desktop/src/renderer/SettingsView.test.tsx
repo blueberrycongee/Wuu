@@ -528,9 +528,10 @@ describe("SettingsView provider configuration", () => {
       addButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    const inputs = Array.from(container.querySelectorAll("input"));
-    expect(inputs.length).toBeGreaterThanOrEqual(4);
-    const [providerInput, modelInput, baseURLInput, apiKeyInput] = inputs;
+    const providerInput = container.querySelector<HTMLInputElement>('input[aria-label="服务标识"]')!;
+    const modelInput = container.querySelector<HTMLInputElement>('input[aria-label="模型名称"]')!;
+    const baseURLInput = container.querySelector<HTMLInputElement>('input[aria-label="Base URL"]')!;
+    const apiKeyInput = container.querySelector<HTMLInputElement>('input[type="password"]')!;
     await act(async () => {
       setInputValue(providerInput, "openrouter");
       setInputValue(modelInput, "openai/gpt-5.5");
@@ -618,10 +619,8 @@ describe("SettingsView provider configuration", () => {
 
     expect(container.textContent).toContain("grok login");
     expect(container.querySelector("input[type='password']")).toBeNull();
-    const inputs = Array.from(container.querySelectorAll<HTMLInputElement>("input"));
-    expect(inputs.map((input) => input.value)).toEqual([
-      "grok-build", "grok-4.5",
-    ]);
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="服务标识"]')?.value).toBe("grok-build");
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="模型名称"]')?.value).toBe("grok-4.5");
     expect(container.querySelector(".settings-managed-value")?.textContent).toBe("https://cli-chat-proxy.grok.com/v1");
     const submit = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
       .find((button) => button.textContent?.includes("添加服务"));
@@ -759,8 +758,10 @@ describe("SettingsView provider configuration", () => {
       anthropicOption?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    const inputs = Array.from(container.querySelectorAll("input"));
-    const [providerInput, modelInput, baseURLInput, apiKeyInput] = inputs;
+    const providerInput = container.querySelector<HTMLInputElement>('input[aria-label="服务标识"]')!;
+    const modelInput = container.querySelector<HTMLInputElement>('input[aria-label="模型名称"]')!;
+    const baseURLInput = container.querySelector<HTMLInputElement>('input[aria-label="Base URL"]')!;
+    const apiKeyInput = container.querySelector<HTMLInputElement>('input[type="password"]')!;
     await act(async () => {
       setInputValue(providerInput, "anthropic-gateway");
       setInputValue(modelInput, "claude-sonnet-4-6[1M]");

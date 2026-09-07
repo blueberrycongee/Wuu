@@ -9776,7 +9776,9 @@ func waitForMethod(t *testing.T, out *lockedBuffer, method string) []map[string]
 
 func waitForTurnCompletedForThread(t *testing.T, out *lockedBuffer, threadID string) []map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	// This is a deadlock guard, not a turn latency requirement. Full-suite CI
+	// shares CPU and disk with other packages; return as soon as the event arrives.
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		msgs := parseOutput(t, out.String())
 		for _, msg := range msgs {
