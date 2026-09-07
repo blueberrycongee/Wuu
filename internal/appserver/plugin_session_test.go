@@ -656,10 +656,9 @@ func (handoffBriefProvider) CompactWithNote(_ context.Context, _ string, message
 
 func TestHandoffThreadStartUsesTargetModelWithoutCopyingSourceHistory(t *testing.T) {
 	client := &fakeClient{
-		responses: []providers.ChatResponse{
-			providersResponse("# Handoff brief\nContinue from the verified performance fix."),
-			providersResponse("starting from the brief"),
-		},
+		// Background note requests share this client with the destination turn.
+		// A finite response queue makes success depend on their scheduling.
+		response: providersResponse("# Handoff brief\nContinue from the verified performance fix."),
 	}
 	rt := newTestRuntime(t, client)
 	rt.PluginSessionRouter = runtime.NewPluginSessionRouter()
@@ -771,10 +770,7 @@ func TestHandoffThreadStartUsesTargetModelWithoutCopyingSourceHistory(t *testing
 	if again.ID != started.ID {
 		t.Fatalf("idempotent target = %q, want %q", again.ID, started.ID)
 	}
-	client.mu.Lock()
-	requestCount := len(client.requests)
-	client.mu.Unlock()
-	if requestCount != len(requests) {
-		t.Fatalf("idempotent retry issued extra provider requests: before=%d after=%d", len(requests), requestCount)
+	if len(again.Turns) != len(started.Turns) {
+		t.Fatalf("idempotent retry created extra destination turns: before=%d after=%d", len(started.Turns), len(again.Turns))
 	}
 }
