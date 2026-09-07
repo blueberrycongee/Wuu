@@ -247,17 +247,10 @@ func TestCodeModeOnlyIncludesPluginToolsInNestedSurface(t *testing.T) {
 	host := pluginhost.New(client)
 	name := host.ToolDefinitions()[0].Name
 	executor := newPluginToolExecutor(kit, host, "thread", root)
-	var execDescription string
 	for _, def := range executor.Definitions() {
 		if def.Name == name || def.Name == "read_file" {
 			t.Fatalf("leaf tool exposed at top level: %s", def.Name)
 		}
-		if def.Name == "exec" {
-			execDescription = def.Description
-		}
-	}
-	if !strings.Contains(execDescription, name) {
-		t.Fatal("plugin tool is missing from the code-mode catalog")
 	}
 	nested, err := kit.CodeModeNestedSurface()
 	if err != nil {
@@ -287,7 +280,7 @@ func TestCodeModeOnlyIncludesPluginToolsInNestedSurface(t *testing.T) {
 			}
 			return messages[0].Content
 		}
-		args, _ := json.Marshal(map[string]any{"source": "text(await tools." + name + "({}));", "yield_time_ms": 1})
+		args, _ := json.Marshal(map[string]any{"source": `const tool = ALL_TOOLS.find(t => t.description.includes("change state")); if (!tool || !tool.description.includes('"type":"object"')) throw new Error("tool schema missing"); text(await tools[tool.name]({}));`, "yield_time_ms": 1})
 		result := run(providers.ToolCall{ID: "plugin-exec", Name: "exec", Arguments: string(args)})
 		var output strings.Builder
 		for step := 0; ; step++ {
@@ -310,8 +303,12 @@ func TestCodeModeOnlyIncludesPluginToolsInNestedSurface(t *testing.T) {
 		}
 	}
 	executor = replacePluginToolHost(executor, pluginhost.New(), "thread", root)
-	for _, def := range executor.Definitions() {
-		if strings.Contains(def.Description, name) {
+	nested, err = kit.CodeModeNestedSurface()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, def := range nested {
+		if def.Name == name {
 			t.Fatal("replaced plugin host left a stale code-mode catalog")
 		}
 	}

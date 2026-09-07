@@ -43,6 +43,9 @@ func (*CodeModeExecTool) Definition() providers.ToolDefinition {
 		Name: codeModeExecToolName,
 		Description: "Execute a code-mode program in Wuu's isolated runtime. The program receives the " +
 			"enabled tools as tools.<name>(arguments) and runs until it yields or finishes. " +
+			"Discover tools through ALL_TOOLS, whose entries contain name and description including the input schema. " +
+			"Filter by name or description and print matching entries with text(), for example: " +
+			"text(ALL_TOOLS.filter(t => /file|search/.test(t.name))); " +
 			"Use await for tool calls and text(value) to return output, for example: " +
 			"const result = await tools.read_file({path: 'README.md'}); text(result). Prefer this tool " +
 			"for multi-step reasoning, data transformation, and batched tool orchestration; each program " +
@@ -228,13 +231,6 @@ func (t *Toolkit) codeModeEntryDefinitions() []providers.ToolDefinition {
 	out := make([]providers.ToolDefinition, 0, 2)
 	for _, d := range all {
 		if (d.Name == codeModeExecToolName || d.Name == codeModeWaitToolName || d.Name == newContextToolName) && t.SupportsTool(d.Name) {
-			if d.Name == codeModeExecToolName {
-				if nested, err := t.CodeModeNestedSurface(); err == nil {
-					if catalog, err := json.Marshal(nested); err == nil {
-						d.Description += "\nAvailable tools (call as tools.<name> with the documented input schema):\n" + string(catalog)
-					}
-				}
-			}
 			out = append(out, d)
 		}
 	}
@@ -301,9 +297,10 @@ func codeModeToolDefinition(d providers.ToolDefinition) (codemode.ToolDefinition
 		return codemode.ToolDefinition{}, fmt.Errorf("encode code-mode tool schema for %q: %w", d.Name, err)
 	}
 	return codemode.ToolDefinition{
-		Name:        d.Name,
-		ToolName:    codemode.ToolName{Name: d.Name},
-		Description: d.Description,
+		Name:     d.Name,
+		ToolName: codemode.ToolName{Name: d.Name},
+		// Discovery metadata stays inside the runtime rather than the provider tool description.
+		Description: d.Description + "\nInput schema: " + string(schema),
 		Kind:        "function",
 		InputSchema: schema,
 	}, nil
