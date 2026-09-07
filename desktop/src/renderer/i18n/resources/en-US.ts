@@ -1951,6 +1951,7 @@ export const enUS = {
   "onboarding.pluginsUnavailable": "Included plugins could not be loaded. Restart Wuu and try again.",
   "onboarding.plugin.askUser": "Pause and ask you when an important detail is missing.",
   "onboarding.plugin.todo": "Turn complex work into clear, visible progress.",
+  "onboarding.plugin.goal": "Set a persistent goal and keep working until it is complete or paused.",
   "onboarding.plugin.automation": "Schedule prompts and recurring work.",
   "onboarding.plugin.subagent": "Delegate bounded work to child agents.",
   "onboarding.plugin.memory": "Keep durable preferences and lessons you can manage.",

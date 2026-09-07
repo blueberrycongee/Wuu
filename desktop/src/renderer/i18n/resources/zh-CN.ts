@@ -1949,6 +1949,7 @@ export const zhCN = {
   "onboarding.pluginsUnavailable": "未能读取随包插件，请重新启动 Wuu 后再试。",
   "onboarding.plugin.askUser": "需要关键信息时暂停并向你提问。",
   "onboarding.plugin.todo": "把复杂任务整理成清晰可见的进度。",
+  "onboarding.plugin.goal": "设定长期目标，持续推进直到完成或暂停。",
   "onboarding.plugin.automation": "按时间安排提示词与重复工作。",
   "onboarding.plugin.subagent": "把边界清楚的工作委派给子 Agent。",
   "onboarding.plugin.memory": "保存可管理的长期偏好与经验。",

@@ -3,7 +3,7 @@ import type { TranslationKey } from "./i18n/resources/zh-CN";
 // First-run choices are deliberately a subset of installed extensions. Changing
 // this catalog changes the offer, not installation or extension lifecycle.
 export const ONBOARDING_PLUGIN_ORDER = [
-  "ask-user", "todo", "automation", "subagent", "memory", "dream", "note-compaction",
+  "ask-user", "todo", "goal", "automation", "subagent", "memory", "dream", "note-compaction",
 ] as const;
 
 export const RECOMMENDED_PLUGIN_IDS = new Set<string>(["todo", "automation", "subagent"]);
@@ -11,6 +11,7 @@ export const RECOMMENDED_PLUGIN_IDS = new Set<string>(["todo", "automation", "su
 export const PLUGIN_DESCRIPTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   "ask-user": "onboarding.plugin.askUser",
   todo: "onboarding.plugin.todo",
+  goal: "onboarding.plugin.goal",
   automation: "onboarding.plugin.automation",
   subagent: "onboarding.plugin.subagent",
   memory: "onboarding.plugin.memory",

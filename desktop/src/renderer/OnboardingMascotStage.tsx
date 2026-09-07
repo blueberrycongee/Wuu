@@ -111,6 +111,16 @@ function CompanionEquipment({
           <path className="equipment-progress-current" d="M39 78 L42 78.5" />
           <path className="equipment-progress-next" d="M47 79 L49 79" />
         </>)}
+        {capability("goal", <>
+          <path className="equipment-shell" d="M80 25 Q89 20 96 24 L93 28 L98 31 Q87 32 79 30 Z" />
+          <path className="equipment-shell" d="M81 28 Q91 32 94 42 L88 39 L85 42 Q86 33 78 31 Z" />
+          <path className="equipment-seam" d="M84 26 L92 26 M83 31 Q88 34 90 38" />
+          <path className="equipment-shell" d="M18 24 Q49 14 81 23 L86 33 Q50 24 14 35 Z" />
+          <path className="equipment-seam" d="M19 32 Q50 22 83 30" />
+          <path className="equipment-bookmark" d="M46 20 L52 20 L51 28 L45 28 Z" />
+          <path className="equipment-paper" d="M78 23 Q82 21 85 25 L85 30 Q82 33 78 30 Z" />
+          <path className="equipment-seam" d="M81 25 L82 29" />
+        </>)}
         {capability("automation", <>
           <circle className="equipment-edge" cx="22" cy="70" r="7.5" />
           <circle className="equipment-shell" cx="22" cy="69" r="6" />

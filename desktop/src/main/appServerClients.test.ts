@@ -123,6 +123,7 @@ describe("appServerHelperEnvironment", () => {
       join(packagedBin, "wuu-memory-plugin"),
       join(packagedBin, "wuu-dream-plugin"),
       join(packagedBin, "wuu-todo-plugin"),
+      join(packagedBin, "wuu-goal-plugin"),
       join(packagedBin, "wuu-note-compaction-plugin"),
       join(packagedBin, "wuu-cua-mac"),
     ]);
@@ -137,6 +138,7 @@ describe("appServerHelperEnvironment", () => {
     expect(result.WUU_AUTOMATION_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-automation-plugin"));
     expect(result.WUU_MEMORY_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-memory-plugin"));
     expect(result.WUU_DREAM_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-dream-plugin"));
+    expect(result.WUU_GOAL_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-goal-plugin"));
     expect(result.WUU_TODO_PLUGIN_HELPER).toBe(join(packagedBin, "wuu-todo-plugin"));
     expect(result.WUU_NOTE_COMPACTION_PLUGIN_HELPER).toBe(
       join(packagedBin, "wuu-note-compaction-plugin"),
@@ -152,6 +154,7 @@ describe("appServerHelperEnvironment", () => {
       join(sourceBin, "wuu-memory-plugin"),
       join(sourceBin, "wuu-dream-plugin"),
       join(sourceBin, "wuu-todo-plugin"),
+      join(sourceBin, "wuu-goal-plugin"),
       join(sourceBin, "wuu-note-compaction-plugin"),
       join(sourceBin, "wuu-cua-mac"),
     ]);
@@ -162,6 +165,7 @@ describe("appServerHelperEnvironment", () => {
       "darwin",
       (path) => available.has(path),
     );
+    expect(discovered.WUU_GOAL_PLUGIN_HELPER).toBe(join(sourceBin, "wuu-goal-plugin"));
     expect(discovered.WUU_TODO_PLUGIN_HELPER).toBe(join(sourceBin, "wuu-todo-plugin"));
     expect(discovered.WUU_NOTE_COMPACTION_PLUGIN_HELPER).toBe(
       join(sourceBin, "wuu-note-compaction-plugin"),

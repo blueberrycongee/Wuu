@@ -73,6 +73,22 @@ describe("FirstRunOnboarding", () => {
     ]);
   });
 
+  it("allows enabling Goal from the bundled onboarding choices", async () => {
+    const update = vi.fn(async () => undefined);
+    await act(async () => root.render(
+      <I18nProvider><FirstRunOnboarding
+        inventory={[plugin("goal", false)]} providers={[]}
+        onUpdateExtensionPackage={update}
+        onSaveProvider={vi.fn(async () => undefined)}
+        onComplete={vi.fn(async () => undefined)}
+      /></I18nProvider>,
+    ));
+    await clickButton("开始设置");
+    await clickPlugin("goal");
+    await clickButton("继续");
+    expect(update).toHaveBeenCalledWith({ id: "plugin:bundled:goal", action: "enable" });
+  });
+
   it("recognizes configured and locked model providers", () => {
     expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m" }])).toBe(false);
     expect(hasOnboardingProvider([{ name: "a", type: "x", model: "m", api_key_configured: true }])).toBe(true);
@@ -300,7 +316,7 @@ describe("FirstRunOnboarding", () => {
     // Removing one capability leaves all the others intact.
     await clickPlugin("memory");
     expect(wornCapabilities()).not.toContain("memory");
-    expect(wornCapabilities()).toHaveLength(5);
+    expect(wornCapabilities()).toHaveLength(6);
     await clickButton("极简");
     expect(visibleClones()).toHaveLength(1);
     expect(wornCapabilities()).toEqual([]);
@@ -546,6 +562,8 @@ describe("FirstRunOnboarding", () => {
     expect(container.querySelector("[data-testid=\"onboarding-preview-exit\"]")?.textContent).toBe("退出预览");
     await clickButton("开始设置");
     expect(container.querySelectorAll('.onboarding-plugin[aria-pressed="true"]').length).toBeGreaterThan(0);
+    await clickPlugin("Goal");
+    expect(mascotStage()?.querySelector('[data-onboarding-capability="goal"]')).not.toBeNull();
     await clickButton("继续");
     const installedChoice = container.querySelector<HTMLButtonElement>(`[data-testid="onboarding-engine-${installed}"]`)!;
     expect(installedChoice.disabled).toBe(false);
