@@ -81,10 +81,6 @@ export function buildAssistantTurnDisplay(
   const keepsEmptyProcessShell =
     isInProgress || turn.status === "interrupted";
   const turnHasReasoning = turn.items.some((item) => item.type === "reasoning");
-  const hasAuthoritativeCompaction = turn.items.some(
-    (item) =>
-      item.type === "context_compaction" && item.reason !== "context_note",
-  );
   let firstTextItemRendered = false;
 
   function isProcessItemLive(item: ThreadItem): boolean {
@@ -130,14 +126,11 @@ export function buildAssistantTurnDisplay(
     ) {
       continue;
     }
-    // Older app-server versions completed the pending compact row once for
-    // the note implementation detail, then created another row for the real
-    // result. Keep standalone note updates visible, but suppress that legacy
-    // duplicate whenever the same turn has the authoritative compact outcome.
+    // Background note diagnostics are not compaction outcomes. A failed note
+    // can fall back to compaction; only the actual outcome belongs in the UI.
     if (
       item.type === "context_compaction" &&
-      item.reason === "context_note" &&
-      hasAuthoritativeCompaction
+      item.reason === "context_note"
     ) {
       continue;
     }

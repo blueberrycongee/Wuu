@@ -166,17 +166,15 @@ describe("buildAssistantTurnDisplay compaction notices", () => {
     expect(display.entries.map((entry) => entry.item.id)).toEqual([result.id]);
   });
 
-  it("keeps a standalone note status when there is no compact result", () => {
+  it.each(["Context note updated.", "Context note failed. uncovered history cannot fit beside the continuation note"])("hides standalone background diagnostics: %s", (text) => {
     const noteStatus: ThreadItem = {
       id: nextID("compact-note"),
       type: "context_compaction",
       status: "completed",
       reason: "context_note",
-      text: "Context note updated.",
+      text,
     };
 
-    const display = build(makeTurn("completed", [noteStatus]));
-
-    expect(display.entries.map((entry) => entry.item.id)).toEqual([noteStatus.id]);
+    expect(buildAssistantTurnDisplay(makeTurn("completed", [noteStatus]), undefined, stubRenderer)).toBeUndefined();
   });
 });

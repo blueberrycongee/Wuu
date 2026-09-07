@@ -267,10 +267,8 @@ export function ContextCompactionNotice({
   reason?: string;
   status?: ThreadItemStatus;
   /**
-   * Replacement-context body produced by this compaction pass. When present
-   * on a settled notice the row becomes expandable (same fold as tool
-   * activity) and reveals the compacted context, height-bounded by the
-   * shared process-surface body limit.
+   * Replacement context shown in the collapsed detail panel after success.
+   * Failures show their diagnostic instead, never an uninstalled summary.
    */
   summary?: string;
 }): JSX.Element | null {
@@ -283,7 +281,8 @@ export function ContextCompactionNotice({
   const detail = inProgress ? undefined : contextCompactionDetail(text, reason, status);
   const state = failed ? "failed" : inProgress ? "in_progress" : "completed";
   const description = detail ? `${title} — ${detail}` : title;
-  const hasSummary = !failed && !inProgress && Boolean(summary);
+  const expandedDetail = failed ? normalized : summary || normalized;
+  const hasSummary = !inProgress && Boolean(expandedDetail);
   const [expanded, setExpanded] = useState(false);
   const waveRef = useLiveTextWave<HTMLSpanElement>(inProgress);
   const handleToggle = (
@@ -291,7 +290,7 @@ export function ContextCompactionNotice({
   ): void => {
     setExpanded(event.currentTarget.open);
   };
-  if (!inProgress && isUnchangedContextCompaction(text)) {
+  if (reason === "context_note" || (!inProgress && isUnchangedContextCompaction(text))) {
     return null;
   }
   return (
@@ -336,7 +335,7 @@ export function ContextCompactionNotice({
         onToggle={handleToggle}
         rowClassName={inProgress ? " is-live-gray is-streaming" : ""}
       >
-        <div className="context-compaction-summary">{summary}</div>
+        <div className="context-compaction-summary">{expandedDetail}</div>
       </ProcessSurfaceFold>
     </aside>
   );
@@ -395,7 +394,8 @@ function contextCompactionDetail(
   if (compactNotice) {
     return compactNotice;
   }
-  return normalized.replace(/^上下文已压缩[:：]\s*/, "");
+  // Unknown server diagnostics belong in the fold, not the status line.
+  return "";
 }
 
 function normalizeContextCompactionText(text?: string): string {

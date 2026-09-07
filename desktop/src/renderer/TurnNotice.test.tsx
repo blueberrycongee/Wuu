@@ -188,6 +188,22 @@ describe("ContextCompactionNotice", () => {
     expect(host.querySelector(".context-compaction-detail")?.textContent).not.toContain("消息");
   });
 
+  it("keeps unfamiliar compaction diagnostics out of the collapsed status", () => {
+    const diagnostic = "Compaction implementation diagnostic";
+    const host = mount(<ContextCompactionNotice status="completed" text={diagnostic} />);
+    expect(host.querySelector("summary")?.textContent).not.toContain(diagnostic);
+    expect(host.querySelector("details")?.open).toBe(false);
+    expect(host.querySelector(".context-compaction-summary")?.textContent).toBe(diagnostic);
+  });
+
+  it("does not render a recoverable background note failure as compaction success", () => {
+    const host = mount(
+      <ContextCompactionNotice status="completed" reason="context_note"
+        text="Context note failed. uncovered history cannot fit beside the continuation note" />,
+    );
+    expect(host.childElementCount).toBe(0);
+  });
+
   it("labels failed manual compact status as failed", () => {
     const host = mount(
       <ContextCompactionNotice
@@ -255,7 +271,9 @@ describe("ContextCompactionNotice", () => {
     expect(host.querySelector('[role="alert"]')).not.toBeNull();
     expect(host.textContent).toContain(t("compaction.failed"));
     expect(host.textContent).not.toContain(t("compaction.complete"));
-    expect(host.textContent).not.toContain(text);
+    expect(host.querySelector("summary")?.textContent).not.toContain(text);
+    expect(host.querySelector("details")?.open).toBe(false);
+    expect(host.querySelector(".context-compaction-summary")?.textContent).toBe(text);
     expect(host.textContent).not.toContain("not installed");
   });
 });

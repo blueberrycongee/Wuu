@@ -976,7 +976,7 @@ export const enUS = {
   "runtime.pr.createFeatureBranch": "Create a feature branch first",
   "runtime.pr.commitChangesFirst": "Commit local changes first",
   "compaction.compacting": "Compacting context",
-  "compaction.autoCompacting": "Automatically compacting context",
+  "compaction.autoCompacting": "Compacting context",
   "compaction.failed": "Compaction failed",
   "compaction.notNeeded": "No compaction needed",
   "compaction.manualComplete": "Compaction complete",
