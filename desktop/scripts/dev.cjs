@@ -7,6 +7,7 @@ const {
   prepareDevElectronApp,
   speechHelperPathForApp,
 } = require("./prepare-dev-electron-app.cjs");
+const { buildCodeModeHost } = require("./build-codemode-host.cjs");
 const { ensureDevSigningIdentity } = require("./dev-signing.cjs");
 
 const desktopRoot = resolve(__dirname, "..");
@@ -48,6 +49,8 @@ const coreBuild = spawnSync(process.execPath, [buildCoreAndPluginHelpers], {
 if (coreBuild.status !== 0) {
   process.exit(coreBuild.status ?? 1);
 }
+
+buildCodeModeHost();
 
 const env = { ...process.env };
 env.WUU_DESKTOP_CORE = join(

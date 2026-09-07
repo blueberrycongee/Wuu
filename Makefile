@@ -100,9 +100,10 @@ test-native:
 build: build-go build-desktop build-clients
 
 codemode-host:
+	cd host/codemode && cargo fetch --locked
 	chmod +x host/codemode/scripts/seed-icu-data.sh
 	host/codemode/scripts/seed-icu-data.sh
-	cd host/codemode && V8_FROM_SOURCE=1 cargo build --release -p codex-code-mode-host
+	cd host/codemode && V8_FROM_SOURCE=1 cargo build --locked --release -p codex-code-mode-host
 	@echo "built host/codemode/target/release/wuu-code-mode-host"
 
 build-go:

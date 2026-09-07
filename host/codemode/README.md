@@ -55,6 +55,25 @@ when the codex port is rebased onto a newer V8.
 
 The binary is written to `target/release/wuu-code-mode-host`.
 
+## Desktop integration
+
+`npm run dev` and the desktop packaging commands both use
+`desktop/scripts/build-codemode-host.cjs`. On macOS/Linux it runs the locked,
+incremental Cargo build and copies the result next to `wuu-core` in
+`desktop/build/bin`. Existing staged binaries do not bypass the build. Windows
+requires a separately built Windows host staged in that directory.
+
+Wuu defaults to `code_mode.mode: "code"`: models receive `exec` and `wait`
+alongside their ordinary tools. `code_only` routes leaf tool calls through these
+entries; `direct` disables the runtime. The host is started on the first `exec`
+call and shared by conversations in the workspace session. Plain text replies
+do not start a host process.
+
+The core resolves the host from `code_mode.host`, then `WUU_CODE_MODE_HOST`,
+then the binary next to its own executable. Both dev and packaged desktop
+layouts supply that sibling binary. A standalone core without a host uses
+direct tools.
+
 ## Run
 
 ```sh
