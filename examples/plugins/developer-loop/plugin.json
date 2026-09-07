@@ -4,7 +4,7 @@
   "name": "Developer Loop Example",
   "version": "1.0.0",
   "description": "Buildable runtime and desktop entries for the local plugin developer loop.",
-  "icon": { "path": "assets/icon.svg" },
+  "icon": "check-circle",
   "runtime": {
     "protocol": "wuu-plugin-v1",
     "command": "node",

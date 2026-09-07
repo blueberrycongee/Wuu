@@ -3,7 +3,7 @@
   "id": "dream",
   "name": "Dream",
   "description": "Background consolidation of durable workspace memory.",
-  "icon": { "path": "assets/icon.svg" },
+  "icon": "moon",
   "version": "0.1.0",
   "defaultEnabled": false,
   "author": { "name": "Wuu" },

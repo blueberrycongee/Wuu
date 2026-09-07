@@ -3,7 +3,7 @@
   "id": "ask-user",
   "name": "Ask User",
   "description": "Pause a tool call for a focused answer from the user, then continue it.",
-  "icon": { "path": "assets/icon.svg" },
+  "icon": "message-square",
   "version": "0.1.0",
   "defaultEnabled": false,
   "author": { "name": "Wuu" },

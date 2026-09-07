@@ -10,6 +10,8 @@ Versioning rules are documented in [the release guide](docs/en/project/release.m
 
 ### Changed
 
+- Unified skill and plugin catalog artwork with original, theme-aware capability
+  icons while preserving custom plugin artwork; removed the Herbarium test theme.
 - Tightened the new-automation form into grouped cards with hairline rows.
 - Defaulted new Codex subscription configs to GPT-6 Astra and kept the 1.05M
   catalog window on live Codex discovery instead of the GPT-5 400k clamp.

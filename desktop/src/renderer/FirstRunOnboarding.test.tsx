@@ -63,7 +63,7 @@ describe("FirstRunOnboarding", () => {
     const inventory = [
       plugin("todo", true),
       plugin("ask-user", false),
-      plugin("herbarium", true, "user"),
+      plugin("user-theme", true, "user"),
       plugin("peers", false),
     ];
 

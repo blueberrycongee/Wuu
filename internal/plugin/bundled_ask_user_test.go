@@ -27,9 +27,6 @@ func TestBundledAskUserResolvesIndependentRuntimeHelper(t *testing.T) {
 		if item.Runtime == nil || item.Runtime.Command != helper || item.Runtime.Protocol != "wuu-plugin-v1" || item.Runtime.Timeout != 15 {
 			t.Fatalf("ask-user runtime = %+v", item.Runtime)
 		}
-		if item.Icon == nil || item.Icon.Path != "assets/icon.svg" {
-			t.Fatalf("ask-user icon = %+v", item.Icon)
-		}
 		return
 	}
 	t.Fatal("bundled ask-user plugin was not discovered")

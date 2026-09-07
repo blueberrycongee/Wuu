@@ -3,7 +3,7 @@
   "id": "memory",
   "name": "Memory",
   "description": "Durable user memory notebook and management view.",
-  "icon": { "path": "assets/icon.svg" },
+  "icon": "brain",
   "version": "0.1.0",
   "defaultEnabled": false,
   "author": { "name": "Wuu" },

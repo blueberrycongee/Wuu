@@ -3011,179 +3011,18 @@ html.resizing-workspace-terminal-split * {
   height: 36px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid var(--skill-artwork-border);
   border-radius: var(--radius-xs);
-  background: var(--skill-artwork-neutral-bg);
-  box-shadow: 0 2px 8px var(--skill-artwork-shadow);
-  color: var(--skill-artwork-neutral-fg);
+  color: var(--ink);
 }
 
 .skill-artwork svg {
-  width: 18px;
-  height: 18px;
-  stroke-width: 1.8;
+  width: 28px;
+  height: 28px;
 }
 
-.skill-artwork[class*="skill-artwork-official-"] {
-  background: var(--skill-artwork-official-bg);
-}
-
-.skill-artwork-custom-skill,
-.skill-artwork-custom-plugin {
-  background: var(--skill-artwork-official-bg);
-}
-
-.skill-artwork-plugin-brand {
-  background: var(--skill-artwork-official-bg);
-}
-
-.skill-artwork-plugin-brand .plugin-icon-asset,
-.skill-artwork-plugin-brand > svg {
+.skill-artwork-plugin-brand .plugin-icon-asset {
   width: 26px;
   height: 26px;
-}
-
-.skill-artwork[class*="skill-artwork-official-"] svg,
-.skill-artwork-custom-skill svg,
-.skill-artwork-custom-plugin svg {
-  width: 26px;
-  height: 26px;
-  overflow: visible;
-}
-
-.skill-artwork-palette-0 {
-  --skill-mark-a: #27d7d0;
-  --skill-mark-b: #3478f6;
-  --skill-mark-c: #754ce8;
-}
-
-.skill-artwork-palette-1 {
-  --skill-mark-a: #ffbd3d;
-  --skill-mark-b: #ff6655;
-  --skill-mark-c: #d92f81;
-}
-
-.skill-artwork-palette-2 {
-  --skill-mark-a: #f7dc46;
-  --skill-mark-b: #ee9d20;
-  --skill-mark-c: #e24c37;
-}
-
-.skill-artwork-palette-3 {
-  --skill-mark-a: #9cdb3b;
-  --skill-mark-b: #20b995;
-  --skill-mark-c: #247bea;
-}
-
-.skill-artwork-palette-4 {
-  --skill-mark-a: #8e68f7;
-  --skill-mark-b: #d84dd0;
-  --skill-mark-c: #ff6f5d;
-}
-
-.skill-artwork-palette-5 {
-  --skill-mark-a: #40d2f2;
-  --skill-mark-b: #536eea;
-  --skill-mark-c: #24c2a5;
-}
-
-.skill-artwork-palette-6 {
-  --skill-mark-a: #ff7394;
-  --skill-mark-b: #ed4a66;
-  --skill-mark-c: #ffad35;
-}
-
-.skill-artwork-palette-7 {
-  --skill-mark-a: #43d58b;
-  --skill-mark-b: #16a8c7;
-  --skill-mark-c: #475ee8;
-}
-
-.skill-artwork-official-browser {
-  --skill-mark-a: var(--skill-mark-browser-a);
-  --skill-mark-b: var(--skill-mark-browser-b);
-  --skill-mark-c: var(--skill-mark-browser-c);
-}
-
-.skill-artwork-official-commit {
-  --skill-mark-a: var(--skill-mark-commit-a);
-  --skill-mark-b: var(--skill-mark-commit-b);
-  --skill-mark-c: var(--skill-mark-commit-c);
-}
-
-.skill-artwork-official-presentation {
-  --skill-mark-a: var(--skill-mark-presentation-a);
-  --skill-mark-b: var(--skill-mark-presentation-b);
-  --skill-mark-c: var(--skill-mark-presentation-c);
-}
-
-.skill-artwork-official-creator {
-  --skill-mark-a: var(--skill-mark-creator-a);
-  --skill-mark-b: var(--skill-mark-creator-b);
-  --skill-mark-c: var(--skill-mark-creator-c);
-}
-
-.skill-artwork-official-plugin {
-  --skill-mark-a: var(--skill-mark-plugin-a);
-  --skill-mark-b: var(--skill-mark-plugin-b);
-  --skill-mark-c: var(--skill-mark-plugin-c);
-}
-
-.skill-artwork-official-default {
-  --skill-mark-a: var(--skill-mark-default-a);
-  --skill-mark-b: var(--skill-mark-default-b);
-  --skill-mark-c: var(--skill-mark-default-c);
-}
-
-.skill-mark-stop-a {
-  stop-color: var(--skill-mark-a);
-}
-
-.skill-mark-stop-b {
-  stop-color: var(--skill-mark-b);
-}
-
-.skill-mark-stop-c {
-  stop-color: var(--skill-mark-c);
-}
-
-.skill-mark-light-fill {
-  fill: var(--skill-artwork-official-fg);
-}
-
-.skill-mark-light-stroke {
-  fill: none;
-  stroke: var(--skill-artwork-official-fg);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.4;
-}
-
-.skill-mark-color-c-fill {
-  fill: var(--skill-mark-c);
-}
-
-.skill-mark-color-c-stroke {
-  fill: none;
-  stroke: var(--skill-mark-c);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.skill-mark-stroke-wide {
-  stroke-width: 1.8;
-}
-
-.skill-mark-highlight-fill {
-  fill: var(--skill-mark-highlight);
-}
-
-.skill-mark-muted {
-  opacity: 0.62;
-}
-
-.skill-mark-translucent {
-  opacity: 0.72;
 }
 
 .skill-row-copy {

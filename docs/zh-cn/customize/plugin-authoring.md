@@ -55,7 +55,7 @@ my-plugin/
   "name": "My Plugin",
   "version": "1.0.0",
   "description": "What this plugin does",
-  "icon": { "path": "assets/icon.svg" },
+  "icon": "plug",
   "runtime": {
     "protocol": "wuu-plugin-v1",
     "command": "node",
@@ -74,8 +74,9 @@ my-plugin/
 
 - `id` 是全局唯一标识，决定安装目录名和所有注册的命名空间前缀；一旦发布不应更改。
 - `version` 是语义化版本。同一来源身份的更新延续信任，Wuu 不按文件变化重新审批。
-- 顶层 `icon` 是插件品牌图标，用于插件目录和详情，不自动进入宿主导航。可填
-  公共语义图标名、`{ "path": "assets/icon.svg" }`，或
+- 顶层 `icon` 是插件品牌图标，用于插件目录和详情，不自动进入宿主导航。优先填
+  公共语义图标名，这样标记会跟随当前主题。自绘资源也可写成
+  `{ "path": "assets/icon.svg" }` 或
   `{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }`。
 - `runtime` 声明一个长驻的外部进程，通过标准输入输出与 Wuu 通信（Agent 插件）。
 - `desktop.entry` 指向包内的 `.js` 或 `.mjs` 浏览器 ESM 文件，路径使用 `/`、不能逃出
@@ -690,9 +691,6 @@ wuu plugin dev .                     # 开发期修改
 公开 SDK 的跨 Surface 验收示例，覆盖 Agent runtime（request transform、工具注册）、
 Host Actions、generation 替换、失败恢复、disposal 和卸载，并演示完整开发闭环
 （install → build → test → dev → pack）。
-
-[`examples/plugins/herbarium`](../../../examples/plugins/herbarium/) 是聚焦外观能力的主题与
-CSS snippet 示例。
 
 [`examples/plugins/manga-studio`](../../../examples/plugins/manga-studio/) 是强风格外观压力
 测试：它同时覆盖应用壳与设置页，验证主题 Token、UI Kit、语义锚点和宿主布局所有权，

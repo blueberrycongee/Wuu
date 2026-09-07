@@ -3,7 +3,7 @@
   "id": "note-compaction",
   "name": "Context Notes (Experimental)",
   "description": "Experimental context compaction driven by hidden session-scoped Markdown notes.",
-  "icon": { "path": "assets/icon.svg" },
+  "icon": "file-text",
   "version": "0.1.0",
   "defaultEnabled": true,
   "author": { "name": "Wuu" },

@@ -62,7 +62,7 @@ before every load. Minimal example:
   "name": "My Plugin",
   "version": "1.0.0",
   "description": "What this plugin does",
-  "icon": { "path": "assets/icon.svg" },
+  "icon": "plug",
   "runtime": {
     "protocol": "wuu-plugin-v1",
     "command": "node",
@@ -86,8 +86,9 @@ Common fields:
 - `version` is a semantic version. Updates from the same source identity keep
   trust; Wuu does not re-approve per file change.
 - The top-level `icon` is the plugin's brand icon, used in the plugin catalog
-  and detail views; it does not automatically enter host navigation. It can be
-  a public semantic icon name, `{ "path": "assets/icon.svg" }`, or
+  and detail views; it does not automatically enter host navigation. Prefer a
+  public semantic icon name so the mark follows the active theme. Custom
+  artwork is also accepted as `{ "path": "assets/icon.svg" }` or
   `{ "light": "assets/icon-light.svg", "dark": "assets/icon-dark.svg" }`.
 - `runtime` declares a long-lived external process that talks to Wuu over
   standard input/output (an Agent plugin).
@@ -860,9 +861,6 @@ covers the agent runtime (request transform, tool registration), host
 actions, generation replacement, failure recovery, disposal, and unload, and
 demonstrates the complete development loop
 (install → build → test → dev → pack).
-
-[`examples/plugins/herbarium`](../../../examples/plugins/herbarium/) is a focused
-appearance example using a theme and CSS snippet.
 
 [`examples/plugins/manga-studio`](../../../examples/plugins/manga-studio/) is
 a strong-style appearance stress test: it covers both the app shell and the

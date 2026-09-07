@@ -105,7 +105,7 @@ describe("SkillsCatalog", () => {
     expect(container.textContent).toContain("fresh-skill");
   });
 
-  it("separates official and personal skills and gives each a complete artwork", async () => {
+  it("separates official and personal skills and shows concise descriptions", async () => {
     installSkillList([
       {
         name: "browser",
@@ -133,12 +133,6 @@ describe("SkillsCatalog", () => {
     expect(container.querySelector(".catalog-search input[type=\"search\"]")).toBeTruthy();
     expect(container.textContent).toContain("Navigate and observe web pages.");
     expect(container.textContent).not.toContain("Use when no safer interface is available.");
-    expect(container.querySelector('[data-skill-artwork="official-browser"]')).toBeTruthy();
-    const customArtwork = container.querySelector('[data-skill-artwork="custom-skill"]');
-    expect(customArtwork).toBeTruthy();
-    expect(customArtwork?.className).toContain("skill-artwork-palette-");
-    expect(customArtwork?.getAttribute("data-skill-motif")).toBeTruthy();
-    expect(customArtwork?.querySelector(".lucide-wrench")).toBeNull();
   });
 
   it("lists installed plugins and tags plugin-provided skills", async () => {
@@ -163,6 +157,7 @@ describe("SkillsCatalog", () => {
               name: "cua-mac",
               description: "Control macOS apps through Accessibility.",
               kind: "plugin",
+              icon: { name: "layout-grid" },
               provenance: {
                 kind: "plugin",
                 source: "wuu",
@@ -209,10 +204,37 @@ describe("SkillsCatalog", () => {
     // its runtime state instead.
     expect(container.textContent).toContain("已启用");
     expect(container.textContent).toContain("插件 · cua-mac");
-    expect(container.querySelector('[data-skill-artwork="custom-plugin"]')).toBeTruthy();
+    expect(container.querySelector(".skill-artwork-plugin-brand [data-icon=\"layout-grid\"]")).toBeTruthy();
     // Non-plugin inventory records (the plugin's MCP server) stay out of the
     // plugin list.
     expect(container.textContent).not.toContain("computer");
+  });
+
+  it("preserves plugin-owned artwork when using capability marks for the catalog", async () => {
+    installSkillList([]);
+    const loadPluginIcon = vi.fn().mockImplementation(async (request) => ({
+      ...request,
+      url: "data:image/svg+xml,%3Csvg/%3E",
+    }));
+    Object.assign(window.wuu!, { loadPluginIcon });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<SkillsCatalog extensionInventory={[{
+        id: "plugin:user:brand-artwork",
+        name: "Brand artwork",
+        kind: "plugin",
+        icon: { path: "assets/brand.svg" },
+        fingerprint: "brand-revision",
+        provenance: { kind: "plugin", source: "community", scope: "user" },
+        state: "read_only",
+      }]} />);
+    });
+    expect(loadPluginIcon).toHaveBeenCalledWith({
+      id: "plugin:user:brand-artwork", fingerprint: "brand-revision", path: "assets/brand.svg",
+    });
+    const image = container.querySelector(".skill-artwork img");
+    expect(image?.getAttribute("src")).toBe("data:image/svg+xml,%3Csvg/%3E");
+    expect(image?.getAttribute("alt")).toBe("");
   });
 
   it("shows package permissions and grants a pending plugin through the update callback", async () => {
