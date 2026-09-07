@@ -13,9 +13,12 @@ import (
 )
 
 const (
-	defaultThreadSearchLimit = 100
-	maxThreadSearchLimit     = 100
-	threadSearchSnippetRunes = 180
+	defaultThreadSearchLimit     = 100
+	maxThreadSearchLimit         = 100
+	threadSearchSnippetRunes     = 180
+	threadSearchTechnicalRank    = 1
+	threadSearchConversationRank = 2
+	threadSearchTitleRank        = 3
 )
 
 type threadSearchSource struct {
@@ -25,6 +28,7 @@ type threadSearchSource struct {
 
 type threadSearchCandidate struct {
 	text string
+	rank int
 }
 
 func (s *Server) handleThreadSearch(req Request) error {
@@ -47,24 +51,24 @@ func (s *Server) handleThreadSearch(req Request) error {
 	}
 	results := make([]threadSearchResultEntry, 0, min(len(sources), limit))
 	for _, source := range sources {
-		// Metadata has precedence over history for both matches and previews.
-		// Resolve it first so opening search never reads whole transcripts just
-		// to display recent conversations, and stop loading once the page is full.
+		// Resolve metadata first. Only a technical match or a miss needs
+		// history: it may contain a higher-ranked conversation match.
 		candidates := threadSearchCandidates(source.entry.thread, nil)
 		snippet := ""
+		rank := 0
 		if query != "" {
-			snippet = threadSearchMatchSnippet(candidates, query)
+			snippet, rank = threadSearchMatchSnippet(candidates, query)
 		} else {
 			snippet = threadSearchDefaultSnippet(candidates)
 		}
-		if snippet == "" {
+		if snippet == "" || (query != "" && rank < threadSearchConversationRank) {
 			history, err := s.threadSearchHistory(source)
 			if err != nil {
 				return s.writeResponse(req.ID, nil, err)
 			}
 			candidates = threadSearchCandidates(source.entry.thread, history)
 			if query != "" {
-				snippet = threadSearchMatchSnippet(candidates, query)
+				snippet, rank = threadSearchMatchSnippet(candidates, query)
 			} else {
 				snippet = threadSearchDefaultSnippet(candidates)
 			}
@@ -73,15 +77,16 @@ func (s *Server) handleThreadSearch(req Request) error {
 			continue
 		}
 		results = append(results, threadSearchResultEntry{
-			entry:   source.entry,
-			result:  ThreadSearchResultItem{Thread: source.entry.thread, Snippet: snippet},
-			matches: query != "",
+			entry:  source.entry,
+			result: ThreadSearchResultItem{Thread: source.entry.thread, Snippet: snippet},
+			rank:   rank,
 		})
-		if len(results) >= limit {
+		if query == "" && len(results) >= limit {
 			break
 		}
 	}
 	sortThreadSearchResults(results)
+	results = results[:min(len(results), limit)]
 	out := make([]ThreadSearchResultItem, 0, len(results))
 	for _, result := range results {
 		out = append(out, result.result)
@@ -167,15 +172,15 @@ func (s *Server) threadSearchHistory(source threadSearchSource) ([]providers.Cha
 }
 
 type threadSearchResultEntry struct {
-	entry   threadListEntry
-	result  ThreadSearchResultItem
-	matches bool
+	entry  threadListEntry
+	result ThreadSearchResultItem
+	rank   int
 }
 
 func sortThreadSearchResults(results []threadSearchResultEntry) {
 	sort.Slice(results, func(i, j int) bool {
-		if results[i].matches != results[j].matches {
-			return results[i].matches
+		if results[i].rank != results[j].rank {
+			return results[i].rank > results[j].rank
 		}
 		return threadListEntryLess(results[i].entry, results[j].entry)
 	})
@@ -205,8 +210,12 @@ func threadListEntryTime(entry threadListEntry) time.Time {
 
 func threadSearchCandidates(thread Thread, history []providers.ChatMessage) []threadSearchCandidate {
 	candidates := []threadSearchCandidate{
-		{text: thread.Preview},
-		{text: thread.Model},
+		{text: thread.Title, rank: threadSearchTitleRank},
+		{text: thread.Preview, rank: threadSearchConversationRank},
+		{text: thread.Model, rank: threadSearchTechnicalRank},
+	}
+	if strings.TrimSpace(thread.Title) == "" {
+		candidates[1].rank = threadSearchTitleRank // Preview is the displayed fallback title.
 	}
 	for _, msg := range history {
 		if msg.Hidden {
@@ -219,13 +228,18 @@ func threadSearchCandidates(thread Thread, history []providers.ChatMessage) []th
 
 func threadSearchCandidatesFromMessage(msg providers.ChatMessage) []threadSearchCandidate {
 	candidates := make([]threadSearchCandidate, 0, 4+len(msg.ToolCalls)*3)
+	rank := threadSearchTechnicalRank
 	add := func(text string) {
 		if compact := compactThreadSearchText(text); compact != "" {
-			candidates = append(candidates, threadSearchCandidate{text: compact})
+			candidates = append(candidates, threadSearchCandidate{text: compact, rank: rank})
 		}
 	}
-	add(msg.Content)
+	if msg.Role == "user" || msg.Role == "assistant" {
+		rank = threadSearchConversationRank
+	}
 	add(msg.DisplayContent)
+	add(msg.Content)
+	rank = threadSearchTechnicalRank
 	add(msg.ReasoningContent)
 	add(msg.Name)
 	for _, call := range msg.ToolCalls {
@@ -249,13 +263,14 @@ func threadSearchCandidatesFromMessage(msg providers.ChatMessage) []threadSearch
 	return candidates
 }
 
-func threadSearchMatchSnippet(candidates []threadSearchCandidate, query string) string {
+func threadSearchMatchSnippet(candidates []threadSearchCandidate, query string) (string, int) {
+	var best threadSearchCandidate
 	for _, candidate := range candidates {
-		if strings.Contains(normalizeThreadSearchText(candidate.text), query) {
-			return threadSearchExcerpt(candidate.text, query)
+		if candidate.rank > best.rank && strings.Contains(normalizeThreadSearchText(candidate.text), query) {
+			best = candidate
 		}
 	}
-	return ""
+	return threadSearchExcerpt(best.text, query), best.rank
 }
 
 func threadSearchDefaultSnippet(candidates []threadSearchCandidate) string {

@@ -65,6 +65,45 @@ func TestThreadSearchLazyHistoryPreservesResults(t *testing.T) {
 	}
 }
 
+func TestThreadSearchRanksBeforeLimiting(t *testing.T) {
+	rt := newTestRuntime(t, &fakeClient{})
+	out := &lockedBuffer{}
+	srv := New(rt, out)
+	now := time.Now()
+	srv.threads["tool"] = &threadState{ID: "tool", Title: "Recent logs", UpdatedAt: now, PinnedAt: &now,
+		History: []providers.ChatMessage{{Role: "tool", Content: `{"output":"onboarding\\nlog"}`}}}
+	srv.threads["body"] = &threadState{ID: "body", Title: "Design discussion", UpdatedAt: now.Add(-time.Hour),
+		History: []providers.ChatMessage{
+			{Role: "tool", Content: "onboarding build output"},
+			{Role: "user", Content: "Improve onboarding for new users"},
+		}}
+	srv.threads["title"] = &threadState{ID: "title", Title: "Onboarding layout", UpdatedAt: now.Add(-2 * time.Hour)}
+	for _, limit := range []int{1, 2, 3} {
+		id := fmt.Sprint(limit)
+		params, _ := json.Marshal(ThreadSearchParams{Query: "ONBOARDING", Limit: limit})
+		rawID, _ := json.Marshal(id)
+		if err := srv.handleThreadSearch(Request{ID: rawID, Params: params}); err != nil {
+			t.Fatal(err)
+		}
+		response := responseByID(t, parseOutput(t, out.String()), id)
+		if response["error"] != nil {
+			t.Fatalf("search failed: %+v", response)
+		}
+		got := remarshal[ThreadSearchResult](t, response["result"]).Results
+		if len(got) != limit {
+			t.Fatalf("limit %d: %+v", limit, got)
+		}
+		for i, want := range []string{"title", "body", "tool"}[:limit] {
+			if got[i].Thread.ID != want {
+				t.Fatalf("limit %d: result %d should be %s: %+v", limit, i, want, got)
+			}
+		}
+		if limit >= 2 && got[1].Snippet != "Improve onboarding for new users" {
+			t.Fatalf("conversation snippet should outrank earlier tool output: %+v", got[1])
+		}
+	}
+}
+
 // Opening the dialog should scale with conversation metadata, not transcript
 // size. Keep a large-history workload to make eager transcript loads visible.
 func BenchmarkThreadSearchOpen(b *testing.B) {
