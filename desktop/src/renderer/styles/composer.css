@@ -284,10 +284,8 @@
   pointer-events: none;
 }
 
-/* The dock composer stays exactly as wide as the message flow column
-   (--session-composer-width = outer width minus the two session paddings),
-   so the input box and the answer prose share the same edges. The narrower
-   responsive fallback mirrors the flow's own width formula. */
+/* The dock composer shares the message flow's content cap and fluid gutters
+   so the input box and the answer prose keep the same edges. */
 .dock-composer-wrap .composer-stack {
   position: relative;
   z-index: 1;
@@ -390,18 +388,11 @@
   box-shadow: var(--composer-frame-shadow);
 }
 
-/* Force the hero composer to the dock composer's dialog width so the
-   input box stays the same width whether or not a turn has been sent.
-   The dock composer lives at the conversation-pane level (full pane
-   width) so it caps at --session-composer-width naturally; the hero
-   composer lives inside the welcome grid where the column tracks are
-   narrower, so we have to pin it explicitly. The composer may overflow
-   the welcome content area by a few px on each side (well within the
-   empty-home-inner's outer padding), which is the price of matching
-   the dock composer exactly. */
+/* The welcome grid already applies the shared cap and gutters. Fill its
+   content column without subtracting the gutters a second time. */
 .hero-composer-wrap .composer-stack {
   --composer-collapsed-min-height: 118px;
-  width: var(--session-composer-width);
+  width: 100%;
 }
 
 

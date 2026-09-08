@@ -175,14 +175,14 @@
 
 .side-thread-panel__composer-host {
   min-width: 0;
+  /* Match the body's content box before resolving percentage gutters. */
+  padding-right: var(--scrollbar-width);
   --session-composer-width: 100%;
-  --session-outer-padding-inline: 12px;
 }
 
 .side-thread-panel__composer-host .composer-wrap {
-  /* Keep the shared block padding so the input sits level with the main
-     dock composer; only the horizontal inset is panel-specific. */
-  padding-inline: 12px;
+  /* Match the body's fluid gutter while keeping the shared dock height. */
+  padding-inline: var(--session-outer-padding-inline);
 }
 
 .side-thread-panel__composer-host .composer-stack {

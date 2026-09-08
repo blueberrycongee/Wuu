@@ -5151,7 +5151,7 @@ html.resizing-workspace-terminal-split * {
 
 .scroll-region:not(.empty-scroll-region):not(.workspace-scroll-region) .conversation-split-width {
   --conversation-flow-bottom-space: 34px;
-  padding: 28px clamp(18px, 3vw, 34px) 34px;
+  padding: 28px var(--session-outer-padding-inline) 34px;
 }
 
 .split-scroll-region {
@@ -5250,7 +5250,7 @@ html.resizing-workspace-terminal-split * {
 .conversation-split-width {
   max-width: none;
   margin: 0;
-  padding: 28px clamp(18px, 3vw, 34px) 34px;
+  padding: 28px var(--session-outer-padding-inline) 34px;
 }
 
 .conversation-split-width .message {
@@ -5260,13 +5260,6 @@ html.resizing-workspace-terminal-split * {
 .split-composer {
   flex: 0 0 auto;
   padding: 16px 0 24px;
-}
-
-.split-composer .composer-stack {
-  width: min(
-    var(--session-composer-width),
-    calc(100% - clamp(18px, 3vw, 34px) - clamp(18px, 3vw, 34px))
-  );
 }
 
 .split-composer .composer-frame {

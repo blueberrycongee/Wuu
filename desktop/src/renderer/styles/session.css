@@ -14,26 +14,21 @@
  */
 
 :root {
-  /*
-   * Outer width is tuned so the content column (outer - 2 * padding) lands on
-   * the shared readable measure the composer and the answer prose both use:
-   *   896 - 48 - 48 = 800px.
-   * The answer prose reads this same --session-composer-width token through
-   * --conversation-message-max-width, so changing it here keeps messages and
-   * the input box aligned. Tool rows, diff cards, and code blocks span this
-   * same column.
-   */
-  --session-outer-width: 896px;
-  --session-outer-padding-inline: 48px;
-  --session-composer-width: calc(
-    var(--session-outer-width) - var(--session-outer-padding-inline) -
+  /* Percentages resolve against the available content box, including sidebar
+   * and panel reservations. Keep the gutter continuous across navigation modes:
+   * 12px through 400px, growing to 48px at 880px. Symmetric safe-area clearance
+   * preserves the shared centerline in landscape on phones with a cutout. */
+  --session-outer-padding-inline: max(
+    clamp(12px, calc(7.5% - 18px), 48px),
+    env(safe-area-inset-left, 0px),
+    env(safe-area-inset-right, 0px)
+  );
+  --session-composer-width: 800px;
+  --session-outer-width: calc(
+    var(--session-composer-width) + var(--session-outer-padding-inline) +
       var(--session-outer-padding-inline)
   );
   --session-composer-radius: var(--radius-md);
-}
-
-.app-shell.compact-navigation {
-  --session-outer-padding-inline: 12px;
 }
 
 /* Shared outer rhythm + 12-col grid for the session views.

@@ -3871,11 +3871,8 @@ pre {
 }
 
 .empty-home-inner > .hero-composer-wrap {
-  /* Span the full content width so the hero composer can hit the dock
-     composer's dialog width (800px) without being squeezed by the
-     narrower title/action card column tracks (cols 2-12). Flex centering
-     keeps the composer-stack visually centered when it overflows.
-     The fixed anchor height matches the collapsed hero composer so expanding
+  /* Share the full content column with the dock composer. The fixed anchor
+     height matches the collapsed hero composer so expanding
      grows upward from the original toolbar edge instead of pushing it down. */
   grid-column: 1 / -1;
   display: flex;

@@ -61,6 +61,19 @@ const resizeThread = {
   turns
 };
 
+// A related-session message exercises the same split navigation used by plugins.
+turns.at(-1).items[0].related_session_id = "resize-related-thread";
+turns.at(-1).items[0].input_text = "Related session completed its resize check.";
+
+const sideSummary = {
+  side_thread_id: "resize-side-thread",
+  main_thread_id: resizeThread.id,
+  status: "idle",
+  revision: 1,
+  created_at: now,
+  updated_at: now
+};
+
 function projectList() {
   return {
     projects: [],
@@ -225,9 +238,29 @@ contextBridge.exposeInMainWorld("wuu", {
     models: [{ id: "mock-resize", name: "mock-resize" }]
   }),
   startThread: async () => ({ thread: resizeThread }),
-  resumeThread: async () => ({ thread: resizeThread }),
+  resumeThread: async (id) => ({
+    thread: id === "resize-related-thread"
+      ? { ...resizeThread, id, turns: turns.slice(-2) }
+      : resizeThread
+  }),
   listThreads: async () => ({ threads: [resizeThread] }),
   listArchivedThreads: async () => ({ threads: [] }),
+  openSideThread: async () => ({ summary: sideSummary }),
+  getSideThreadHistory: async () => ({
+    summary: sideSummary,
+    messages: [{
+      id: "resize-side-answer",
+      side_thread_id: sideSummary.side_thread_id,
+      role: "assistant",
+      text: heavyAnswer,
+      status: "completed",
+      created_at: now
+    }]
+  }),
+  sendSideThreadMessage: async () => { throw new Error("Unexpected side-thread send in layout fixture"); },
+  interruptSideThread: async () => ({ ok: true }),
+  resetSideThread: async () => ({ ok: true }),
+  onSideThreadEvent: () => () => undefined,
   pinThread: async (_id, pinned) => ({ pinned }),
   archiveThread: async () => ({ ok: true }),
   startTurn: async () => ({ turn: null }),
