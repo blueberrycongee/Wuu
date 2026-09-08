@@ -101,20 +101,45 @@ describe("browser host contract", () => {
     expect(remote.call).toHaveBeenLastCalledWith("workspace/git/diff", { path: "src/main.go", root: "/paired/worktree" }, 30_000, expect.any(String));
   });
 
-  it("keeps Electron module inventory unavailable after host updates", async () => {
+  it("preserves manageable plugins while excluding desktop modules and asset icons", async () => {
     const bridge = await connectBridge();
-    const inventory = [{ id: "desktop-extension", desktop: { url: "wuu-plugin://module" } }];
+    const record = { id: "desktop-extension", kind: "plugin", name: "Example", fingerprint: "generation-1", enabled: true };
+    const namedIconPlugin = {
+      id: "ask-user",
+      kind: "plugin",
+      name: "Ask User",
+      fingerprint: "generation-2",
+      enabled: true,
+      icon: { name: "sparkles" },
+    };
+    const inventory = [
+      { ...record, desktop: { entry: "wuu-plugin://module" }, icon: { path: "assets/icon.svg" } },
+      namedIconPlugin,
+    ];
     const payload = { extension_inventory: inventory, skills: [{ name: "host-skill" }], epoch: 2 };
+    const expected = { ...payload, extension_inventory: [record, namedIconPlugin] };
+    remote.call.mockResolvedValueOnce(payload);
+    expect(await bridge.api.initialize()).toMatchObject(expected);
     const received = vi.fn();
     bridge.api.onServerEvent(received);
     remote.options.onNotification?.("plugin/inventory/changed", payload);
     expect(received).toHaveBeenCalledWith(expect.objectContaining({
-      message: { method: "plugin/inventory/changed", params: { ...payload, extension_inventory: [] } },
+      message: { method: "plugin/inventory/changed", params: expected },
     }));
     remote.call.mockResolvedValueOnce(payload);
-    expect(await bridge.api.removePluginPackage("desktop-extension"))
-      .toEqual({ ...payload, extension_inventory: [] });
+    expect(await bridge.api.refreshExtensionCatalog()).toEqual(expected);
+    for (const action of ["disable", "enable"] as const) {
+      const enabled = action === "enable";
+      remote.call.mockResolvedValueOnce({ extension_inventory: [{ ...inventory[0], enabled }] });
+      const update = { id: record.id, fingerprint: record.fingerprint, action };
+      expect(await bridge.api.updateExtensionPackage(update)).toEqual({
+        extension_inventory: [{ ...record, enabled }],
+      });
+      expect(remote.call).toHaveBeenLastCalledWith("extension/package/update", update, 30_000, expect.any(String));
+    }
     expect(payload.extension_inventory).toBe(inventory);
+    expect(inventory[0]).toHaveProperty("desktop");
+    expect(inventory[0]).toHaveProperty("icon");
   });
 
   it("does not open executable URL schemes", async () => {

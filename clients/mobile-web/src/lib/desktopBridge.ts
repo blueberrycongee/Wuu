@@ -10,6 +10,7 @@ import type {
   ChannelRoomPreferences,
   DesktopPlatform,
   DesktopProject,
+  ExtensionInventoryRecord,
   InitializeResult,
   LanguagePreference,
   MessageFlowFontSize,
@@ -109,13 +110,41 @@ export class UnavailableHostOperationError extends Error {
   }
 }
 
-// Desktop module URLs cannot be loaded by a browser. Apply the same boundary
-// to initial snapshots, subsequent updates and inventory notifications.
+// Keep host plugins manageable in the browser, without advertising desktop
+// modules or package-asset icons that this host cannot load. Apply this to
+// snapshots, updates and inventory notifications.
 function webHostPayload<T>(payload: T): T {
   if (payload && typeof payload === "object" && "extension_inventory" in payload) {
-    return { ...payload, extension_inventory: [] };
+    const source = payload as { extension_inventory?: unknown };
+    return {
+      ...(payload as object),
+      extension_inventory: Array.isArray(source.extension_inventory)
+        ? source.extension_inventory.map(sanitizeWebExtensionRecord)
+        : [],
+    } as T;
   }
   return payload;
+}
+
+function sanitizeWebExtensionRecord(record: unknown): unknown {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return record;
+  const { desktop: _desktop, icon, ...manageable } = record as ExtensionInventoryRecord;
+  const webIcon = sanitizeWebExtensionIcon(icon);
+  return webIcon === undefined ? manageable : { ...manageable, icon: webIcon };
+}
+
+function sanitizeWebExtensionIcon(
+  icon: unknown,
+): ExtensionInventoryRecord["icon"] {
+  // `name` icons map to host-owned public icons and render safely in a
+  // browser; `path`/`light`/`dark` icons are package assets served by the
+  // desktop host, so drop them instead of attempting an asset fetch.
+  if (!icon || typeof icon !== "object" || Array.isArray(icon)) return undefined;
+  const descriptor = icon as Record<string, unknown>;
+  if (typeof descriptor.name === "string" && descriptor.name) {
+    return { name: descriptor.name };
+  }
+  return undefined;
 }
 
 const unavailableWebMethods = [
