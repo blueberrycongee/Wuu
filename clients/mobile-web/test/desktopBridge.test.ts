@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Credentials, RemoteClientOptions } from "@wuu/remote-core";
 
-const remote = vi.hoisted(() => ({ call: vi.fn(), options: {} as RemoteClientOptions, attached: true }));
+const remote = vi.hoisted(() => ({ call: vi.fn(), wake: vi.fn(), options: {} as RemoteClientOptions, attached: true }));
 vi.mock("@wuu/remote-core", () => ({
   RemoteClient: class {
     call = remote.call;
+    wake = remote.wake;
     constructor(_credentials: Credentials, options: RemoteClientOptions) { remote.options = options; }
     isAttached = () => remote.attached;
     start = () => remote.options.onAttach?.({ session: "first", resumed: false });
@@ -19,6 +20,7 @@ import { RemoteDesktopBridge, UnavailableHostOperationError } from "../src/lib/d
 
 beforeEach(() => {
   remote.attached = true;
+  remote.wake.mockReset();
   remote.call.mockReset().mockResolvedValue({ current: "/paired/workspace" });
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", {
@@ -29,13 +31,15 @@ beforeEach(() => {
   vi.stubGlobal("window", { open: vi.fn() });
 });
 
-function api() {
-  return new RemoteDesktopBridge({ host_pub: "paired-host" } as Credentials).api;
+async function api() {
+  const bridge = await connectBridge();
+  remote.call.mockClear();
+  return bridge.api;
 }
 
 describe("browser host contract", () => {
   it("leaves optional Electron integrations absent and rejects unsupported actions", async () => {
-    const host = api();
+    const host = await api();
     expect(host.reportBrowserBounds).toBeUndefined();
     expect(host.openSideThread).toBeUndefined();
     expect(host.onBrowserInvalidate).toBeUndefined();
@@ -49,14 +53,14 @@ describe("browser host contract", () => {
   });
 
   it("preserves explicit resets and thread-scoped model selection over RPC", async () => {
-    await api().updateRuntimeSettings(undefined, undefined, "", undefined, "", "read_only", "thread-1");
+    await (await api()).updateRuntimeSettings(undefined, undefined, "", undefined, "", "read_only", "thread-1");
     expect(remote.call).toHaveBeenCalledWith("config/model/update", {
       thread_id: "thread-1", effort: "", variant: "", permission_mode: "read_only",
     }, 30_000, expect.any(String));
   });
 
   it("returns host engine inventory and routes process input to its owning thread", async () => {
-    const host = api();
+    const host = await api();
     const inventory = { engines: [{ id: "codex", installed: true }] };
     remote.call.mockResolvedValueOnce(inventory);
     expect(await host.listEngines()).toBe(inventory);
@@ -67,7 +71,7 @@ describe("browser host contract", () => {
   });
 
   it("forwards question holds and preserves mixed message parts", async () => {
-    const host = api();
+    const host = await api();
     await host.holdUserQuestion("question-1");
     expect(remote.call).toHaveBeenLastCalledWith("user-question/hold", { request_id: "question-1" }, 30_000, expect.any(String));
     const parts = [{ type: "text" as const, text: "Review this file" }];
@@ -114,7 +118,7 @@ describe("browser host contract", () => {
   });
 
   it("does not open executable URL schemes", async () => {
-    const host = api();
+    const host = await api();
     await expect(host.openExternal("javascript:alert(1)")).rejects.toThrow("HTTP");
     expect(window.open).not.toHaveBeenCalled();
     await host.openExternal("https://example.com/docs");
@@ -136,6 +140,37 @@ function deferred<T>() {
 }
 
 describe("connection recovery", () => {
+  it("wakes only the owned live client", async () => {
+    const bridge = await connectBridge();
+    bridge.wake();
+    expect(remote.wake).toHaveBeenCalledOnce();
+    await bridge.disconnect();
+    bridge.wake();
+    expect(remote.wake).toHaveBeenCalledOnce();
+  });
+
+  it.each(["respond", "reject"])("does not consume a server request when %s is attempted offline", async (action) => {
+    const bridge = await connectBridge();
+    const settled = vi.fn();
+    const response = remote.options.onServerRequest!({ id: "approval", method: "tool/approve", params: {} });
+    void Promise.resolve(response).then(settled);
+    remote.attached = false;
+    remote.options.onDetach?.();
+    const reply = () => action === "respond"
+      ? bridge.api.respondToServerRequest("approval", { approved: true })
+      : bridge.api.rejectServerRequest("approval", "No");
+    await expect(reply()).rejects.toThrow("disconnected");
+    expect(settled).not.toHaveBeenCalled();
+    remote.attached = true;
+    remote.options.onAttach?.({ session: "first", resumed: true });
+    await vi.waitFor(() => expect(bridge.getConnectionSnapshot().phase).toBe("connected"));
+    expect(settled).not.toHaveBeenCalled();
+    await reply();
+    expect(await response).toEqual(action === "respond"
+      ? { result: { approved: true } }
+      : { error: { code: "rejected", message: "No" } });
+  });
+
   it("waits for a real host workspace before presenting the workbench", async () => {
     const bridge = await connectBridge();
     expect(bridge.getConnectionSnapshot().phase).toBe("connected");
@@ -179,6 +214,9 @@ describe("connection recovery", () => {
     remote.options.onAttach?.({ session: "next", resumed: false });
     await vi.waitFor(() => expect(bridge.getConnectionSnapshot().phase).toBe("error"));
     expect(bridge.getConnectionSnapshot().error).toBe("snapshot failed");
+    remote.call.mockClear();
+    await expect(bridge.api.startTurn("thread", "do work")).rejects.toThrow("restoring");
+    expect(remote.call).not.toHaveBeenCalled();
     await bridge.retryRestore();
     expect(bridge.getConnectionSnapshot().phase).toBe("connected");
     expect(restore).toHaveBeenCalledTimes(2);

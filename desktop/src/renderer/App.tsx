@@ -1,4 +1,5 @@
 import { hostSupports } from "./HostCapabilities";
+import { isTouchWebShell } from "./ComposerFocus";
 import { readThreadReadState, writeThreadReadState } from "./ThreadReadState";
 /// <reference path="../shared/jsx-compat.d.ts" />
 
@@ -2270,6 +2271,13 @@ export function App(): JSX.Element {
       origin: Element | null,
       interactionVersion: number,
     ): boolean => {
+      // Touch/mobile must never autofocus the composer from a render effect: the
+      // focus is outside the user gesture and would leave a caret without a
+      // software keyboard. Actual taps focus natively, so only desktop keeps the
+      // programmatic restore path.
+      if (isTouchWebShell()) {
+        return false;
+      }
       // Compact sessions keep the empty and populated composer in the same dock.
       const visibleTarget = compactNavigation && target === "hero" ? "dock" : target;
       const composer = conversationPaneRef.current?.querySelector<HTMLElement>(
@@ -2672,7 +2680,7 @@ export function App(): JSX.Element {
   }, [state.thread, state.secondaryThread, state.threads]);
   const sideThreadPanelVisible = Boolean(activeThreadID && sideThread.entry?.open);
   useEffect(() => {
-    if (!sideThreadPanelVisible) {
+    if (!sideThreadPanelVisible || isTouchWebShell()) {
       return undefined;
     }
     const frame = window.requestAnimationFrame(() => {

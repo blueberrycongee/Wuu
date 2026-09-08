@@ -11,6 +11,7 @@ import {
   type PermissionMode,
 } from "./ComposerView";
 import { ImagePreviewProvider } from "./ImagePreview";
+import { WorkbenchConnectionContext } from "./WorkbenchConnectionContext";
 import { ComposerTokenGauge } from "./ComposerTokenGauge";
 import { WORKSPACE_FILE_DRAG_MIME, type QueuedComposerMessage } from "./ComposerMessages";
 import { hoverTooltipText, unhoverTooltip } from "./tooltipTestUtils";
@@ -77,6 +78,7 @@ function renderComposer(props: {
   status?: string;
   statusLiveProgress?: boolean;
   runtimeControlsDisabled?: boolean;
+  connectionAvailable?: boolean;
   initialized?: InitializeResult;
   readOnly?: boolean;
   onInterrupt?: () => void;
@@ -115,6 +117,7 @@ function renderComposer(props: {
     root.render(
       <ImagePreviewProvider>
         <Suspense fallback={<div data-testid="composer-suspended" />}>
+          <WorkbenchConnectionContext.Provider value={props.connectionAvailable ?? true}>
           <Composer
             variant={props.variant}
             mainConversation={props.mainConversation}
@@ -180,6 +183,7 @@ function renderComposer(props: {
           tokenSpeedSampledAt={props.tokenSpeedSampledAt}
             tokenSpeedSource={props.tokenSpeedSource}
           />
+          </WorkbenchConnectionContext.Provider>
         </Suspense>
       </ImagePreviewProvider>,
     );
@@ -194,6 +198,7 @@ function installSkillList(skills: SkillSummary[]): void {
 }
 
 function renderSplitPaneComposer(props: {
+  connectionAvailable?: boolean;
   prompt?: string;
   running?: boolean;
   status?: string;
@@ -205,6 +210,7 @@ function renderSplitPaneComposer(props: {
     root = createRoot(container);
     root.render(
       <ImagePreviewProvider>
+        <WorkbenchConnectionContext.Provider value={props.connectionAvailable ?? true}>
         <SplitPaneComposer
           prompt={props.prompt ?? ""}
           setPrompt={() => {}}
@@ -220,6 +226,7 @@ function renderSplitPaneComposer(props: {
           onSend={props.onSend ?? (() => {})}
           onInterrupt={props.onInterrupt ?? (() => {})}
         />
+        </WorkbenchConnectionContext.Provider>
       </ImagePreviewProvider>,
     );
   });
@@ -456,6 +463,93 @@ describe("Composer send control", () => {
     renderComposer({ prompt: "" });
 
     expect(container.querySelector(".composer-voice-input")).toBeNull();
+  });
+
+  it("keeps the draft editable but disables send when the workbench is disconnected", () => {
+    const commitPrompt = vi.fn();
+    const onSend = vi.fn();
+    renderComposer({
+      prompt: "离线草稿",
+      setPrompt: commitPrompt,
+      onSend,
+      connectionAvailable: false,
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    const sendButton = container.querySelector<HTMLButtonElement>(".composer-send-button");
+
+    expect(textarea).not.toBeNull();
+    expect(textarea?.disabled).toBe(false);
+
+    act(() => {
+      setTextareaValue(textarea!, "离线草稿已编辑");
+    });
+    expect(commitPrompt).toHaveBeenCalledWith("离线草稿已编辑");
+    expect(sendButton?.disabled).toBe(true);
+  });
+
+  it("keeps a disconnected split-pane draft without sending or interrupting", () => {
+    const onSend = vi.fn();
+    const onInterrupt = vi.fn();
+    renderSplitPaneComposer({ connectionAvailable: false, running: true, prompt: "offline draft", onSend, onInterrupt });
+    const textarea = container.querySelector("textarea")!;
+    act(() => {
+      textarea.focus();
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(textarea.disabled).toBe(false);
+    expect(textarea.readOnly).toBe(false);
+    expect(textarea.value).toBe("offline draft");
+    expect(document.activeElement).toBe(textarea);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onInterrupt).not.toHaveBeenCalled();
+  });
+
+  it("does not clear the draft when Enter is pressed while disconnected", () => {
+    const onSend = vi.fn();
+    renderComposer({ prompt: "离线草稿", onSend, connectionAvailable: false });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea")!;
+
+    act(() => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("离线草稿");
+  });
+
+  it("does not interrupt while disconnected", () => {
+    const onInterrupt = vi.fn();
+    renderComposer({ running: true, onInterrupt, connectionAvailable: false });
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea")!;
+
+    act(() => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+
+    expect(onInterrupt).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch the stop action while disconnected", () => {
+    const onInterrupt = vi.fn();
+    renderComposer({ running: true, onInterrupt, connectionAvailable: false });
+    const stopButton = container.querySelector<HTMLButtonElement>(".composer-stop-button")!;
+
+    expect(stopButton).not.toBeNull();
+    act(() => stopButton.click());
+    expect(onInterrupt).not.toHaveBeenCalled();
   });
 
   voiceInputTest("stops recording and steers the running turn with the final transcript", async () => {

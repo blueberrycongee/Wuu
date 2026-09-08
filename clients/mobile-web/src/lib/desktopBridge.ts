@@ -292,17 +292,27 @@ export class RemoteDesktopBridge {
     await this.client.stop();
   }
 
+  wake(): void {
+    if (!this.stopped) this.client.wake();
+  }
+
   install(): void {
     window.wuu = this.api;
   }
 
-  private async call<T>(method: string, params?: unknown): Promise<T> {
+  private assertAvailable(restorationRead = false): void {
     // Do not queue UI actions while offline: a delayed send after reconnect
     // would execute an instruction the user already saw fail.
     if (this.stopped || !this.client.isAttached()) throw new Error("Remote host is disconnected");
-    if (this.connection.phase === "restoring" && ![
+    if (this.connection.phase !== "connected" && !restorationRead) {
+      throw new Error("Remote workspace is restoring; retry after it reconnects");
+    }
+  }
+
+  private async call<T>(method: string, params?: unknown): Promise<T> {
+    this.assertAvailable([
       "initialize", "workspace/list", "thread/list", "thread/listAll", "thread/listArchived", "thread/resume", "user-question/list",
-    ].includes(method)) throw new Error("Remote workspace is restoring; retry after it reconnects");
+    ].includes(method));
     const revision = this.connection.revision;
     const workdir = this.requestWorkdir(params);
     const result = await this.client.call<T>(method, params, 30_000, workdir);
@@ -577,11 +587,13 @@ export class RemoteDesktopBridge {
         return () => this.runningListeners.delete(listener);
       },
       respondToServerRequest: async (id: string, result: unknown) => {
+        this.assertAvailable();
         const pending = this.pendingServerRequests.get(id);
         this.pendingServerRequests.delete(id);
         pending?.resolve({ result });
       },
       rejectServerRequest: async (id: string, message: string) => {
+        this.assertAvailable();
         const pending = this.pendingServerRequests.get(id);
         this.pendingServerRequests.delete(id);
         pending?.resolve({ error: { code: "rejected", message } });

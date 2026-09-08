@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Credentials } from "@wuu/remote-core";
+import { WorkbenchConnectionContext } from "../../../desktop/src/renderer/WorkbenchConnectionContext";
 
 import { webCredStore } from "./lib/credStore";
 import { RemoteDesktopBridge } from "./lib/desktopBridge";
@@ -20,6 +21,22 @@ export default function App(): React.JSX.Element {
   const [scannedPair] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get("pair"));
   const bridgeRef = useRef<RemoteDesktopBridge | null>(null);
   const connectionAttemptRef = useRef(0);
+
+  useEffect(() => {
+    const wake = (): void => {
+      if (document.visibilityState === "visible") bridgeRef.current?.wake();
+    };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("pageshow", wake);
+    window.addEventListener("online", wake);
+    window.addEventListener("focus", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("pageshow", wake);
+      window.removeEventListener("online", wake);
+      window.removeEventListener("focus", wake);
+    };
+  }, []);
 
   const connect = async (credentials: Credentials): Promise<void> => {
     const attempt = ++connectionAttemptRef.current;
@@ -235,8 +252,10 @@ function ConnectedWorkbench({ bridge, onReset }: {
   const ready = connection.phase === "connected";
   return (
     <>
-      <div className="web-workbench" inert={!ready}>
-        <SharedWorkbench />
+      <div className="web-workbench">
+        <WorkbenchConnectionContext.Provider value={ready}>
+          <SharedWorkbench />
+        </WorkbenchConnectionContext.Provider>
       </div>
       {!ready ? (
         <aside className="web-connection-status" role="status" aria-live="polite">

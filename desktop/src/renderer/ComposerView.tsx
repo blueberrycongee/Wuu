@@ -101,6 +101,8 @@ import { ComposerRuntimeMeters } from "./ComposerRuntimeMeters";
 import { ComposerPresentation } from "./plugins/ComposerPresentation";
 import { ComposerVoiceInput, type ComposerVoiceInputHandle } from "./ComposerVoiceInput";
 import { ENABLE_VOICE_INPUT } from "./FeatureFlags";
+import { focusComposerTextarea } from "./ComposerFocus";
+import { useWorkbenchConnected } from "./WorkbenchConnectionContext";
 import type { TurnContextUsage } from "./AppState";
 
 const MemoizedComposerPluginSlot = memo(PluginSlot);
@@ -335,6 +337,13 @@ export function Composer({
   pluginHost?: PluginHost;
 }): JSX.Element {
   const { locale, t } = useI18n();
+  const workbenchConnected = useWorkbenchConnected();
+  const disconnected = !workbenchConnected;
+  // A disconnected remote workbench keeps every composer draft editable (the
+  // textarea stays enabled and focused), but sending and runtime controls must
+  // not dispatch into a dead bridge. Gate only the action paths, never readOnly.
+  const effectiveSendDisabled = sendDisabled || !workbenchConnected;
+  const effectiveRuntimeControlsDisabled = runtimeControlsDisabled || !workbenchConnected;
   // Keep the controlled textarea on a small, synchronous state path. The
   // canonical draft still lives above Composer, but updating it makes App
   // recalculate the whole desktop shell. Marking that propagation as a
@@ -677,19 +686,11 @@ export function Composer({
   ]);
 
   function focusComposerSoon(): void {
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
+    focusComposerTextarea(textareaRef.current);
   }
 
   function focusComposerAtEndSoon(): void {
-    window.requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) {
-        return;
-      }
-      textarea.focus();
-      const end = textarea.value.length;
-      textarea.setSelectionRange(end, end);
-    });
+    focusComposerTextarea(textareaRef.current, "end");
   }
 
   function toggleComposerExpansion(): void {
@@ -711,6 +712,11 @@ export function Composer({
     onSubmit: (promptOverride?: string, contentParts?: MessageContentPart[]) => void,
     promptOverride = prompt,
   ): void {
+    // A disconnected (or otherwise send-disabled) composer must not clear the
+    // local draft before the bridge has a chance to reject the dispatch.
+    if (effectiveSendDisabled) {
+      return;
+    }
     resetQueryHistoryNavigation();
     const submitSlashDraft = slashCommandsEnabled && !(textOnly && !slashCommandsOverride)
       ? parseComposerSlashDraft(promptOverride)
@@ -1002,7 +1008,7 @@ export function Composer({
     if (handleQueryHistoryKeyDown(event)) {
       return;
     }
-    if (event.key === "Escape" && running && !sendDisabled && !event.repeat) {
+    if (event.key === "Escape" && running && !effectiveSendDisabled && !event.repeat) {
       event.preventDefault();
       onInterrupt();
       return;
@@ -1355,7 +1361,7 @@ export function Composer({
                         state={codexModels}
                         openMenu={codexRuntimeMenu}
                         anchorRef={codexRuntimeRef}
-                        running={runtimeControlsDisabled}
+                        running={effectiveRuntimeControlsDisabled}
                         engines={engines}
                         activeEngine={activeEngine}
                         engineLocked={engineLocked}
@@ -1414,12 +1420,12 @@ export function Composer({
                       event.preventDefault();
                     }
                   }}
-                  onClick={showComposerStopAction ? onInterrupt : submitComposer}
+                  onClick={showComposerStopAction ? (disconnected ? undefined : onInterrupt) : submitComposer}
                   aria-label={showComposerStopAction ? t("composer.pause") : voiceActionLabel}
                   title={showComposerStopAction ? t("composer.pauseShortcut") : voiceActionLabel}
                   disabled={
                     !showComposerStopAction &&
-                    (voiceSendPending || sendDisabled || readOnly || (!voiceRecording && !hasDraft))
+                    (voiceSendPending || effectiveSendDisabled || readOnly || (!voiceRecording && !hasDraft))
                   }
                 >
                   {showComposerStopAction ? <Square aria-hidden="true" /> : <Send aria-hidden="true" />}
@@ -1474,12 +1480,12 @@ export function Composer({
       pendingMessages={guideMessages}
       running={running}
       readOnly={readOnly}
-      sendDisabled={sendDisabled}
+      sendDisabled={effectiveSendDisabled}
       variant={variant}
       threadId={queryHistorySessionID}
       initialized={initialized}
       contextUsage={contextUsage}
-      disabledReason={readOnly || sendDisabled ? statusText || undefined : undefined}
+      disabledReason={readOnly || effectiveSendDisabled ? statusText || undefined : undefined}
       activeSubmissionMode={activeSubmissionMode}
       availableSubmissionModes={availableSubmissionModes}
       attachmentInputRef={attachmentInputRef}

@@ -265,6 +265,11 @@ export interface RemoteClientOptions {
   dialTimeoutMs?: number;
   ackIntervalMs?: number;
   pingIntervalMs?: number;
+  /** Bounded deadline for a sealed e2e ping to be answered before the socket
+   *  is considered half-open and closed. Must be long enough to ride out a
+   *  normal mobile network blip, short enough that a dead socket is replaced
+   *  instead of left to hang. */
+  pongTimeoutMs?: number;
   clientProfile?: string;
   onNotification?: (method: string, params: unknown, workdir?: string) => void;
   onServerRequest?: ServerRequestHandler;
@@ -295,6 +300,7 @@ export class RemoteClient {
   private readonly dialTimeoutMs: number;
   private readonly ackIntervalMs: number;
   private readonly pingIntervalMs: number;
+  private readonly pongTimeoutMs: number;
 
   private sock: RelaySocket | null = null;
   private channel: Channel | null = null;
@@ -308,9 +314,11 @@ export class RemoteClient {
   private waiters: AttachWaiter[] = [];
   private stopped = true;
   private runPromise: Promise<void> | null = null;
-  private wake: (() => void) | null = null;
+  private wakeSleep: (() => void) | null = null;
   private ackTimer: ReturnType<typeof setInterval> | undefined;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
+  private pongTimer: ReturnType<typeof setTimeout> | undefined;
+  private foregroundWake = false;
 
   constructor(
     creds: Credentials,
@@ -327,6 +335,7 @@ export class RemoteClient {
     this.dialTimeoutMs = opts.dialTimeoutMs ?? 30_000;
     this.ackIntervalMs = opts.ackIntervalMs ?? 500;
     this.pingIntervalMs = opts.pingIntervalMs ?? 20_000;
+    this.pongTimeoutMs = opts.pongTimeoutMs ?? 30_000;
   }
 
   /** Starts the connect-and-reconnect loop. Idempotent. */
@@ -344,16 +353,34 @@ export class RemoteClient {
       return;
     }
     this.stopped = true;
-    this.wake?.();
+    this.wakeSleep?.();
     this.sock?.close();
     await this.runPromise;
     this.runPromise = null;
     this.closeProtocol("client stopped");
   }
 
+  /** Signals the app has returned to the foreground. Interrupts any pending
+   *  reconnect backoff so the next attempt starts immediately, resets that
+   *  backoff to its floor, and sends an immediate bounded liveness probe on an
+   *  established channel. The probe avoids judging a healthy socket stale from
+   *  wall-clock time after a long background; a half-open socket is closed by
+   *  the existing pong deadline instead. */
+  wake(): void {
+    if (this.stopped) return;
+    this.foregroundWake = true;
+    if (this.channel && this.sock && !this.pongTimer) {
+      this.sendSealed({ t: E2E_PING });
+      this.armPongTimeout();
+    }
+    this.wakeSleep?.();
+  }
+
   private async run(): Promise<void> {
     let attempt = 0;
     while (!this.stopped) {
+      if (this.foregroundWake) attempt = 0;
+      this.foregroundWake = false;
       let authed = false;
       try {
         authed = await this.runOnce();
@@ -366,6 +393,9 @@ export class RemoteClient {
       }
       if (this.stopped) return;
       if (authed) attempt = 0;
+      // A wake can arrive while runOnce owns a half-open socket. Consume it
+      // after that socket closes, before entering another reconnect delay.
+      if (this.foregroundWake) continue;
       let delay = this.reconnectMinMs * 2 ** attempt;
       if (delay > this.reconnectMaxMs || delay <= 0) {
         delay = this.reconnectMaxMs;
@@ -379,12 +409,12 @@ export class RemoteClient {
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
-        this.wake = null;
+        this.wakeSleep = null;
         resolve();
       }, ms);
-      this.wake = () => {
+      this.wakeSleep = () => {
         clearTimeout(timer);
-        this.wake = null;
+        this.wakeSleep = null;
         resolve();
       };
     });
@@ -474,6 +504,7 @@ export class RemoteClient {
     }
     this.pendingHS = hs.handshake;
     this.channel = null;
+    this.clearPongTimeout();
     this.setDetached();
     const body = utf8Encode(
       JSON.stringify({
@@ -555,6 +586,8 @@ export class RemoteClient {
         return;
       }
       case E2E_PONG:
+        this.foregroundWake = false;
+        this.clearPongTimeout();
         return;
       case E2E_BYE:
         this.channel = null;
@@ -615,15 +648,42 @@ export class RemoteClient {
     }, this.ackIntervalMs);
     // Ping loop: sealed e2e pings (browser sockets cannot send transport
     // pings); the host answers pong, keeping intermediaries and its own
-    // liveness view warm.
+    // liveness view warm. The same loop doubles as the stale-socket
+    // healthcheck: one unanswered ping arms a bounded pong deadline that
+    // closes a half-open socket.
     this.pingTimer = setInterval(() => {
-      if (this.channel) this.sendSealed({ t: E2E_PING });
+      if (!this.channel || this.pongTimer) return;
+      this.sendSealed({ t: E2E_PING });
+      this.armPongTimeout();
     }, this.pingIntervalMs);
   }
 
   private stopLoops(): void {
     clearInterval(this.ackTimer);
     clearInterval(this.pingTimer);
+    this.clearPongTimeout();
+  }
+
+  private armPongTimeout(): void {
+    if (!this.channel) return;
+    this.clearPongTimeout();
+    this.pongTimer = setTimeout(() => {
+      this.pongTimer = undefined;
+      this.onPongTimeout();
+    }, this.pongTimeoutMs);
+  }
+
+  private clearPongTimeout(): void {
+    if (this.pongTimer) {
+      clearTimeout(this.pongTimer);
+      this.pongTimer = undefined;
+    }
+  }
+
+  private onPongTimeout(): void {
+    if (!this.channel || !this.sock) return;
+    this.logf("remote client: pong timeout; closing stale relay socket");
+    this.sock.close();
   }
 
   /** Seals and sends one e2e message; drops the channel on send failure. */

@@ -4,7 +4,7 @@
 // and the app-server line dialect. Mirrors the shape of the Go host
 // integration test, but in-process.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { b64decode, b64encode } from "../src/b64.js";
 import { bytesEqual, randomBytes, utf8Decode, utf8Encode } from "../src/bytes.js";
@@ -86,6 +86,8 @@ class FakeHost {
   spoolLost = false;
   lastAck = 0;
   attachCount = 0;
+  suppressPong = false;
+  pingCount = 0;
   attachProfiles: Array<string | undefined> = [];
   readonly sockets: FakeSocket[] = [];
   readonly uplinkEnvelopes: ProtocolEnvelope[] = [];
@@ -197,6 +199,8 @@ class FakeHost {
         return;
       }
       case "ping":
+        this.pingCount++;
+        if (this.suppressPong) return;
         this.sendSealed(sock, { t: "pong" });
         return;
       default:
@@ -505,6 +509,117 @@ describe("RemoteClient", () => {
       await expect(proto.call("turn/start", { prompt: "x" })).rejects.toThrow(/not attached/);
     } finally {
       await client.stop();
+    }
+  });
+});
+
+
+describe("RemoteClient foreground recovery", () => {
+  it("wake interrupts reconnect backoff and reattaches immediately", async () => {
+    vi.useFakeTimers();
+    const fake = new FakeHost();
+    const { client } = makeClient(fake, {
+      reconnectMinMs: 10_000,
+      reconnectMaxMs: 10_000,
+      pingIntervalMs: 60_000,
+    });
+    try {
+      client.start();
+      await vi.advanceTimersByTimeAsync(0);
+      await client.waitAttached(3000);
+      const sockets = fake.sockets.length;
+      fake.drop();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fake.sockets.length).toBe(sockets);
+
+      client.wake();
+      await vi.advanceTimersByTimeAsync(0);
+      await client.waitAttached(3000);
+      expect(fake.sockets.length).toBe(sockets + 1);
+      expect(client.isAttached()).toBe(true);
+    } finally {
+      await client.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("wake sends a bounded fresh probe instead of wall-clock staleness", async () => {
+    vi.useFakeTimers();
+    const fake = new FakeHost();
+    const { client } = makeClient(fake, {
+      pingIntervalMs: 60_000,
+      pongTimeoutMs: 250,
+      reconnectMinMs: 10_000,
+    });
+    try {
+      client.start();
+      await vi.advanceTimersByTimeAsync(0);
+      await client.waitAttached(3000);
+      expect(fake.pingCount).toBe(0);
+
+      client.wake();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fake.pingCount).toBe(1);
+
+      // The pong answers the fresh probe and clears the deadline; the healthy
+      // socket must not be closed even after the deadline would have elapsed.
+      await vi.advanceTimersByTimeAsync(500);
+      expect(fake.current().closed).toBe(false);
+      expect(client.isAttached()).toBe(true);
+    } finally {
+      await client.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes a half-open socket after the bounded pong deadline", async () => {
+    vi.useFakeTimers();
+    const fake = new FakeHost();
+    const { client } = makeClient(fake, {
+      pingIntervalMs: 100,
+      pongTimeoutMs: 250,
+      reconnectMinMs: 10_000,
+    });
+    try {
+      client.start();
+      await vi.advanceTimersByTimeAsync(0);
+      await client.waitAttached(3000);
+
+      fake.suppressPong = true;
+      await vi.advanceTimersByTimeAsync(100); // ping fires and arms the deadline
+      await vi.advanceTimersByTimeAsync(250); // deadline expires
+      expect(fake.current().closed).toBe(true);
+    } finally {
+      await client.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("reconnects immediately when a foreground probe expires during an active socket", async () => {
+    vi.useFakeTimers();
+    const fake = new FakeHost();
+    const { client } = makeClient(fake, {
+      pingIntervalMs: 60_000,
+      pongTimeoutMs: 250,
+      reconnectMinMs: 10_000,
+    });
+    try {
+      client.start();
+      await vi.advanceTimersByTimeAsync(0);
+      const oldSocket = fake.current();
+      fake.suppressPong = true;
+      client.wake();
+      client.wake();
+      await vi.advanceTimersByTimeAsync(249);
+      expect(fake.pingCount).toBe(1);
+      expect(oldSocket.closed).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(oldSocket.closed).toBe(true);
+      expect(fake.sockets.length).toBe(2);
+      expect(client.isAttached()).toBe(true);
+    } finally {
+      await client.stop();
+      vi.useRealTimers();
     }
   });
 });

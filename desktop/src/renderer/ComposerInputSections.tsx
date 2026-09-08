@@ -32,6 +32,8 @@ import { useComposerQueryHistory } from "./ComposerQueryHistory";
 import { composerStatusIsLiveProgress, composerStatusText } from "./ComposerTypes";
 import { handoffPromptFromIntent } from "./HandoffDraft";
 import { useI18n } from "./i18n";
+import { focusComposerTextarea } from "./ComposerFocus";
+import { useWorkbenchConnected } from "./WorkbenchConnectionContext";
 import { Tooltip } from "./Tooltip";
 import { TruncatedText } from "./TruncatedText";
 import type { MessageContentPart } from "../shared/protocol";
@@ -116,7 +118,7 @@ export function SplitPaneComposer({
   images,
   running,
   readOnly,
-  sendDisabled = false,
+  sendDisabled: requestedSendDisabled = false,
   status,
   statusLiveProgress,
   queryHistorySessionID,
@@ -149,6 +151,8 @@ export function SplitPaneComposer({
   onInterrupt: () => void;
 }): JSX.Element {
   const { t } = useI18n();
+  const connected = useWorkbenchConnected();
+  const sendDisabled = requestedSendDisabled || !connected;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const appliedHandoffIntentRef = useRef<string | undefined>(undefined);
@@ -164,19 +168,11 @@ export function SplitPaneComposer({
   const statusIsLiveProgress = composerStatusIsLiveProgress(statusLiveProgress);
 
   function focusComposerSoon(): void {
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
+    focusComposerTextarea(textareaRef.current);
   }
 
   function focusComposerAtEndSoon(): void {
-    window.requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) {
-        return;
-      }
-      textarea.focus();
-      const end = textarea.value.length;
-      textarea.setSelectionRange(end, end);
-    });
+    focusComposerTextarea(textareaRef.current, "end");
   }
 
   const {
@@ -258,6 +254,7 @@ export function SplitPaneComposer({
   }
 
   function submitComposer(): void {
+    if (readOnly || sendDisabled) return;
     resetQueryHistoryNavigation();
     const contentParts = collapsedContentPartsForPrompt(prompt);
     if (contentParts) {

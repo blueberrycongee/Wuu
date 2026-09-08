@@ -4,6 +4,7 @@ import { AgentAvatarMark } from "./AgentAvatarMark";
 import type { ComposerFile, ComposerImage } from "./ComposerMessages";
 import { Composer, type CodexModelLoadState } from "./ComposerView";
 import { FloatingMenuPortal } from "./ComposerFloatingMenu";
+import { focusComposerTextarea } from "./ComposerFocus";
 import { useI18n } from "./i18n";
 
 const EMPTY_MODEL_STATE: CodexModelLoadState = {
@@ -119,11 +120,7 @@ export const ChannelComposer = forwardRef<ChannelComposerHandle, {
     const next = draftWithMention(draft, name, start, end);
     onChangeDraft(next.value);
     setMentionRange(null);
-    window.requestAnimationFrame(() => {
-      const nextInput = textarea();
-      nextInput?.focus();
-      nextInput?.setSelectionRange(next.cursor, next.cursor);
-    });
+    focusComposerTextarea(textarea(), next.cursor);
   }, [draft, onChangeDraft, textarea]);
 
   useImperativeHandle(ref, () => ({

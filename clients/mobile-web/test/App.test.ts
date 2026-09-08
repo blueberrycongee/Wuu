@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, createElement } from "react";
+import { act, createElement, useContext, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WorkbenchConnectionContext } from "../../../desktop/src/renderer/WorkbenchConnectionContext";
 
-const remote = vi.hoisted(() => ({ pair: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), install: vi.fn() }));
+const remote = vi.hoisted(() => ({ pair: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), install: vi.fn(), wake: vi.fn() }));
 const credentials = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn(), clear: vi.fn() }));
 vi.mock("../src/lib/credStore", () => ({ webCredStore: credentials }));
 vi.mock("../src/lib/desktopBridge", () => ({
@@ -12,12 +13,23 @@ vi.mock("../src/lib/desktopBridge", () => ({
     connect = remote.connect;
     disconnect = remote.disconnect;
     install = remote.install;
-    subscribeConnection = () => () => {};
-    getConnectionSnapshot = () => connected;
+    wake = remote.wake;
+    subscribeConnection = (listener: () => void) => {
+      connectionListeners.add(listener);
+      return () => connectionListeners.delete(listener);
+    };
+    getConnectionSnapshot = () => connection;
   },
 }));
-vi.mock("../src/WebWorkspace", () => ({ default: () => createElement("div", null, "Connected workbench") }));
-const connected = { phase: "connected", revision: 1 };
+vi.mock("../src/WebWorkspace", () => ({ default: () => {
+  const connected = useContext(WorkbenchConnectionContext);
+  const [draft, setDraft] = useState("");
+  return createElement("div", null, "Connected workbench",
+    createElement("textarea", { value: draft, onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => setDraft(event.target.value) }),
+    createElement("button", { disabled: !connected }, "Send"));
+} }));
+let connection = { phase: "connected", revision: 1 };
+const connectionListeners = new Set<() => void>();
 import App from "../src/App";
 let container: HTMLDivElement;
 let root: Root;
@@ -43,6 +55,8 @@ async function startPair() {
 }
 beforeEach(async () => {
   vi.resetAllMocks();
+  connection = { phase: "connected", revision: 1 };
+  connectionListeners.clear();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   credentials.load.mockResolvedValue(null);
   credentials.clear.mockResolvedValue(undefined);
@@ -53,9 +67,55 @@ beforeEach(async () => {
   root = createRoot(container);
   await act(async () => root.render(createElement(App)));
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); });
 
 describe("Web connection ownership", () => {
+  it("checks transport on foreground and network recovery, then removes lifecycle listeners on unmount", async () => {
+    remote.pair.mockResolvedValue({ host_pub: "computer" });
+    await startPair();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("online"));
+    expect(remote.wake).not.toHaveBeenCalled();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("pageshow"));
+    window.dispatchEvent(new Event("online"));
+    window.dispatchEvent(new Event("focus"));
+    expect(remote.wake).toHaveBeenCalledTimes(4);
+    await act(async () => root.unmount());
+    remote.wake.mockClear();
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("pageshow"));
+    window.dispatchEvent(new Event("online"));
+    window.dispatchEvent(new Event("focus"));
+    expect(remote.wake).not.toHaveBeenCalled();
+  });
+
+  it("keeps the focused draft editable through disconnect, restore and failure without enabling sends", async () => {
+    remote.pair.mockResolvedValue({ host_pub: "computer" });
+    await startPair();
+    const input = container.querySelector("textarea")!;
+    input.focus();
+    for (const phase of ["reconnecting", "restoring", "error", "connected"]) {
+      await act(async () => {
+        connection = { phase, revision: connection.revision + 1 };
+        connectionListeners.forEach((listener) => listener());
+      });
+      expect(container.querySelector("textarea")).toBe(input);
+      expect(document.activeElement).toBe(input);
+      expect(input.closest("[inert]")).toBeNull();
+      expect(input.disabled).toBe(false);
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, `draft during ${phase}`);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(input.value).toBe(`draft during ${phase}`);
+      expect([...container.querySelectorAll("button")].find((button) => button.textContent === "Send")!.disabled)
+        .toBe(phase !== "connected");
+    }
+  });
+
   it("does not save or connect a pairing response after the user cancels it", async () => {
     const pending = deferred<unknown>(); remote.pair.mockReturnValue(pending.promise);
     await startPair(); await click("清除旧配对");
