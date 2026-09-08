@@ -58,6 +58,15 @@ async function flushAsync(): Promise<void> {
 }
 
 describe("SettingsRemotePage relay + switch", () => {
+  it("can disable saved access when startup failed", () => {
+    const toggles: boolean[] = [];
+    mount(baseProps({ hostEnabled: true, hostRunning: false, statusError: "LAN unavailable", onToggleHost: value => toggles.push(value) }));
+    const toggle = container!.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    act(() => toggle.click());
+    expect(toggles).toEqual([false]);
+  });
+
   it("enables phone access without a relay configuration", () => {
     const toggles: boolean[] = [];
     mount(baseProps({ status: null, onToggleHost: value => toggles.push(value) }));

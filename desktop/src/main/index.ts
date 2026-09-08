@@ -634,8 +634,9 @@ async function remoteControlSnapshot(workdir: string): Promise<RemoteControlSnap
   }
   return {
     status,
-    status_error: statusError || undefined,
+    status_error: statusError || phoneAccess.error() || undefined,
     host_running: remoteHostManager.isRunning(),
+    host_enabled: phoneAccess.enabled(),
     pair_uri: phonePairLink(phoneAccess.url(), remoteHostManager.currentPairUri()),
     web_url: phoneAccess.url(),
   };
@@ -1943,14 +1944,14 @@ app.whenReady().then(async () => {
   ipcMain.handle("wuu:remote-host-set", (event, enabled: boolean) => {
     const workdir = runtimeContextForEvent(event).cwd;
     return phoneAccess.run(async () => {
-      if (enabled) await phoneAccess.start(workdir); else await phoneAccess.stop();
+      await phoneAccess.setEnabled(workdir, enabled);
       return remoteControlSnapshot(workdir);
     });
   });
   ipcMain.handle("wuu:remote-pairing-start", (event) => {
     const workdir = runtimeContextForEvent(event).cwd;
     return phoneAccess.run(async () => {
-      await phoneAccess.start(workdir, true);
+      await phoneAccess.openPairing(workdir);
       return remoteControlSnapshot(workdir);
     });
   });
@@ -2399,6 +2400,7 @@ app.whenReady().then(async () => {
   );
   syncNativeThemeSource();
   createWindow();
+  void phoneAccess.run(() => phoneAccess.restore(projectManager.ensureRuntimeContext().cwd));
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -2416,7 +2418,7 @@ app.on("before-quit", () => {
   appServerClientPool.shutdown();
   // SIGTERM goes out synchronously; the daemon's own signal handling shuts
   // the relay connection down cleanly.
-  void phoneAccess.stop();
+  void phoneAccess.shutdown();
 });
 
 app.on("window-all-closed", () => {

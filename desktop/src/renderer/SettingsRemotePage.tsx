@@ -30,6 +30,7 @@ export type SettingsRemotePageProps = {
   status: RemoteStatusView | null;
   statusError: string;
   hostRunning: boolean;
+  hostEnabled?: boolean;
   pairUri: string | null;
   webUrl?: string | null;
   busy: boolean;
@@ -42,6 +43,7 @@ export function SettingsRemotePage({
   status,
   statusError,
   hostRunning,
+  hostEnabled = hostRunning,
   pairUri,
   webUrl,
   busy,
@@ -58,10 +60,10 @@ export function SettingsRemotePage({
       <RemoteSection title={t("remote.access")} description={t("remote.lanDescription")}>
         <div className="settings-group">
           <RemoteRow title={hostRunning ? t("remote.hostRunning") : t("remote.hostStopped")}>
-            <button className="settings-switch" type="button" role="switch" aria-checked={hostRunning}
-              disabled={busy} onClick={() => onToggleHost(!hostRunning)}>
+            <button className="settings-switch" type="button" role="switch" aria-checked={hostEnabled}
+              disabled={busy} onClick={() => onToggleHost(!hostEnabled)}>
               <span className="settings-switch-thumb" aria-hidden="true" />
-              <span className="sr-only">{hostRunning ? t("remote.disableAccess") : t("remote.enableAccess")}</span>
+              <span className="sr-only">{hostEnabled ? t("remote.disableAccess") : t("remote.enableAccess")}</span>
             </button>
           </RemoteRow>
           {hostRunning && webUrl ? <RemoteRow title={t("remote.webAddress")}>
