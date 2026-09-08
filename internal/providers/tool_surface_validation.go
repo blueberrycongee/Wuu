@@ -11,7 +11,6 @@ const (
 	openAIToolSchemaMaxBytes    = 128 * 1024
 	anthropicToolSchemaMaxBytes = 256 * 1024
 	localToolSchemaMaxBytes     = 512 * 1024
-	toolDescriptionMaxBytes     = 16 * 1024
 )
 
 var providerToolNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
@@ -103,16 +102,6 @@ func ValidateToolDefinitionsForProvider(target ToolSurfaceValidationTarget, defs
 				Field:    "name",
 				Code:     "invalid_provider_tool_name",
 				Message:  "name must match ^[a-zA-Z0-9_-]{1,64}$ for this provider",
-			})
-		}
-		if len(def.Description) > toolDescriptionMaxBytes {
-			problems = append(problems, ToolSurfaceValidationProblem{
-				ToolName: name,
-				Field:    "description",
-				Code:     "description_too_large",
-				Message:  fmt.Sprintf("description is %d bytes, over Wuu safety limit %d bytes", len(def.Description), toolDescriptionMaxBytes),
-				Bytes:    len(def.Description),
-				Limit:    toolDescriptionMaxBytes,
 			})
 		}
 		schema := ToolInputSchemaForModel(target.Model, def.InputSchema)

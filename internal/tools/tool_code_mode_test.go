@@ -130,6 +130,58 @@ func TestCodeModeOnlyHidesButKeepsUnderlyingTools(t *testing.T) {
 	}
 }
 
+func TestCodeModePromptTracksAvailableTools(t *testing.T) {
+	kit := newCodeModeTestToolkit(t)
+	kit.SetCodeModeOnly(true)
+	extension := providers.ToolDefinition{
+		Name:        "extension.search-docs",
+		Description: "Search the extension's document index.",
+		InputSchema: map[string]any{"type": "object", "required": []string{"query"}, "properties": map[string]any{"query": map[string]any{"type": "string"}}},
+	}
+	kit.SetCodeModeAdditionalTools(func() []providers.ToolDefinition { return []providers.ToolDefinition{extension} })
+	description := func(kit *Toolkit) string {
+		t.Helper()
+		for _, def := range kit.Definitions() {
+			if def.Name == "exec" {
+				return def.Description
+			}
+		}
+		t.Fatal("missing exec")
+		return ""
+	}
+	first := description(kit)
+	schema, err := json.Marshal(extension.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"extension_search_docs", extension.Description, string(schema), "### write_file\n"} {
+		if !strings.Contains(first, want) {
+			t.Fatalf("prompt omitted callable tool metadata %q", want)
+		}
+	}
+	if second := description(kit); second != first {
+		t.Fatal("unchanged tool surface changed prompt")
+	}
+	kit.DisableTools("write_file")
+	kit.SetCodeModeAdditionalTools(nil)
+	updated := description(kit)
+	if strings.Contains(updated, "extension_search_docs") || strings.Contains(updated, "### write_file\n") {
+		t.Fatal("prompt retained unavailable tools")
+	}
+	clone, err := kit.CloneForRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	clone.SetCodeModeAdditionalTools(func() []providers.ToolDefinition { return []providers.ToolDefinition{extension} })
+	if !strings.Contains(description(clone), "extension_search_docs") || strings.Contains(description(kit), "extension_search_docs") {
+		t.Fatal("thread tool catalogs leaked across clones")
+	}
+	kit.SetCodeModeOnly(false)
+	if strings.Contains(description(kit), "### ") {
+		t.Fatal("code-only catalog mutated the registry's direct-mode definition")
+	}
+}
+
 func codeModeDefsToProviderDefs(defs []codemode.ToolDefinition) []providers.ToolDefinition {
 	out := make([]providers.ToolDefinition, 0, len(defs))
 	for _, d := range defs {

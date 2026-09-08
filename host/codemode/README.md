@@ -66,7 +66,8 @@ requires a separately built Windows host staged in that directory.
 Wuu defaults to `code_mode.mode: "code_only"`: models invoke ordinary tools
 through `exec` and `wait`. Inside a cell, filter `ALL_TOOLS` by name or
 description to discover tools and their input schemas, and print matches with
-`text()`. The catalog is not embedded in the provider-facing tool description.
+`text()`. In code-only mode, `exec` also describes the current tools and their
+input schemas so the model can identify and call them without a discovery round trip.
 Context switching remains a top-level control. Explicit `code` also exposes
 ordinary tools directly; `direct` disables the runtime. The host is started on
 the first `exec` call and shared by conversations in the workspace session. Plain text replies
