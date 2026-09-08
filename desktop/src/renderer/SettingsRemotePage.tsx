@@ -52,7 +52,7 @@ export function SettingsRemotePage({
   const { t, formatDate } = useI18n();
 
   return (
-    <div data-testid="settings-remote-page">
+    <div className="settings-remote-page" data-testid="settings-remote-page">
       {statusError ? <div className="settings-error">{statusError}</div> : null}
 
       <RemoteSection title={t("remote.access")} description={t("remote.lanDescription")}>
