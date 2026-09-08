@@ -332,6 +332,7 @@ export function ProcessSurface({
           processEntryActive ? " wuu-live-text-wave" : ""
         }`}
         data-text={summaryWaveText}
+        data-compact-text={summaryText}
       >
         {useCondensedSummary ? (
           <AnimatedProcessText

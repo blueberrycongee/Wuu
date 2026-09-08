@@ -40,6 +40,7 @@ const defaultSpawnAppServer: AppServerSpawn = (command, args, options) =>
   spawnChild(command, args, options);
 
 type PendingRequest = {
+  onResponse?: (response: AppServerResponse) => void;
   method: string;
   params?: unknown;
   resolve: (value: unknown) => void;
@@ -162,8 +163,9 @@ export class AppServerClientPool {
     context: RuntimeContext,
     method: string,
     params?: unknown,
+    onResponse?: (response: AppServerResponse) => void,
   ): Promise<T> {
-    return this.clientForContext(context).request<T>(method, params);
+    return this.clientForContext(context).request<T>(method, params, onResponse);
   }
 
   requestForWorkdir<T>(workdir: string, method: string, params?: unknown): Promise<T> {
@@ -381,12 +383,13 @@ export class AppServerClient {
     this.ensureStarted();
   }
 
-  request<T>(method: string, params?: unknown): Promise<T> {
+  request<T>(method: string, params?: unknown, onResponse?: (response: AppServerResponse) => void): Promise<T> {
     this.start();
     const id = `client-${this.nextRequestID++}`;
     const payload: AppServerRequest = { id, method, params };
     return new Promise<T>((resolveRequest, rejectRequest) => {
       this.pending.set(JSON.stringify(id), {
+        onResponse,
         method,
         params,
         resolve: (value) => resolveRequest(value as T),
@@ -732,6 +735,9 @@ export class AppServerClient {
       response.result,
     );
     this.onStateChange();
+    // Forward before parsing the next stdout line. Promise continuations can
+    // otherwise put a newer notification ahead of this snapshot response.
+    pending.onResponse?.(response);
     if (response.error) {
       pending.reject(new Error(response.error.message));
       return;

@@ -17,6 +17,8 @@ export interface ProtocolEnvelope {
   id?: string | number;
   method?: string;
   params?: unknown;
+  /** Execution workspace for hosts that multiplex several Go services. */
+  workdir?: string;
   result?: unknown;
   error?: ResponseError;
 }
@@ -32,7 +34,7 @@ export interface ServerRequestResult {
   error?: ResponseError;
 }
 
-export type NotificationHandler = (method: string, params: unknown) => void;
+export type NotificationHandler = (method: string, params: unknown, workdir?: string) => void;
 export type ServerRequestHandler = (req: ServerRequest) => Promise<ServerRequestResult> | ServerRequestResult;
 
 export interface ProtocolClientOptions {
@@ -63,7 +65,7 @@ export class ProtocolClient {
 
   /** Sends one request and resolves with its result. Timed-out requests are
    *  removed so a late response cannot retain or settle stale UI work. */
-  call<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
+  call<T = unknown>(method: string, params?: unknown, timeoutMs?: number, workdir?: string): Promise<T> {
     if (method.trim() === "") return Promise.reject(new Error("method is required"));
     if (this.closed) return Promise.reject(this.closed);
     if (timeoutMs !== undefined && timeoutMs <= 0) {
@@ -82,6 +84,7 @@ export class ProtocolClient {
       }
       const env: ProtocolEnvelope = { id, method };
       if (params !== undefined) env.params = params;
+      if (workdir) env.workdir = workdir;
       try {
         this.writeLine(env);
       } catch (err) {
@@ -101,7 +104,7 @@ export class ProtocolClient {
       return;
     }
     if (method !== "") {
-      this.opts.onNotification?.(method, env.params);
+      this.opts.onNotification?.(method, env.params, env.workdir);
       return;
     }
     if (env.id === undefined || env.id === null) return;

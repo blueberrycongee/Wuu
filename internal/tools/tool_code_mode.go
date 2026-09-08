@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/blueberrycongee/wuu/internal/capability"
 	"github.com/blueberrycongee/wuu/internal/codemode"
@@ -231,10 +233,46 @@ func (t *Toolkit) codeModeEntryDefinitions() []providers.ToolDefinition {
 	out := make([]providers.ToolDefinition, 0, 2)
 	for _, d := range all {
 		if (d.Name == codeModeExecToolName || d.Name == codeModeWaitToolName || d.Name == newContextToolName) && t.SupportsTool(d.Name) {
+			if d.Name == codeModeExecToolName {
+				d.Description += t.codeModeToolCatalog()
+			}
 			out = append(out, d)
 		}
 	}
 	return out
+}
+
+// Use the execution surface so profile changes and extension reloads are
+// reflected in the next request, without modifying cached registry definitions.
+func (t *Toolkit) codeModeToolCatalog() string {
+	nested, err := t.CodeModeNestedSurface()
+	if err != nil {
+		return "\nTool catalog unavailable: " + err.Error()
+	}
+	sort.SliceStable(nested, func(i, j int) bool { return nested[i].Name < nested[j].Name })
+	var b strings.Builder
+	b.WriteString("\n\nAvailable tools (await tools.<name>(arguments); arguments follow each input JSON Schema):\n")
+	for _, tool := range nested {
+		fmt.Fprintf(&b, "\n### %s\n%s\n", codeModeGlobalName(tool.Name), tool.Description)
+	}
+	return b.String()
+}
+
+// Match the host's normalize_code_mode_identifier: ALL_TOOLS and tools use
+// JavaScript identifiers even when the registered name contains punctuation.
+func codeModeGlobalName(name string) string {
+	var b strings.Builder
+	for i, ch := range name {
+		if ch == '_' || ch == '$' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || i > 0 && ch >= '0' && ch <= '9' {
+			b.WriteRune(ch)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "_"
+	}
+	return b.String()
 }
 
 // SetCodeModeAdditionalTools supplies live extension definitions for this toolkit.
@@ -299,7 +337,7 @@ func codeModeToolDefinition(d providers.ToolDefinition) (codemode.ToolDefinition
 	return codemode.ToolDefinition{
 		Name:     d.Name,
 		ToolName: codemode.ToolName{Name: d.Name},
-		// Discovery metadata stays inside the runtime rather than the provider tool description.
+		// Both prompt and runtime discovery carry the same argument contract.
 		Description: d.Description + "\nInput schema: " + string(schema),
 		Kind:        "function",
 		InputSchema: schema,

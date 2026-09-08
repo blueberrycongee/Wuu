@@ -51,6 +51,7 @@ export type DesktopSettings = {
   language?: LanguagePreference;
   voice_input?: VoiceInputSettings;
   channel_room_preferences?: ChannelRoomPreferences;
+  phone_access_enabled?: boolean;
   // User-facing reading size for the message stream, in pixels. The
   // renderer clamps incoming values to MESSAGE_FLOW_FONT_SIZE_RANGE
   // (13–20 step 0.5 default 14) before applying and the IPC boundary
@@ -88,6 +89,9 @@ export function readDesktopSettings(filePath: string = desktopSettingsPath()): D
     }
     const record = parsed as Record<string, unknown>;
     const settings: DesktopSettings = {};
+    if (typeof record.phone_access_enabled === "boolean") {
+      settings.phone_access_enabled = record.phone_access_enabled;
+    }
     if (THEME_PREFERENCES.includes(record.theme as ThemePreference)) {
       settings.theme = record.theme as ThemePreference;
     }
@@ -208,6 +212,15 @@ export function writeDesktopSettings(
 
 export function getThemePreference(filePath?: string): ThemePreference {
   return readDesktopSettings(filePath).theme ?? "system";
+}
+
+export function getPhoneAccessEnabled(filePath?: string): boolean {
+  return readDesktopSettings(filePath).phone_access_enabled === true;
+}
+
+export function setPhoneAccessEnabled(enabled: boolean, filePath?: string): void {
+  const settings = readDesktopSettings(filePath);
+  writeDesktopSettings({ ...settings, phone_access_enabled: enabled }, filePath);
 }
 
 export function isOnboardingComplete(filePath?: string): boolean {

@@ -379,6 +379,8 @@ async function enterCommand(
 }
 
 describe("main composer focus continuity", () => {
+  const originalWindowWidth = window.innerWidth;
+
   beforeEach(() => {
     installWindowStubs();
     serverEventHandlers = [];
@@ -391,6 +393,7 @@ describe("main composer focus continuity", () => {
 
   afterEach(() => {
     act(() => root?.unmount());
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWindowWidth });
     root = null;
     container.remove();
     Reflect.deleteProperty(globalThis, "ResizeObserver");
@@ -568,6 +571,36 @@ describe("main composer focus continuity", () => {
     await enterCommand(dock, "/side");
 
     await waitForSideComposerFocus();
+  });
+
+  it.each([false, true])("keeps the compact composer mounted when the first send fails=%s", async (rejectThreadStart) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    await renderApp(false, { rejectThreadStart });
+    const dock = mainComposer("dock");
+    expect(container.querySelectorAll("[data-main-conversation-composer]")).toHaveLength(1);
+    dock.focus();
+
+    await enterCommand(dock, "first compact query");
+
+    expect(mainComposer("dock")).toBe(dock);
+    expect(document.activeElement).toBe(dock);
+    expect(dock.value).toBe(rejectThreadStart ? "first compact query" : "");
+    if (!rejectThreadStart) {
+      expect(window.wuu.startTurn).toHaveBeenCalled();
+    }
+  });
+
+  it("focuses the bottom composer after /new in a compact window", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    await renderApp(true);
+    const dock = mainComposer("dock");
+    dock.focus();
+
+    await enterCommand(dock, "/new");
+
+    await waitForMainComposerFocus("dock");
+    expect(container.querySelectorAll("[data-main-conversation-composer]")).toHaveLength(1);
+    expect(mainComposer("dock").value).toBe("");
   });
 
   it("hands focus from the hero composer to the dock on the first query", async () => {

@@ -32,7 +32,6 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
   useDroppable,
   useSensor,
   useSensors,
@@ -78,6 +77,7 @@ import {
   type SidebarSectionHeaderInfo,
 } from "./SortableSidebarSection";
 export { reorderSidebarSections } from "./SortableSidebarSection";
+import { SidebarPointerSensor } from "./SidebarPointerSensor";
 import { PluginBlocksIcon } from "./PluginBlocksIcon";
 import { PluginIcon } from "./PublicIcon";
 import { AppModeSwitch } from "./AppModeSwitch";
@@ -530,7 +530,7 @@ export function AppSidebar({
   // and on threads inside the section pass through without triggering a
   // drag — matches SessionTabs so the two surfaces share a feel.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(SidebarPointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [draggingSectionID, setDraggingSectionID] = useState<string | undefined>();

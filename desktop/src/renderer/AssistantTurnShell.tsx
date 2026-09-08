@@ -731,7 +731,12 @@ function ReasoningFold({
           active={Boolean(activeGray)}
           activity="thinking"
         />
-        <span ref={waveRef} className={textClass} data-text={reasoningWaveText}>
+        <span
+          ref={waveRef}
+          className={textClass}
+          data-text={reasoningWaveText}
+          data-compact-text={label}
+        >
           <AnimatedProcessText
             className="turn-reasoning-summary-label"
             text={label}

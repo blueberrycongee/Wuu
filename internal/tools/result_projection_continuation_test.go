@@ -272,10 +272,23 @@ func TestReadFileProjectedPagesPreserveRequestedRange(t *testing.T) {
 	mustWriteFile(t, path, file.String())
 	tool := NewReadFileTool(kit.env)
 	args := `{"path":"records.txt","offset":51,"limit":400}`
+	// The portable provider schema leaves both selectors optional. The tool
+	// must still reject calls that supply neither before accessing the filesystem.
+	for _, invalid := range []string{`{}`, `{"path":" ","continuation":" "}`, `{"offset":51,"limit":400}`} {
+		if err := tool.ValidateInput(invalid); err == nil {
+			t.Fatalf("accepted missing read selector: %s", invalid)
+		}
+		if _, err := tool.Execute(context.Background(), invalid); err == nil {
+			t.Fatalf("executed missing read selector: %s", invalid)
+		}
+	}
 	var actual strings.Builder
 	var savedNext string
 	pages := 0
 	for ; pages < 100; pages++ {
+		if err := tool.ValidateInput(args); err != nil {
+			t.Fatalf("rejected read page arguments %s: %v", args, err)
+		}
 		raw, err := tool.Execute(context.Background(), args)
 		if err != nil {
 			t.Fatal(err)

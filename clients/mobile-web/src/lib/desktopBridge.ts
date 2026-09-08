@@ -187,6 +187,7 @@ export class RemoteDesktopBridge {
   private readonly remoteWorkspaceIDs = new Set<string>();
   private activeContext: RuntimeContext | undefined;
   private readonly threadLocations = new Map<string, ThreadLocation>();
+  private readonly questionWorkdirs = new Map<string, string>();
   private connection: WebConnectionSnapshot = { phase: "connecting", revision: 0 };
   private readonly connectionListeners = new Set<() => void>();
   private readonly restoreListeners = new Set<() => Promise<void>>();
@@ -242,11 +243,12 @@ export class RemoteDesktopBridge {
     this.client = new RemoteClient(credentials, {
       // Do not use mobile_chat: the shared workbench needs the full event
       // stream, including tools, activities, usage, and lifecycle events.
-      onNotification: (method, params) => {
+      onNotification: (method, params, workdir) => {
         params = webHostPayload(params);
         this.recordThreadLocations(params);
+        this.recordQuestionLocations(params, workdir || this.eventWorkdir(params));
         this.emitServerEvent({
-          workdir: this.eventWorkdir(params),
+          workdir: workdir || this.eventWorkdir(params),
           kind: "notification",
           message: { method, params },
         });
@@ -302,12 +304,32 @@ export class RemoteDesktopBridge {
       "initialize", "workspace/list", "thread/list", "thread/listAll", "thread/listArchived", "thread/resume", "user-question/list",
     ].includes(method)) throw new Error("Remote workspace is restoring; retry after it reconnects");
     const revision = this.connection.revision;
-    const result = await this.client.call<T>(method, params, 30_000);
+    const workdir = this.requestWorkdir(params);
+    const result = await this.client.call<T>(method, params, 30_000, workdir);
     if (this.stopped || this.connection.revision !== revision) {
       throw new Error("Remote connection changed while the request was in flight");
     }
     this.recordThreadLocations(result);
+    this.recordQuestionLocations(result, workdir);
     return webHostPayload(result);
+  }
+
+  private requestWorkdir(params: unknown): string {
+    const input = params && typeof params === "object" ? params as Record<string, unknown> : {};
+    if (typeof input.request_id === "string" && this.questionWorkdirs.has(input.request_id)) return this.questionWorkdirs.get(input.request_id)!;
+    const id = input.thread_id ?? input.session_id ?? input.main_thread_id;
+    const thread = typeof id === "string" ? this.threadLocations.get(id) : undefined;
+    if (thread) return this.threadWorkdir(thread);
+    const project = this.projects.find(project => project.id === input.workspace_id || project.path === input.cwd);
+    return project?.path || this.workdir();
+  }
+
+  private recordQuestionLocations(value: unknown, workdir: string): void {
+    if (!value || typeof value !== "object") return;
+    const payload = value as { request?: { request_id?: string }; questions?: Array<{ request_id?: string }> };
+    for (const request of [...(payload.questions ?? []), payload.request]) {
+      if (request?.request_id) this.questionWorkdirs.set(request.request_id, workdir);
+    }
   }
 
   private recordThreadLocations(value: unknown): void {

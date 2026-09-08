@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -48,6 +49,7 @@ func runRelay(args []string) error {
 	fs := flag.NewFlagSet("relay", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	addr := fs.String("addr", "127.0.0.1:8787", "listen address")
+	webRoot := fs.String("web-root", "", "serve the built Wuu Web directory alongside the relay")
 	statePath := fs.String("state", "", "registry file (default <wuu home>/relay-state.json)")
 	pushWebhook := fs.String("push-webhook", "", "POST content-free push events to this URL")
 	if err := fs.Parse(args); err != nil {
@@ -72,7 +74,22 @@ func runRelay(args []string) error {
 	}
 	srv := relay.New(relay.Options{Registry: reg, Pusher: pusher})
 
-	httpServer := &http.Server{Addr: *addr, Handler: srv.Handler()}
+	handler := srv.Handler()
+	if *webRoot != "" {
+		if _, err := os.Stat(filepath.Join(*webRoot, "index.html")); err != nil {
+			return fmt.Errorf("Wuu Web build: %w", err)
+		}
+		mux := http.NewServeMux()
+		mux.Handle("/v1/", handler)
+		mux.Handle("/", http.FileServer(http.Dir(*webRoot)))
+		handler = mux
+	}
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+	httpServer := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -82,9 +99,9 @@ func runRelay(args []string) error {
 		_ = httpServer.Shutdown(shutdownCtx)
 	}()
 
-	fmt.Printf("wuu relay listening on %s (registry: %s)\n", *addr, regPath)
-	fmt.Printf("connect url: ws://%s/v1/connect\n", *addr)
-	err = httpServer.ListenAndServe()
+	fmt.Printf("wuu relay listening on %s (registry: %s)\n", listener.Addr().String(), regPath)
+	fmt.Printf("connect url: ws://%s/v1/connect\n", listener.Addr().String())
+	err = httpServer.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -186,32 +203,39 @@ func runRemoteHost(args []string) error {
 	if err != nil {
 		return err
 	}
-	homeDir := os.Getenv("HOME")
-	cfg, configPath, err := loadOrCreateAppServerConfig(rootDir, homeDir)
-	if err != nil {
-		return err
-	}
-	rt, err := runtime.NewSession(runtime.Options{
-		RootDir:       rootDir,
-		WorkspaceID:   *workspaceID,
-		HomeDir:       homeDir,
-		ConfigPath:    configPath,
-		Config:        cfg,
-		ProviderName:  *providerName,
-		ModelOverride: *modelOverride,
-	})
-	if err != nil {
-		return err
-	}
-	defer func() { _, _ = rt.Cleanup() }()
-
+	var rt *runtime.Session
 	opts := host.Options{
-		Runtime:  rt,
 		Store:    store,
 		RelayURL: strings.TrimSpace(*relayURL),
-		Logf: func(format string, a ...any) {
-			fmt.Fprintf(os.Stderr, format+"\n", a...)
-		},
+		Workdir:  rootDir,
+		Logf:     func(format string, a ...any) { fmt.Fprintf(os.Stderr, format+"\n", a...) },
+	}
+	if address := os.Getenv("WUU_DESKTOP_APP_SERVER_ADDR"); address != "" || os.Getenv("WUU_DESKTOP_APP_SERVER_TOKEN") != "" {
+		opts.AppServer, err = host.DesktopAppServer(address, os.Getenv("WUU_DESKTOP_APP_SERVER_TOKEN"))
+		if err != nil {
+			return err
+		}
+	} else {
+		homeDir := os.Getenv("HOME")
+		cfg, configPath, err := loadOrCreateAppServerConfig(rootDir, homeDir)
+		if err != nil {
+			return err
+		}
+		rt, err = runtime.NewSession(runtime.Options{
+			RootDir:       rootDir,
+			WorkspaceID:   *workspaceID,
+			HomeDir:       homeDir,
+			ConfigPath:    configPath,
+			Config:        cfg,
+			ProviderName:  *providerName,
+			ModelOverride: *modelOverride,
+		})
+		if err != nil {
+			return err
+		}
+		defer func() { _, _ = rt.Cleanup() }()
+
+		opts.Runtime = rt
 	}
 	if *pair {
 		opts.Pairing = &host.PairingConfig{

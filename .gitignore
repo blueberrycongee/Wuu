@@ -20,6 +20,7 @@ desktop/out-dev/
 desktop/out-e2e/
 # Desktop release packaging writes the generated Go core and installer
 # artifacts under tracked icon resources.
+desktop/build/mobile-web/
 desktop/build/bin/
 desktop/build/dev-host/
 desktop/release/

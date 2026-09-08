@@ -60,12 +60,15 @@ export type RemoteHostManagerOptions = {
   env?: NodeJS.ProcessEnv;
   execTimeoutMs?: number;
   killGraceMs?: number;
+  appServerEndpoint?: () => { address: string; token: string } | undefined;
 };
 
 export class RemoteHostManager {
   private child: RemoteChild | null = null;
   private childWorkdir: string | null = null;
   private pairUri: string | null = null;
+  private relayOverride: string | undefined;
+  private pairExpiry: ReturnType<typeof setTimeout> | undefined;
   private hostExitPromise: Promise<void> | null = null;
   private resolveHostExit: (() => void) | null = null;
 
@@ -90,28 +93,39 @@ export class RemoteHostManager {
     if (this.child) {
       const restartWorkdir = this.childWorkdir ?? workdir;
       await this.stopHost();
-      this.startHost(restartWorkdir, { pair: false });
+      this.startHost(restartWorkdir, { pair: false, relay: this.relayOverride });
     }
   }
 
   /** Spawns the long-lived `wuu remote host` daemon. With pair=true a
    *  pairing window opens and the pairing URI is surfaced via onEvent (and
    *  currentPairUri) as soon as the daemon prints it. */
-  startHost(workdir: string, options: { pair?: boolean } = {}): void {
+  startHost(workdir: string, options: { pair?: boolean; relay?: string } = {}): void {
     if (this.child) {
       return;
     }
     const command = this.commandFor(workdir);
     const args = [...command.args, "remote", "host", "--workdir", workdir];
+    this.relayOverride = options.relay;
+    if (options.relay) args.push("--relay", options.relay);
     if (options.pair) {
       args.push("--pair");
     }
+    const endpoint = this.opts.appServerEndpoint?.();
+    if (this.opts.appServerEndpoint && !endpoint) throw new Error("Shared desktop app-server is unavailable");
     const child = this.spawnFn()(command.command, args, {
       cwd: command.cwd,
-      env: this.env(),
+      env: {
+        ...this.env(),
+        ...(endpoint ? {
+          WUU_DESKTOP_APP_SERVER_ADDR: endpoint.address,
+          WUU_DESKTOP_APP_SERVER_TOKEN: endpoint.token,
+        } : {}),
+      },
     });
     this.child = child;
     this.childWorkdir = workdir;
+    clearTimeout(this.pairExpiry);
     this.pairUri = null;
     this.hostExitPromise = new Promise((resolve) => {
       this.resolveHostExit = resolve;
@@ -215,6 +229,7 @@ export class RemoteHostManager {
     const resolveExit = this.resolveHostExit;
     this.child = null;
     this.childWorkdir = null;
+    clearTimeout(this.pairExpiry);
     this.pairUri = null;
     this.hostExitPromise = null;
     this.resolveHostExit = null;
@@ -256,12 +271,18 @@ export class RemoteHostManager {
     // The daemon prints the pairing URI on its own line; the exact scheme
     // prefix keeps this parse stable across surrounding human text.
     if (line.startsWith("wuu://pair?")) {
+      clearTimeout(this.pairExpiry);
+      this.pairExpiry = setTimeout(() => {
+        this.pairUri = null;
+        this.emit({ kind: "host-log", message: "Pairing window expired" });
+      }, 10 * 60 * 1000);
       this.pairUri = line;
       this.emit({ kind: "pair-uri", uri: line });
       return;
     }
     if (line.startsWith("paired: ")) {
       // pair-once (the default) closes the window after the first phone.
+      clearTimeout(this.pairExpiry);
       this.pairUri = null;
       this.emit({ kind: "paired", detail: line.slice("paired: ".length) });
       return;

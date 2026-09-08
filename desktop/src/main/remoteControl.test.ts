@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   RemoteChild,
@@ -297,4 +297,39 @@ describe("RemoteHostManager.removeDevice", () => {
     expect(children).toHaveLength(1);
     expect(manager.isRunning()).toBe(false);
   });
+});
+
+
+describe("phone access pairing lifecycle", () => {
+  it("expires an unused pairing offer", () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, children } = makeManager();
+      manager.startHost("/work", { pair: true });
+      children[0].stdout.push("wuu://pair?v=1&p=offer\n");
+      expect(manager.currentPairUri()).not.toBeNull();
+      vi.advanceTimersByTime(10 * 60 * 1000);
+      expect(manager.currentPairUri()).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("retains the LAN relay when revoking a device", async () => {
+    const { manager, children } = makeManager();
+    const relay = "ws://192.168.1.2:8787/v1/connect";
+    manager.startHost("/work", { pair: true, relay });
+    const pending = manager.removeDevice("/work", "fingerprint");
+    await flush();
+    children[1].exit(0);
+    await pending;
+    expect(children[2].args).toContain(relay);
+    expect(children[2].args).not.toContain("--pair");
+  });
+});
+
+
+it("does not start an independent runtime when the configured desktop service is unavailable", () => {
+  const spawn = vi.fn();
+  const manager = new RemoteHostManager({ spawn, resolveCommand: cwd => ({ command: "wuu", args: [], cwd }), appServerEndpoint: () => undefined });
+  expect(() => manager.startHost("/work")).toThrow("Shared desktop app-server is unavailable");
+  expect(spawn).not.toHaveBeenCalled();
 });

@@ -18,6 +18,9 @@ const electronVitePackage = require.resolve("electron-vite/package.json", { path
 const electronViteManifest = JSON.parse(readFileSync(electronVitePackage, "utf8"));
 const electronVite = join(dirname(electronVitePackage), electronViteManifest.bin["electron-vite"]);
 
+const webBuild = spawnSync(process.execPath, [join(__dirname, "build-web.cjs")], { cwd: desktopRoot, env: process.env, stdio: "inherit" });
+if (webBuild.status !== 0) process.exit(webBuild.status ?? 1);
+
 const devSigning = process.platform === "darwin" ? ensureDevSigningIdentity() : undefined;
 const build = spawnSync(process.execPath, [buildHelper], {
   cwd: desktopRoot,

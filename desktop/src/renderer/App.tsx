@@ -1,4 +1,5 @@
 import { hostSupports } from "./HostCapabilities";
+import { readThreadReadState, writeThreadReadState } from "./ThreadReadState";
 /// <reference path="../shared/jsx-compat.d.ts" />
 
 import {
@@ -391,7 +392,13 @@ export function App(): JSX.Element {
   const { locale, t } = useI18n();
   const [popOutInit] = useState<PopOutInitResult | null>(() => readPopOutInit());
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
-  const [state, setState] = useState<AppState>(initialState);
+  const [state, setState] = useState<AppState>(() => ({
+    ...initialState,
+    lastViewedTurnByThreadID: readThreadReadState(),
+  }));
+  useEffect(() => {
+    writeThreadReadState(state.lastViewedTurnByThreadID);
+  }, [state.lastViewedTurnByThreadID]);
   const [userQuestions, setUserQuestions] = useState<UserQuestionRequest[]>([]);
   const resolvedUserQuestionIDsRef = useRef(new Set<string>());
   const userQuestionApiAvailable =
@@ -2050,6 +2057,7 @@ export function App(): JSX.Element {
       }
       const environmentPanelClickOutside =
         !environmentToggleRef.current?.contains(target) &&
+        !isInsideFloatingMenu(target, "conversation-actions") &&
         !environmentPanelRef.current?.contains(target);
       if (environmentPanelClickOutside) {
         if (environmentPanelMenu) {
@@ -2178,7 +2186,7 @@ export function App(): JSX.Element {
     useState(false);
   const mainConversationDockVisible =
     Boolean(state.initialized) &&
-    !emptyConversation &&
+    (!emptyConversation || compactNavigation) &&
     !splitConversation &&
     !showingManagementCatalog &&
     !rightPanelGlobalized;
@@ -2262,8 +2270,10 @@ export function App(): JSX.Element {
       origin: Element | null,
       interactionVersion: number,
     ): boolean => {
+      // Compact sessions keep the empty and populated composer in the same dock.
+      const visibleTarget = compactNavigation && target === "hero" ? "dock" : target;
       const composer = conversationPaneRef.current?.querySelector<HTMLElement>(
-        `[data-main-conversation-composer="${target}"]`,
+        `[data-main-conversation-composer="${visibleTarget}"]`,
       );
       const textarea = composer?.querySelector<HTMLTextAreaElement>("textarea");
       if (!textarea || textarea.disabled) {
@@ -2279,7 +2289,7 @@ export function App(): JSX.Element {
       }
       return true;
     },
-    [conversationPaneRef],
+    [compactNavigation, conversationPaneRef],
   );
   const requestMainComposerFocus = useCallback(
     (
@@ -3512,7 +3522,7 @@ export function App(): JSX.Element {
           model: input.model,
           effort: input.effort,
           handoff: {
-            request_id: crypto.randomUUID(),
+            request_id: crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join(""),
             revision: 1,
             parent_session_id: source.id,
             intent: input.intent,
@@ -5292,6 +5302,8 @@ export function App(): JSX.Element {
           </div>
           <ConversationTitleActions
             state={state}
+            compactNavigation={compactNavigation}
+            onStartNewThread={startNewThreadWithComposerFocus}
             environmentToggleRef={environmentToggleRef}
             environmentPanelVisible={environmentPanelVisible}
             onToggleEnvironmentPanel={toggleEnvironmentPanel}
@@ -5492,8 +5504,8 @@ export function App(): JSX.Element {
                     : "idle"
                 }
               >
-                {rightPanelGlobalized && activeWorkspaceFileTabID
-                  ? <div />
+                {compactNavigation || (rightPanelGlobalized && activeWorkspaceFileTabID)
+                  ? null
                   : renderComposer("hero")}
               </EmptyConversationHome>
             ) : (

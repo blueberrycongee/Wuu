@@ -639,7 +639,62 @@
   gap: 4px;
 }
 
+.app-shell.compact-navigation .title-block h1 {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+}
+
 .app-shell.compact-navigation .titlebar .sidebar-toggle-button,
+.app-shell.compact-navigation .compact-conversation-actions > .icon-button {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 6px;
+  background-clip: content-box;
+}
+
+.compact-conversation-actions > .icon-button:disabled {
+  color: var(--ink-tertiary);
+  cursor: default;
+}
+
+.conversation-actions-menu {
+  width: min(224px, calc(100vw - 16px));
+  max-height: var(--floating-menu-available-height, 320px);
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--menu-border);
+  border-radius: var(--menu-radius);
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+}
+
+.conversation-actions-menu > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.conversation-actions-menu > button:is(:hover, :focus-visible) {
+  background: var(--menu-hover);
+}
+
+.conversation-actions-menu svg {
+  flex-shrink: 0;
+}
+
 .app-shell.compact-navigation .titlebar .environment-toggle-button,
 .app-shell.compact-navigation .titlebar .side-panel-toggle-button {
   width: 36px;

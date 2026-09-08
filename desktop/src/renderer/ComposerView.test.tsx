@@ -1060,7 +1060,7 @@ describe("Composer send control", () => {
   });
 
 
-  it("returns focus to the textarea after clicking send", async () => {
+  it("returns focus to the textarea within the send click without scrolling", () => {
     const onSend = vi.fn();
     renderComposer({
       prompt: "send this",
@@ -1072,20 +1072,19 @@ describe("Composer send control", () => {
     expect(textarea).not.toBeNull();
     expect(sendButton).not.toBeNull();
 
+    const focus = vi.spyOn(textarea!, "focus");
     act(() => {
       sendButton?.focus();
       sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      expect(document.activeElement).toBe(textarea);
     });
 
-    await act(async () => {
-      await nextAnimationFrame();
-    });
-
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(textarea);
   });
 
-  it("returns focus to the split-pane textarea after clicking send", async () => {
+  it("returns focus to the split-pane textarea within the send click", () => {
     const onSend = vi.fn();
     renderSplitPaneComposer({
       prompt: "continue this branch",
@@ -1100,14 +1099,56 @@ describe("Composer send control", () => {
     act(() => {
       sendButton?.focus();
       sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-
-    await act(async () => {
-      await nextAnimationFrame();
+      expect(document.activeElement).toBe(textarea);
     });
 
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(textarea);
+  });
+
+  it.each(["main", "split"] as const)("keeps %s editing focus through pointer send without a delayed focus steal", async (pane) => {
+    const onSend = vi.fn();
+    if (pane === "main") {
+      renderComposer({ prompt: "send this", onSend });
+    } else {
+      renderSplitPaneComposer({ prompt: "send this", onSend });
+    }
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea")!;
+    const sendButton = container.querySelector<HTMLButtonElement>(".composer-send-button")!;
+    const blur = vi.fn();
+    textarea.addEventListener("blur", blur);
+    textarea.focus();
+    const focus = vi.spyOn(textarea, "focus");
+
+    act(() => {
+      // jsdom does not perform the browser's default pointer focus transfer.
+      const down = new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 });
+      if (sendButton.dispatchEvent(down)) sendButton.focus();
+      sendButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(textarea);
+    expect(blur).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
+
+    const otherInput = document.createElement("input");
+    container.appendChild(otherInput);
+    otherInput.focus();
+    await act(async () => { await nextAnimationFrame(); });
+    expect(document.activeElement).toBe(otherInput);
+  });
+
+  it("leaves pointer focus native when not editing", () => {
+    renderComposer({ prompt: "send this" });
+    const sendButton = container.querySelector<HTMLButtonElement>(".composer-send-button")!;
+    expect(sendButton.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }))).toBe(true);
+  });
+
+  it("leaves pointer focus native when stopping", () => {
+    renderComposer({ prompt: "", running: true });
+    container.querySelector<HTMLTextAreaElement>("textarea")!.focus();
+    const stopButton = container.querySelector<HTMLButtonElement>(".composer-stop-button")!;
+    expect(stopButton.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }))).toBe(true);
   });
 
   it("hides the transient sending status from the composer bar", () => {

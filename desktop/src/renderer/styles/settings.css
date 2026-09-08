@@ -2404,6 +2404,12 @@
 
 /* --- Remote control ------------------------------------------------------------------ */
 
+.settings-remote-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-gap);
+}
+
 .settings-remote-pairing {
   display: flex;
   flex-direction: column;

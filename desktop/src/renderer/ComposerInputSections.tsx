@@ -265,7 +265,11 @@ export function SplitPaneComposer({
     } else {
       onSend();
     }
-    focusComposerSoon();
+    // Keep focus restoration in the user action, without viewport scrolling.
+    const textarea = textareaRef.current;
+    if (textarea && document.activeElement !== textarea) {
+      textarea.focus({ preventScroll: true });
+    }
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): void {
@@ -393,6 +397,11 @@ export function SplitPaneComposer({
                     ) : (
                       <button
                         className="composer-action-button composer-send-button"
+                        onPointerDown={(event) => {
+                          if (event.button === 0 && document.activeElement === textareaRef.current) {
+                            event.preventDefault();
+                          }
+                        }}
                         type="button"
                         onClick={submitComposer}
                         aria-label={sendLabel}

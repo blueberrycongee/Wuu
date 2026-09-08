@@ -32,6 +32,10 @@
   --session-composer-radius: var(--radius-md);
 }
 
+.app-shell.compact-navigation {
+  --session-outer-padding-inline: 12px;
+}
+
 /* Shared outer rhythm + 12-col grid for the session views.
  * Applied via className on .empty-home-inner and .conversation-width
  * so their outer width, horizontal padding, and column tracks stay

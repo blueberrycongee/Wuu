@@ -117,7 +117,7 @@ export function EmptyConversationHome({
   // inheriting the very large row-gap reserved for the hero composer.
   belowTitle?: JSX.Element;
   activity?: WuuMascotActivity;
-  children: JSX.Element;
+  children?: JSX.Element | null;
 }): JSX.Element {
   const primaryMascotActivity = activity === "idle"
     ? "compose"

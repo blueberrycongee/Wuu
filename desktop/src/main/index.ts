@@ -1,3 +1,5 @@
+import { RemoteAppServerBridge } from "./remoteAppServerBridge";
+import { PhoneAccess, phonePairLink } from "./phoneAccess";
 import {
   app,
   BrowserWindow,
@@ -18,7 +20,7 @@ import {
   WebContentsView,
 } from "electron";
 import { readFile, readdir, rm, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   APP_SERVER_PROTOCOL_VERSION,
@@ -526,6 +528,7 @@ const rendererServerEventBatcher = new RendererServerEventBatcher((event) => {
 });
 
 function emitServerEvent(event: ServerEvent): void {
+  remoteAppServerBridge.publish(event);
   // Intercept core→desktop browser/* requests BEFORE broadcastToAll: the
   // renderer auto-rejects every server-request ("unsupported server request"),
   // and server-request routes are single-shot, so letting the renderer race
@@ -592,9 +595,34 @@ function unregisterWindow(windowID: number): void {
 // independent of the per-workdir app-server pool. Events (pairing URI,
 // paired, exit) fan out to every window; the settings panel re-pulls its
 // snapshot on each one.
+const remoteAppServerBridge = new RemoteAppServerBridge(async (workdir, method, params, reply) => {
+  // Keep the desktop's reverse-RPC capabilities: a phone attachment must not
+  // disable browser tools on the shared execution service.
+  if (method === "initialize") params = {
+    protocol_version: APP_SERVER_PROTOCOL_VERSION,
+    client: { name: "wuu-desktop", version: DESKTOP_BUILD_INFO.version },
+    capabilities: { reverse_rpc: { methods: [...BROWSER_REVERSE_RPC_METHODS] } },
+  };
+  if (method === "shutdown") throw new Error("Remote clients cannot shut down the shared execution service");
+  const cwd = resolve(workdir);
+  const state = projectManager.list();
+  const project = state.projects.find(project => resolve(project.path) === cwd && !project.missing);
+  let context: RuntimeContext;
+  if (project) context = { kind: "project", project_id: project.id, cwd: project.path };
+  else if (state.active_context?.kind === "no_project" && resolve(state.active_context.cwd) === cwd) context = state.active_context;
+  else if (cwd.startsWith(resolve(wuuHomePath(), "scratch") + sep)) context = { kind: "no_project", cwd };
+  else throw new Error("Unknown or unavailable remote workspace");
+  return appServerClientPool.requestInContext(context, method, params, reply);
+});
+
 const remoteHostManager = new RemoteHostManager({
+  appServerEndpoint: () => remoteAppServerBridge.currentEndpoint(),
   onEvent: (event) => broadcastToAll("wuu:remote-event", event),
 });
+
+const phoneAccess = new PhoneAccess(remoteHostManager,
+  app.isPackaged ? join(process.resourcesPath, "mobile-web") : resolve(__dirname, "../../build/mobile-web"),
+  () => broadcastToAll("wuu:remote-event", { kind: "host-log", message: "Phone access changed" }), remoteAppServerBridge);
 
 async function remoteControlSnapshot(workdir: string): Promise<RemoteControlSnapshot> {
   let status: RemoteControlStatus | null = null;
@@ -606,9 +634,11 @@ async function remoteControlSnapshot(workdir: string): Promise<RemoteControlSnap
   }
   return {
     status,
-    status_error: statusError || undefined,
+    status_error: statusError || phoneAccess.error() || undefined,
     host_running: remoteHostManager.isRunning(),
-    pair_uri: remoteHostManager.currentPairUri(),
+    host_enabled: phoneAccess.enabled(),
+    pair_uri: phonePairLink(phoneAccess.url(), remoteHostManager.currentPairUri()),
+    web_url: phoneAccess.url(),
   };
 }
 
@@ -1911,27 +1941,26 @@ app.whenReady().then(async () => {
     await remoteHostManager.setRelay(workdir, String(relayUrl));
     return remoteControlSnapshot(workdir);
   });
-  ipcMain.handle("wuu:remote-host-set", async (event, enabled: boolean) => {
+  ipcMain.handle("wuu:remote-host-set", (event, enabled: boolean) => {
     const workdir = runtimeContextForEvent(event).cwd;
-    if (enabled) {
-      remoteHostManager.startHost(workdir);
-    } else {
-      await remoteHostManager.stopHost();
-    }
-    return remoteControlSnapshot(workdir);
+    return phoneAccess.run(async () => {
+      await phoneAccess.setEnabled(workdir, enabled);
+      return remoteControlSnapshot(workdir);
+    });
   });
-  // Opening a pairing window needs a host started with --pair; restart the
-  // running one so the window applies without a manual toggle cycle.
-  ipcMain.handle("wuu:remote-pairing-start", async (event) => {
+  ipcMain.handle("wuu:remote-pairing-start", (event) => {
     const workdir = runtimeContextForEvent(event).cwd;
-    await remoteHostManager.stopHost();
-    remoteHostManager.startHost(workdir, { pair: true });
-    return remoteControlSnapshot(workdir);
+    return phoneAccess.run(async () => {
+      await phoneAccess.openPairing(workdir);
+      return remoteControlSnapshot(workdir);
+    });
   });
   ipcMain.handle("wuu:remote-device-remove", async (event, fingerprintOrPub: string) => {
     const workdir = runtimeContextForEvent(event).cwd;
-    await remoteHostManager.removeDevice(workdir, String(fingerprintOrPub));
-    return remoteControlSnapshot(workdir);
+    return phoneAccess.run(async () => {
+      await remoteHostManager.removeDevice(workdir, String(fingerprintOrPub));
+      return remoteControlSnapshot(workdir);
+    });
   });
   ipcMain.handle("wuu:theme-preference-get", () => getThemePreference());
   ipcMain.on("wuu:onboarding-complete-get-sync", (event) => {
@@ -2371,6 +2400,7 @@ app.whenReady().then(async () => {
   );
   syncNativeThemeSource();
   createWindow();
+  void phoneAccess.run(() => phoneAccess.restore(projectManager.ensureRuntimeContext().cwd));
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -2388,7 +2418,7 @@ app.on("before-quit", () => {
   appServerClientPool.shutdown();
   // SIGTERM goes out synchronously; the daemon's own signal handling shuts
   // the relay connection down cleanly.
-  void remoteHostManager.stopHost();
+  void phoneAccess.shutdown();
 });
 
 app.on("window-all-closed", () => {

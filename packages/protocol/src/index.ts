@@ -2634,7 +2634,10 @@ export type RemoteControlSnapshot = {
   status: RemoteControlStatus | null;
   status_error?: string;
   host_running: boolean;
+  /** Saved access preference, including when startup failed or is still pending. */
+  host_enabled?: boolean;
   pair_uri: string | null;
+  web_url?: string | null;
 };
 
 // Main-process RemoteHostManager events, broadcast to all windows.

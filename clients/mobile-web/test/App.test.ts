@@ -97,3 +97,46 @@ describe("Web connection ownership", () => {
     expect(remote.install).not.toHaveBeenCalled();
   });
 });
+
+it("pairs from a scanned Web link without pasting and removes the offer from history", async () => {
+  await act(async () => root.unmount());
+  const uri = "wuu://pair?test=single-use";
+  window.history.replaceState(null, "", `/#${new URLSearchParams({ pair: uri })}`);
+  const paired = { hostPub: "new-host" };
+  remote.pair.mockResolvedValue(paired);
+  credentials.load.mockResolvedValue({ hostPub: "old-host" });
+  root = createRoot(container);
+  await act(async () => root.render(createElement(App)));
+  expect(remote.pair).toHaveBeenCalledWith(uri, expect.any(String));
+  expect(credentials.save).toHaveBeenCalledWith(paired);
+  expect(remote.connect).toHaveBeenCalled();
+  expect(window.location.hash).toBe("");
+  expect(container.textContent).toContain("Connected workbench");
+});
+
+it("ignores a scanned pairing response after cancellation", async () => {
+  await act(async () => root.unmount());
+  window.history.replaceState(null, "", `/#${new URLSearchParams({ pair: "wuu://pair?test=cancelled" })}`);
+  const pending = deferred<unknown>();
+  remote.pair.mockReturnValue(pending.promise);
+  root = createRoot(container);
+  await act(async () => root.render(createElement(App)));
+  const cancel = container.querySelector<HTMLButtonElement>("button")!;
+  await act(async () => cancel.click());
+  await act(async () => pending.resolve({ host_pub: "cancelled-host" }));
+  expect(credentials.save).not.toHaveBeenCalled();
+  expect(remote.connect).not.toHaveBeenCalled();
+});
+
+it("shows recovery instead of an empty pairing form when a scanned code is unavailable", async () => {
+  await act(async () => root.unmount());
+  window.history.replaceState(null, "", `/#${new URLSearchParams({ pair: "wuu://pair?test=expired" })}`);
+  remote.pair.mockRejectedValue(new Error("pairing rejected: no_such_pairing"));
+  root = createRoot(container);
+  await act(async () => root.render(createElement(App)));
+  expect(container.querySelector("textarea")).toBeNull();
+  expect(container.querySelector("button")).not.toBeNull();
+  expect(container.textContent).not.toContain("no_such_pairing");
+  await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
+  expect(container.querySelector("textarea")).not.toBeNull();
+});

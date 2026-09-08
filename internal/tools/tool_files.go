@@ -43,7 +43,7 @@ func (t *ReadFileTool) Definition() providers.ToolDefinition {
 				},
 				"path": map[string]any{
 					"type":        "string",
-					"description": "File path relative to workspace root, or a supported artifact path.",
+					"description": "File path relative to workspace root, or a supported artifact path. Required unless continuation is supplied.",
 				},
 				"offset": map[string]any{
 					"type":        "integer",
@@ -54,7 +54,8 @@ func (t *ReadFileTool) Definition() providers.ToolDefinition {
 					"description": "Max lines to return. Omit to read the whole file when it fits size limits.",
 				},
 			},
-			"anyOf": []any{map[string]any{"required": []string{"path"}}, map[string]any{"required": []string{"continuation"}}},
+			// Enforce path-or-continuation in ValidateInput: root unions are
+			// rejected by some providers, including Grok's tool schema validator.
 		},
 	}
 }
@@ -68,7 +69,7 @@ func (t *ReadFileTool) ValidateInput(argsJSON string) error {
 		return err
 	}
 	if strings.TrimSpace(args.Path) == "" && strings.TrimSpace(args.Continuation) == "" {
-		return errors.New("read_file requires path")
+		return errors.New("read_file requires path or continuation")
 	}
 	return nil
 }

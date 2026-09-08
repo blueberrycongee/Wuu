@@ -15,8 +15,8 @@ import (
 	"github.com/blueberrycongee/wuu/internal/providers/openai"
 )
 
-// A large nested catalog must not consume the provider's per-tool description
-// budget. Exercise the final toolkit definitions through the actual adapters.
+// Exercise discovery in the first provider request, before the model runs exec.
+// The aggregate description exceeds the former 16 KiB Wuu validation limit.
 func TestCodeModeLargeCatalogCanStreamAcrossProviders(t *testing.T) {
 	for _, tc := range []struct{ name, model, wire string }{
 		{"grok", "grok-4.6", "chat"},
@@ -60,6 +60,35 @@ func TestCodeModeLargeCatalogCanStreamAcrossProviders(t *testing.T) {
 				}
 				if len(req.Tools) == 0 {
 					t.Error("adapter dropped tools")
+				}
+				var execDescription string
+				for _, raw := range req.Tools {
+					var tool struct {
+						Name        string `json:"name"`
+						Description string `json:"description"`
+						Function    *struct {
+							Name        string `json:"name"`
+							Description string `json:"description"`
+						} `json:"function"`
+					}
+					if err := json.Unmarshal(raw, &tool); err != nil {
+						t.Error(err)
+						continue
+					}
+					if tool.Function != nil {
+						tool.Name, tool.Description = tool.Function.Name, tool.Function.Description
+					}
+					if tool.Name == "exec" {
+						execDescription = tool.Description
+					}
+				}
+				if len(execDescription) <= 16*1024 {
+					t.Errorf("exec catalog missing or truncated: %d bytes", len(execDescription))
+				}
+				for _, tool := range nested {
+					if !strings.Contains(execDescription, tool.Name) || !strings.Contains(execDescription, tool.Description) {
+						t.Errorf("request omitted name, description or input schema for %s", tool.Name)
+					}
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
 				switch tc.wire {

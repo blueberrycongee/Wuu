@@ -16,11 +16,13 @@ import (
 	"github.com/blueberrycongee/wuu/internal/tools"
 )
 
-func TestSessionCodeModeDefaultAndOptOut(t *testing.T) {
+func TestSessionCodeModeDefaultAndOptIn(t *testing.T) {
 	for _, tc := range []struct{ name, mode, workspaceID string }{
 		{"desktop-default", "", "code-mode-workspace"},
 		{"path-only-default", "", ""},
+		{"unknown-mode", "unknown", "code-mode-workspace"},
 		{"code-only", "code_only", "code-mode-workspace"},
+		{"path-only-code-only", "code_only", ""},
 		{"mixed", "code", "code-mode-workspace"},
 		{"direct", "direct", "code-mode-workspace"},
 	} {
@@ -54,8 +56,11 @@ func TestSessionCodeModeDefaultAndOptOut(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			enabled := mode == "code" || mode == "code_only"
+			if (session.CodeMode != nil) != enabled {
+				t.Fatalf("mode %q: session runtime does not match configuration", mode)
+			}
 			for _, kit := range []*tools.Toolkit{session.Toolkit, thread.Toolkit} {
-				enabled := mode != "direct"
 				if kit.SupportsTool("exec") != enabled || kit.SupportsTool("wait") != enabled {
 					t.Fatalf("mode %q: code-mode availability does not match configuration", mode)
 				}
@@ -72,13 +77,17 @@ func TestSessionCodeModeDefaultAndOptOut(t *testing.T) {
 				if found != enabled {
 					t.Fatalf("mode %q: model cannot discover configured runtime", mode)
 				}
+				foundRead := false
 				for _, d := range defs {
-					if (mode == "" || mode == "code_only") && d.Name == "read_file" {
-						t.Fatal("code_only exposed leaf tools")
+					if d.Name == "read_file" {
+						foundRead = true
 					}
 				}
+				if foundRead != (mode != "code_only") {
+					t.Fatalf("mode %q: ordinary tool visibility does not match configuration", mode)
+				}
 			}
-			if !realHost || mode == "direct" {
+			if !realHost || !enabled {
 				return
 			}
 			// Exercise the real host through the normal thread toolkit. The adapter

@@ -124,7 +124,13 @@ func (s *deviceSession) newAppConnLocked(profile string) *appConn {
 		running: map[string]wire.RunningTurn{},
 	}
 	go func() {
-		_ = appserver.RunStdioForDevice(ctx, s.h.rt, serverInR, serverOutW, devicePushRegistrar{store: s.h.store, devPub: s.devPub})
+		if s.h.appServer != nil {
+			if err := s.h.appServer(ctx, serverInR, serverOutW); err != nil && ctx.Err() == nil {
+				s.h.logf("remote app-server connection: %v", err)
+			}
+		} else {
+			_ = appserver.RunStdioForDevice(ctx, s.h.rt, serverInR, serverOutW, devicePushRegistrar{store: s.h.store, devPub: s.devPub})
+		}
 		_ = serverOutW.Close()
 	}()
 	go s.pumpAppOutput(app, serverOutR)
@@ -142,6 +148,14 @@ func (s *deviceSession) pumpAppOutput(app *appConn, out io.Reader) {
 		}
 		s.onAppLine(app, line)
 	}
+	s.mu.Lock()
+	if s.app == app && !app.closed {
+		app.close()
+		s.sendSealedLocked(wire.E2EMsg{T: wire.E2EBye, Reason: "app-server connection closed"})
+		s.attached = false
+		s.channel = nil
+	}
+	s.mu.Unlock()
 }
 
 // onAppLine records one outbound app-server line and, when the phone is

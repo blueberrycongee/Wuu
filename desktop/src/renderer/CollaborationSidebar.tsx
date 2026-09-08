@@ -19,7 +19,6 @@ import {
   closestCenter,
   DndContext,
   DragOverlay,
-  PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -39,6 +38,7 @@ import {
   SortableSidebarSection,
   type SidebarSectionHeaderInfo,
 } from "./SortableSidebarSection";
+import { SidebarPointerSensor } from "./SidebarPointerSensor";
 import { useI18n } from "./i18n";
 
 const COLLABORATION_AGENTS_SECTION_ID = "collaboration-agents";
@@ -116,7 +116,7 @@ export function CollaborationSidebar({
   const [draggingSectionID, setDraggingSectionID] = useState<string>();
   const sectionHeaderInfoByIDRef = useRef<Map<string, SidebarSectionHeaderInfo>>(new Map());
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(SidebarPointerSensor, { activationConstraint: { distance: 6 } }),
   );
   const normalizedQuery = searchable(query.trim());
   const visibleAgents = useMemo(

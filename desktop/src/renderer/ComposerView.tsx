@@ -744,7 +744,12 @@ export function Composer({
       onSubmit(promptOverride);
     }
     setSubmissionClearRevision((current) => current + 1);
-    focusComposerSoon();
+    // Restore focus within the user action so software keyboards can open.
+    // An already-focused editor must not blur/refocus or scroll on send.
+    const textarea = textareaRef.current;
+    if (textarea && document.activeElement !== textarea) {
+      textarea.focus({ preventScroll: true });
+    }
   }
 
   function submitHandoffDraft(override?: { provider: string; model: string; effort?: string }): void {
@@ -1402,6 +1407,13 @@ export function Composer({
                   data-wuu-component="composer-send"
                   data-wuu-state={showComposerStopAction ? "stop" : "send"}
                   type="button"
+                  onPointerDown={(event) => {
+                    if (!showComposerStopAction && event.button === 0 && document.activeElement === textareaRef.current) {
+                      // Keep editing focus while the pointer activates Send;
+                      // keyboard navigation and the Stop action stay native.
+                      event.preventDefault();
+                    }
+                  }}
                   onClick={showComposerStopAction ? onInterrupt : submitComposer}
                   aria-label={showComposerStopAction ? t("composer.pause") : voiceActionLabel}
                   title={showComposerStopAction ? t("composer.pauseShortcut") : voiceActionLabel}

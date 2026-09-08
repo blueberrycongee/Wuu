@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -54,7 +55,7 @@ type PairingConfig struct {
 	Timeout time.Duration
 	// Once closes the window after the first successful pairing.
 	Once bool
-	// OnURI receives the pairing URI (rendered as a QR code by UIs).
+	// OnURI receives the pairing URI after the relay confirms registration.
 	OnURI func(uri string)
 	// OnPaired fires after a phone is enrolled.
 	OnPaired func(name string, devicePub []byte)
@@ -62,12 +63,16 @@ type PairingConfig struct {
 
 // Options configures a Host.
 type Options struct {
-	Runtime  *runtime.Session
-	Store    *Store
-	RelayURL string // overrides the store's relay URL
-	HostName string // overrides the store's host name
-	Pairing  *PairingConfig
-	Logf     func(format string, args ...any)
+	// AppServer connects an authenticated device to an existing execution host.
+	// When omitted, standalone hosts create their own app-server connection.
+	AppServer func(context.Context, io.Reader, io.Writer) error
+	Workdir   string
+	Runtime   *runtime.Session
+	Store     *Store
+	RelayURL  string // overrides the store's relay URL
+	HostName  string // overrides the store's host name
+	Pairing   *PairingConfig
+	Logf      func(format string, args ...any)
 
 	// ReconnectMin/ReconnectMax bound the relay redial backoff. Zero values
 	// mean 1s/30s.
@@ -81,13 +86,16 @@ type Options struct {
 }
 
 type pairingState struct {
-	pairing  *secure.Pairing
-	cfg      PairingConfig
-	deadline time.Time
+	pairing   *secure.Pairing
+	cfg       PairingConfig
+	deadline  time.Time
+	announced bool
 }
 
 // Host runs the desktop side of remote control.
 type Host struct {
+	appServer       func(context.Context, io.Reader, io.Writer) error
+	workdir         string
 	rt              *runtime.Session
 	store           *Store
 	relayURL        string
@@ -112,7 +120,7 @@ type Host struct {
 }
 
 func New(opts Options) (*Host, error) {
-	if opts.Runtime == nil {
+	if opts.Runtime == nil && opts.AppServer == nil {
 		return nil, errors.New("remote host requires a runtime")
 	}
 	if opts.Store == nil {
@@ -145,6 +153,8 @@ func New(opts Options) (*Host, error) {
 		pusher = NewExpoPusher()
 	}
 	h := &Host{
+		appServer:       opts.AppServer,
+		workdir:         opts.Workdir,
 		rt:              opts.Runtime,
 		store:           opts.Store,
 		relayURL:        relayURL,
@@ -194,9 +204,6 @@ func (h *Host) StartPairing(cfg PairingConfig) (string, error) {
 	h.pairMu.Unlock()
 
 	uri := pairing.URI(h.relayURL, h.store.Identity().Public())
-	if cfg.OnURI != nil {
-		cfg.OnURI(uri)
-	}
 	// Best effort: if the relay link is already up, open the window now.
 	_ = h.writeRelay(wire.RelayMsg{Type: wire.TypePairOpen, PairingID: pairing.ID})
 	return uri, nil
@@ -360,7 +367,18 @@ func (h *Host) dispatch(msg wire.RelayMsg) {
 		if sess := h.lookupSession(msg.To); sess != nil {
 			sess.detach()
 		}
-	case wire.TypeOK, wire.TypeDevices, "pong":
+	case wire.TypeOK:
+		h.pairMu.Lock()
+		st := h.pairing
+		ready := st != nil && st.pairing.ID == msg.PairingID && !st.announced && time.Now().Before(st.deadline)
+		if ready {
+			st.announced = true
+		}
+		h.pairMu.Unlock()
+		if ready && st.cfg.OnURI != nil {
+			st.cfg.OnURI(st.pairing.URI(h.relayURL, h.store.Identity().Public()))
+		}
+	case wire.TypeDevices, "pong":
 		// Informational.
 	case wire.TypeErr:
 		h.logf("remote host: relay error %s: %s", msg.Code, msg.Msg)
@@ -592,13 +610,15 @@ func (h *Host) writeWS(ctx context.Context, ws *websocket.Conn, msg wire.RelayMs
 }
 
 func (h *Host) hostInfo() wire.HostInfo {
-	return wire.HostInfo{
-		Name:     h.hostName,
-		Version:  version.Info().Version,
-		Workdir:  h.rt.RootDir,
-		Provider: h.rt.ProviderName,
-		Model:    h.rt.Model,
+	info := wire.HostInfo{
+		Name:    h.hostName,
+		Version: version.Info().Version,
+		Workdir: h.workdir,
 	}
+	if h.rt != nil {
+		info.Workdir, info.Provider, info.Model = h.rt.RootDir, h.rt.ProviderName, h.rt.Model
+	}
+	return info
 }
 
 // --- shared websocket helpers ------------------------------------------------
