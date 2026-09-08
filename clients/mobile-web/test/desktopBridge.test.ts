@@ -97,6 +97,22 @@ describe("browser host contract", () => {
     expect(remote.call).toHaveBeenLastCalledWith("workspace/git/diff", { path: "src/main.go", root: "/paired/worktree" }, 30_000);
   });
 
+  it("keeps Electron module inventory unavailable after host updates", async () => {
+    const bridge = await connectBridge();
+    const inventory = [{ id: "desktop-extension", desktop: { url: "wuu-plugin://module" } }];
+    const payload = { extension_inventory: inventory, skills: [{ name: "host-skill" }], epoch: 2 };
+    const received = vi.fn();
+    bridge.api.onServerEvent(received);
+    remote.options.onNotification?.("plugin/inventory/changed", payload);
+    expect(received).toHaveBeenCalledWith(expect.objectContaining({
+      message: { method: "plugin/inventory/changed", params: { ...payload, extension_inventory: [] } },
+    }));
+    remote.call.mockResolvedValueOnce(payload);
+    expect(await bridge.api.removePluginPackage("desktop-extension"))
+      .toEqual({ ...payload, extension_inventory: [] });
+    expect(payload.extension_inventory).toBe(inventory);
+  });
+
   it("does not open executable URL schemes", async () => {
     const host = api();
     await expect(host.openExternal("javascript:alert(1)")).rejects.toThrow("HTTP");

@@ -109,6 +109,15 @@ export class UnavailableHostOperationError extends Error {
   }
 }
 
+// Desktop module URLs cannot be loaded by a browser. Apply the same boundary
+// to initial snapshots, subsequent updates and inventory notifications.
+function webHostPayload<T>(payload: T): T {
+  if (payload && typeof payload === "object" && "extension_inventory" in payload) {
+    return { ...payload, extension_inventory: [] };
+  }
+  return payload;
+}
+
 const unavailableWebMethods = [
   "createBlankProject",
   "chooseProjectFolder",
@@ -234,6 +243,7 @@ export class RemoteDesktopBridge {
       // Do not use mobile_chat: the shared workbench needs the full event
       // stream, including tools, activities, usage, and lifecycle events.
       onNotification: (method, params) => {
+        params = webHostPayload(params);
         this.recordThreadLocations(params);
         this.emitServerEvent({
           workdir: this.eventWorkdir(params),
@@ -297,7 +307,7 @@ export class RemoteDesktopBridge {
       throw new Error("Remote connection changed while the request was in flight");
     }
     this.recordThreadLocations(result);
-    return result;
+    return webHostPayload(result);
   }
 
   private recordThreadLocations(value: unknown): void {
@@ -446,11 +456,8 @@ export class RemoteDesktopBridge {
         const result = await this.call<InitializeResult>("initialize", {
           client: { name: "wuu-web", version: "0.1" },
         });
-        // Renderer extension module URLs are still Electron-owned. Keep the
-        // shared renderer from activating them until a public web loader exists.
         return {
           ...result,
-          extension_inventory: [],
           features: { ...result.features, browser: false },
         };
       },
