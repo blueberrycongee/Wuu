@@ -81,7 +81,7 @@ func runRelay(args []string) error {
 		}
 		mux := http.NewServeMux()
 		mux.Handle("/v1/", handler)
-		mux.Handle("/", http.FileServer(http.Dir(*webRoot)))
+		mux.Handle("/", remoteWebHandler(*webRoot))
 		handler = mux
 	}
 	listener, err := net.Listen("tcp", *addr)
