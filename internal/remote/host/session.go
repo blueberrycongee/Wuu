@@ -29,11 +29,12 @@ type deviceSession struct {
 	h      *Host
 	devPub string
 
-	mu       sync.Mutex
-	channel  *secure.Channel
-	attached bool
-	app      *appConn
-	lastPush time.Time
+	mu            sync.Mutex
+	channel       *secure.Channel
+	attached      bool
+	compressLines bool
+	app           *appConn
+	lastPush      time.Time
 	// lastThreadPush throttles turn-bound push hints per thread so one busy
 	// thread cannot starve nudges for the others. Guarded by mu.
 	lastThreadPush map[string]time.Time
@@ -335,6 +336,7 @@ func (s *deviceSession) handleSealed(body []byte) {
 // handleAttachLocked resumes or rebuilds the app-server connection for a
 // phone that just handshook. Called with s.mu held.
 func (s *deviceSession) handleAttachLocked(msg wire.E2EMsg) {
+	s.compressLines = msg.AcceptLineCompression == "gzip"
 	var replay []spoolEntry
 	resumed := false
 	profile := normalizeClientProfile(msg.ClientProfile)
@@ -384,7 +386,7 @@ func (s *deviceSession) sendSealedLocked(msg wire.E2EMsg) {
 	if s.channel == nil {
 		return
 	}
-	plain, err := wire.EncodeE2E(msg)
+	plain, err := encodeSessionMessage(msg, s.compressLines)
 	if err != nil {
 		return
 	}

@@ -9,6 +9,7 @@
 // caller re-initializes against (not resumed; watch onAttach).
 
 import { b64decode, b64encode } from "./b64";
+import { decodeCompressedLine, supportsLineCompression } from "./compression";
 import { utf8Decode, utf8Encode } from "./bytes";
 import {
   Channel,
@@ -433,7 +434,7 @@ export class RemoteClient {
       if (hostOnline) this.startHandshake();
       this.startLoops();
       for (;;) {
-        this.dispatch(await sock.read());
+        await this.dispatch(await sock.read());
       }
     } catch (err) {
       if (!this.stopped) {
@@ -465,7 +466,7 @@ export class RemoteClient {
     return ok.online === true;
   }
 
-  private dispatch(msg: RelayMsg): void {
+  private async dispatch(msg: RelayMsg): Promise<void> {
     switch (msg.type) {
       case TYPE_FRAME: {
         let payload: Uint8Array;
@@ -477,7 +478,7 @@ export class RemoteClient {
         if (payload.length < 1) return;
         const { kind, body } = splitPayload(payload);
         if (kind === KIND_HANDSHAKE) this.handleHS2(body);
-        else if (kind === KIND_SEALED) this.handleSealed(body);
+        else if (kind === KIND_SEALED) await this.handleSealed(body);
         return;
       }
       case TYPE_PRESENCE:
@@ -547,10 +548,11 @@ export class RemoteClient {
       prev: this.contId,
       recv: this.lastRecv,
       client_profile: this.opts.clientProfile,
+      accept_line_compression: supportsLineCompression() ? "gzip" : undefined,
     });
   }
 
-  private handleSealed(body: Uint8Array): void {
+  private async handleSealed(body: Uint8Array): Promise<void> {
     const channel = this.channel;
     if (!channel) return;
     let plain: Uint8Array;
@@ -572,10 +574,13 @@ export class RemoteClient {
       case E2E_RPC: {
         const seq = msg.seq ?? 0;
         if (!this.attached || seq <= this.lastRecv) return;
+        const line = msg.line_gzip !== undefined ? await decodeCompressedLine(msg.line_gzip) : msg.line;
+        // A foreground wake can replace the channel while decompression yields.
+        if (this.channel !== channel || !this.attached) return;
         this.lastRecv = seq;
         this.ackDirty = true;
-        if (this.proto && msg.line !== undefined && msg.line !== null) {
-          this.proto.feed(msg.line as ProtocolEnvelope);
+        if (this.proto && line !== undefined && line !== null) {
+          this.proto.feed(line as ProtocolEnvelope);
         }
         return;
       }

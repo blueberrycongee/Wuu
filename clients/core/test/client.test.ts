@@ -5,6 +5,7 @@
 // integration test, but in-process.
 
 import { describe, expect, it, vi } from "vitest";
+import { gzipSync } from "node:zlib";
 
 import { b64decode, b64encode } from "../src/b64.js";
 import { bytesEqual, randomBytes, utf8Decode, utf8Encode } from "../src/bytes.js";
@@ -86,6 +87,8 @@ class FakeHost {
   spoolLost = false;
   lastAck = 0;
   attachCount = 0;
+  compressionEnabled = false;
+  compressionAccepted = false;
   suppressPong = false;
   pingCount = 0;
   attachProfiles: Array<string | undefined> = [];
@@ -166,6 +169,7 @@ class FakeHost {
     switch (msg.t) {
       case "attach": {
         this.attachCount++;
+        this.compressionAccepted = msg.accept_line_compression === "gzip";
         this.attachProfiles.push(msg.client_profile);
         const recv = msg.recv ?? 0;
         const gap = this.spool.length > 0 && recv < this.spool[0].seq - 1;
@@ -228,6 +232,10 @@ class FakeHost {
 
   private sendSealed(sock: FakeSocket, msg: E2EMsg): void {
     if (!this.channel) return;
+    if (this.compressionEnabled && this.compressionAccepted && msg.t === "rpc") {
+      const line = JSON.stringify(msg.line);
+      if (line.length > 4096) msg = { ...msg, line: undefined, line_gzip: b64encode(gzipSync(line)) };
+    }
     const sealed = this.channel.seal(utf8Encode(JSON.stringify(msg)));
     sock.serverSend(
       JSON.stringify({
@@ -307,6 +315,41 @@ describe("pair()", () => {
 });
 
 describe("RemoteClient", () => {
+  it("applies compressed snapshots and raw deltas in order across replay", async () => {
+    const fake = new FakeHost();
+    fake.compressionEnabled = true;
+    const snapshot = { text: "workspace history ".repeat(20_000) };
+    fake.handleCall = () => snapshot;
+    const { client, notifications, attaches } = makeClient(fake);
+    client.start();
+    try {
+      expect(await client.call("thread/resume", {})).toEqual(snapshot);
+      expect(fake.compressionAccepted).toBe(true);
+      fake.drop();
+      fake.sendLine({ method: "snapshot", params: snapshot });
+      fake.sendLine({ method: "delta", params: { text: "next" } });
+      await until(() => notifications.length === 2);
+      expect(notifications).toEqual([
+        { method: "snapshot", params: snapshot },
+        { method: "delta", params: { text: "next" } },
+      ]);
+      expect(attaches.at(-1)?.resumed).toBe(true);
+      await until(() => fake.lastAck === 3);
+    } finally { await client.stop(); }
+  });
+
+  it("uses uncompressed lines when the runtime has no streaming decoder", async () => {
+    vi.stubGlobal("DecompressionStream", undefined);
+    const fake = new FakeHost();
+    fake.compressionEnabled = true;
+    const { client } = makeClient(fake);
+    client.start();
+    try {
+      expect(await client.call("initialize", {})).toEqual({ echo: "initialize" });
+      expect(fake.compressionAccepted).toBe(false);
+    } finally { await client.stop(); vi.unstubAllGlobals(); }
+  });
+
   it("attaches and completes an rpc round trip", async () => {
     const fake = new FakeHost();
     fake.handleCall = (env) => ({ protocolVersion: "wuu-app-server/v0.1", method: env.method });
