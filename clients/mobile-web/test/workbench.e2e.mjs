@@ -142,14 +142,14 @@ try {
   await input.fill('Draft that must survive restoration');
   await context.setOffline(true); await page.evaluate(() => window.testSocket.close());
   await page.getByRole('status').filter({ hasText: '连接已断开' }).waitFor();
-  assert.equal(await page.locator('.web-workbench').getAttribute('inert'), '');
+  assert.equal(await input.isEditable(), true, 'offline drafts remain editable');
   releaseCompletion();
   // The host emits this after completing the turn while no browser is attached.
   await until(() => host.output.includes('push agent_done'), 'host completion while detached');
   const desktopSnapshot = await desktopCall('thread/resume', { session_id: threadID });
   assert(JSON.stringify(desktopSnapshot).includes(finalText), 'already-open desktop conversation sees phone completion');
   await context.setOffline(false);
-  await page.locator('.web-workbench:not([inert])').waitFor({ timeout: 45000 });
+  await page.locator('.web-connection-status').waitFor({ state: 'hidden', timeout: 45000 });
   await page.getByText(finalText, { exact: true }).filter({ visible: true }).waitFor();
   assert.equal(await page.evaluate(() => window.testDocumentID), documentID);
   assert.equal(await input.inputValue(), 'Draft that must survive restoration');
@@ -158,7 +158,7 @@ try {
   await page.getByRole('status').filter({ hasText: '连接已断开' }).waitFor();
   const restarted = start(binary, ['remote', 'host', '--workdir', workspace, '--relay', `ws://${webHost}:${relayPort}/v1/connect`], { env });
   await until(() => restarted.output.includes('connected to relay'), 'host restart');
-  await page.locator('.web-workbench:not([inert])').waitFor({ timeout: 45000 });
+  await page.locator('.web-connection-status').waitFor({ state: 'hidden', timeout: 45000 });
   await page.getByText(finalText, { exact: true }).filter({ visible: true }).waitFor();
   assert.equal(await page.getByText(finalText, { exact: true }).filter({ visible: true }).count(), 1);
   assert.equal(await input.inputValue(), 'Draft that must survive restoration');
@@ -174,7 +174,7 @@ try {
   assert.equal(held.thread.turns.at(-1).status, 'in_progress', 'closing remote access must not stop the shared task');
   const reattachedHost = start(binary, ['remote', 'host', '--workdir', workspace, '--relay', `ws://${webHost}:${relayPort}/v1/connect`], { env });
   await until(() => reattachedHost.output.includes('connected to relay'), 'remote transport resumes');
-  await page.locator('.web-workbench:not([inert])').waitFor({ timeout: 45000 });
+  await page.locator('.web-connection-status').waitFor({ state: 'hidden', timeout: 45000 });
   await desktopCall('turn/interrupt', { thread_id: threadID });
   await until(async () => {
     const snapshot = await page.evaluate(threadID => window.wuu.resumeThread(threadID), threadID);
@@ -184,7 +184,8 @@ try {
   assert(changes.files.some(file => file.path === 'src/browser-task.ts' && file.additions === 1));
   const diff = await page.evaluate(() => window.wuu.readGitFileDiff('src/browser-task.ts'));
   assert.equal(diff.modified_text, fileText);
-  await page.getByRole('button', { name: '打开右侧栏', exact: true }).click();
+  await page.locator('.compact-conversation-actions [aria-haspopup="menu"]').tap();
+  await page.getByRole('menuitem', { name: '打开右侧栏', exact: true }).tap();
   await page.getByRole('button', { name: '文件', exact: true }).click();
   await page.getByRole('treeitem', { name: 'src', exact: true }).filter({ visible: true }).click();
   await page.getByRole('treeitem', { name: 'browser-task.ts', exact: true }).filter({ visible: true }).click();
@@ -200,7 +201,23 @@ try {
       return rect && rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= width && rect.y + rect.height <= height;
     }, `composer reachable at ${width}x${height}`);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+    await page.locator('.titlebar .sidebar-toggle-button').filter({ visible: true }).tap();
+    const closeDrawer = page.locator('.compact-session-switcher-close');
+    await closeDrawer.waitFor({ state: 'visible' });
+    for (const target of await page.locator('.sidebar :is(button.sidebar-mode-option, .sidebar-notifications-button)').all()) {
+      await target.tap({ trial: true });
+      const box = await target.boundingBox();
+      assert(box && box.width >= 44 && box.height >= 44, `sidebar touch target at ${width}x${height}: ${await target.getAttribute('class')} ${JSON.stringify(box)}`);
+      assert(box.x >= 0 && box.x + box.width <= width && box.y + box.height <= height, 'sidebar controls fit the phone');
+    }
+    await closeDrawer.tap();
+    await closeDrawer.waitFor({ state: 'hidden' });
   }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await until(async () => {
+    const brand = await page.locator('.sidebar-brand').boundingBox();
+    return brand && brand.x >= 0 && brand.y < 30;
+  }, 'web sidebar starts near the top without native window chrome');
   assert.deepEqual(pageErrors, []);
   console.log('PASS: shared desktop/phone execution, bidirectional live messages, pairing, host tool execution, offline completion, snapshot and draft restoration, host restart, Git review, file navigation and phone viewports');
 } catch (error) {

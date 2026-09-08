@@ -772,6 +772,18 @@
   -webkit-app-region: drag;
 }
 
+/* Browsers have no native titlebar or window drag strip. */
+:root[data-host-kind="web"] .traffic-spacer {
+  height: 12px;
+}
+
+/* Keep the close target in the exposed backdrop rather than reserving a
+ * titlebar row or covering the brand controls in a short phone viewport. */
+:root[data-host-kind="web"] .app-shell.compact-navigation.sidebar-drawer-open .compact-session-switcher-close {
+  left: calc(var(--compact-session-switcher-width) + 4px);
+  background: var(--paper);
+}
+
 .sidebar-brand {
   display: flex;
   align-items: flex-end;

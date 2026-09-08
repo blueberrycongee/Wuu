@@ -514,6 +514,39 @@
   display: none;
 }
 
+@media (pointer: coarse) {
+  /* The desktop mode labels are too close together for a finger. Give them
+   * their own row so both modes and notifications fit even in a 320px drawer. */
+  .sidebar-brand {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    align-items: center;
+  }
+
+  .sidebar-mode-switch {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-right: 0;
+    transform: none;
+  }
+
+  .sidebar-mode-option {
+    min-height: 44px;
+    padding-inline: 8px;
+  }
+
+  .sidebar-notifications-button {
+    grid-column: 2;
+    grid-row: 1;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    transform: none;
+  }
+}
+
 @media (pointer: coarse) and (max-width: 760px) {
   .app-shell.compact-navigation .titlebar :is(
     .sidebar-toggle-button, .environment-toggle-button, .side-panel-toggle-button
