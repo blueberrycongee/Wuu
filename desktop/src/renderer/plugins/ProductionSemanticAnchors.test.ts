@@ -39,7 +39,7 @@ const SEMANTIC_ANCHOR_OWNERS = Object.freeze({
   "settings-navigation": "SettingsView.tsx",
   "settings-navigation-item": "SettingsView.tsx",
   "settings-page": "SettingsView.tsx",
-  "settings-row": "SettingsView.tsx",
+  "settings-row": "SettingsRow.tsx",
   "settings-section": "SettingsView.tsx",
   "settings-sidebar": "SettingsView.tsx",
   "settings-shell": "SettingsView.tsx",
