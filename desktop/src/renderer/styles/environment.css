@@ -101,7 +101,6 @@
     0 12px 32px var(--env-shadow-dark-008),
     0 1px 4px var(--env-shadow-dark-006);
   padding: 12px;
-  backdrop-filter: blur(18px);
   transform-origin: top right;
   will-change: opacity, transform;
   animation: environment-panel-enter var(--environment-panel-motion-duration) var(--environment-panel-motion-easing) both;
@@ -307,7 +306,6 @@
   box-shadow:
     0 8px 24px var(--env-shadow-dark-007),
     0 1px 3px var(--env-shadow-dark-005);
-  backdrop-filter: blur(18px);
 }
 
 .query-history-popover .query-history-list {
@@ -356,7 +354,6 @@
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
   padding: 8px;
-  backdrop-filter: blur(18px);
   transform-origin: top right;
   --menu-enter-x: 6px;
   animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;
@@ -1083,8 +1080,6 @@
   justify-items: end;
   padding: 0;
   background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .sidebar-name-dialog {

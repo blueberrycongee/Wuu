@@ -17,25 +17,16 @@
   --shell-todo-card-muted: #74797e;
   /* Shared floating-surface recipe for conversation controls. The composer
      queue drawer and the jump/plan pills keep their own geometry, but resolve
-     their material from these public-token-backed values. Backdrop blur does
-     the actual adaptive color sampling; these tokens define the silhouette.
-     The bg/border/hover/focus values are shared fills; -highlight is the
-     pills-only top specular sheen, applied via a ::before gradient that
-     fades by 35% of a 34px capsule (≈12px rim). It must stay pill-only:
-     painted over a taller surface (the drawer) the percentage gradient
-     stops reading as an edge and becomes a bright band. Dark-mode values
-     live in theme.css and follow rim-defined optics: silhouette from a
-     text-colored low-alpha edge + deeper shadows, not from drop shadows
-     alone (black shadows barely register on dark paper). */
-  --conversation-floating-surface-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 72%, transparent);
-  --conversation-floating-surface-border: color-mix(in srgb, var(--wuu-color-border-subtle, #d0d7de) 78%, transparent);
-  --conversation-floating-surface-highlight: color-mix(in srgb, var(--wuu-color-canvas, #fff) 42%, transparent);
-  --conversation-floating-surface-hover-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #fff) 88%, transparent);
-  --conversation-floating-surface-hover-border: color-mix(in srgb, var(--wuu-color-border-strong, #afb8c1) 72%, transparent);
+     their material from these public-token-backed values. The fill is opaque
+     so scrolling conversation content does not sample through the control.
+     Dark-mode values live in theme.css. */
+  --conversation-floating-surface-bg: var(--wuu-color-surface-elevated, var(--paper));
+  --conversation-floating-surface-border: var(--wuu-color-border-subtle, var(--hairline));
+  --conversation-floating-surface-hover-bg: var(--wuu-color-surface, var(--surface-1));
+  --conversation-floating-surface-hover-border: var(--wuu-color-border-strong, var(--hairline-strong));
   --conversation-floating-surface-focus: var(--focus-ring);
   --shell-jump-pill-bg: var(--conversation-floating-surface-bg);
   --shell-jump-pill-border: var(--conversation-floating-surface-border);
-  --shell-jump-pill-top-highlight: var(--conversation-floating-surface-highlight);
   --shell-jump-pill-shadow: rgba(20, 24, 28, 0.12);
   --shell-jump-pill-contact-shadow: rgba(20, 24, 28, 0.06);
   --shell-jump-pill-hover-bg: var(--conversation-floating-surface-hover-bg);
@@ -860,7 +851,6 @@
     0 2px 10px var(--shell-run-debug-panel-shadow-2);
   color: var(--ink);
   text-align: left;
-  backdrop-filter: blur(18px);
   transform-origin: top right;
   animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;
 }
@@ -1161,19 +1151,9 @@
   border-radius: var(--radius-pill);
   border: 1px solid var(--shell-jump-pill-border);
   background: var(--shell-jump-pill-bg);
-  /*
-   * iOS-style liquid glass: the backdrop-filter blur is the adaptive layer
-   * that samples whatever content sits behind the pill. The hairline +
-   * drop shadow define silhouette + elevation; the ::before overlay
-   * applies a thin top specular highlight. There is no inset shadow stack
-   * here — a 1px top + 1px bottom inset ring reads as a duplicate edge
-   * instead of refraction, which was the prior double-border artifact.
-   */
   box-shadow:
     0 1px 2px var(--shell-jump-pill-contact-shadow),
     0 8px 24px var(--shell-jump-pill-shadow);
-  backdrop-filter: blur(22px) saturate(1.6);
-  -webkit-backdrop-filter: blur(22px) saturate(1.6);
 
   color: var(--ink);
   font-size: 12px;
@@ -1188,29 +1168,6 @@
     border-color var(--motion-fast) var(--ease-out),
     border-radius var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out);
-}
-
-/*
- * Top specular highlight. Sits between the pill's own background and its
- * text (z-index: -1 + isolation: isolate on the parent), so the gradient
- * blends only with the pill surface — not with conversation content
- * below the pill. The gradient fades to transparent by ~35% of the pill
- * height so only the very top edge gets a bright band, matching iOS.
- */
-.jump-to-latest-pill::before,
-.jump-to-latest-progress::before,
-.conversation-status-capsule::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    180deg,
-    var(--shell-jump-pill-top-highlight) 0%,
-    transparent 35%
-  );
-  pointer-events: none;
-  z-index: -1;
 }
 
 .jump-to-latest-pill {
@@ -1494,12 +1451,7 @@ button.conversation-status-capsule,
 .jump-to-latest-progress-step.in_progress {
   background: var(--shell-jump-progress-step-in-progress-bg);
   color: var(--ink);
-  /* The in_progress step is intentionally a SOLID darker badge that sits
-     inside the outer glass pill — not its own glass layer. The outer
-     pill carries the liquid-glass language; giving the inner step its
-     own border + backdrop-filter + shadow stack makes it read as a
-     second overlapping capsule instead of a child badge. Keep this
-     rule plain: solid bg + ink, no glass surface. */
+  /* Keep the in_progress step a solid darker badge inside the outer pill. */
 }
 
 @keyframes jump-to-latest-enter {

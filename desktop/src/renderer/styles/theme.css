@@ -442,18 +442,10 @@
   --shell-todo-card-ink: var(--wuu-color-text, var(--ink-strong));
   --shell-todo-card-soft: var(--wuu-color-text, var(--ink));
   --shell-todo-card-muted: var(--wuu-color-text-muted, var(--ink-tertiary));
-  /* Dark floating glass is rim-defined, not shadow-defined: on dark paper
-     a black drop shadow barely registers, so the silhouette comes from a
-     low-alpha edge sampled from the (light) text color, plus a deeper
-     shadow. Text-color ingredients keep the recipe palette-adaptive for
-     extension themes — any dark-based theme's text color is by definition
-     its high-contrast light color. The specular highlight drops to 7% —
-     it is a thin capsule rim (35% of 34px ≈ 12px), not a surface wash. */
-  --conversation-floating-surface-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #282c32) 72%, transparent);
-  --conversation-floating-surface-border: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 14%, transparent);
-  --conversation-floating-surface-highlight: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 7%, transparent);
-  --conversation-floating-surface-hover-bg: color-mix(in srgb, var(--wuu-color-surface-elevated, #32363c) 88%, transparent);
-  --conversation-floating-surface-hover-border: color-mix(in srgb, var(--wuu-color-text, #e4e8eb) 22%, transparent);
+  --conversation-floating-surface-bg: var(--wuu-color-surface-elevated, var(--surface-3));
+  --conversation-floating-surface-border: var(--wuu-color-border-subtle, var(--hairline));
+  --conversation-floating-surface-hover-bg: var(--wuu-color-surface, var(--surface-2));
+  --conversation-floating-surface-hover-border: var(--wuu-color-border-strong, var(--hairline-strong));
   --conversation-floating-surface-focus: var(--focus-ring);
   --shell-jump-pill-shadow: rgba(0, 0, 0, 0.5);
   --shell-jump-pill-contact-shadow: rgba(0, 0, 0, 0.35);

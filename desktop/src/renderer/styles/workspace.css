@@ -1034,14 +1034,13 @@ html.resizing-workspace-file-split * {
   padding: 0 12px 0 9px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  background: var(--surface-1);
   color: var(--ink);
   box-shadow: var(--shadow-pop);
   font-size: var(--font-ui);
   font-weight: var(--weight-semibold);
   pointer-events: none;
   transform: translate(-220%, -220%);
-  backdrop-filter: blur(16px);
 }
 
 .workspace-file-tree-drag-preview > span:nth-child(2) {
@@ -1070,10 +1069,9 @@ html.resizing-workspace-file-split * {
   width: 30px;
   height: 42px;
   border: 1px solid var(--hairline);
-  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  background: var(--surface-1);
   box-shadow: var(--shadow-pop);
   transform: translateY(-50%);
-  backdrop-filter: blur(12px);
 }
 
 .workspace-file-tree-reveal.left {
@@ -1133,23 +1131,11 @@ html.resizing-workspace-file-split * {
   margin: 0 auto -6px;
   overflow: hidden;
   color: var(--text-primary);
-  background:
-    radial-gradient(
-      circle at 24% 0%,
-      color-mix(in srgb, var(--paper) 42%, transparent) 0 16%,
-      transparent 48%
-    ),
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--paper) 34%, transparent),
-      color-mix(in srgb, var(--surface-2) 16%, transparent)
-    );
+  background: var(--conversation-floating-surface-bg);
   border: 1px solid var(--hairline);
   border-bottom: 0;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   box-shadow: 0 -6px 24px var(--workspace-document-drawer-shadow);
-  -webkit-backdrop-filter: blur(24px) saturate(1.18);
-  backdrop-filter: blur(24px) saturate(1.18);
   pointer-events: auto;
   transition:
     max-height 180ms var(--ease-out),
@@ -3323,8 +3309,6 @@ html.resizing-workspace-terminal-split * {
   overflow: hidden;
   padding: 32px;
   background: var(--modal-backdrop-bg);
-  backdrop-filter: blur(8px) saturate(1.08);
-  -webkit-backdrop-filter: blur(8px) saturate(1.08);
 }
 
 .skill-preview-dialog {
@@ -4599,7 +4583,6 @@ html.resizing-workspace-terminal-split * {
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
   padding: 6px;
-  backdrop-filter: blur(16px);
   transform-origin: bottom right;
   --menu-enter-y: 4px;
   animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;
@@ -5088,6 +5071,12 @@ html.resizing-workspace-terminal-split * {
   transition-delay: 0ms;
 }
 
+@media (pointer: coarse) {
+  :root[data-host-kind="web"] .scroll-region {
+    overscroll-behavior: contain;
+  }
+}
+
 .conversation-pane.environment-panel-reserved .scroll-region {
   transition-delay: var(--environment-flow-motion-delay);
 }
@@ -5245,6 +5234,12 @@ html.resizing-workspace-terminal-split * {
   overflow-y: auto;
   overscroll-behavior: none;
   scrollbar-gutter: stable;
+}
+
+@media (pointer: coarse) {
+  :root[data-host-kind="web"] .conversation-split-body {
+    overscroll-behavior: contain;
+  }
 }
 
 .conversation-split-width {

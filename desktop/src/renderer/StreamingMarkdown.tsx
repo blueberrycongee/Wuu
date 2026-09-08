@@ -168,7 +168,7 @@ export function StreamingMarkdown({
   // into a V-shape jitter. Visibility is controlled by the parent
   // data-cursor-state attribute (see turns.css) instead.
   const showCursor = true;
-  // Live tails wrap each freshly arrived word in a one-shot blur-fade span
+  // Live tails wrap each freshly arrived word in a one-shot fade span
   // (`.stream-word` in turns.css). React reconciliation animates only newly
   // mounted spans, so the store's variable-size 100ms batches read as one
   // continuous reveal. Stable blocks and settled text stay span-free; reduced

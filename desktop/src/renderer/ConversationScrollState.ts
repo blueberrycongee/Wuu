@@ -94,7 +94,7 @@ export function useConversationScrollState({
   secondaryTurns,
   emptyConversation,
   initialized,
-  nativeScrollBounce = window.wuu?.platform === "darwin",
+  nativeScrollBounce = window.wuu?.platform === "darwin" && window.wuu?.hostKind !== "web",
 }: {
   activeThreadID?: string;
   activePane: ConversationPaneID;
@@ -877,7 +877,7 @@ export function useConversationScrollState({
     const handleTouchEnd = (): void => {
       touchLastYRef.current = undefined;
     };
-    node.addEventListener("wheel", handleWheel, { passive: false });
+    node.addEventListener("wheel", handleWheel, { passive: true });
     node.addEventListener("scrollend", handleNativeScrollEnd);
     node.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("pointerup", handlePointerEnd);

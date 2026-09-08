@@ -266,8 +266,6 @@
   box-shadow:
     inset -1px 0 0 var(--sidebar-material-inner-edge),
     var(--sidebar-edge-shadow);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .sidebar::before,
@@ -472,8 +470,8 @@
   transform: translate3d(0, 0, 0) scale(1);
 }
 
-/* Pinning keeps the floating rail in place while its white preview material
- * dissolves into the docked sidebar's native liquid-glass material. Every
+/* Pinning keeps the floating rail in place while its preview material
+ * dissolves into the docked sidebar surface. Every
  * target value matches the base rail above, so removing the docking class at
  * the end of the grid motion cannot produce a final color or shadow snap. */
 .sidebar-drawer-docking :is(.sidebar, .settings-sidebar) {
@@ -675,8 +673,6 @@
 
 .resizing-sidebar :is(.sidebar, .settings-sidebar) {
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 .app-shell.resizing-sidebar.right-panel-open .workspace-right-panel {
@@ -1855,7 +1851,6 @@
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
   padding: 6px;
-  backdrop-filter: blur(16px);
   transform-origin: top left;
   --menu-enter-x: 0;
   --menu-enter-y: 0;
@@ -2852,7 +2847,6 @@
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
   padding: 6px;
-  backdrop-filter: blur(16px);
   animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;
 }
 

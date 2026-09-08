@@ -760,15 +760,8 @@
   border: 1px solid var(--conversation-floating-surface-border);
   border-bottom: 0;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  /* Uniform glass fill — no specular highlight layer here. The pill sheen
-     is an edge treatment measured against a 34px capsule; painted over this
-     tall drawer the percentage gradient becomes a bright band across the
-     top (most visible in dark). The drawer's silhouette comes from the top
-     border + upward shadow; the backdrop shows through evenly. */
   background: var(--conversation-floating-surface-bg);
   box-shadow: 0 -6px 24px var(--composer-accessory-shadow);
-  -webkit-backdrop-filter: blur(24px) saturate(1.18);
-  backdrop-filter: blur(24px) saturate(1.18);
   color: var(--ink);
   font-size: 13.5px;
   line-height: 1.5;
@@ -1904,7 +1897,6 @@
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
   padding: 6px;
-  backdrop-filter: blur(16px);
   transform-origin: bottom left;
   --menu-enter-y: 4px;
   animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;
@@ -1925,7 +1917,6 @@
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
   padding: 6px;
-  backdrop-filter: blur(16px);
   transform-origin: bottom left;
   --menu-enter-y: 4px;
   animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;
@@ -2064,7 +2055,6 @@
 .access-menu {
   gap: 2px;
   background: var(--paper);
-  backdrop-filter: none;
   padding: 5px;
   width: 176px;
 }
@@ -2266,8 +2256,8 @@
 /* Right-click edit menu for the composer textarea (ComposerContextMenu
    in ComposerContextMenu.tsx). Renders into document.body via
    createPortal so position: fixed is anchored to the viewport even
-   though composer-shell has backdrop-filter and transform — both of
-   which would otherwise break fixed positioning. Class is namespaced
+   though composer-shell has transform, which would otherwise break
+   fixed positioning. Class is namespaced
    -textarea- because .composer-context-menu is already the runtime
    access/branch menu shell above.
 
@@ -2288,7 +2278,6 @@
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
   padding: 4px;
-  backdrop-filter: blur(16px);
   animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;
 }
 

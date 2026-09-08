@@ -92,8 +92,7 @@
    *   inputs, buttons, strong in-flow rules, hover/emphasis edges.
    *
    * Exceptions kept outside the ladder: focus-ring, control-boundary
-   * and semantic colors are state colors; ink/paper rings and the
-   * translucent glass rims over blurred content are contrast keylines.
+   * and semantic colors are state colors; ink/paper rings are contrast keylines.
    * ------------------------------------------------------------------ */
   --hairline: var(--wuu-color-border-subtle, var(--gray-250));
   --hairline-strong: var(--wuu-color-border-strong, var(--gray-350));
@@ -627,8 +626,6 @@
 
 .app-modal-backdrop {
   background: var(--modal-backdrop-bg);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
 }
 
 html,
@@ -756,8 +753,6 @@ code,
 
 .window-resizing .sidebar {
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 button,

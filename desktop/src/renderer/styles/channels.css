@@ -1423,8 +1423,6 @@
   border-radius: var(--menu-radius);
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   transform-origin: bottom left;
   --menu-enter-y: 4px;
   animation: menu-enter var(--menu-enter-duration) var(--menu-enter-easing) both;

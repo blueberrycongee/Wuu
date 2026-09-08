@@ -495,7 +495,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent;
   font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
 #root{position:relative;width:100%;height:100%;-webkit-app-region:drag}
 #ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  background:rgba(28,28,32,.72);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  background:rgba(28,28,32,.92);
   border-radius:12px;transition:opacity .25s ease;color:rgba(255,255,255,.55)}
 #ph.gone{opacity:0;pointer-events:none}
 #strip{position:absolute;top:0;left:0;right:0;height:26px;display:flex;align-items:center;

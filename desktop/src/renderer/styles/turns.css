@@ -1812,36 +1812,15 @@
 }
 
 /* Streamed word arrival. Each newly mounted word span plays a one-shot
-   blur-fade; React reconciliation keeps already-visible words inert, so the
-   cue lands only on fresh text. Blur (not bare opacity) is what masks the
-   store's variable-size 100ms batches — a burst of forty words and a trickle
-   of two both read as the same continuous reveal instead of chunk pops. The
-   duration rides the motion ladder, so prefers-reduced-motion zeroes it at
-   the token layer with no per-component gate. */
+   fade; React reconciliation keeps already-visible words inert, so the cue
+   lands only on fresh text. Opacity alone is cheap enough to run while the
+   conversation is also scrolling. The duration rides the motion ladder, so
+   prefers-reduced-motion zeroes it at the token layer. */
 .streaming-markdown .stream-word {
   animation: stream-word-in var(--motion-base) var(--ease-out) backwards;
 }
 
 @keyframes stream-word-in {
-  from {
-    opacity: 0;
-    filter: blur(3px);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-  }
-}
-
-/* Keep the arrival cue on phones without blurring every new word while the
-   conversation is also scrolling. Duration still follows reduced-motion tokens. */
-@media (pointer: coarse) {
-  :root[data-host-kind="web"] .app-shell.compact-navigation .streaming-markdown .stream-word {
-    animation-name: stream-word-fade-in;
-  }
-}
-
-@keyframes stream-word-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
@@ -2474,12 +2453,10 @@
 @keyframes process-text-rise-in {
   0% {
     opacity: 0;
-    filter: blur(2px);
     transform: translateY(5px);
   }
   100% {
     opacity: 1;
-    filter: blur(0);
     transform: translateY(0);
   }
 }
@@ -2487,12 +2464,10 @@
 @keyframes process-text-rise-out {
   0% {
     opacity: 0.72;
-    filter: blur(0);
     transform: translateY(0);
   }
   100% {
     opacity: 0;
-    filter: blur(1px);
     transform: translateY(-4px);
   }
 }
@@ -2516,7 +2491,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  will-change: opacity, transform, filter;
+  will-change: opacity, transform;
 }
 
 .process-text-motion-current.process-text-motion-enter {
@@ -2811,7 +2786,6 @@
   .process-text-motion-current,
   .process-text-motion-exit {
     animation: none;
-    filter: none;
     transform: none;
     will-change: auto;
   }
@@ -3965,9 +3939,9 @@ pre {
 
 /*
  * The launch signature shows the same round wuu blobatar as the empty home
- * greeting, centered inside one transparent app-icon surface. The glass owns
- * the depth; the mascot is the color mark itself, and the old monochrome
- * carving plus startup sweep are gone.
+ * greeting, centered inside one opaque app-icon surface. The mascot is the
+ * color mark itself, and the old monochrome carving plus startup sweep are
+ * gone.
  */
 .wuu-launch {
   display: grid;
@@ -3985,35 +3959,9 @@ pre {
   overflow: hidden;
   border: 1px solid var(--hairline);
   border-radius: 31%;
-  background:
-    radial-gradient(
-      circle at 28% 18%,
-      color-mix(in srgb, var(--paper) 82%, transparent) 0 18%,
-      transparent 52%
-    ),
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--paper) 64%, transparent),
-      color-mix(in srgb, var(--surface-2) 42%, transparent)
-    );
-  -webkit-backdrop-filter: blur(24px) saturate(1.18);
-  backdrop-filter: blur(24px) saturate(1.18);
+  background: var(--surface-2);
   box-shadow: 0 24px 64px var(--shadow-color-medium);
   animation: wuu-launch-glass-enter 620ms var(--ease-out) both;
-}
-
-.wuu-launch-glass::before {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--paper) 38%, transparent),
-    transparent 42%
-  );
-  content: "";
-  pointer-events: none;
 }
 
 .wuu-launch-mascot {
@@ -4743,8 +4691,6 @@ pre {
   place-items: center;
   padding: 28px;
   background: var(--artifact-preview-overlay-bg);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 
 .artifact-preview-shell {

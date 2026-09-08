@@ -26,10 +26,9 @@
 /* Same column vocabulary as .app-shell: `--sidebar-width` is the live grid
  * column (0 when collapsed), `--sidebar-open-width` remembers the open width
  * for the hover drawer and the fixed-width rail content. The shell background
- * must stay transparent — the sidebar's liquid-glass look is the translucent
- * `--sidebar-material-fill` compositing over the window's native vibrancy,
- * and any opaque layer behind the rail kills it. The content column paints
- * its own surface via .settings-main. */
+ * must stay transparent so the sidebar material can paint its own fill.
+ * Any opaque layer behind the rail kills that surface. The content column
+ * paints its own surface via .settings-main. */
 .settings-shell {
   display: grid;
   position: relative;
@@ -48,12 +47,12 @@
   transition: grid-template-columns var(--sidebar-motion-duration) var(--sidebar-motion-ease);
 }
 
-/* Glass surface (border, background, box-shadow, backdrop-filter) and the
- * ::before gradient overlay are inherited from the shared `.sidebar,
- * .settings-sidebar` selector list in sidebar.css; the collapse fade/slide
- * and fixed-width clipping come from the shared `.sidebar-content` layer
- * inside (same structure as the main rail). This rule only mirrors the main
- * aside's material transition so collapse border fades match. */
+/* Surface (border, background, box-shadow) and the ::before overlay are
+ * inherited from the shared `.sidebar, .settings-sidebar` selector list in
+ * sidebar.css; the collapse fade/slide and fixed-width clipping come from
+ * the shared `.sidebar-content` layer inside (same structure as the main
+ * rail). This rule only mirrors the main aside's material transition so
+ * collapse border fades match. */
 .settings-sidebar {
   transition:
     border-color var(--sidebar-motion-duration) var(--sidebar-motion-ease),
