@@ -1,6 +1,7 @@
 import { hostSupports } from "./HostCapabilities";
 import { isTouchWebShell } from "./ComposerFocus";
 import { useSidebarTouchGesture } from "./SidebarTouchGesture";
+import { CompactConversationActions } from "./CompactConversationActions";
 import { readThreadReadState, writeThreadReadState } from "./ThreadReadState";
 /// <reference path="../shared/jsx-compat.d.ts" />
 
@@ -2209,6 +2210,11 @@ export function App(): JSX.Element {
     !showingManagementCatalog &&
     !rightPanelGlobalized;
 
+  // Relocate the shared actions only when the main composer can host them.
+  // Split views, management pages and wide layouts retain their titlebar.
+  const composerNavigation = compactNavigation && isTouchWebShell() &&
+    mainConversationDockVisible && appMode === "harness" && !poppedOutMode;
+
   useEffect(() => {
     // Diff tabs are scoped to the thread whose turn they came from: they
     // don't make sense to keep browsing once we've navigated away from
@@ -2938,6 +2944,18 @@ export function App(): JSX.Element {
     return (
       <>
       <Composer
+        leadingActions={composerNavigation && variant === "dock" ? (
+          <CompactConversationActions
+            navigation={{ title: activeTitle, onOpenSidebar: openSidebarDrawerNow }}
+            canStartNewThread={Boolean(state.activeContext)}
+            onStartNewThread={startNewThreadWithComposerFocus}
+            environmentToggleRef={environmentToggleRef}
+            environmentPanelVisible={environmentPanelVisible}
+            onToggleEnvironmentPanel={toggleEnvironmentPanel}
+            rightPanelOpen={rightPanelOpen}
+            onToggleRightPanel={toggleRightPanel}
+          />
+        ) : undefined}
         topAccessory={pendingUserQuestionOffer ? (
           <UserQuestionCard
             request={pendingUserQuestionOffer}
@@ -5216,6 +5234,7 @@ export function App(): JSX.Element {
       <main
         inert={rightPanelOpen && rightPanelGlobalized}
         data-wuu-component="conversation-pane"
+        data-composer-navigation={composerNavigation || undefined}
         className={`conversation-pane${environmentPanelVisible ? " environment-panel-visible" : ""}${
           environmentPanelReserved ? " environment-panel-reserved" : ""
         }${
@@ -5285,6 +5304,7 @@ export function App(): JSX.Element {
           </>
         ) : (
           <>
+        {composerNavigation ? <div aria-hidden="true" /> : (
         <header className="titlebar" data-wuu-component="conversation-titlebar">
           <div className="title-block">
             {sidebarVisible ? (
@@ -5339,6 +5359,7 @@ export function App(): JSX.Element {
           />
         </header>
 
+        )}
         {/* Unmount the hidden rail so compact scrolling does not measure turns
             or update navigation state for controls that cannot be used. */}
         {!compactNavigation ? (

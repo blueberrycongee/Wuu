@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { Ellipsis, Info, SquarePen } from "lucide-react";
+import { Ellipsis, Info, Menu, SquarePen } from "lucide-react";
 import { FloatingMenuPortal } from "./ComposerFloatingMenu";
 import { SidePanelToggleIcon } from "./SidePanelToggleIcon";
 import { useI18n } from "./i18n";
@@ -7,6 +7,7 @@ import { useI18n } from "./i18n";
 export function CompactConversationActions({
   canStartNewThread, onStartNewThread, environmentToggleRef,
   environmentPanelVisible, onToggleEnvironmentPanel, rightPanelOpen, onToggleRightPanel,
+  navigation,
 }: {
   canStartNewThread: boolean;
   onStartNewThread: () => void;
@@ -15,15 +16,19 @@ export function CompactConversationActions({
   onToggleEnvironmentPanel: () => void;
   rightPanelOpen: boolean;
   onToggleRightPanel: () => void;
+  navigation?: { title: string; onOpenSidebar: () => void };
 }): JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const initialFocus = useRef(0);
   const menuID = useId();
-  const items = () => Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? []);
+  const items = () => Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]:not(:disabled)") ?? []);
   useLayoutEffect(() => {
-    if (open) items()[initialFocus.current]?.focus({ preventScroll: true });
+    if (open) {
+      const buttons = items();
+      buttons[initialFocus.current < 0 ? buttons.length - 1 : initialFocus.current]?.focus({ preventScroll: true });
+    }
   }, [open]);
   useEffect(() => {
     if (!open) return;
@@ -46,23 +51,23 @@ export function CompactConversationActions({
   };
   return (
     <div className="title-actions compact-conversation-actions">
-      <button type="button" className="icon-button" aria-label={t("tabs.newConversation")} title={t("tabs.newConversation")}
+      {!navigation && <button type="button" className="icon-button" aria-label={t("tabs.newConversation")} title={t("tabs.newConversation")}
         disabled={!canStartNewThread} onClick={onStartNewThread}>
         <SquarePen size={18} aria-hidden="true" />
-      </button>
+      </button>}
       <button ref={environmentToggleRef} type="button" className="icon-button" aria-label={t("shell.moreActions")}
         title={t("shell.moreActions")} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuID : undefined}
         onClick={() => { initialFocus.current = 0; setOpen(!open); }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
-            initialFocus.current = event.key === "ArrowUp" ? 1 : 0;
+            initialFocus.current = event.key === "ArrowUp" ? -1 : 0;
             setOpen(true);
           }
         }}>
-        <Ellipsis size={18} aria-hidden="true" />
+        {navigation ? <Menu size={18} aria-hidden="true" /> : <Ellipsis size={18} aria-hidden="true" />}
       </button>
-      {open && <FloatingMenuPortal anchorRef={environmentToggleRef} owner="conversation-actions" placement="below" align="right" width={224}>
+      {open && <FloatingMenuPortal anchorRef={environmentToggleRef} owner="conversation-actions" placement={navigation ? "above" : "below"} align={navigation ? "left" : "right"} width={224}>
         <div ref={menuRef} id={menuID} role="menu" aria-label={t("shell.moreActions")} className="conversation-actions-menu"
           onKeyDown={(event) => {
             const buttons = items();
@@ -81,6 +86,17 @@ export function CompactConversationActions({
               close();
             }
           }}>
+          {navigation && <>
+            <div className="conversation-actions-title">{navigation.title}</div>
+            <button type="button" role="menuitem" tabIndex={-1} onClick={() => { close(); navigation.onOpenSidebar(); }}>
+              <SidePanelToggleIcon side="left" open={false} />
+              {t("app.expandLeftSidebar")}
+            </button>
+            <button type="button" role="menuitem" tabIndex={-1} disabled={!canStartNewThread} onClick={() => { close(); onStartNewThread(); }}>
+              <SquarePen size={18} aria-hidden="true" />
+              {t("tabs.newConversation")}
+            </button>
+          </>}
           <button type="button" role="menuitem" tabIndex={-1} onClick={() => { close(); onToggleEnvironmentPanel(); }}>
             <Info size={18} aria-hidden="true" />
             {t(environmentPanelVisible ? "shell.hideEnvironmentInfo" : "shell.showEnvironmentInfo")}

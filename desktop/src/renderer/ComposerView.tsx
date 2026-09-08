@@ -127,6 +127,7 @@ export function Composer({
   variant = "dock",
   mainConversation = false,
   topAccessory,
+  leadingActions,
   containerRef,
   prompt: committedPrompt,
   promptRevision = 0,
@@ -220,6 +221,7 @@ export function Composer({
   variant?: ComposerVariant;
   mainConversation?: boolean;
   topAccessory?: ReactNode;
+  leadingActions?: ReactNode;
   containerRef?: Ref<HTMLElement>;
   prompt: string;
   // Changes only for programmatic clear/restore operations. This lets the
@@ -1249,6 +1251,7 @@ export function Composer({
               data-wuu-component="composer-toolbar"
             >
               <div className="composer-bar-left">
+                {leadingActions}
                 {variant === "hero" ? (
                   // Hero (empty/unsent) project & 对话 conversations: the
                   // project pill both shows and edits the workspace/cwd. Once
