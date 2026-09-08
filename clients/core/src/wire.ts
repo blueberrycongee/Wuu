@@ -141,6 +141,7 @@ export interface E2EMsg {
   prev?: string;
   recv?: number;
   client_profile?: string;
+  accept_line_compression?: "gzip";
   session?: string;
   resumed?: boolean;
   replay_from?: number;
@@ -148,6 +149,8 @@ export interface E2EMsg {
   // rpc: one line of app-server JSON, embedded as a raw JSON value
   seq?: number;
   line?: unknown;
+  /** Independently gzipped JSON line, raw base64url, inside the sealed envelope. */
+  line_gzip?: string;
 
   // state
   ver?: number;

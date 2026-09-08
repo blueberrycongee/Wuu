@@ -200,13 +200,19 @@ type E2EMsg struct {
 	Prev          string `json:"prev,omitempty"` // previous session id the phone wants to resume
 	Recv          uint64 `json:"recv,omitempty"` // highest host seq the phone has applied
 	ClientProfile string `json:"client_profile,omitempty"`
-	Session       string `json:"session,omitempty"` // current session id (attached)
-	Resumed       bool   `json:"resumed,omitempty"`
-	ReplayFrom    uint64 `json:"replay_from,omitempty"`
+	// AcceptLineCompression advertises support for independently compressed
+	// host-to-controller RPC lines. Missing or unknown values keep plain JSON.
+	AcceptLineCompression string `json:"accept_line_compression,omitempty"`
+	Session               string `json:"session,omitempty"` // current session id (attached)
+	Resumed               bool   `json:"resumed,omitempty"`
+	ReplayFrom            uint64 `json:"replay_from,omitempty"`
 
 	// rpc
 	Seq  uint64          `json:"seq,omitempty"`
 	Line json.RawMessage `json:"line,omitempty"`
+	// LineGzip is raw base64url gzip of Line, inside the authenticated encrypted
+	// envelope. At most one representation is present; decoded lines are <=32MiB.
+	LineGzip string `json:"line_gzip,omitempty"`
 
 	// state
 	Ver     uint64        `json:"ver,omitempty"`
