@@ -21,8 +21,10 @@ export default function App(): React.JSX.Element {
   const connect = async (credentials: Credentials): Promise<void> => {
     const attempt = ++connectionAttemptRef.current;
     setPhase({ kind: "connecting" });
+    const previous = bridgeRef.current;
     const bridge = new RemoteDesktopBridge(credentials);
     bridgeRef.current = bridge;
+    if (previous) void previous.disconnect().catch(() => {});
     try {
       await bridge.connect();
       if (attempt !== connectionAttemptRef.current) {
@@ -46,9 +48,13 @@ export default function App(): React.JSX.Element {
     connectionAttemptRef.current += 1;
     const bridge = bridgeRef.current;
     bridgeRef.current = null;
-    if (bridge) await bridge.disconnect().catch(() => {});
-    await webCredStore.clear();
     setPhase({ kind: "pair" });
+    if (bridge) void bridge.disconnect().catch(() => {});
+    try {
+      await webCredStore.clear();
+    } catch (error) {
+      setPhase({ kind: "pair", error: error instanceof Error ? error.message : "无法清除配对信息" });
+    }
   };
 
   useEffect(() => {
@@ -62,6 +68,10 @@ export default function App(): React.JSX.Element {
     });
     return () => {
       active = false;
+      connectionAttemptRef.current += 1;
+      const bridge = bridgeRef.current;
+      bridgeRef.current = null;
+      if (bridge) void bridge.disconnect().catch(() => {});
     };
   }, []);
 
@@ -78,12 +88,16 @@ export default function App(): React.JSX.Element {
       <PairCard
         error={phase.error}
         onPair={async (uri, name) => {
+          const attempt = ++connectionAttemptRef.current;
           setPhase({ kind: "connecting" });
           try {
             const credentials = await RemoteDesktopBridge.pair(uri, name);
+            if (attempt !== connectionAttemptRef.current) return;
             await webCredStore.save(credentials);
+            if (attempt !== connectionAttemptRef.current) return;
             await connect(credentials);
           } catch (error) {
+            if (attempt !== connectionAttemptRef.current) return;
             setPhase({
               kind: "pair",
               error: error instanceof Error ? error.message : "配对失败",
