@@ -16,7 +16,7 @@ export function CompactConversationActions({
   onToggleEnvironmentPanel: () => void;
   rightPanelOpen: boolean;
   onToggleRightPanel: () => void;
-  navigation?: { title: string; onOpenSidebar: () => void };
+  navigation?: { onOpenSidebar: () => void };
 }): JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -87,7 +87,6 @@ export function CompactConversationActions({
             }
           }}>
           {navigation && <>
-            <div className="conversation-actions-title">{navigation.title}</div>
             <button type="button" role="menuitem" tabIndex={-1} onClick={() => { close(); navigation.onOpenSidebar(); }}>
               <SidePanelToggleIcon side="left" open={false} />
               {t("app.expandLeftSidebar")}

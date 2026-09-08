@@ -2946,7 +2946,7 @@ export function App(): JSX.Element {
       <Composer
         leadingActions={composerNavigation && variant === "dock" ? (
           <CompactConversationActions
-            navigation={{ title: activeTitle, onOpenSidebar: openSidebarDrawerNow }}
+            navigation={{ onOpenSidebar: openSidebarDrawerNow }}
             canStartNewThread={Boolean(state.activeContext)}
             onStartNewThread={startNewThreadWithComposerFocus}
             environmentToggleRef={environmentToggleRef}

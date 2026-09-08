@@ -278,7 +278,7 @@ describe("compact conversation actions", () => {
 
   it("keeps navigation and creation accessible in the composer menu and skips disabled actions", () => {
     const props = setup();
-    const navigation = { title: "Release discussion", onOpenSidebar: vi.fn() };
+    const navigation = { onOpenSidebar: vi.fn() };
     const render = (canStartNewThread: boolean) => act(() => root?.render(
       <CompactConversationActions {...props} navigation={navigation} canStartNewThread={canStartNewThread} />,
     ));
@@ -286,7 +286,6 @@ describe("compact conversation actions", () => {
     const trigger = props.environmentToggleRef.current!;
     key(trigger, "ArrowUp");
     expect(document.activeElement).toBe(menuItems().at(-1));
-    expect(document.querySelector('[role="menu"]')?.textContent).toContain(navigation.title);
     key(document.activeElement!, "Home");
     act(() => (document.activeElement as HTMLButtonElement).click());
     expect(navigation.onOpenSidebar).toHaveBeenCalledOnce();

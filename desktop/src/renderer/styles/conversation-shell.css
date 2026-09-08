@@ -623,13 +623,6 @@
   grid-template-rows: env(safe-area-inset-top, 0px) minmax(0, 1fr);
 }
 
-.conversation-actions-title {
-  padding: 8px 10px;
-  color: var(--ink-secondary);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
 .app-shell.compact-navigation .titlebar {
   column-gap: 6px;
   /* Compact navigation also collapses the sidebar, moving this control into
