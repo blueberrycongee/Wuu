@@ -15,6 +15,7 @@ export type CodexModelLoadState = {
 export type CodexRuntimeMenu = "model" | null;
 export type ComposerVariant = "dock" | "document" | "hero";
 export type FloatingMenuOwner =
+  | "conversation-actions"
   | "composer-runtime"
   | "composer-access"
   | "composer-context-meter"

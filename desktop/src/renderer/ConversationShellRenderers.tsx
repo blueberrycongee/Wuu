@@ -38,6 +38,7 @@ import {
   SIDEBAR_MIN_WIDTH,
 } from "./AppLayoutState";
 import { EnvironmentSideStack } from "./EnvironmentSideStack";
+import { CompactConversationActions } from "./CompactConversationActions";
 import {
   Composer,
 } from "./ComposerView";
@@ -405,6 +406,8 @@ export function ConversationTitleContent({
 
 export type ConversationTitleActionsProps = {
   state: AppState;
+  compactNavigation?: boolean;
+  onStartNewThread: () => void;
   environmentToggleRef: RefObject<HTMLButtonElement | null>;
   environmentPanelVisible: boolean;
   onToggleEnvironmentPanel: () => void;
@@ -414,6 +417,8 @@ export type ConversationTitleActionsProps = {
 
 export function ConversationTitleActions({
   state,
+  compactNavigation,
+  onStartNewThread,
   environmentToggleRef,
   environmentPanelVisible,
   onToggleEnvironmentPanel,
@@ -421,6 +426,14 @@ export function ConversationTitleActions({
   onToggleRightPanel,
 }: ConversationTitleActionsProps): JSX.Element {
   const { t } = useI18n();
+  if (compactNavigation) {
+    return <CompactConversationActions
+      canStartNewThread={Boolean(state.activeContext)} onStartNewThread={onStartNewThread}
+      environmentToggleRef={environmentToggleRef} environmentPanelVisible={environmentPanelVisible}
+      onToggleEnvironmentPanel={onToggleEnvironmentPanel} rightPanelOpen={rightPanelOpen}
+      onToggleRightPanel={onToggleRightPanel}
+    />;
+  }
   return (
     <div className="title-actions">
       <button

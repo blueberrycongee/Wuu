@@ -1276,6 +1276,7 @@ export const zhCN = {
   "shell.viewMessages": "消息",
   "shell.hideEnvironmentInfo": "隐藏环境信息",
   "shell.showEnvironmentInfo": "显示环境信息",
+  "shell.moreActions": "更多会话操作",
   "shell.closeRightSidebar": "关闭右侧栏",
   "shell.openRightSidebar": "打开右侧栏",
   "shell.resizeThreadPanel": "调整 Thread 面板宽度",

@@ -1278,6 +1278,7 @@ export const enUS = {
   "shell.viewMessages": "Messages",
   "shell.hideEnvironmentInfo": "Hide environment information",
   "shell.showEnvironmentInfo": "Show environment information",
+  "shell.moreActions": "More conversation actions",
   "shell.closeRightSidebar": "Close right sidebar",
   "shell.openRightSidebar": "Open right sidebar",
   "shell.resizeThreadPanel": "Resize Thread panel",

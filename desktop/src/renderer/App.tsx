@@ -2057,6 +2057,7 @@ export function App(): JSX.Element {
       }
       const environmentPanelClickOutside =
         !environmentToggleRef.current?.contains(target) &&
+        !isInsideFloatingMenu(target, "conversation-actions") &&
         !environmentPanelRef.current?.contains(target);
       if (environmentPanelClickOutside) {
         if (environmentPanelMenu) {
@@ -5301,6 +5302,8 @@ export function App(): JSX.Element {
           </div>
           <ConversationTitleActions
             state={state}
+            compactNavigation={compactNavigation}
+            onStartNewThread={startNewThreadWithComposerFocus}
             environmentToggleRef={environmentToggleRef}
             environmentPanelVisible={environmentPanelVisible}
             onToggleEnvironmentPanel={toggleEnvironmentPanel}
