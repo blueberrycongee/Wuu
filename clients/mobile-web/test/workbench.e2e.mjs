@@ -194,6 +194,42 @@ try {
   assert.equal(await page.locator('.workspace-right-panel').getAttribute('data-wuu-view'), 'files');
   await page.getByRole('button', { name: '返回', exact: true }).click();
   await page.getByRole('button', { name: '返回', exact: true }).click();
+  // Exercise both browser resize models. This simulates viewport geometry,
+  // not an OS keyboard; focus and blank-message-area taps are real browser input.
+  for (const visualOnly of [false, true]) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const draft = await input.inputValue();
+    const originalInput = await input.elementHandle();
+    await input.tap();
+    assert.equal(await input.evaluate(node => node === document.activeElement), true);
+    const resizeKeyboard = async (height) => {
+      if (visualOnly) {
+        await page.evaluate(height => {
+          Object.defineProperty(window.visualViewport, 'height', { configurable: true, value: height });
+          window.visualViewport.dispatchEvent(new Event('resize'));
+        }, height);
+      } else {
+        await page.setViewportSize({ width: 390, height });
+      }
+      await until(async () => {
+        const rect = await page.locator('.app-shell').boundingBox();
+        return rect && Math.abs(rect.height - height) <= 1;
+      }, `workbench follows ${visualOnly ? 'visual' : 'layout'} viewport at ${height}`);
+    };
+    await resizeKeyboard(420);
+    await page.locator('.scroll-region').filter({ visible: true }).first().tap({ position: { x: 2, y: 2 } });
+    assert.equal(await input.evaluate(node => node === document.activeElement), false);
+    await resizeKeyboard(844);
+    assert.equal(await input.inputValue(), draft);
+    assert.equal(await input.evaluate((node, original) => node === original, originalInput), true);
+    await originalInput.dispose();
+    if (visualOnly) {
+      await page.evaluate(() => {
+        delete window.visualViewport.height;
+        window.visualViewport.dispatchEvent(new Event('resize'));
+      });
+    }
+  }
   for (const [width, height] of [[320, 740], [390, 844], [430, 932], [390, 360]]) {
     await page.setViewportSize({ width, height });
     await until(async () => {

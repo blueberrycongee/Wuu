@@ -14,6 +14,7 @@ import {
 } from "../../../desktop/src/renderer/Theme";
 import { ToastViewport } from "../../../desktop/src/renderer/Toast";
 import { WuuUIRoot } from "../../../desktop/src/renderer/ui/layers/UILayerHost";
+import { startWebViewportSync } from "./lib/viewport";
 import "../../../desktop/src/renderer/styles.css";
 
 applyPlatformStamp();
@@ -26,22 +27,11 @@ export default function WebWorkspace(): React.JSX.Element {
     applyMessageFlowFontSize(window.wuu.initialMessageFlowFontSize ?? 16);
     const stopTheme = startThemePreferenceSync();
     const stopVisibility = startRendererVisibilitySync();
-    const viewport = window.visualViewport;
-    const resize = (): void => {
-      // The layout viewport can extend behind a phone's on-screen keyboard.
-      if (!viewport || viewport.scale === 1) {
-        document.documentElement.style.setProperty("--web-viewport-height", `${viewport?.height ?? window.innerHeight}px`);
-      }
-    };
-    resize();
-    viewport?.addEventListener("resize", resize);
-    window.addEventListener("resize", resize);
+    const stopViewport = startWebViewportSync();
     return () => {
       stopTheme();
       stopVisibility();
-      viewport?.removeEventListener("resize", resize);
-      window.removeEventListener("resize", resize);
-      document.documentElement.style.removeProperty("--web-viewport-height");
+      stopViewport();
     };
   }, []);
   return (

@@ -1703,6 +1703,7 @@ export function App(): JSX.Element {
     const root = document.documentElement;
     let resizeEndTimer: number | undefined;
     let resizing = false;
+    let lastResizeWidth = window.innerWidth;
 
     function setResizeState(nextResizing: boolean): void {
       if (resizing === nextResizing) {
@@ -1735,6 +1736,14 @@ export function App(): JSX.Element {
     }
 
     function handleWindowResize(): void {
+      const nextWidth = window.innerWidth;
+      // Keyboard/browser chrome height-only changes must not enter the desktop
+      // window-resize suppression: it drops sidebar material and pauses layout
+      // animations for the settle window even though the width never changed.
+      if (isTouchWebShell() && nextWidth === lastResizeWidth) {
+        return;
+      }
+      lastResizeWidth = nextWidth;
       setResizeState(true);
       scheduleResizeEnd();
     }
@@ -5156,14 +5165,16 @@ export function App(): JSX.Element {
                 aria-label={t("app.collapseLeftSidebar")}
                 onClick={closeSidebarDrawer}
               />
-              <button
-                className="icon-button compact-session-switcher-close"
-                type="button"
-                aria-label={t("app.collapseLeftSidebar")}
-                onClick={closeSidebarDrawer}
-              >
-                <X className="icon-lg" />
-              </button>
+              {sidebarDrawerVisible ? (
+                <button
+                  className="icon-button compact-session-switcher-close"
+                  type="button"
+                  aria-label={t("app.collapseLeftSidebar")}
+                  onClick={closeSidebarDrawer}
+                >
+                  <X className="icon-lg" />
+                </button>
+              ) : null}
             </>
           ) : null}
 

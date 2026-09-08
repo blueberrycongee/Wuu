@@ -53,6 +53,9 @@ button, input, textarea { font: inherit; }
 }
 .web-gate input:focus, .web-gate textarea:focus { border-color: #20221f; box-shadow: 0 0 0 1px #20221f; }
 .web-gate textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+@media (pointer: coarse) {
+  .web-gate input, .web-gate textarea { font-size: 16px; }
+}
 .web-gate button {
   min-height: 46px;
   border: 1px solid #20221f;

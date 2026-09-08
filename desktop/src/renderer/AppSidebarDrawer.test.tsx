@@ -592,6 +592,70 @@ describe("collapsed sidebar hover drawer", () => {
     );
   });
 
+  it.each([
+    ["web", false],
+    ["desktop", true],
+  ] as const)("handles %s viewport height changes without confusing keyboard and native resize", async (host, suppressMotion) => {
+    document.documentElement.dataset.hostKind = host;
+    window.innerWidth = 390;
+    vi.mocked(window.matchMedia).mockImplementation((query) => ({
+      matches: query === "(pointer: coarse)",
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    await renderCollapsedApp();
+    expect(document.documentElement.classList.contains(WINDOW_RESIZING_CLASS)).toBe(false);
+
+    const originalHeight = window.innerHeight;
+    try {
+      for (const height of [420, originalHeight]) {
+        await act(async () => {
+          window.innerHeight = height;
+          window.dispatchEvent(new Event("resize"));
+        });
+        expect(document.documentElement.classList.contains(WINDOW_RESIZING_CLASS)).toBe(suppressMotion);
+        await act(async () => { vi.advanceTimersByTime(200); });
+        expect(document.documentElement.classList.contains(WINDOW_RESIZING_CLASS)).toBe(false);
+      }
+    } finally {
+      window.innerHeight = originalHeight;
+    }
+  });
+
+  it("still marks the touch web shell as window-resizing when the viewport width changes", async () => {
+    document.documentElement.dataset.hostKind = "web";
+    window.innerWidth = 390;
+    vi.mocked(window.matchMedia).mockImplementation((query) => ({
+      matches: query === "(pointer: coarse)",
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    await renderCollapsedApp();
+
+    window.innerWidth = 640;
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    expect(document.documentElement.classList.contains(WINDOW_RESIZING_CLASS)).toBe(true);
+    // Subsequent keyboard/chrome changes must not prolong a completed width resize.
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+      vi.advanceTimersByTime(200);
+    });
+    expect(document.documentElement.classList.contains(WINDOW_RESIZING_CLASS)).toBe(false);
+  });
+
   it("finishes closing when a pending edge hover is cancelled mid-close", async () => {
     await renderCollapsedApp();
     await openDrawerViaHoverZone();
@@ -744,8 +808,14 @@ describe("collapsed sidebar hover drawer", () => {
 
     await act(async () => {
       container
-        .querySelector<HTMLButtonElement>('[aria-label="打开右侧栏"]')
-        ?.click();
+        .querySelector<HTMLButtonElement>('.compact-conversation-actions [aria-haspopup="menu"]')!
+        .click();
+    });
+    await act(async () => {
+      const openPanel = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+        .find(button => button.textContent === "打开右侧栏");
+      expect(openPanel).toBeTruthy();
+      openPanel!.click();
       await Promise.resolve();
     });
     expect(appShell()?.classList.contains("right-panel-globalized")).toBe(true);

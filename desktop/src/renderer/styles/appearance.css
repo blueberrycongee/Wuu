@@ -62,6 +62,13 @@ pre, code, .rich-content pre.rich-code, .rich-content pre.rich-code code,
   font-size: var(--conversation-message-font-size, 14px);
   line-height: 1.6;
 }
+@media (pointer: coarse) {
+  :root[data-host-kind="web"] .composer textarea {
+    /* Small text can trigger Safari's focus zoom. Keep input readable without
+     * disabling pinch zoom or reducing a user's larger font preference. */
+    font-size: max(16px, var(--conversation-message-font-size, 16px));
+  }
+}
 .workspace-markdown-reading .rich-content { font-size: var(--conversation-message-font-size, 14px); }
 .workspace-markdown-reading .rich-heading { font-size: 1.27em; }
 .workspace-markdown-reading .rich-heading--h1 { font-size: 1.87em; }
