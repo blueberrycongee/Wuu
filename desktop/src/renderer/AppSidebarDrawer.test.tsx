@@ -461,7 +461,7 @@ describe("collapsed sidebar hover drawer", () => {
     ["short flick followed by a hold", 100, 40, 150, 500, false],
     ["deliberate swipe followed by a hold", 100, 80, 150, 500, true],
     ["right-side swipe pulled back before release", 280, 15, 700, 950, false, 70],
-  ] as const)("settles a %s using distance and recent speed", async (_name, x, distance, moveTime, endTime, opens, peak = distance) => {
+  ] as [string, number, number, number, number, boolean, number?][])("settles a %s using distance and recent speed", async (_name, x, distance, moveTime, endTime, opens, peak = distance) => {
     document.documentElement.dataset.hostKind = "web";
     window.innerWidth = 390;
     vi.mocked(window.matchMedia).mockImplementation((query) => ({

@@ -1086,7 +1086,7 @@ func (s *Session) NewThreadRuntimeForRootModel(sessionID, rootDir string, select
 	}
 	if providerName == "" || model == "" || (providerName == s.ProviderName && model == s.Model && requested.Variant == currentVariant && requested.Effort == currentEffort) {
 		// Permission changes do not require rebuilding an unchanged model client.
-		shadow := *s
+		shadow := s.cloneForThreadModel()
 		shadow.Permissions = permissions
 		threadRuntime, err := shadow.NewThreadRuntimeForRoot(sessionID, rootDir)
 		if err != nil {

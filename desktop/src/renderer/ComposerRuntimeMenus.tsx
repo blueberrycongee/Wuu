@@ -628,7 +628,7 @@ function EngineRuntimeMenu({
                         disabled={disabled}
                         aria-checked={selected}
                         onClick={() => {
-                          const effort = lastEffortForEngineModel(engine.id, model.id)
+                          const effort = lastEffortForEngineModel(engine?.id ?? "", model.id)
                             || engineModelDefaultEffort(model);
                           setOptimistic({ model: model.id, effort });
                           onSelectModel(model.id, effort);
