@@ -411,11 +411,18 @@ describe("collapsed sidebar hover drawer", () => {
   });
 
   it.each([
-    ["slow short drag", 80, 400, 450, false],
-    ["slow drag past halfway", 180, 400, 450, true],
-    ["short flick", 80, 150, 160, true],
-    ["flick followed by a hold", 80, 150, 500, false],
-  ] as const)("settles a %s using distance and recent speed", async (_name, distance, moveTime, endTime, opens) => {
+    ["slow tiny drag", 100, 25, 400, 450, false],
+    ["slow left-side swipe", 16, 80, 400, 650, true],
+    ["slow middle swipe", 150, 80, 400, 650, true],
+    ["slow right-side swipe", 280, 70, 400, 650, true],
+    ["slow near-edge swipe", 340, 38, 400, 650, true],
+    ["near-edge accidental movement", 340, 20, 400, 650, false],
+    ["slow drag past halfway", 100, 180, 400, 450, true],
+    ["short flick", 100, 40, 150, 160, true],
+    ["short flick followed by a hold", 100, 40, 150, 500, false],
+    ["deliberate swipe followed by a hold", 100, 80, 150, 500, true],
+    ["right-side swipe pulled back before release", 280, 15, 700, 950, false, 70],
+  ] as const)("settles a %s using distance and recent speed", async (_name, x, distance, moveTime, endTime, opens, peak = distance) => {
     document.documentElement.dataset.hostKind = "web";
     window.innerWidth = 390;
     vi.mocked(window.matchMedia).mockImplementation((query) => ({
@@ -430,9 +437,10 @@ describe("collapsed sidebar hover drawer", () => {
     vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(new DOMRect(-300, 0, 300, 820));
     const flow = shell.querySelector(".scroll-region")!;
     await act(async () => {
-      touch(flow, "touchstart", 100, 100, 1, 100);
-      touch(flow, "touchmove", 100 + distance, 100, 1, moveTime);
-      touch(flow, "touchend", 100 + distance, 100, 1, endTime);
+      touch(flow, "touchstart", x, 100, 1, 100);
+      if (peak !== distance) touch(flow, "touchmove", x + peak, 100, 1, 200);
+      touch(flow, "touchmove", x + distance, 100, 1, moveTime);
+      touch(flow, "touchend", x + distance, 100, 1, endTime);
     });
     await act(async () => { vi.advanceTimersByTime(400); });
     expect(shell.dataset.wuuSidebarMode).toBe(opens ? "drawer" : "collapsed");

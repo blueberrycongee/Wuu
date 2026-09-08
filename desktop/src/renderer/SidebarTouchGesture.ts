@@ -34,7 +34,7 @@ export function useSidebarTouchGesture(
     const wasOpen = phase === "open";
     let gesture: {
       id: number; x: number; y: number; horizontal: boolean;
-      width: number; position: number; lastX: number; lastTime: number; velocity: number;
+      width: number; openDistance: number; position: number; lastX: number; lastTime: number; velocity: number;
     } | null = null;
     let settleTimer: number | undefined;
     let suppressClickUntil = 0;
@@ -84,6 +84,9 @@ export function useSidebarTouchGesture(
       if (!width) return;
       gesture = {
         id: touch.identifier, x: touch.clientX, y: touch.clientY, horizontal: false,
+        // A right-hand thumb has little travel left near the screen edge.
+        // Keep opening reachable there without treating tiny movements as swipes.
+        openDistance: Math.max(32, Math.min(64, (window.innerWidth - touch.clientX) / 2)),
         width, position: wasOpen ? width : 0, lastX: touch.clientX, lastTime: event.timeStamp, velocity: 0,
       };
     };
@@ -123,7 +126,8 @@ export function useSidebarTouchGesture(
       if (event.cancelable) event.preventDefault();
       const velocity = event.timeStamp - gesture.lastTime <= 100 ? gesture.velocity : 0;
       const distance = Math.abs(touch.clientX - gesture.x);
-      settle(Math.abs(velocity) >= 0.5 && distance >= 32 ? velocity > 0 : gesture.position >= gesture.width / 2);
+      const threshold = wasOpen ? gesture.width / 2 : gesture.openDistance;
+      settle(Math.abs(velocity) >= 0.5 && distance >= 32 ? velocity > 0 : gesture.position >= threshold);
     };
     const click = (event: MouseEvent): void => {
       if (performance.now() < suppressClickUntil) {
