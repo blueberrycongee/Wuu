@@ -1531,6 +1531,9 @@ type ThreadListResult struct {
 
 type ThreadListParams struct {
 	CWD string `json:"cwd,omitempty"`
+	// SummaryOnly omits turn history; metadata and live status remain available.
+	// Fetch a selected conversation through thread/resume. Default preserves full snapshots.
+	SummaryOnly bool `json:"summary_only,omitempty"`
 }
 
 type WorkspaceInfo struct {

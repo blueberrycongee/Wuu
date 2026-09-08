@@ -944,6 +944,9 @@ func (s *Server) handleThreadList(req Request) error {
 		if err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
+		if params.SummaryOnly {
+			thread.Turns = []Turn{}
+		}
 		result = append(result, thread)
 	}
 	return s.writeResponse(req.ID, ThreadListResult{Threads: result}, nil)
@@ -952,6 +955,10 @@ func (s *Server) handleThreadList(req Request) error {
 // handleThreadListAll returns active root conversations across every workspace.
 // Global folders must not depend on a project section having been expanded.
 func (s *Server) handleThreadListAll(req Request) error {
+	var params ThreadListParams
+	if err := decodeParams(req.Params, &params); err != nil {
+		return s.writeResponse(req.ID, nil, err)
+	}
 	sessions, err := session.List(s.rt.SessionDir, 0)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
@@ -1021,6 +1028,9 @@ func (s *Server) handleThreadListAll(req Request) error {
 		thread, err := s.threadWithChildAgents(entry.thread)
 		if err != nil {
 			return s.writeResponse(req.ID, nil, err)
+		}
+		if params.SummaryOnly {
+			thread.Turns = []Turn{}
 		}
 		result = append(result, thread)
 	}
@@ -1097,6 +1107,9 @@ func (s *Server) handleThreadListArchived(req Request) error {
 		thread, err := s.threadWithChildAgents(entry.thread)
 		if err != nil {
 			return s.writeResponse(req.ID, nil, err)
+		}
+		if params.SummaryOnly {
+			thread.Turns = []Turn{}
 		}
 		result = append(result, thread)
 	}
