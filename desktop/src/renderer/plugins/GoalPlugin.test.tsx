@@ -13,7 +13,7 @@ afterEach(() => vi.useRealTimers());
 
 it("renders live goal controls, scopes actions to the session and cleans up on disable", async () => {
   vi.useFakeTimers();
-  let goal = { id: "goal-one", objective: "Finish the task", status: "active", tokens_used: 12, token_budget: 100, time_used_seconds: 2 };
+  let goal = { id: "goal-one", objective: "Finish the task", status: "active", tokens_used: 12, time_used_seconds: 2 };
   const invoke = vi.fn(async ({ method, input }: { method: string; input?: unknown }) => {
     expect(input).toMatchObject({ thread_id: "thread-one" });
     if (method === "pause") goal = { ...goal, status: "paused" };
@@ -35,7 +35,7 @@ it("renders live goal controls, scopes actions to the session and cleans up on d
     };
     await click("暂停");
     expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ method: "pause", input: { thread_id: "thread-one" } }));
-    expect(container.querySelector("input")).not.toBeNull();
+
     await click("继续");
     expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ method: "resume", input: { thread_id: "thread-one" } }));
     const status = host.getComposerStatusSources()[0].getSnapshot({ threadId: "thread-one", mainConversation: true });
@@ -50,6 +50,25 @@ it("renders live goal controls, scopes actions to the session and cleans up on d
   } finally {
     act(() => root.unmount()); host.disable("goal"); container.remove();
   }
+});
+
+it("refreshes completed goal usage when settlement arrives after the terminal event", async () => {
+  vi.useFakeTimers();
+  let goal = { id: "goal-one", objective: "Verify goal tools", status: "complete", tokens_used: 0, time_used_seconds: 0 };
+  const host = new PluginHost({ react: React, invokeRuntime: async () => ({ goal }) });
+  await host.activateGeneration({ pluginId: "goal", generation: "one", register: activate });
+  const source = host.getComposerStatusSources()[0];
+  const context = { threadId: "thread-one", mainConversation: true as const };
+  const dispose = source.subscribe(context, () => {});
+  try {
+    host.publishHostEvent({ kind: "notification", message: { method: "turn/completed" } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(source.getSnapshot(context)[0].secondaryText).toContain("0 tokens");
+    goal = { ...goal, tokens_used: 4014, time_used_seconds: 20 };
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(source.getSnapshot(context)[0].secondaryText).toContain("4014 tokens");
+    expect(source.getSnapshot(context)[0].state).toBe("idle");
+  } finally { dispose(); host.disable("goal"); }
 });
 
 it("discards a stale response and keeps runtime errors visible", async () => {

@@ -1,8 +1,8 @@
 export async function activate(api) {
   const React = api.react;
   const h = React.createElement;
-  const { Stack, Row, Button, TextArea, TextInput } = api.ui;
-  const labels = { active: "进行中", paused: "已暂停", blocked: "受阻", budget_limited: "预算已用尽", complete: "已完成" };
+  const { Stack, Row, Button, TextArea } = api.ui;
+  const labels = { active: "进行中", paused: "已暂停", blocked: "受阻", complete: "已完成" };
   const empty = Object.freeze({ goal: null, error: "", loaded: false, items: Object.freeze([]) });
   const cache = new Map();
   const listeners = new Map();
@@ -23,8 +23,8 @@ export async function activate(api) {
       const items = goal ? Object.freeze([Object.freeze({
         id: goal.id, label: goal.objective,
         state: goal.status === "active" ? "running" : goal.error ? "error" : "idle",
-        secondaryText: `${labels[goal.status] || goal.status} · ${goal.tokens_used} tokens${goal.token_budget == null ? "" : ` / ${goal.token_budget}`}`,
-        tooltip: goal.error || goal.objective,
+        secondaryText: `${labels[goal.status] || goal.status} · 已结算 ${goal.tokens_used} tokens`,
+        tooltip: goal.error || `${goal.objective}\nToken 用量在当前回合结束后更新，包含输入和输出。`,
       })]) : empty.items;
       publish(id, { goal, error: "", loaded: true, items });
     } catch (error) {
@@ -65,7 +65,6 @@ export async function activate(api) {
       React.useCallback(() => cache.get(threadId) || empty, [threadId]),
     );
     const [objective, setObjective] = React.useState("");
-    const [budget, setBudget] = React.useState("");
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState("");
     const goal = state.goal;
@@ -76,13 +75,8 @@ export async function activate(api) {
       try {
         const input = { thread_id: threadId };
         if (method === "create_goal") input.objective = objective;
-        if ((method === "create_goal" || method === "resume") && budget.trim()) {
-          const value = Number(budget);
-          if (!Number.isSafeInteger(value) || value <= 0) throw new Error("Token 预算必须是正整数");
-          input.token_budget = value;
-        }
         await api.invokeRuntime(method, input);
-        if (method === "create_goal" || method === "clear") { setObjective(""); setBudget(""); }
+        if (method === "create_goal" || method === "clear") setObjective("");
         await refresh(threadId);
       } catch (cause) { setError(String(cause.message || cause)); }
       finally { setBusy(false); }
@@ -91,12 +85,10 @@ export async function activate(api) {
     return h(Stack, null,
       goal ? h(Stack, null,
         h("p", { className: "plugin-goal-objective" }, goal.objective),
-        h("p", null, `${labels[goal.status] || goal.status} · ${goal.tokens_used} tokens${goal.token_budget == null ? "" : ` / ${goal.token_budget}`} · ${Math.floor(goal.time_used_seconds)} 秒`),
+        h("p", null, `${labels[goal.status] || goal.status} · 已结算 ${goal.tokens_used} tokens · ${Math.floor(goal.time_used_seconds)} 秒`),
         goal.error ? h("p", { role: "alert" }, goal.error) : null,
       ) : h("p", null, state.loaded ? "尚未设置目标" : "正在读取目标…"),
       canCreate ? h(TextArea, { label: "目标", value: objective, disabled: busy, onChange: (event) => setObjective(event.target.value) }) : null,
-      !active ? h(TextInput, { label: "Token 预算（可选，总额度）", value: budget, disabled: busy, placeholder: goal?.token_budget == null ? "不设上限" : String(goal.token_budget), onChange: (event) => setBudget(event.target.value) }) : null,
-      h("p", { className: "plugin-goal-help" }, "预算按回合结束后的用量结算，可能超出一个回合。重启后目标暂停，点击继续恢复。"),
       h(Row, null,
         canCreate ? h(Button, { disabled: busy || !state.loaded || !objective.trim(), onClick: () => void act("create_goal") }, "开始目标") : null,
         goal && !canCreate ? h(Button, { disabled: busy, onClick: () => void act(active ? "pause" : "resume") }, active ? "暂停" : "继续") : null,
@@ -111,6 +103,5 @@ export async function activate(api) {
   });
   api.registerStyle({ id: "goal-controls", css: `
     .plugin-goal-objective { white-space:pre-wrap; overflow-wrap:anywhere; }
-    .plugin-goal-help { color:var(--wuu-color-text-muted); font-size:var(--wuu-font-size-sm); }
   ` });
 }

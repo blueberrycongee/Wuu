@@ -21,7 +21,7 @@ type goalBridge struct {
 	server  *Server
 	mu      sync.Mutex
 	value   *string
-	limited chan struct{}
+	settled chan struct{}
 	once    sync.Once
 }
 
@@ -68,8 +68,8 @@ func (b *goalBridge) CallHost(ctx context.Context, _ string, input, out any) err
 		var state map[string]goal.Goal
 		_ = json.Unmarshal([]byte(p.Value), &state)
 		for _, g := range state {
-			if g.Status == "budget_limited" {
-				b.once.Do(func() { close(b.limited) })
+			if g.Status == "complete" && g.TokensUsed == 20 {
+				b.once.Do(func() { close(b.settled) })
 			}
 		}
 	case pluginapi.HostServiceSessionSend:
@@ -100,8 +100,16 @@ func (b *goalBridge) CallHost(ctx context.Context, _ string, input, out any) err
 func TestGoalExtensionContinuesUserSessionThroughRealTurnLifecycle(t *testing.T) {
 	response := providersResponse("working")
 	response.Usage = &providers.TokenUsage{InputTokens: 5, OutputTokens: 5}
-	rt := newTestRuntime(t, &fakeClient{response: response})
-	bridge := &goalBridge{handler: goal.Handler(), limited: make(chan struct{})}
+	bridge := &goalBridge{handler: goal.Handler(), settled: make(chan struct{})}
+	var threadID string
+	rt := newTestRuntime(t, &fakeClient{response: response, onChat: func(n int, _ providers.ChatRequest) {
+		if n == 2 {
+			_, err := bridge.handler.ExecuteTool(context.Background(), bridge, pluginapi.ToolCall{ToolID: "update_goal", SessionID: threadID, Arguments: json.RawMessage(`{"status":"complete"}`)})
+			if err != nil {
+				t.Errorf("complete goal: %v", err)
+			}
+		}
+	}})
 	for _, capability := range bridge.Capabilities() {
 		if err := pluginhost.ValidateCapabilityDescriptor(capability); err != nil {
 			t.Fatal(err)
@@ -121,15 +129,15 @@ func TestGoalExtensionContinuesUserSessionThroughRealTurnLifecycle(t *testing.T)
 	if err := srv.handleLine(context.Background(), []byte(`{"id":"goal-thread","method":"thread/start"}`)); err != nil {
 		t.Fatal(err)
 	}
-	threadID := remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "goal-thread")["result"]).Thread.ID
-	input, _ := json.Marshal(map[string]any{"method": "create_goal", "input": map[string]any{"thread_id": threadID, "objective": "Finish the bounded work", "token_budget": 15}})
+	threadID = remarshal[ThreadStartResult](t, responseByID(t, parseOutput(t, out.String()), "goal-thread")["result"]).Thread.ID
+	input, _ := json.Marshal(map[string]any{"method": "create_goal", "input": map[string]any{"thread_id": threadID, "objective": "Finish the work"}})
 	if _, err := bridge.handler.InvokeCapability(context.Background(), bridge, pluginapi.CapabilityCall{Capability: "plugin.client.request", Input: input}); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case <-bridge.limited:
+	case <-bridge.settled:
 	case <-time.After(5 * time.Second):
-		t.Fatalf("goal did not stop at budget; output=%s", out.String())
+		t.Fatalf("goal did not settle after completion; output=%s", out.String())
 	}
 	result, err := bridge.handler.ExecuteTool(context.Background(), bridge, pluginapi.ToolCall{ToolID: "get_goal", SessionID: threadID, Arguments: json.RawMessage(`{}`)})
 	if err != nil {
@@ -139,7 +147,7 @@ func TestGoalExtensionContinuesUserSessionThroughRealTurnLifecycle(t *testing.T)
 	if err := json.Unmarshal(result.StructuredContent, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Goal.TokensUsed != 20 || snapshot.Goal.Status != "budget_limited" {
+	if snapshot.Goal.TokensUsed != 20 || snapshot.Goal.Status != "complete" {
 		t.Fatalf("goal = %+v", snapshot.Goal)
 	}
 }

@@ -76,7 +76,7 @@ func executeNotes(ctx context.Context, host pluginapi.Host, call pluginapi.ToolC
 	if input.Offset < 0 || input.Limit < 0 || input.Limit > 16000 {
 		return pluginapi.ToolResult{}, errors.New("invalid notes page bounds")
 	}
-	key := fmt.Sprintf("notes/v1/%x", sha256.Sum256([]byte(call.SessionID)))
+	key := fmt.Sprintf("notes.v1.%x", sha256.Sum256([]byte(call.SessionID)))
 	var stored pluginapi.StorageGetResult
 	if err := pluginapi.CallHostService(ctx, host, pluginapi.HostServiceStorageGet, pluginapi.StorageGetParams{Scope: "user", Key: key}, &stored); err != nil {
 		return pluginapi.ToolResult{}, err
