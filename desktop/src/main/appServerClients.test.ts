@@ -401,3 +401,18 @@ describe("AppServerClient child lifecycle", () => {
     expect(client.isBusy()).toBe(false);
   });
 });
+
+it("forwards a snapshot response before the next notification in the same stdout chunk", async () => {
+  const child = new FakeAppServerChild();
+  const order: string[] = [];
+  const client = new AppServerClient(tmpdir(), "", (_source, event) => {
+    if (event.kind === "notification") order.push("notification");
+  }, () => {}, () => child.asChildProcess(), (_env, cwd) => ({ command: "test-core", args: [], cwd }));
+  try {
+    const pending = client.request("thread/resume", { session_id: "t" }, () => order.push("snapshot"));
+    child.stdout.write(JSON.stringify({ id: "client-1", result: { thread: { id: "t", turns: [] } } }) + "\n" +
+      JSON.stringify({ method: "item/agentMessage/delta", params: { thread_id: "t", delta: "new" } }) + "\n");
+    await pending;
+    expect(order).toEqual(["snapshot", "notification"]);
+  } finally { client.dispose(); }
+});

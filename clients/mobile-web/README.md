@@ -11,8 +11,15 @@ shared desktop renderer
 RemoteDesktopBridge
           │ app-server line JSON
           ▼
-@wuu/remote-core → sealed WebSocket → remote host → Go runtime
+@wuu/remote-core → sealed WebSocket → remote host → desktop service pool → Go
 ```
+
+桌面开启手机访问时，remote host 通过带临时凭据的本机连接转发请求，
+与 Electron 使用同一批 Go app-server。它不为手机创建独立 runtime。
+请求和通知携带工作区；各连接的响应相互隔离，会话事件同时发给桌面和手机。
+关闭页面、重新配对或停止手机访问仅断开传输，电脑上的任务继续执行。
+重连复用有序事件回放，必要时重新读取共享服务快照；离线操作不自动重发。
+页面选择、滚动位置和未发送草稿仍由各客户端保留。
 
 保留的旧 Web 核心能力是 `@wuu/remote-core`、凭据存储和 Go remote host。旧的
 Home/Thread/Drawer 等页面已退出入口，不再作为新 Web 产品的实现基础。
@@ -79,12 +86,14 @@ npm run test:e2e
 WUU_BROWSER_CHANNEL=chrome npm run test:e2e
 ```
 
-测试需要 Go、Git 和 Node。它会构建当前 Go 宿主，在临时目录启动 relay、宿主、
-Web 服务及确定性的本地模型服务，结束后清理进程和数据。可通过 `WUU_E2E_BINARY`
+测试需要 Go、Git 和 Node。它会构建当前 Go 宿主，在临时目录启动桌面服务池、
+relay、远程宿主、Web 服务及确定性的本地模型服务，结束后清理进程和数据。可通过 `WUU_E2E_BINARY`
 指定已构建的宿主。测试不读取模型凭据，也不调用付费模型。
 
 浏览器通过真实配对和加密链路发起任务，宿主 Agent 执行 `write_file`。
+桌面侧使用生产 AppServerClientPool，手机侧使用真实浏览器，验证双向消息实时可见。
 测试在工具执行后断开浏览器，让电脑独立完成任务，再验证最终消息、文件改动、
 草稿和会话快照恢复；还会重启宿主验证重新连接。随后验证 Git diff、文件树与代码预览、
 返回导航，以及 320/390/430px 宽度和缩短视口中的输入控件可见性。
+还验证电脑停止手机任务，以及远程宿主关闭时共享任务仍在运行。
 该测试使用浏览器的触屏与视口仿真，不模拟操作系统软键盘。

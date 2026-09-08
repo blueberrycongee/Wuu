@@ -52,7 +52,7 @@ describe("browser host contract", () => {
     await api().updateRuntimeSettings(undefined, undefined, "", undefined, "", "read_only", "thread-1");
     expect(remote.call).toHaveBeenCalledWith("config/model/update", {
       thread_id: "thread-1", effort: "", variant: "", permission_mode: "read_only",
-    }, 30_000);
+    }, 30_000, expect.any(String));
   });
 
   it("returns host engine inventory and routes process input to its owning thread", async () => {
@@ -63,38 +63,38 @@ describe("browser host contract", () => {
     await host.writeManagedProcess("thread-1", "process-2", "\u0003");
     expect(remote.call).toHaveBeenLastCalledWith("process/write", {
       thread_id: "thread-1", process_id: "process-2", input: "\u0003",
-    }, 30_000);
+    }, 30_000, expect.any(String));
   });
 
   it("forwards question holds and preserves mixed message parts", async () => {
     const host = api();
     await host.holdUserQuestion("question-1");
-    expect(remote.call).toHaveBeenLastCalledWith("user-question/hold", { request_id: "question-1" }, 30_000);
+    expect(remote.call).toHaveBeenLastCalledWith("user-question/hold", { request_id: "question-1" }, 30_000, expect.any(String));
     const parts = [{ type: "text" as const, text: "Review this file" }];
     await host.startTurn("thread-1", "Review this file", [], [], "read_only", { path: "src/main.go" }, parts);
     expect(remote.call).toHaveBeenLastCalledWith("turn/start", expect.objectContaining({
       thread_id: "thread-1", active_document: { path: "src/main.go" }, content_parts: parts,
-    }), 30_000);
+    }), 30_000, expect.any(String));
   });
 
   it("reads and resolves files in the selected conversation worktree on the host", async () => {
     const bridge = await connectBridge();
     await bridge.api.listWorkspaceDirectory("src", "/paired/worktree");
-    expect(remote.call).toHaveBeenLastCalledWith("workspace/directory/list", { path: "src", root: "/paired/worktree" }, 30_000);
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/directory/list", { path: "src", root: "/paired/worktree" }, 30_000, expect.any(String));
     await bridge.api.readWorkspaceFile("src/main.go", "/paired/worktree");
-    expect(remote.call).toHaveBeenLastCalledWith("workspace/file/read", { path: "src/main.go", root: "/paired/worktree" }, 30_000);
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/file/read", { path: "src/main.go", root: "/paired/worktree" }, 30_000, expect.any(String));
     await bridge.api.resolveWorkspaceFileReference("main.go:12");
-    expect(remote.call).toHaveBeenLastCalledWith("workspace/file/resolve", { reference: "main.go:12", root: "/paired/workspace" }, 30_000);
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/file/resolve", { reference: "main.go:12", root: "/paired/workspace" }, 30_000, expect.any(String));
   });
 
   it("reads repository changes from the selected host worktree", async () => {
     const bridge = await connectBridge();
     await bridge.api.gitStatus();
-    expect(remote.call).toHaveBeenLastCalledWith("workspace/git/status", { root: "/paired/workspace" }, 30_000);
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/git/status", { root: "/paired/workspace" }, 30_000, expect.any(String));
     await bridge.api.listGitChanges("/paired/worktree");
-    expect(remote.call).toHaveBeenLastCalledWith("workspace/git/changes", { root: "/paired/worktree" }, 30_000);
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/git/changes", { root: "/paired/worktree" }, 30_000, expect.any(String));
     await bridge.api.readGitFileDiff("src/main.go", "/paired/worktree");
-    expect(remote.call).toHaveBeenLastCalledWith("workspace/git/diff", { path: "src/main.go", root: "/paired/worktree" }, 30_000);
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/git/diff", { path: "src/main.go", root: "/paired/worktree" }, 30_000, expect.any(String));
   });
 
   it("keeps Electron module inventory unavailable after host updates", async () => {
@@ -225,13 +225,13 @@ describe("workspace routing", () => {
     const selected = await bridge.api.selectProject("beta");
     expect(selected.active_context).toEqual({ kind: "project", project_id: "beta", cwd: "/computer/beta" });
     await bridge.api.listThreads();
-    expect(remote.call).toHaveBeenLastCalledWith("thread/list", { cwd: "/computer/beta" }, 30_000);
+    expect(remote.call).toHaveBeenLastCalledWith("thread/list", { cwd: "/computer/beta" }, 30_000, "/computer/beta");
     await bridge.api.startThread({ model: "chosen-model" });
     expect(remote.call).toHaveBeenLastCalledWith("thread/start", {
       model: "chosen-model", cwd: "/computer/beta", workspace_id: "beta",
-    }, 30_000);
+    }, 30_000, expect.any(String));
     await bridge.api.listWorkspaceDirectory();
-    expect(remote.call).toHaveBeenLastCalledWith("workspace/directory/list", { path: undefined, root: "/computer/beta" }, 30_000);
+    expect(remote.call).toHaveBeenLastCalledWith("workspace/directory/list", { path: undefined, root: "/computer/beta" }, 30_000, expect.any(String));
   });
 
   it("routes background and worktree events to their owning project after switching", async () => {
@@ -274,4 +274,17 @@ describe("workspace routing", () => {
     expect(refreshed.active_context?.cwd).toBe("/computer/beta");
     expect(refreshed.projects.find((project) => project.id === "beta")?.missing).toBe(true);
   });
+});
+
+
+it("routes background thread actions and questions to their owner after a workspace switch", async () => {
+  remote.call.mockResolvedValue({ current: "/alpha", current_id: "alpha", workspaces: [{ id: "alpha", name: "A", path: "/alpha" }, { id: "beta", name: "B", path: "/beta" }] });
+  const bridge = await connectBridge();
+  remote.options.onNotification?.("thread/started", { thread: { id: "t", cwd: "/alpha", workspace_id: "alpha" } }, "/alpha");
+  remote.options.onNotification?.("user-question/requested", { request: { request_id: "q", thread_id: "t" } }, "/alpha");
+  await bridge.api.selectProject("beta");
+  await bridge.api.interruptTurn("t");
+  expect(remote.call).toHaveBeenLastCalledWith("turn/interrupt", { thread_id: "t" }, 30_000, "/alpha");
+  await bridge.api.holdUserQuestion("q");
+  expect(remote.call).toHaveBeenLastCalledWith("user-question/hold", { request_id: "q" }, 30_000, "/alpha");
 });

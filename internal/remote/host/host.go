@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -62,12 +63,16 @@ type PairingConfig struct {
 
 // Options configures a Host.
 type Options struct {
-	Runtime  *runtime.Session
-	Store    *Store
-	RelayURL string // overrides the store's relay URL
-	HostName string // overrides the store's host name
-	Pairing  *PairingConfig
-	Logf     func(format string, args ...any)
+	// AppServer connects an authenticated device to an existing execution host.
+	// When omitted, standalone hosts create their own app-server connection.
+	AppServer func(context.Context, io.Reader, io.Writer) error
+	Workdir   string
+	Runtime   *runtime.Session
+	Store     *Store
+	RelayURL  string // overrides the store's relay URL
+	HostName  string // overrides the store's host name
+	Pairing   *PairingConfig
+	Logf      func(format string, args ...any)
 
 	// ReconnectMin/ReconnectMax bound the relay redial backoff. Zero values
 	// mean 1s/30s.
@@ -89,6 +94,8 @@ type pairingState struct {
 
 // Host runs the desktop side of remote control.
 type Host struct {
+	appServer       func(context.Context, io.Reader, io.Writer) error
+	workdir         string
 	rt              *runtime.Session
 	store           *Store
 	relayURL        string
@@ -113,7 +120,7 @@ type Host struct {
 }
 
 func New(opts Options) (*Host, error) {
-	if opts.Runtime == nil {
+	if opts.Runtime == nil && opts.AppServer == nil {
 		return nil, errors.New("remote host requires a runtime")
 	}
 	if opts.Store == nil {
@@ -146,6 +153,8 @@ func New(opts Options) (*Host, error) {
 		pusher = NewExpoPusher()
 	}
 	h := &Host{
+		appServer:       opts.AppServer,
+		workdir:         opts.Workdir,
 		rt:              opts.Runtime,
 		store:           opts.Store,
 		relayURL:        relayURL,
@@ -601,13 +610,15 @@ func (h *Host) writeWS(ctx context.Context, ws *websocket.Conn, msg wire.RelayMs
 }
 
 func (h *Host) hostInfo() wire.HostInfo {
-	return wire.HostInfo{
-		Name:     h.hostName,
-		Version:  version.Info().Version,
-		Workdir:  h.rt.RootDir,
-		Provider: h.rt.ProviderName,
-		Model:    h.rt.Model,
+	info := wire.HostInfo{
+		Name:    h.hostName,
+		Version: version.Info().Version,
+		Workdir: h.workdir,
 	}
+	if h.rt != nil {
+		info.Workdir, info.Provider, info.Model = h.rt.RootDir, h.rt.ProviderName, h.rt.Model
+	}
+	return info
 }
 
 // --- shared websocket helpers ------------------------------------------------

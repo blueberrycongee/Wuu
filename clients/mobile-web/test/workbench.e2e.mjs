@@ -22,7 +22,7 @@ async function until(check, label, timeout = 30000) {
   throw new Error(`Timed out: ${label}`);
 }
 function start(command, args, options = {}) {
-  const child = spawn(command, args, { cwd: repoDir, ...options, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(command, args, { cwd: repoDir, ...options, stdio: ['pipe', 'pipe', 'pipe'] });
   const run = { child, output: '', exited: false };
   child.stdout.on('data', data => { run.output += data; });
   child.stderr.on('data', data => { run.output += data; });
@@ -40,6 +40,10 @@ async function freePort() {
 }
 let releaseCompletion, completionRequested = false;
 const completionGate = new Promise(resolve => { releaseCompletion = resolve; });
+let interruptRequested = false;
+const stopPrompt = 'Wait for a desktop stop';
+const desktopPrompt = 'Continue from the desktop';
+const desktopFinal = 'The desktop continued the same shared conversation.';
 const finalText = 'Completed the browser task. Created src/browser-task.ts on the paired computer.';
 const fileText = 'export const remoteResult = "written on the paired computer";\n';
 try {
@@ -55,11 +59,19 @@ try {
       let raw = ''; for await (const data of req) raw += data;
       if (req.method === 'GET') { res.end(JSON.stringify({ object: 'list', data: [{ id: 'web-fixture', object: 'model' }] })); return; }
       const body = JSON.parse(raw);
+      const desktopTurn = body.messages?.some(message => message.role === 'user' && JSON.stringify(message.content).includes(desktopPrompt));
       const writeTool = body.tools?.some(tool => tool.function?.name === 'write_file');
+      if (writeTool && body.messages?.filter(message => message.role === 'user').at(-1)?.content === stopPrompt) {
+        interruptRequested = true;
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: ' + JSON.stringify({ id: 'held', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { role: 'assistant', content: 'Working until stopped' }, finish_reason: null }] }) + '\n\n');
+        await new Promise(resolve => res.once('close', resolve));
+        return;
+      }
       const hasToolReply = body.messages?.some(message => message.role === 'tool');
       const message = writeTool && !hasToolReply
         ? { role: 'assistant', tool_calls: [{ id: 'write-web-fixture', type: 'function', function: { name: 'write_file', arguments: JSON.stringify({ path: 'src/browser-task.ts', content: fileText }) } }] }
-        : { role: 'assistant', content: writeTool ? finalText : 'Browser coding task' };
+        : { role: 'assistant', content: writeTool ? (desktopTurn ? desktopFinal : finalText) : 'Browser coding task' };
       if (writeTool && hasToolReply) { completionRequested = true; await completionGate; }
       const finish_reason = message.tool_calls ? 'tool_calls' : 'stop';
       if (body.stream) {
@@ -81,6 +93,26 @@ try {
   execFileSync(process.execPath, [path.join(repoDir, 'desktop/scripts/build-web.cjs')], { cwd: repoDir, stdio: 'pipe' });
   const relay = start(binary, ['relay', '--addr', `${webHost}:${relayPort}`, '--state', path.join(temp, 'relay.json'), '--web-root', path.join(repoDir, 'desktop/build/mobile-web')], { env });
   await until(() => relay.output.includes('listening'), 'relay startup');
+  const sharedRunner = path.join(temp, 'shared-host.mjs');
+  execFileSync(path.join(repoDir, 'desktop/node_modules/.bin/esbuild'), [
+    path.join(repoDir, 'desktop/test-fixtures/sharedRemoteHost.ts'), '--bundle', '--platform=node', '--format=esm',
+    `--alias:electron=${path.join(repoDir, 'desktop/test-fixtures/electronForRemoteHost.ts')}`, `--outfile=${sharedRunner}`,
+  ], { stdio: 'pipe' });
+  const desktop = start(process.execPath, [sharedRunner], { env: { ...env, WUU_DESKTOP_CORE: binary, WUU_TEST_WORKSPACE: workspace } });
+  const records = () => desktop.output.split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
+  await until(() => records().some(row => row.bridge), 'desktop service pool');
+  const endpoint = records().find(row => row.bridge).bridge;
+  env.WUU_DESKTOP_APP_SERVER_ADDR = endpoint.address;
+  env.WUU_DESKTOP_APP_SERVER_TOKEN = endpoint.token;
+  let requestID = 0;
+  const desktopCall = async (method, params) => {
+    const id = ++requestID;
+    desktop.child.stdin.write(JSON.stringify({ id, method, params }) + '\n');
+    await until(() => records().some(row => row.desktopResponse?.id === id), `desktop ${method}`);
+    const response = records().find(row => row.desktopResponse?.id === id).desktopResponse;
+    assert.equal(response.error, undefined);
+    return response.result;
+  };
   const host = start(binary, ['remote', 'host', '--workdir', workspace, '--relay', `ws://${webHost}:${relayPort}/v1/connect`, '--pair'], { env });
   await until(() => host.output.includes('wuu://pair?'), 'host pairing');
   const uri = host.output.match(/wuu:\/\/pair\?[^\s]+/)[0];
@@ -101,6 +133,11 @@ try {
   await input.fill('Create src/browser-task.ts with the requested test export.');
   await page.getByRole('button', { name: '发送', exact: true }).filter({ visible: true }).click();
   await until(() => completionRequested, 'Agent tool execution');
+  const started = records().find(row => row.desktopEvent?.message?.method === 'turn/started');
+  assert(started, 'desktop received the phone turn without polling');
+  const threadID = started.desktopEvent.message.params.thread_id;
+  await desktopCall('thread/resume', { session_id: threadID });
+
   assert.equal(await fs.readFile(path.join(workspace, 'src/browser-task.ts'), 'utf8'), fileText);
   await input.fill('Draft that must survive restoration');
   await context.setOffline(true); await page.evaluate(() => window.testSocket.close());
@@ -109,6 +146,8 @@ try {
   releaseCompletion();
   // The host emits this after completing the turn while no browser is attached.
   await until(() => host.output.includes('push agent_done'), 'host completion while detached');
+  const desktopSnapshot = await desktopCall('thread/resume', { session_id: threadID });
+  assert(JSON.stringify(desktopSnapshot).includes(finalText), 'already-open desktop conversation sees phone completion');
   await context.setOffline(false);
   await page.locator('.web-workbench:not([inert])').waitFor({ timeout: 45000 });
   await page.getByText(finalText, { exact: true }).filter({ visible: true }).waitFor();
@@ -124,6 +163,23 @@ try {
   assert.equal(await page.getByText(finalText, { exact: true }).filter({ visible: true }).count(), 1);
   assert.equal(await input.inputValue(), 'Draft that must survive restoration');
   assert.equal(await page.evaluate(() => window.testDocumentID), documentID);
+  await desktopCall('turn/start', { thread_id: threadID, prompt: desktopPrompt });
+  await page.getByText(desktopFinal, { exact: true }).filter({ visible: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.testDocumentID), documentID);
+  await page.evaluate(({ threadID, stopPrompt }) => window.wuu.startTurn(threadID, stopPrompt), { threadID, stopPrompt });
+  await until(() => interruptRequested, 'phone task awaiting desktop stop');
+  restarted.child.kill('SIGTERM');
+  await until(() => restarted.exited, 'remote transport stops while task runs');
+  const held = await desktopCall('thread/resume', { session_id: threadID });
+  assert.equal(held.thread.turns.at(-1).status, 'in_progress', 'closing remote access must not stop the shared task');
+  const reattachedHost = start(binary, ['remote', 'host', '--workdir', workspace, '--relay', `ws://${webHost}:${relayPort}/v1/connect`], { env });
+  await until(() => reattachedHost.output.includes('connected to relay'), 'remote transport resumes');
+  await page.locator('.web-workbench:not([inert])').waitFor({ timeout: 45000 });
+  await desktopCall('turn/interrupt', { thread_id: threadID });
+  await until(async () => {
+    const snapshot = await page.evaluate(threadID => window.wuu.resumeThread(threadID), threadID);
+    return snapshot.thread.turns.at(-1)?.status === 'interrupted';
+  }, 'phone receives desktop interruption');
   const changes = await page.evaluate(() => window.wuu.listGitChanges());
   assert(changes.files.some(file => file.path === 'src/browser-task.ts' && file.additions === 1));
   const diff = await page.evaluate(() => window.wuu.readGitFileDiff('src/browser-task.ts'));
@@ -146,9 +202,9 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
   }
   assert.deepEqual(pageErrors, []);
-  console.log('PASS: pairing, host tool execution, offline completion, snapshot and draft restoration, host restart, Git review, file navigation and phone viewports');
+  console.log('PASS: shared desktop/phone execution, bidirectional live messages, pairing, host tool execution, offline completion, snapshot and draft restoration, host restart, Git review, file navigation and phone viewports');
 } catch (error) {
-  for (const run of processes) console.error(run.output.slice(-3000).replace(/wuu:\/\/pair\?[^\s]+/g, '[pairing URI]'));
+  for (const run of processes) console.error(run.output.slice(-3000).replace(/"token":"[^"]+"/g, '"token":"[redacted]"').replace(/wuu:\/\/pair\?[^\s]+/g, '[pairing URI]'));
   throw error;
 } finally {
   releaseCompletion();

@@ -135,6 +135,10 @@ class FakeHost {
     return this.sockets[this.sockets.length - 1];
   }
 
+  endAppConnection(): void {
+    this.sendSealed(this.current(), { t: "bye", reason: "app-server connection closed" });
+  }
+
   drop(): void {
     this.current().close();
   }
@@ -503,4 +507,18 @@ describe("RemoteClient", () => {
       await client.stop();
     }
   });
+});
+
+
+it("reconnects after the local execution transport ends instead of staying detached", async () => {
+  const fake = new FakeHost();
+  const { client, attaches } = makeClient(fake);
+  client.start();
+  try {
+    await client.waitAttached(3000);
+    fake.endAppConnection();
+    await until(() => attaches.length === 2);
+    expect(client.isAttached()).toBe(true);
+    expect(fake.sockets.length).toBe(2);
+  } finally { await client.stop(); }
 });

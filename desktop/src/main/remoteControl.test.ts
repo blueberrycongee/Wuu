@@ -325,3 +325,11 @@ describe("phone access pairing lifecycle", () => {
     expect(children[2].args).not.toContain("--pair");
   });
 });
+
+
+it("does not start an independent runtime when the configured desktop service is unavailable", () => {
+  const spawn = vi.fn();
+  const manager = new RemoteHostManager({ spawn, resolveCommand: cwd => ({ command: "wuu", args: [], cwd }), appServerEndpoint: () => undefined });
+  expect(() => manager.startHost("/work")).toThrow("Shared desktop app-server is unavailable");
+  expect(spawn).not.toHaveBeenCalled();
+});

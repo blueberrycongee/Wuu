@@ -203,32 +203,39 @@ func runRemoteHost(args []string) error {
 	if err != nil {
 		return err
 	}
-	homeDir := os.Getenv("HOME")
-	cfg, configPath, err := loadOrCreateAppServerConfig(rootDir, homeDir)
-	if err != nil {
-		return err
-	}
-	rt, err := runtime.NewSession(runtime.Options{
-		RootDir:       rootDir,
-		WorkspaceID:   *workspaceID,
-		HomeDir:       homeDir,
-		ConfigPath:    configPath,
-		Config:        cfg,
-		ProviderName:  *providerName,
-		ModelOverride: *modelOverride,
-	})
-	if err != nil {
-		return err
-	}
-	defer func() { _, _ = rt.Cleanup() }()
-
+	var rt *runtime.Session
 	opts := host.Options{
-		Runtime:  rt,
 		Store:    store,
 		RelayURL: strings.TrimSpace(*relayURL),
-		Logf: func(format string, a ...any) {
-			fmt.Fprintf(os.Stderr, format+"\n", a...)
-		},
+		Workdir:  rootDir,
+		Logf:     func(format string, a ...any) { fmt.Fprintf(os.Stderr, format+"\n", a...) },
+	}
+	if address := os.Getenv("WUU_DESKTOP_APP_SERVER_ADDR"); address != "" || os.Getenv("WUU_DESKTOP_APP_SERVER_TOKEN") != "" {
+		opts.AppServer, err = host.DesktopAppServer(address, os.Getenv("WUU_DESKTOP_APP_SERVER_TOKEN"))
+		if err != nil {
+			return err
+		}
+	} else {
+		homeDir := os.Getenv("HOME")
+		cfg, configPath, err := loadOrCreateAppServerConfig(rootDir, homeDir)
+		if err != nil {
+			return err
+		}
+		rt, err = runtime.NewSession(runtime.Options{
+			RootDir:       rootDir,
+			WorkspaceID:   *workspaceID,
+			HomeDir:       homeDir,
+			ConfigPath:    configPath,
+			Config:        cfg,
+			ProviderName:  *providerName,
+			ModelOverride: *modelOverride,
+		})
+		if err != nil {
+			return err
+		}
+		defer func() { _, _ = rt.Cleanup() }()
+
+		opts.Runtime = rt
 	}
 	if *pair {
 		opts.Pairing = &host.PairingConfig{

@@ -266,7 +266,7 @@ export interface RemoteClientOptions {
   ackIntervalMs?: number;
   pingIntervalMs?: number;
   clientProfile?: string;
-  onNotification?: (method: string, params: unknown) => void;
+  onNotification?: (method: string, params: unknown, workdir?: string) => void;
   onServerRequest?: ServerRequestHandler;
   onState?: (state: HostState) => void;
   onAttach?: (ev: AttachEvent) => void;
@@ -559,6 +559,7 @@ export class RemoteClient {
       case E2E_BYE:
         this.channel = null;
         this.setDetached();
+        this.sock?.close();
         return;
       default:
         return;
@@ -690,13 +691,13 @@ export class RemoteClient {
 
   /** Convenience: waits for attach and issues one call within one total
    *  deadline. The remaining budget follows the request after attach. */
-  async call<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
+  async call<T = unknown>(method: string, params?: unknown, timeoutMs?: number, workdir?: string): Promise<T> {
     const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
     await this.waitAttached(timeoutMs);
     const proto = this.proto;
     if (!proto) throw new Error("not attached to host");
     const remainingMs = deadline === undefined ? undefined : Math.max(0, deadline - Date.now());
-    return proto.call<T>(method, params, remainingMs);
+    return proto.call<T>(method, params, remainingMs, workdir);
   }
 
   isAttached(): boolean {

@@ -60,6 +60,7 @@ export type RemoteHostManagerOptions = {
   env?: NodeJS.ProcessEnv;
   execTimeoutMs?: number;
   killGraceMs?: number;
+  appServerEndpoint?: () => { address: string; token: string } | undefined;
 };
 
 export class RemoteHostManager {
@@ -110,9 +111,17 @@ export class RemoteHostManager {
     if (options.pair) {
       args.push("--pair");
     }
+    const endpoint = this.opts.appServerEndpoint?.();
+    if (this.opts.appServerEndpoint && !endpoint) throw new Error("Shared desktop app-server is unavailable");
     const child = this.spawnFn()(command.command, args, {
       cwd: command.cwd,
-      env: this.env(),
+      env: {
+        ...this.env(),
+        ...(endpoint ? {
+          WUU_DESKTOP_APP_SERVER_ADDR: endpoint.address,
+          WUU_DESKTOP_APP_SERVER_TOKEN: endpoint.token,
+        } : {}),
+      },
     });
     this.child = child;
     this.childWorkdir = workdir;

@@ -28,7 +28,7 @@ export class PhoneAccess {
   private exited: Promise<void> | null = null;
   private base: string | null = null;
   private queue: Promise<unknown> = Promise.resolve();
-  constructor(private readonly host: RemoteHostManager, private readonly webRoot: string, private readonly changed: () => void) {}
+  constructor(private readonly host: RemoteHostManager, private readonly webRoot: string, private readonly changed: () => void, private readonly appServer?: { start(workdir: string): Promise<unknown>; stop(): void }) {}
   url(): string | null { return this.base; }
   run<T>(action: () => Promise<T>): Promise<T> {
     const next = this.queue.then(action);
@@ -47,6 +47,7 @@ export class PhoneAccess {
       relay.once("close", () => {
         if (this.relay !== relay) return;
         this.relay = null; this.base = null;
+        this.appServer?.stop();
         void this.host.stopHost().then(this.changed, this.changed);
       });
       try {
@@ -72,10 +73,12 @@ export class PhoneAccess {
       } catch (error) { await this.stop(); throw error; }
     }
     await this.host.stopHost();
+    await this.appServer?.start(workdir);
     this.host.startHost(workdir, { pair, relay: this.base!.replace("http:", "ws:") + "v1/connect" });
   }
   async stop(): Promise<void> {
     const hostStopped = this.host.stopHost();
+    this.appServer?.stop();
     const relay = this.relay, exited = this.exited;
     this.relay = null; this.base = null;
     if (relay) {

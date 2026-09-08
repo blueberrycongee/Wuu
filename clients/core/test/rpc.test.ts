@@ -97,3 +97,16 @@ describe("ProtocolClient", () => {
     await vi.advanceTimersByTimeAsync(20);
   });
 });
+
+
+it("carries workspace identity independently of request parameters and notification contents", async () => {
+  const seen = vi.fn();
+  const { client, written } = makeClient({ onNotification: seen });
+  const pending = client.call("turn/interrupt", { thread_id: "t" }, 1000, "/alpha");
+  expect(written[0].workdir).toBe("/alpha");
+  expect(written[0].params).toEqual({ thread_id: "t" });
+  client.feed({ id: written[0].id, result: {} });
+  await pending;
+  client.feed({ method: "turn/completed", params: { thread_id: "t" }, workdir: "/alpha" });
+  expect(seen).toHaveBeenCalledWith("turn/completed", { thread_id: "t" }, "/alpha");
+});
