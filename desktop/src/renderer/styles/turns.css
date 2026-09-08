@@ -4901,7 +4901,9 @@ pre {
   grid-template-rows: 1fr;
   opacity: 1;
   margin-bottom: 0;
-  transition: grid-template-rows 220ms ease, opacity 160ms ease, margin-bottom 220ms ease;
+  transition: grid-template-rows var(--query-submit-duration) var(--query-submit-easing),
+    opacity var(--query-submit-duration) var(--query-submit-easing),
+    margin-bottom var(--query-submit-duration) var(--query-submit-easing);
 }
 
 .assistant-turn-shell > .turn-edit-presentation {

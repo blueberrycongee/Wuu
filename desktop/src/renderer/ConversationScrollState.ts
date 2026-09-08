@@ -28,7 +28,7 @@ import {
   isWindowResizing,
 } from "./WindowResizeState";
 import { markSessionSwitch } from "./SessionSwitchPerformance";
-import { prefersReducedMotion } from "./motion";
+import { motionDurationMs, prefersReducedMotion } from "./motion";
 
 // Tight threshold so the conversation only re-engages auto-follow when the
 // user is effectively parked at the bottom. The previous 48px band let one
@@ -158,6 +158,7 @@ export function useConversationScrollState({
   const programmaticScrollTopRef = useRef<number | undefined>(undefined);
   const suppressAutoFollowRearmRef = useRef(false);
   const smoothAutoFollowRef = useRef(false);
+  const submittedScrollFrameRef = useRef<number | undefined>(undefined);
   const selectionPausedAutoFollowRef = useRef(false);
   const pointerScrollGestureRef = useRef<
     { node: HTMLElement; scrollTop: number; scrollHeight: number } | undefined
@@ -260,8 +261,17 @@ export function useConversationScrollState({
     }
   }, []);
 
-  const markUserScrollAwayIntent = useCallback((startTop?: number): void => {
+  const cancelSubmittedQueryScroll = useCallback((): void => {
+    if (smoothAutoFollowRef.current) suppressAutoFollowRearmRef.current = false;
     smoothAutoFollowRef.current = false;
+    if (submittedScrollFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(submittedScrollFrameRef.current);
+      submittedScrollFrameRef.current = undefined;
+    }
+  }, []);
+
+  const markUserScrollAwayIntent = useCallback((startTop?: number): void => {
+    cancelSubmittedQueryScroll();
     userScrollAwayIntentRef.current = true;
     if (startTop !== undefined) {
       userScrollAwayStartTopRef.current = startTop;
@@ -274,7 +284,7 @@ export function useConversationScrollState({
       userScrollAwayStartTopRef.current = undefined;
       userScrollAwayIntentTimerRef.current = undefined;
     }, CONVERSATION_USER_SCROLL_AWAY_INTENT_WINDOW_MS);
-  }, []);
+  }, [cancelSubmittedQueryScroll]);
 
   function applyProgrammaticScroll(
     node: HTMLElement,
@@ -282,7 +292,7 @@ export function useConversationScrollState({
     autoFollow: boolean,
     options: { revealScrollbar?: boolean } = {}
   ): void {
-    smoothAutoFollowRef.current = false;
+    cancelSubmittedQueryScroll();
     clearUserScrollAwayIntent();
     cancelBottomOverscroll(node);
     suppressAutoFollowRearmRef.current = false;
@@ -309,20 +319,9 @@ export function useConversationScrollState({
     if (!node || !conversationAutoFollowRef.current) {
       return;
     }
-    if (smoothAutoFollowRef.current && !prefersReducedMotion()) {
-      clearUserScrollAwayIntent();
-      selectionPausedAutoFollowRef.current = false;
-      suppressAutoFollowRearmRef.current = true;
-      setAutoFollow(true);
-      setAutoFollowOverflowAnchor(node, true);
-      rememberActiveThreadScrollSnapshot(node, true);
-      showConversationScrollbar(node);
-      if (typeof node.scrollTo === "function") {
-        node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-        return;
-      }
-      smoothAutoFollowRef.current = false;
-    }
+    // The submit animation reads the live bottom itself. A native smooth
+    // scroll restarted on every collapsing-card resize never gets up to speed.
+    if (smoothAutoFollowRef.current) return;
     applyProgrammaticScroll(node, node.scrollHeight, true, {
       revealScrollbar: true,
     });
@@ -335,32 +334,60 @@ export function useConversationScrollState({
   ]);
 
   const requestSubmittedQueryScroll = useCallback((): void => {
+    cancelSubmittedQueryScroll();
     clearUserScrollAwayIntent();
     cancelBottomOverscroll(conversationViewport());
     selectionPausedAutoFollowRef.current = false;
-    const smooth = !prefersReducedMotion();
-    smoothAutoFollowRef.current = smooth;
-    suppressAutoFollowRearmRef.current = smooth;
     setAutoFollow(true);
     const node = conversationViewport();
     if (!node) {
       return;
     }
+    const smooth = !prefersReducedMotion();
+    smoothAutoFollowRef.current = smooth;
+    suppressAutoFollowRearmRef.current = smooth;
     syncConversationViewportHeight(node);
     setAutoFollowOverflowAnchor(node, true);
     rememberActiveThreadScrollSnapshot(node, true);
-    // Start from the current bottom immediately. The optimistic turn's layout
-    // and subsequent resize/stream signals retarget this same smooth scroll to
-    // the newly-grown bottom instead of snapping the viewport between frames.
-    scrollConversationToBottom();
+    if (!smooth) {
+      scrollConversationToBottom();
+      return;
+    }
+    const startTop = clampScrollTop(node, node.scrollTop);
+    const duration = motionDurationMs("--query-submit-duration", 220);
+    let startedAt: number | undefined;
+    const step = (now: number): void => {
+      submittedScrollFrameRef.current = undefined;
+      if (!smoothAutoFollowRef.current || !conversationAutoFollowRef.current) return;
+      startedAt ??= now;
+      const progress = duration > 0 ? Math.min(1, (now - startedAt) / duration) : 1;
+      // CSS uses cubic-bezier(1/3, 1, 2/3, 1): linear time, cubic ease-out.
+      const eased = 1 - (1 - progress) ** 3;
+      // Share one deadline with the diff receipt's exit, even while its height
+      // and the optimistic turn change. Layout signals must not restart easing.
+      node.scrollTop = startTop + (maxScrollTop(node) - startTop) * eased;
+      programmaticScrollTopRef.current = clampScrollTop(node, node.scrollTop);
+      lastConversationScrollTopRef.current = programmaticScrollTopRef.current;
+      rememberActiveThreadScrollSnapshot(node, true);
+      if (progress < 1) {
+        submittedScrollFrameRef.current = window.requestAnimationFrame(step);
+      } else {
+        applyProgrammaticScroll(node, node.scrollHeight, true, { revealScrollbar: true });
+      }
+    };
+    submittedScrollFrameRef.current = window.requestAnimationFrame(step);
   }, [
     activePane,
     activeThreadID,
     clearUserScrollAwayIntent,
     scrollConversationToBottom,
+    cancelSubmittedQueryScroll,
     setAutoFollow,
     splitConversation,
   ]);
+
+  useLayoutEffect(() => cancelSubmittedQueryScroll,
+    [activeThreadID, activePane, splitConversation, cancelSubmittedQueryScroll]);
 
   const scheduleLiveResizeScroll = useCallback((): void => {
     if (
@@ -421,7 +448,7 @@ export function useConversationScrollState({
   }, [scrollConversationToBottom]);
 
   const enableConversationAutoFollow = useCallback((): void => {
-    smoothAutoFollowRef.current = false;
+    cancelSubmittedQueryScroll();
     suppressAutoFollowRearmRef.current = false;
     selectionPausedAutoFollowRef.current = false;
     cancelBottomOverscroll(conversationViewport());
@@ -431,10 +458,10 @@ export function useConversationScrollState({
       setAutoFollowOverflowAnchor(node, true);
       rememberActiveThreadScrollSnapshot(node, true);
     }
-  }, [activePane, activeThreadID, setAutoFollow, splitConversation]);
+  }, [activePane, activeThreadID, cancelSubmittedQueryScroll, setAutoFollow, splitConversation]);
 
   const disableConversationAutoFollow = useCallback((): void => {
-    smoothAutoFollowRef.current = false;
+    cancelSubmittedQueryScroll();
     suppressAutoFollowRearmRef.current = true;
     setAutoFollow(false);
     const node = conversationViewport();
@@ -442,7 +469,7 @@ export function useConversationScrollState({
       setAutoFollowOverflowAnchor(node, false);
       rememberActiveThreadScrollSnapshot(node, false);
     }
-  }, [activePane, activeThreadID, setAutoFollow, splitConversation]);
+  }, [activePane, activeThreadID, cancelSubmittedQueryScroll, setAutoFollow, splitConversation]);
 
   // Snapshot the user's current scroll state so a later call to
   // restoreConversationScrollPosition can return the viewport to exactly
@@ -599,14 +626,8 @@ export function useConversationScrollState({
       // the bottom before the jump reaches its target. Only an actual downward
       // move back to the latest content should clear this jump guard.
       if (smoothAutoFollowRef.current) {
-        // A submit request starts while the viewport is usually already at the
-        // old bottom. Chromium may report that unchanged first frame before the
-        // optimistic turn grows the document. Keep auto-follow armed and retain
-        // the smooth mode until a later frame actually moves to the new bottom.
-        if (scrolledDown && !selectionPausedAutoFollowRef.current) {
-          smoothAutoFollowRef.current = false;
-          suppressAutoFollowRearmRef.current = false;
-        }
+        // Reaching the old bottom must not finish the submit animation before
+        // React inserts the optimistic turn or the diff receipt finishes exiting.
         nextAutoFollow = true;
         setAutoFollow(true);
         setAutoFollowOverflowAnchor(node, true);

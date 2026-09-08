@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Turn } from "../shared/protocol";
 import { turnIsAnswerReady } from "./AppState";
+import { motionDurationMs } from "./motion";
 import { TurnEditSummaryCard, turnHasFileEdits } from "./TurnEditSummaryCard";
 import type { TurnFileDiffSelection } from "./TurnFileDiffTypes";
 
@@ -40,7 +41,7 @@ export function TurnEditSummaryPresentation({
       return;
     }
     // Also finish in hidden panes, where transitionend may never fire.
-    const timer = window.setTimeout(finish, 220);
+    const timer = window.setTimeout(finish, motionDurationMs("--query-submit-duration", 220));
     return () => window.clearTimeout(timer);
   }, [visible, retained, onCollapseComplete]);
 

@@ -49,6 +49,21 @@ function stubLayout(node: HTMLElement, opts: Partial<StubbedLayout>): StubbedLay
   return layout;
 }
 
+function controlAnimationFrames(): (now: number) => void {
+  const pending = new Map<number, FrameRequestCallback>();
+  let id = 0;
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    pending.set(++id, callback);
+    return id;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((key) => { pending.delete(key); });
+  return (now) => act(() => {
+    const callbacks = [...pending.values()];
+    pending.clear();
+    callbacks.forEach((callback) => callback(now));
+  });
+}
+
 function Probe({
   activeThreadID,
   nativeScrollBounce,
@@ -108,6 +123,7 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
     scrollNode = null;
     layout = null;
     document.body.removeChild(container);
+    vi.restoreAllMocks();
   });
 
   function mount(opts: {
@@ -234,16 +250,15 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
     fireScroll();
   });
 
-  it("smoothly follows the bottom when a query is submitted", () => {
+  it("finishes one submit motion while the diff receipt shrinks and layout signals keep arriving", () => {
     const node = mount({
       activeThreadID: "thread-a",
       scrollHeight: 1600,
       clientHeight: 600,
       initialScrollTop: 1000,
     });
-    const scrollTo = vi.fn();
-    node.scrollTo = scrollTo;
     fireScroll();
+    const frame = controlAnimationFrames();
 
     act(() => {
       container
@@ -253,25 +268,83 @@ describe("useConversationScrollState — thread scroll snapshots", () => {
         ?.click();
     });
 
-    expect(scrollTo).toHaveBeenCalledWith({ top: 1600, behavior: "smooth" });
     expect(node.style.getPropertyValue("--conversation-viewport-height")).toBe(
       "600px",
     );
 
-    // The first native smooth-scroll frame can report the unchanged old bottom
-    // before React lays out the optimistic turn. It must not disarm the pending
-    // smooth follow, or the subsequent growth will snap or remain off-screen.
+    // An unchanged old-bottom frame must not finish before the new turn exists.
+    frame(0);
     fireScroll();
     if (!layout || !root) throw new Error("not mounted");
-    layout.scrollHeight = 1900;
-    act(() => {
-      root!.render(createElement(Probe, { activeThreadID: "thread-a" }));
-    });
+    const tops: number[] = [];
+    for (const [time, height] of [[40, 2100], [90, 2000], [150, 1940], [230, 1900]]) {
+      layout.scrollHeight = height;
+      act(() => { root!.render(createElement(Probe, { activeThreadID: "thread-a" })); });
+      frame(time);
+      fireScroll();
+      tops.push(layout.scrollTop);
+    }
+    // Motion starts before the card finishes, and reaches the final bottom on
+    // the original deadline despite repeated render/resize follow requests.
+    expect(tops[0]).toBeGreaterThan(1000);
+    expect(tops[0]).toBeLessThan(1500);
+    expect(tops.at(-1)).toBe(1300);
+    frame(450);
+    expect(layout.scrollTop).toBe(1300);
+    layout.scrollHeight = 2000;
+    act(() => { root!.render(createElement(Probe, { activeThreadID: "thread-a" })); });
+    expect(layout.scrollTop).toBe(1400);
+  });
 
-    expect(scrollTo).toHaveBeenLastCalledWith({
-      top: 1900,
-      behavior: "smooth",
+  it("follows immediately when reduced motion is enabled", () => {
+    mount({ activeThreadID: "thread-a", scrollHeight: 1600, clientHeight: 600, initialScrollTop: 1000 });
+    fireScroll();
+    const frame = controlAnimationFrames();
+    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true } as MediaQueryList);
+    if (!layout || !root) throw new Error("not mounted");
+    layout.scrollHeight = 1900;
+    act(() => { container.querySelector<HTMLButtonElement>("[data-testid='request-submitted-query-scroll']")!.click(); });
+    expect(layout.scrollTop).toBe(1300);
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+    frame(230);
+    expect(layout.scrollTop).toBe(1300);
+  });
+
+  it("lets an upward user scroll interrupt a submit motion", () => {
+    const node = mount({
+      activeThreadID: "thread-a", scrollHeight: 1600, clientHeight: 600, initialScrollTop: 1000,
     });
+    fireScroll();
+    const frame = controlAnimationFrames();
+    act(() => { container.querySelector<HTMLButtonElement>("[data-testid='request-submitted-query-scroll']")!.click(); });
+    if (!layout || !root) throw new Error("not mounted");
+    layout.scrollHeight = 2100;
+    frame(0);
+    frame(80);
+    act(() => { node.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -100 })); });
+    layout.scrollTop -= 100;
+    fireScroll();
+    const stoppedAt = layout.scrollTop;
+    frame(230);
+    layout.scrollHeight = 2200;
+    act(() => { root!.render(createElement(Probe, { activeThreadID: "thread-a" })); });
+    frame(450);
+    expect(layout.scrollTop).toBe(stoppedAt);
+  });
+
+  it("cancels submit frames when switching conversations", () => {
+    mount({ activeThreadID: "thread-a", scrollHeight: 1600, clientHeight: 600, initialScrollTop: 1000 });
+    fireScroll();
+    const frame = controlAnimationFrames();
+    act(() => { container.querySelector<HTMLButtonElement>("[data-testid='request-submitted-query-scroll']")!.click(); });
+    if (!layout) throw new Error("not mounted");
+    layout.scrollHeight = 2100;
+    frame(0);
+    frame(80);
+    switchThread("thread-b");
+    const restoredTop = layout.scrollTop;
+    frame(230);
+    expect(layout.scrollTop).toBe(restoredTop);
   });
 
   it("keeps a hard boundary on platforms without native scroll bounce", () => {
