@@ -59,8 +59,27 @@ Git 审阅面板需要仓库状态、变更列表和单文件 diff，因此增�
 仓库列表超过 8 MiB 或读取超过 25 秒会明确报错。外部 diff 和 textconv 不会执行。
 提交、切分支和创建 PR 仍由电脑上的 Agent 或桌面操作完成，没有新增远程 Git 写入接口。
 
-仍需完成手机视口布局及真实浏览器端到端验证。
 Web 扩展模块加载暂时关闭，直到存在与 Electron 自定义协议同等的公共加载路径。
 
 浏览器凭据保存在当前 origin 的 `localStorage`，隔离强度低于 Keychain/Keystore。
 不要把该页面部署到不受信任的公共 origin；远程链路继续使用端到端加密和既有配对信任。
+
+## 端到端验证
+
+```bash
+npm install
+npx playwright install chromium
+npm run test:e2e
+# 或使用已安装的 Chrome：
+WUU_BROWSER_CHANNEL=chrome npm run test:e2e
+```
+
+测试需要 Go、Git 和 Node。它会构建当前 Go 宿主，在临时目录启动 relay、宿主、
+Web 服务及确定性的本地模型服务，结束后清理进程和数据。可通过 `WUU_E2E_BINARY`
+指定已构建的宿主。测试不读取模型凭据，也不调用付费模型。
+
+浏览器通过真实配对和加密链路发起任务，宿主 Agent 执行 `write_file`。
+测试在工具执行后断开浏览器，让电脑独立完成任务，再验证最终消息、文件改动、
+草稿和会话快照恢复；还会重启宿主验证重新连接。随后验证 Git diff、文件树与代码预览、
+返回导航，以及 320/390/430px 宽度和缩短视口中的输入控件可见性。
+该测试使用浏览器的触屏与视口仿真，不模拟操作系统软键盘。
