@@ -140,9 +140,9 @@ func client(t *testing.T, c *controller, method string, args mutation) {
 	event(t, c, clientCapability, map[string]any{"method": method, "input": json.RawMessage(raw)})
 }
 
-func TestGoalContinuesOnceAndStopsAtBudget(t *testing.T) {
+func TestGoalContinuesOnceAndPreservesUsageAcrossReload(t *testing.T) {
 	c, h := setup(t)
-	tool(t, c, "create_goal", `{"objective":"finish the work","token_budget":100}`)
+	tool(t, c, "create_goal", `{"objective":"finish the work"}`)
 	finish(t, c, "initial", 40)
 	finish(t, c, "initial", 40)
 	if len(h.sends) != 1 || c.goals["thread"].TokensUsed != 40 {
@@ -150,8 +150,8 @@ func TestGoalContinuesOnceAndStopsAtBudget(t *testing.T) {
 	}
 	finish(t, c, "auto-1", 65)
 	g := c.goals["thread"]
-	if g.Status != "budget_limited" || g.TokensUsed != 105 || len(h.sends) != 1 {
-		t.Fatalf("budget not enforced: %+v", g)
+	if g.Status != "active" || g.TokensUsed != 105 || len(h.sends) != 2 {
+		t.Fatalf("continuation did not settle usage: %+v", g)
 	}
 	if !strings.Contains(h.sends[0].Input.Prompt, "finish the work") {
 		t.Fatal("objective absent from continuation")
@@ -164,7 +164,7 @@ func TestGoalContinuesOnceAndStopsAtBudget(t *testing.T) {
 	if err := restored.activate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if restored.goals["thread"].TokensUsed != 105 || len(h.sends) != 1 {
+	if restored.goals["thread"].TokensUsed != 105 || restored.goals["thread"].Status != "paused" || len(h.sends) != 2 {
 		t.Fatal("recovery changed usage or sent another turn")
 	}
 }
@@ -180,6 +180,46 @@ func TestCompletionDoesNotCancelExecutingToolAndSettlesFinalTurn(t *testing.T) {
 	finish(t, c, "auto-1", 20)
 	if c.goals["thread"].TokensUsed != 50 || len(h.sends) != 1 || c.goals["thread"].Status != "complete" {
 		t.Fatalf("final settlement: %+v", c.goals["thread"])
+	}
+}
+
+func TestLegacyBudgetLimitedGoalLoadsPausedAndResumes(t *testing.T) {
+	c, h := setup(t)
+	stored := `{"thread":{"id":"legacy","thread_id":"thread","objective":"finish work","status":"budget_limited","token_budget":100,"tokens_used":105}}`
+	h.stored = &stored
+	if err := c.activate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if c.goals["thread"].Status != "paused" || c.goals["thread"].TokensUsed != 105 || len(h.sends) != 0 {
+		t.Fatalf("legacy goal changed usage or resumed automatically: %+v", c.goals["thread"])
+	}
+	client(t, c, "resume", mutation{ThreadID: "thread"})
+	if c.goals["thread"].Status != "active" || len(h.sends) != 1 {
+		t.Fatalf("legacy goal cannot resume: %+v", c.goals["thread"])
+	}
+}
+
+func TestGoalCreatedAndCompletedInSameTurnSettlesUsage(t *testing.T) {
+	c, h := setup(t)
+	created := c.now()
+	tool(t, c, "create_goal", `{"objective":"verify goal tools"}`)
+	c.now = func() time.Time { return created.Add(10 * time.Second) }
+	tool(t, c, "update_goal", `{"status":"complete"}`)
+	observation := completedTurn{
+		ThreadID: "thread", TurnID: "initial", StartedAt: created.Add(-time.Minute),
+		CompletedAt: created.Add(20 * time.Second), Succeeded: true,
+		InputTokens: 3000, OutputTokens: 1014,
+	}
+	c.now = func() time.Time { return observation.CompletedAt }
+	event(t, c, completedCapability, observation)
+	event(t, c, completedCapability, observation)
+	var saved map[string]Goal
+	if err := json.Unmarshal([]byte(*h.stored), &saved); err != nil {
+		t.Fatal(err)
+	}
+	g := saved["thread"]
+	if g.TokensUsed != 4014 || g.TimeUsedSeconds != 20 || g.Status != "complete" || len(h.sends) != 0 {
+		t.Fatalf("same-turn completion settlement: %+v, sends=%d", g, len(h.sends))
 	}
 }
 
@@ -298,7 +338,7 @@ func TestGoalToolIsolationAndValidation(t *testing.T) {
 		{ToolID: "create_goal", Arguments: json.RawMessage(`{"objective":"replacement"}`)},
 		{ToolID: "update_goal", Arguments: json.RawMessage(`{"status":"paused"}`)},
 		{ToolID: "get_goal", Arguments: json.RawMessage(`{"thread_id":"another"}`)},
-		{ToolID: "create_goal", Arguments: json.RawMessage(`{"objective":"","token_budget":0}`)},
+		{ToolID: "create_goal", Arguments: json.RawMessage(`{"objective":""}`)},
 	} {
 		call.SessionID = "thread"
 		if _, err := c.executeTool(context.Background(), c.host, call); err == nil {
