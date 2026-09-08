@@ -582,6 +582,7 @@ export function WorkspaceRightPanel({
           }}
           fallback={compactNavigation ? (
             <>
+              {globalized ? <span className="workspace-panel-sidebar-hit-hole" aria-hidden="true" /> : null}
               <button
                 className="icon-button workspace-panel-back"
                 type="button"

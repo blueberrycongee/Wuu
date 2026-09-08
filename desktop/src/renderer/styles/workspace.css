@@ -220,6 +220,10 @@
     0;
 }
 
+.app-shell.right-panel-globalized .workspace-right-panel.compact-navigation .workspace-panel-tabbar {
+  grid-template-columns: 36px 36px minmax(0, 1fr) 36px;
+}
+
 .workspace-panel-compact-heading {
   display: grid;
   min-width: 0;

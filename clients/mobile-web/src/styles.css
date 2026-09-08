@@ -86,3 +86,8 @@ button, input, textarea { font: inherit; }
 }
 .web-connection-status span { flex: 1 1 180px; overflow-wrap: anywhere; }
 .web-connection-status button { min-height: 44px; }
+
+:root[data-host-kind="web"] #root {
+  height: var(--web-viewport-height, 100dvh);
+  min-height: 0;
+}

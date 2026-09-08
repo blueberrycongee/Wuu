@@ -371,6 +371,12 @@
  * animation would busy-loop. Hand-written keyframes with local durations
  * still need their own prefers-reduced-motion block next to where they
  * are defined. */
+/* Browser chrome lives outside the renderer, including on macOS and iOS. */
+:root[data-host-kind="web"] {
+  --window-controls-inset-left: 0px;
+  --window-controls-inset-right: 0px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-fast: 0ms;

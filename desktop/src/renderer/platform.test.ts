@@ -16,6 +16,7 @@ function setApiPlatform(platform: unknown): void {
 afterEach(() => {
   delete (window as { wuu?: unknown }).wuu;
   delete document.documentElement.dataset.platform;
+  delete document.documentElement.dataset.hostKind;
 });
 
 describe("desktopPlatform", () => {

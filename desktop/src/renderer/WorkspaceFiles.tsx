@@ -36,7 +36,6 @@ const WORKSPACE_FILE_TREE_STYLE: CSSProperties = {
   minWidth: 0,
   width: "100%"
 };
-const WORKSPACE_FILE_TREE_ITEM_HEIGHT = 24;
 
 const WORKSPACE_TREE_CSS = `
   :host {
@@ -193,7 +192,8 @@ const WorkspaceFileTreeView = memo(function WorkspaceFileTreeView({ directories,
     initialExpansion: "closed",
     initialSelectedPaths: selectedFilePath ? [selectedFilePath] : [],
     icons: { set: "complete", colored: true },
-    itemHeight: WORKSPACE_FILE_TREE_ITEM_HEIGHT,
+    // The virtualizer and its shadow DOM must agree on the touch target size.
+    itemHeight: window.matchMedia?.("(pointer: coarse)").matches ? 44 : 24,
     overscan: 8,
     preparedInput: initialPreparedInputRef.current,
     search: true,

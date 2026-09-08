@@ -21,6 +21,7 @@ export function desktopPlatform(): DesktopPlatform {
 // preload's value wins when present so CSS and JS never disagree.
 export function applyPlatformStamp(): void {
   const root = document.documentElement;
+  root.dataset.hostKind = window.wuu?.hostKind ?? "desktop";
   if (!root.dataset.platform) {
     root.dataset.platform = desktopPlatform();
   }
