@@ -510,6 +510,10 @@
   padding-block: 12px max(12px, env(safe-area-inset-bottom, 0px));
 }
 
+.app-shell.compact-navigation .conversation-turn-rail {
+  display: none;
+}
+
 @media (pointer: coarse) and (max-width: 760px) {
   .app-shell.compact-navigation .titlebar :is(
     .sidebar-toggle-button, .environment-toggle-button, .side-panel-toggle-button
@@ -523,9 +527,19 @@
     top: env(safe-area-inset-top, 0px);
   }
 
+  .app-shell.compact-navigation .composer-bar {
+    /* Fit the touch targets plus the toolbar's 4px bottom padding. */
+    min-height: 48px;
+  }
+
   .app-shell.compact-navigation .composer-bar button {
     min-height: 44px;
     min-width: 44px;
+  }
+
+  .app-shell.compact-navigation :is(.composer-send-button, .composer-stop-button)::before {
+    /* Keep the circle compact without shrinking its touch target. */
+    inset: 6px;
   }
 
   .app-shell.compact-navigation :is(.nav-item, .thread-row, .project-row) {
