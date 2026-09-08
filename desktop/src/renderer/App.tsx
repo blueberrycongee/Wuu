@@ -2178,7 +2178,7 @@ export function App(): JSX.Element {
     useState(false);
   const mainConversationDockVisible =
     Boolean(state.initialized) &&
-    !emptyConversation &&
+    (!emptyConversation || compactNavigation) &&
     !splitConversation &&
     !showingManagementCatalog &&
     !rightPanelGlobalized;
@@ -2262,8 +2262,10 @@ export function App(): JSX.Element {
       origin: Element | null,
       interactionVersion: number,
     ): boolean => {
+      // Compact sessions keep the empty and populated composer in the same dock.
+      const visibleTarget = compactNavigation && target === "hero" ? "dock" : target;
       const composer = conversationPaneRef.current?.querySelector<HTMLElement>(
-        `[data-main-conversation-composer="${target}"]`,
+        `[data-main-conversation-composer="${visibleTarget}"]`,
       );
       const textarea = composer?.querySelector<HTMLTextAreaElement>("textarea");
       if (!textarea || textarea.disabled) {
@@ -2279,7 +2281,7 @@ export function App(): JSX.Element {
       }
       return true;
     },
-    [conversationPaneRef],
+    [compactNavigation, conversationPaneRef],
   );
   const requestMainComposerFocus = useCallback(
     (
@@ -5492,8 +5494,8 @@ export function App(): JSX.Element {
                     : "idle"
                 }
               >
-                {rightPanelGlobalized && activeWorkspaceFileTabID
-                  ? <div />
+                {compactNavigation || (rightPanelGlobalized && activeWorkspaceFileTabID)
+                  ? null
                   : renderComposer("hero")}
               </EmptyConversationHome>
             ) : (

@@ -1640,7 +1640,6 @@
 .pinned-sortable-thread {
   position: relative;
   border-radius: var(--radius-xs);
-  touch-action: none;
   transition:
     background-color var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out),
@@ -2960,8 +2959,10 @@
 /* Sidebar section drag-to-reorder (T7).
  *
  * - `.sidebar-section-row.can-reorder` mirrors SessionTabs: the header
- *   turns into a grab cursor and disables touch panning / native text
- *   selection while the user is starting a drag.
+ *   turns into a grab cursor and disables native text selection while the
+ *   user is starting a mouse drag. Touch is intentionally left alone so a
+ *   swipe over a header still scrolls the sidebar natively instead of
+ *   starting a reorder.
  * - `.dragging` on the in-list original fades the source to ~22% so
  *   the user can read the floating DragOverlay cleanly. The overlay
  *   itself sits at near-full opacity with a soft elevation shadow.
@@ -2970,7 +2971,6 @@
  */
 .sidebar-section-row.can-reorder {
   cursor: grab;
-  touch-action: none;
   user-select: none;
 }
 

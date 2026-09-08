@@ -479,6 +479,37 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The empty greeting uses the space above the same dock as an active chat.
+   Reserve its measured height so expanding the composer cannot cover it. */
+.app-shell.compact-navigation .empty-scroll-region:not(.split-scroll-region) {
+  margin-bottom: var(--dock-composer-height);
+}
+
+.app-shell.compact-navigation .empty-scroll-region > .scroll-region-content {
+  height: 100%;
+}
+
+.app-shell.compact-navigation .empty-home {
+  align-items: center;
+  padding-block: 24px;
+}
+
+.app-shell.compact-navigation .empty-home-inner {
+  row-gap: 0;
+}
+
+.app-shell.compact-navigation .empty-home-header {
+  flex-direction: column;
+}
+
+.app-shell.compact-navigation .empty-home h2 {
+  text-align: center;
+}
+
+.app-shell.compact-navigation .dock-composer-wrap {
+  padding-block: 12px max(12px, env(safe-area-inset-bottom, 0px));
+}
+
 @media (pointer: coarse) and (max-width: 760px) {
   .app-shell.compact-navigation .titlebar :is(
     .sidebar-toggle-button, .environment-toggle-button, .side-panel-toggle-button
