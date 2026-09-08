@@ -1,5 +1,6 @@
 import { hostSupports } from "./HostCapabilities";
 import { isTouchWebShell } from "./ComposerFocus";
+import { useSidebarTouchGesture } from "./SidebarTouchGesture";
 import { readThreadReadState, writeThreadReadState } from "./ThreadReadState";
 /// <reference path="../shared/jsx-compat.d.ts" />
 
@@ -608,6 +609,12 @@ export function App(): JSX.Element {
   });
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  useSidebarTouchGesture(
+    appShellRef,
+    Boolean(state.initialized) && compactNavigation && !poppedOutMode && !settingsOpen &&
+      sidebarDrawerPhase === "closed",
+    openSidebarDrawerNow,
+  );
   const [onboardingComplete, setOnboardingComplete] = useState(
     () => window.wuu?.initialOnboardingComplete ?? true,
   );
