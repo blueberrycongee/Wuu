@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/blueberrycongee/wuu/internal/pluginsettings"
 	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
 )
 
@@ -29,6 +30,9 @@ func (h *notesHost) CallHost(_ context.Context, method string, params, result an
 		Params  pluginapi.StorageCompareExchangeParams
 	}
 	if err := json.Unmarshal(data, &request); err != nil {
+		return err
+	}
+	if err := pluginsettings.ValidateStateKey(request.Params.Key); err != nil {
 		return err
 	}
 	value, found := h.values[request.Params.Key]
@@ -74,7 +78,11 @@ func callNotes(t *testing.T, host *notesHost, session string, input map[string]a
 
 func TestNotesRecoverAcrossHandlersAndIsolateSessions(t *testing.T) {
 	host := &notesHost{values: map[string]string{}}
-	written, err := callNotes(t, host, "one", map[string]any{"action": "write", "path": "work/current.md", "content": "目标：修复恢复\nSeq 18", "revision": ""})
+	listed, err := callNotes(t, host, "one", map[string]any{"action": "list"})
+	if err != nil || listed["total"] != float64(0) || listed["revision"] != "" {
+		t.Fatalf("list=%v err=%v", listed, err)
+	}
+	written, err := callNotes(t, host, "one", map[string]any{"action": "write", "path": "work/current.md", "content": "目标：修复恢复\nSeq 18", "revision": listed["revision"]})
 	if err != nil {
 		t.Fatal(err)
 	}
