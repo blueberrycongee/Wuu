@@ -63,6 +63,15 @@ pre, code, .rich-content pre.rich-code, .rich-content pre.rich-code code,
   line-height: 1.6;
 }
 @media (pointer: coarse) {
+  :root[data-host-kind="web"] :is(
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
+    textarea,
+    select
+  ) {
+    /* Search, settings and dialog fields need the same focus-zoom protection
+     * as the composer. Apply before focus so focusing never changes geometry. */
+    font-size: max(16px, var(--font-ui), 1em);
+  }
   :root[data-host-kind="web"] .composer textarea {
     /* Small text can trigger Safari's focus zoom. Keep input readable without
      * disabling pinch zoom or reducing a user's larger font preference. */

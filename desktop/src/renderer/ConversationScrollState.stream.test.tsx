@@ -944,6 +944,71 @@ describe("useConversationScrollState — high-frequency stream", () => {
     expect(layout.scrollTop).toBe(1100);
   });
 
+  it("follows keyboard-sized viewport changes without flashing scroll feedback", () => {
+    mount({ scrollHeight: 1600, clientHeight: 600 });
+    if (!node || !layout || !handle) throw new Error("not mounted");
+    const scrollNode = node;
+    scrollNode.classList.remove("scrollbar-visible");
+    for (const height of [540, 420, 300, 420, 540, 600]) {
+      act(() => {
+        layout!.clientHeight = height;
+        flushResizeObservers();
+        scrollNode.dispatchEvent(new Event("scroll"));
+      });
+      expect(layout.scrollTop).toBe(layout.scrollHeight - height);
+      expect(handle.captureConversationScrollPosition()?.autoFollow).toBe(true);
+      expect(scrollNode.classList.contains("scrollbar-visible")).toBe(false);
+    }
+    act(() => {
+      scrollNode.dispatchEvent(new WheelEvent("wheel", { deltaY: -30 }));
+      layout!.scrollTop -= 30;
+      scrollNode.dispatchEvent(new Event("scroll"));
+    });
+    expect(scrollNode.classList.contains("scrollbar-visible")).toBe(true);
+    expect(handle.captureConversationScrollPosition()?.autoFollow).toBe(false);
+  });
+
+  it("keeps native viewport clamps quiet even when scroll arrives before resize", () => {
+    mount({ scrollHeight: 1600, clientHeight: 300 });
+    if (!node || !layout || !handle) throw new Error("not mounted");
+    act(() => {
+      flushResizeObservers();
+      node!.dispatchEvent(new Event("scroll"));
+    });
+    node.classList.remove("scrollbar-visible");
+    act(() => {
+      layout!.clientHeight = 600;
+      node!.scrollTop = layout!.scrollTop;
+      node!.dispatchEvent(new Event("scroll"));
+    });
+    expect(node.classList.contains("scrollbar-visible")).toBe(false);
+    expect(handle.captureConversationScrollPosition()?.autoFollow).toBe(true);
+    act(() => flushResizeObservers());
+    expect(layout.scrollTop).toBe(1000);
+    expect(node.classList.contains("scrollbar-visible")).toBe(false);
+  });
+
+  it("preserves history reading through keyboard opening, dismissal and new output", () => {
+    mount({ scrollHeight: 1600, clientHeight: 600 });
+    if (!node || !layout || !handle) throw new Error("not mounted");
+    act(() => {
+      node!.dispatchEvent(new WheelEvent("wheel", { deltaY: -200 }));
+      layout!.scrollTop = 100;
+      node!.dispatchEvent(new Event("scroll"));
+    });
+    for (const height of [450, 300, 450, 600]) {
+      act(() => {
+        layout!.clientHeight = height;
+        layout!.scrollHeight += 20;
+        flushResizeObservers();
+        handle!.scheduleStreamScroll();
+        flushAnimationFrames();
+      });
+      expect(layout.scrollTop).toBe(100);
+      expect(handle.captureConversationScrollPosition()?.autoFollow).toBe(false);
+    }
+  });
+
   it("keeps latest content continuously pinned during live window resize", () => {
     // User parked at the bottom of a tall conversation. Reflow changes the
     // real bottom while the window is being dragged, so coalesce observer

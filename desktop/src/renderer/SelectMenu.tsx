@@ -8,6 +8,7 @@ import {
 } from "react";
 import { FloatingMenuPortal, isInsideFloatingMenu } from "./ComposerFloatingMenu";
 import type { FloatingMenuAlign, FloatingMenuPlacement } from "./ComposerTypes";
+import { isTouchWebShell } from "./ComposerFocus";
 import { useI18n } from "./i18n";
 
 // SelectMenu — the product-styled replacement for a native <select>.
@@ -179,7 +180,9 @@ export function SelectMenu({
     }
     if (searchable) {
       setActiveIndex(-1);
-      searchInputRef.current?.focus();
+      if (!isTouchWebShell()) {
+        searchInputRef.current?.focus();
+      }
       return;
     }
     const selectedIndex = selected ? flatOptions.indexOf(selected) : -1;

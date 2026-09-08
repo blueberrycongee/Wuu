@@ -297,7 +297,9 @@ export function useConversationScrollState({
     cancelBottomOverscroll(node);
     suppressAutoFollowRearmRef.current = false;
     selectionPausedAutoFollowRef.current = false;
-    node.scrollTop = top;
+    const targetTop = clampScrollTop(node, top);
+    const moved = node.scrollTop !== targetTop;
+    if (moved) node.scrollTop = targetTop;
     const actualTop = clampScrollTop(node, node.scrollTop);
     if (Math.abs(node.scrollTop - actualTop) > 1) {
       node.scrollTop = actualTop;
@@ -309,7 +311,7 @@ export function useConversationScrollState({
     setAutoFollow(nextAutoFollow);
     setAutoFollowOverflowAnchor(node, nextAutoFollow);
     rememberActiveThreadScrollSnapshot(node, nextAutoFollow);
-    if (options.revealScrollbar) {
+    if (moved && options.revealScrollbar) {
       showConversationScrollbar(node);
     }
   }
@@ -322,9 +324,9 @@ export function useConversationScrollState({
     // The submit animation reads the live bottom itself. A native smooth
     // scroll restarted on every collapsing-card resize never gets up to speed.
     if (smoothAutoFollowRef.current) return;
-    applyProgrammaticScroll(node, node.scrollHeight, true, {
-      revealScrollbar: true,
-    });
+    // Content/layout following is not a user scroll. In particular, keyboard
+    // animation must not repeatedly reveal the scrollbar as the viewport shrinks.
+    applyProgrammaticScroll(node, node.scrollHeight, true);
   }, [
     activePane,
     activeThreadID,
@@ -515,8 +517,6 @@ export function useConversationScrollState({
       }
       return;
     }
-    showConversationScrollbar(node);
-
     const programmaticTop = programmaticScrollTopRef.current;
     if (programmaticTop !== undefined) {
       programmaticScrollTopRef.current = undefined;
@@ -584,6 +584,14 @@ export function useConversationScrollState({
     const scrolledDown = node.scrollTop > previousScrollTop;
     const userScrollAwayIntent = userScrollAwayIntentRef.current;
     lastConversationScrollTopRef.current = clampScrollTop(node, node.scrollTop);
+
+    // Native clamping can emit scroll before ResizeObserver gets a chance to
+    // record a programmatic target (notably when the keyboard is dismissed).
+    const layoutClamp = scrolledUp && !userScrollAwayIntent &&
+      node.scrollTop >= maxScrollTop(node) - 1;
+    if ((scrolledUp || scrolledDown) && !layoutClamp) {
+      showConversationScrollbar(node);
+    }
 
     const atLatestView = atLatestScrollView(
       node,

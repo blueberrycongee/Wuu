@@ -84,6 +84,27 @@ describe("useAutoFollowScrollContainer", () => {
     expect(layout.scrollTop).toBe(800);
   });
 
+  it("keeps automatic viewport following quiet and still reveals user scrolling", () => {
+    if (!layout || !handle || !scrollNode) throw new Error("probe not mounted");
+    scrollNode.classList.remove("scrollbar-visible");
+    for (const height of [300, 200, 300, 400]) {
+      layout.clientHeight = height;
+      act(() => {
+        handle!.scrollToBottom();
+        scrollNode!.dispatchEvent(new Event("scroll"));
+      });
+      expect(layout.scrollTop).toBe(layout.scrollHeight - height);
+      expect(handle.autoFollowRef.current).toBe(true);
+      expect(scrollNode.classList.contains("scrollbar-visible")).toBe(false);
+    }
+    act(() => {
+      layout!.scrollTop -= 30;
+      scrollNode!.dispatchEvent(new Event("scroll"));
+    });
+    expect(handle.autoFollowRef.current).toBe(false);
+    expect(scrollNode.classList.contains("scrollbar-visible")).toBe(true);
+  });
+
   it("stops following when a scrollbar drag moves upward without preflight input", () => {
     if (!layout) throw new Error("probe not mounted");
     layout.scrollTop = 500;
@@ -92,6 +113,27 @@ describe("useAutoFollowScrollContainer", () => {
     });
 
     expect(handle?.autoFollowRef.current).toBe(false);
+  });
+
+  it("does not resume following when keyboard dismissal clamps history to the bottom", () => {
+    if (!layout || !handle || !scrollNode) throw new Error("probe not mounted");
+    act(() => {
+      layout!.scrollTop = 600;
+      scrollNode!.dispatchEvent(new Event("scroll"));
+    });
+    expect(handle.autoFollowRef.current).toBe(false);
+    scrollNode.classList.remove("scrollbar-visible");
+    act(() => {
+      layout!.clientHeight = 700;
+      // The browser clamps to the new maximum before ResizeObserver runs.
+      scrollNode!.scrollTop = layout!.scrollTop;
+      scrollNode!.dispatchEvent(new Event("scroll"));
+    });
+    expect(handle.autoFollowRef.current).toBe(false);
+    expect(scrollNode.classList.contains("scrollbar-visible")).toBe(false);
+    layout.scrollHeight += 200;
+    handle.scrollToBottom();
+    expect(layout.scrollTop).toBe(500);
   });
 
   it("does not restore the bottom after a user-triggered layout expansion", () => {

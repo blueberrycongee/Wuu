@@ -192,10 +192,12 @@ export function useAutoFollowScrollContainer({
         setAutoFollow(true);
       }
       clearUserScrollAwayIntent();
-      node.scrollTop = node.scrollHeight;
+      const targetTop = maxScrollTop(node);
+      const moved = node.scrollTop !== targetTop;
+      if (moved) node.scrollTop = node.scrollHeight;
       programmaticScrollTopRef.current = node.scrollTop;
       lastScrollTopRef.current = node.scrollTop;
-      if (options.revealScrollbar) {
+      if (moved && options.revealScrollbar) {
         showScrollbar(node);
       }
     },
@@ -218,8 +220,6 @@ export function useAutoFollowScrollContainer({
     if (!node) {
       return;
     }
-    showScrollbar(node);
-
     const programmaticTop = programmaticScrollTopRef.current;
     if (programmaticTop !== undefined) {
       programmaticScrollTopRef.current = undefined;
@@ -240,8 +240,16 @@ export function useAutoFollowScrollContainer({
     }
 
     const scrolledUp = node.scrollTop < lastScrollTopRef.current;
+    const scrolledDown = node.scrollTop > lastScrollTopRef.current;
     const userScrollAwayIntent = userScrollAwayIntentRef.current;
     lastScrollTopRef.current = clampScrollTop(node, node.scrollTop);
+
+    // A native bottom clamp may arrive before the resize observer's follow.
+    const layoutClamp = scrolledUp && !userScrollAwayIntent &&
+      node.scrollTop >= maxScrollTop(node) - 1;
+    if ((scrolledUp || scrolledDown) && !layoutClamp) {
+      showScrollbar(node);
+    }
 
     if (scrolledUp && userScrollAwayIntent) {
       setAutoFollow(false);
@@ -260,7 +268,10 @@ export function useAutoFollowScrollContainer({
     }
     if (
       atLatestScrollView(node, bottomThreshold) &&
-      !selectionPausedAutoFollowRef.current
+      !selectionPausedAutoFollowRef.current &&
+      // A larger viewport can clamp history to the bottom without the user
+      // returning to latest. Match the main conversation's rearm policy.
+      (autoFollowRef.current || scrolledDown || node.scrollHeight <= node.clientHeight)
     ) {
       setAutoFollow(true);
       return;

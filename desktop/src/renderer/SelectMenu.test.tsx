@@ -6,6 +6,13 @@ import { SelectMenu, type SelectMenuGroup } from "./SelectMenu";
 let container: HTMLDivElement;
 let root: Root | null = null;
 
+function stubMatchMedia(matches: boolean): void {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({ matches }),
+  );
+}
+
 beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -17,6 +24,8 @@ afterEach(() => {
   });
   root = null;
   container.remove();
+  delete document.documentElement.dataset.hostKind;
+  vi.unstubAllGlobals();
 });
 
 // jsdom has no real layout; the FloatingMenuPortal reads getBoundingClientRect
@@ -229,6 +238,26 @@ describe("SelectMenu", () => {
     });
     expect(items()).toHaveLength(0);
     expect(panel()?.textContent).toContain("没有匹配的水果");
+  });
+
+  it("does not focus the search field when a searchable menu opens on the touch web shell", () => {
+    document.documentElement.dataset.hostKind = "web";
+    stubMatchMedia(true);
+    mount(
+      <SelectMenu
+        value="apple"
+        onChange={() => {}}
+        options={FRUIT}
+        searchable
+        searchPlaceholder="搜索水果"
+      />,
+    );
+    openMenu();
+    const search = document.querySelector<HTMLInputElement>(".select-menu-search input")!;
+    expect(search).toBeTruthy();
+    expect(panel()).not.toBeNull();
+    // The field stays unfocused, so the software keyboard is not summoned.
+    expect(document.activeElement).not.toBe(search);
   });
 
   it("closes on Escape and on an outside pointerdown", () => {
