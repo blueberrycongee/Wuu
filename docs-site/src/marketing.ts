@@ -4,6 +4,7 @@ export function marketingHtml(source: string, baseUrl: string): string {
   return source
     .replaceAll('"assets/', `"${base}/site-assets/`)
     .replace(/"styles\.css(\?[^ "]*)?"/, (_, query = "") => `"${base}/site-assets/styles.css${query}"`)
+    .replace('"projection-diagrams.css"', `"${base}/site-assets/projection-diagrams.css"`)
     .replace('"site-nav.mjs"', `"${base}/site-assets/site-nav.mjs"`)
     .replace('"mascot-motion.mjs"', `"${base}/site-assets/mascot-motion.mjs"`)
     .replaceAll('href="./', `href="${base}/`)

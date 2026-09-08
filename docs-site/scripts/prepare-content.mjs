@@ -107,10 +107,15 @@ const landingRoot = path.join(repositoryRoot, "landing")
 const landingPublic = path.join(siteRoot, "public/site-assets")
 await rm(landingPublic, { recursive: true, force: true })
 await mkdir(landingPublic, { recursive: true })
-for (const directory of ["brand", "logos"]) {
+for (const directory of ["brand", "logos", "blog"]) {
   await cp(path.join(landingRoot, "assets", directory), path.join(landingPublic, directory), { recursive: true })
 }
 await cp(path.join(landingRoot, "styles.css"), path.join(landingPublic, "styles.css"))
+
+await cp(
+  path.join(landingRoot, "projection-diagrams.css"),
+  path.join(landingPublic, "projection-diagrams.css"),
+)
 
 await cp(path.join(landingRoot, "mascot-motion.mjs"), path.join(landingPublic, "mascot-motion.mjs"))
 
