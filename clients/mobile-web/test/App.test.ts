@@ -127,3 +127,16 @@ it("ignores a scanned pairing response after cancellation", async () => {
   expect(credentials.save).not.toHaveBeenCalled();
   expect(remote.connect).not.toHaveBeenCalled();
 });
+
+it("shows recovery instead of an empty pairing form when a scanned code is unavailable", async () => {
+  await act(async () => root.unmount());
+  window.history.replaceState(null, "", `/#${new URLSearchParams({ pair: "wuu://pair?test=expired" })}`);
+  remote.pair.mockRejectedValue(new Error("pairing rejected: no_such_pairing"));
+  root = createRoot(container);
+  await act(async () => root.render(createElement(App)));
+  expect(container.querySelector("textarea")).toBeNull();
+  expect(container.querySelector("button")).not.toBeNull();
+  expect(container.textContent).not.toContain("no_such_pairing");
+  await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
+  expect(container.querySelector("textarea")).not.toBeNull();
+});

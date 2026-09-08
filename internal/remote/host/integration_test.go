@@ -147,20 +147,12 @@ func TestRemoteControlEndToEnd(t *testing.T) {
 	}()
 	uri := <-uriCh
 
-	// Pair. The host may still be dialing the relay, so retry briefly.
-	var creds *phone.Credentials
-	pairDeadline := time.Now().Add(20 * time.Second)
-	for {
-		pairCtx, cancelPair := context.WithTimeout(testCtx, 5*time.Second)
-		creds, err = phone.Pair(pairCtx, uri, "test-phone")
-		cancelPair()
-		if err == nil {
-			break
-		}
-		if time.Now().After(pairDeadline) {
-			t.Fatalf("pairing never succeeded: %v", err)
-		}
-		time.Sleep(100 * time.Millisecond)
+	// A published URI must be usable on the first attempt.
+	pairCtx, cancelPair := context.WithTimeout(testCtx, 5*time.Second)
+	creds, err := phone.Pair(pairCtx, uri, "test-phone")
+	cancelPair()
+	if err != nil {
+		t.Fatalf("pairing after readiness failed: %v", err)
 	}
 	if creds.HostName != "test-host" {
 		t.Fatalf("paired host name = %q", creds.HostName)

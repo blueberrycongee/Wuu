@@ -509,6 +509,7 @@ export const zhCN = {
   "remote.lanDescription": "在手机浏览器中使用 Wuu，任务继续在电脑上运行。",
   "remote.webAddress": "访问地址",
   "remote.copyLink": "复制配对链接",
+  "remote.refreshPairQr": "重新生成二维码",
   "remote.access": "手机访问",
   "remote.hostRunning": "已开启",
   "remote.hostStopped": "未开启",

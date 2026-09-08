@@ -149,3 +149,11 @@ describe("SettingsRemotePage devices", () => {
     expect(container!.querySelector(".settings-error")!.textContent).toBe("wuu remote status failed");
   });
 });
+
+it("allows replacing a displayed pairing code", () => {
+  let opened = 0;
+  mount(baseProps({ hostRunning: true, pairUri: "http://192.168.1.2:8787/#pair=test", onOpenPairing: () => opened++ }));
+  const buttons = container!.querySelectorAll<HTMLButtonElement>('[data-testid="remote-pair-panel"] button');
+  act(() => buttons[buttons.length - 1].click());
+  expect(opened).toBe(1);
+});

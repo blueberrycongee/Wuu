@@ -511,6 +511,7 @@ export const enUS = {
   "remote.lanDescription": "Use Wuu in your phone browser while tasks run on your computer.",
   "remote.webAddress": "Web address",
   "remote.copyLink": "Copy pairing link",
+  "remote.refreshPairQr": "Generate a new code",
   "remote.access": "Phone access",
   "remote.hostRunning": "On",
   "remote.hostStopped": "Off",

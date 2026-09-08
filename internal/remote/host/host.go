@@ -54,7 +54,7 @@ type PairingConfig struct {
 	Timeout time.Duration
 	// Once closes the window after the first successful pairing.
 	Once bool
-	// OnURI receives the pairing URI (rendered as a QR code by UIs).
+	// OnURI receives the pairing URI after the relay confirms registration.
 	OnURI func(uri string)
 	// OnPaired fires after a phone is enrolled.
 	OnPaired func(name string, devicePub []byte)
@@ -81,9 +81,10 @@ type Options struct {
 }
 
 type pairingState struct {
-	pairing  *secure.Pairing
-	cfg      PairingConfig
-	deadline time.Time
+	pairing   *secure.Pairing
+	cfg       PairingConfig
+	deadline  time.Time
+	announced bool
 }
 
 // Host runs the desktop side of remote control.
@@ -194,9 +195,6 @@ func (h *Host) StartPairing(cfg PairingConfig) (string, error) {
 	h.pairMu.Unlock()
 
 	uri := pairing.URI(h.relayURL, h.store.Identity().Public())
-	if cfg.OnURI != nil {
-		cfg.OnURI(uri)
-	}
 	// Best effort: if the relay link is already up, open the window now.
 	_ = h.writeRelay(wire.RelayMsg{Type: wire.TypePairOpen, PairingID: pairing.ID})
 	return uri, nil
@@ -360,7 +358,18 @@ func (h *Host) dispatch(msg wire.RelayMsg) {
 		if sess := h.lookupSession(msg.To); sess != nil {
 			sess.detach()
 		}
-	case wire.TypeOK, wire.TypeDevices, "pong":
+	case wire.TypeOK:
+		h.pairMu.Lock()
+		st := h.pairing
+		ready := st != nil && st.pairing.ID == msg.PairingID && !st.announced && time.Now().Before(st.deadline)
+		if ready {
+			st.announced = true
+		}
+		h.pairMu.Unlock()
+		if ready && st.cfg.OnURI != nil {
+			st.cfg.OnURI(st.pairing.URI(h.relayURL, h.store.Identity().Public()))
+		}
+	case wire.TypeDevices, "pong":
 		// Informational.
 	case wire.TypeErr:
 		h.logf("remote host: relay error %s: %s", msg.Code, msg.Msg)

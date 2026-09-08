@@ -3,6 +3,7 @@ import type { Credentials } from "@wuu/remote-core";
 
 import { webCredStore } from "./lib/credStore";
 import { RemoteDesktopBridge } from "./lib/desktopBridge";
+import { pairingURI, pairingExpired } from "./lib/pairing";
 
 const SharedWorkbench = lazy(() => import("./WebWorkspace"));
 
@@ -10,6 +11,7 @@ type Phase =
   | { kind: "boot" }
   | { kind: "pair"; error?: string }
   | { kind: "connecting" }
+  | { kind: "expired" }
   | { kind: "ready" }
   | { kind: "error"; message: string };
 
@@ -71,7 +73,7 @@ export default function App(): React.JSX.Element {
         await webCredStore.save(credentials);
         if (active && attempt === connectionAttemptRef.current) await connect(credentials);
       }).catch(error => {
-        if (active && attempt === connectionAttemptRef.current) setPhase({ kind: "pair", error: error instanceof Error ? error.message : "配对失败，请在电脑上重新生成二维码" });
+        if (active && attempt === connectionAttemptRef.current) setPhase(pairingExpired(error) ? { kind: "expired" } : { kind: "pair", error: error instanceof Error ? error.message : "配对失败，请在电脑上重新生成二维码" });
       });
     } else void webCredStore.load().then((credentials) => {
       if (!active) return;
@@ -105,14 +107,14 @@ export default function App(): React.JSX.Element {
           const attempt = ++connectionAttemptRef.current;
           setPhase({ kind: "connecting" });
           try {
-            const credentials = await RemoteDesktopBridge.pair(uri, name);
+            const credentials = await RemoteDesktopBridge.pair(pairingURI(uri), name);
             if (attempt !== connectionAttemptRef.current) return;
             await webCredStore.save(credentials);
             if (attempt !== connectionAttemptRef.current) return;
             await connect(credentials);
           } catch (error) {
             if (attempt !== connectionAttemptRef.current) return;
-            setPhase({
+            setPhase(pairingExpired(error) ? { kind: "expired" } : {
               kind: "pair",
               error: error instanceof Error ? error.message : "配对失败",
             });
@@ -137,6 +139,14 @@ export default function App(): React.JSX.Element {
         >
           重新配对
         </button>
+      </StatusCard>
+    );
+  }
+
+  if (phase.kind === "expired") {
+    return (
+      <StatusCard title="配对码已失效" detail="请在电脑的「设置 → 手机访问」重新生成二维码，再用手机相机扫描。旧链接在重启服务、重新生成或配对成功后会失效。">
+        <button type="button" onClick={() => setPhase({ kind: "pair" })}>粘贴新的配对链接</button>
       </StatusCard>
     );
   }
@@ -174,11 +184,11 @@ function PairCard({
           <input value={name} onChange={(event) => setName(event.target.value)} />
         </label>
         <label>
-          <span>配对信息</span>
+          <span>配对链接</span>
           <textarea
             value={uri}
             onChange={(event) => setURI(event.target.value)}
-            placeholder="wuu://pair?…"
+            placeholder="粘贴电脑上复制的完整链接"
             rows={4}
           />
         </label>
