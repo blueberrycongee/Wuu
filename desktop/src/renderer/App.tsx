@@ -80,6 +80,7 @@ import { QueryHistoryRail } from "./QueryHistoryRail";
 import { UserQuestionCard } from "./UserQuestionCard";
 import { ConversationSearchOverlay } from "./ConversationSearchOverlay";
 import { useConversationScrollState } from "./ConversationScrollState";
+import { PullToNewSession } from "./PullToNewSession";
 import { useConversationSearch } from "./ConversationSearchState";
 import {
   SideThreadPanel,
@@ -5606,6 +5607,17 @@ export function App(): JSX.Element {
           />
         )}
 
+        {compactNavigation && isTouchWebShell() && mainConversationDockVisible &&
+        !emptyConversation && !splitConversation && !showingManagementCatalog &&
+        activeThreadID && state.activeContext ? (
+          <PullToNewSession
+            key={activeThreadID}
+            containerRef={conversationScrollRef}
+            contentRef={scrollContentRef}
+            bottomAnchor={dockComposerNode}
+            onNewSession={startNewThreadWithComposerFocus}
+          />
+        ) : null}
         {mainConversationDockVisible ? renderComposer("dock") : null}
 
         {showingSkillsCatalog && ENABLE_MANAGEMENT_ASSISTANT ? (

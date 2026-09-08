@@ -1896,6 +1896,8 @@ export const zhCN = {
   "composer.noActiveTurnToGuide": "没有可引导的任务",
   "composer.guideFailed": "引导失败",
   "conversation.jumpToLatest": "跳到最新",
+  "conversation.pullNewSession": "继续上滑，新建会话",
+  "conversation.releaseNewSession": "松手新建会话",
   "fixture.long.preview": "模拟：长阅读宽度",
   "fixture.long.user1": "这条假消息用来检查大屏上用户气泡、助手回复和段落行长是否在合适的阅读范围内。",
   "fixture.long.answer1": "阅读列现在应该像一条稳定的正文栏，而不是随着窗口一直变宽。对于中文对话，过长的行会让眼睛在换行时很难回到下一行开头；对于代码解释和产品判断，过宽也会让段落看起来像日志输出，而不是可读的对话。\n\n这个样例故意放入较长段落，方便检查窗口拉宽时正文是否仍然保持在舒适区域。理想状态是：主面板依旧宽敞，左右留白增加，但真正需要连续阅读的文字不会无限拉伸。\n\n如果这个回复在大屏上仍然显得太宽，下一步应该调小 `--session-outer-width`，而不是压缩整个应用主区域。",

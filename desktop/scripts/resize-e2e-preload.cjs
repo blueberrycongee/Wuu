@@ -61,6 +61,20 @@ const resizeThread = {
   turns
 };
 
+// Pull-to-new-session must make room for its animation even with a live TODO
+// capsule above the composer (the mobile overlap regression).
+if (process.env.WUU_PULL_SESSION_E2E === "1") {
+  resizeThread.status = "running";
+  turns.at(-1).status = "in_progress";
+  turns.at(-1).items.push({
+    id: "pull-session-todo",
+    type: "tool_call",
+    status: "completed",
+    display: { capability: "todo" },
+    arguments: JSON.stringify({ todos: [{ content: "Check mobile gesture", status: "in_progress" }] }),
+  });
+}
+
 // A related-session message exercises the same split navigation used by plugins.
 turns.at(-1).items[0].related_session_id = "resize-related-thread";
 turns.at(-1).items[0].input_text = "Related session completed its resize check.";

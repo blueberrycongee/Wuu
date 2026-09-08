@@ -1898,6 +1898,8 @@ export const enUS = {
   "composer.noActiveTurnToGuide": "There is no active task to guide",
   "composer.guideFailed": "Failed to send guidance",
   "conversation.jumpToLatest": "Jump to latest",
+  "conversation.pullNewSession": "Keep swiping to start a new session",
+  "conversation.releaseNewSession": "Release to start a new session",
   "fixture.long.preview": "Demo: long-form reading width",
   "fixture.long.user1": "Use this mock message to check whether bubbles, responses, and line lengths remain readable on a large display.",
   "fixture.long.answer1": "The reading column should remain stable instead of expanding with the window. Lines that are too long make it difficult to find the beginning of the next line, and product or code explanations start to resemble logs rather than readable conversation.\n\nThis sample deliberately contains longer paragraphs so the layout can be checked at wide window sizes. The main panel should stay spacious and gain side margins while continuous reading content remains constrained.\n\nIf this response still looks too wide, reduce `--session-outer-width` instead of compressing the entire application area.",
