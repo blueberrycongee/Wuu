@@ -202,20 +202,52 @@ describe("connection recovery", () => {
     expect((await bridge.api.listProjects()).active_context?.cwd).toBe("/paired/workspace");
   });
 
-  it("restores fresh and resumed connections in place and waits for subscribers", async () => {
+  it("restores a fresh app-server connection in place and waits for subscribers", async () => {
     const bridge = await connectBridge();
-    for (const resumed of [false, true]) {
-      const restore = deferred<void>();
-      const handler = vi.fn(() => restore.promise);
-      const off = bridge.api.onRuntimeRestore!(handler);
+    const restore = deferred<void>();
+    const handler = vi.fn(() => restore.promise);
+    bridge.api.onRuntimeRestore!(handler);
+    remote.options.onDetach?.();
+    expect(bridge.getConnectionSnapshot().phase).toBe("connected");
+    remote.options.onAttach?.({ session: "next", resumed: false });
+    await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
+    expect(bridge.getConnectionSnapshot().phase).toBe("restoring");
+    restore.resolve();
+    await vi.waitFor(() => expect(bridge.getConnectionSnapshot().phase).toBe("connected"));
+  });
+
+  it("keeps a resumed connection in place without restoring the workbench", async () => {
+    const bridge = await connectBridge();
+    const handler = vi.fn(async () => {});
+    bridge.api.onRuntimeRestore!(handler);
+    remote.call.mockClear();
+    remote.options.onDetach?.();
+    expect(bridge.getConnectionSnapshot().phase).toBe("connected");
+    remote.options.onAttach?.({ session: "next", resumed: true });
+    await vi.waitFor(() => expect(bridge.getConnectionSnapshot().phase).toBe("connected"));
+    expect(handler).not.toHaveBeenCalled();
+    expect(remote.call).not.toHaveBeenCalled();
+  });
+
+  it("hides a brief disconnect and only surfaces reconnecting after the grace window", async () => {
+    vi.useFakeTimers();
+    try {
+      const bridge = await connectBridge();
+      const handler = vi.fn(async () => {});
+      bridge.api.onRuntimeRestore!(handler);
       remote.options.onDetach?.();
+      expect(bridge.getConnectionSnapshot().phase).toBe("connected");
+      await vi.advanceTimersByTimeAsync(599);
+      expect(bridge.getConnectionSnapshot().phase).toBe("connected");
+      remote.options.onAttach?.({ session: "next", resumed: true });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(bridge.getConnectionSnapshot().phase).toBe("connected");
+      expect(handler).not.toHaveBeenCalled();
+      remote.options.onDetach?.();
+      await vi.advanceTimersByTimeAsync(600);
       expect(bridge.getConnectionSnapshot().phase).toBe("reconnecting");
-      remote.options.onAttach?.({ session: "next", resumed });
-      await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
-      expect(bridge.getConnectionSnapshot().phase).toBe("restoring");
-      restore.resolve();
-      await vi.waitFor(() => expect(bridge.getConnectionSnapshot().phase).toBe("connected"));
-      off();
+    } finally {
+      vi.useRealTimers();
     }
   });
 

@@ -48,6 +48,10 @@ const MESSAGE_SIZE_KEY = "wuu.web.message-size";
 const CHANNEL_ROOM_PREFERENCES_KEY = "wuu.channels.roomPreferences";
 const PLUGIN_CONFLICT_PREFERENCES_KEY = "wuu.web.plugin-conflict-preferences";
 const DEFAULT_MESSAGE_SIZE = 16;
+/** How long a brief link drop may last before the reconnect strip appears.
+ *  Short enough that a real outage still surfaces within a second, long
+ *  enough that returning from background and wifi blips stay silent. */
+const RECONNECT_GRACE_MS = 600;
 
 function basename(path: string): string {
   const trimmed = path.replace(/[\\/]+$/, "");
@@ -221,6 +225,8 @@ export class RemoteDesktopBridge {
   private readonly connectionListeners = new Set<() => void>();
   private readonly restoreListeners = new Set<() => Promise<void>>();
   private attachSync: Promise<void> = Promise.resolve();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private needsRestore = false;
   private stopped = false;
 
   getConnectionSnapshot = (): WebConnectionSnapshot => this.connection;
@@ -242,7 +248,14 @@ export class RemoteDesktopBridge {
     this.pendingServerRequests.clear();
   }
 
-  private async synchronize(first: boolean): Promise<void> {
+  private async synchronize(first: boolean, resumed = false): Promise<void> {
+    // A resumed attach already replayed missed events on the same app-server
+    // connection. Keep the workbench in place unless a previous fresh
+    // connection still needs initialize + thread snapshots.
+    if (!first && resumed && !this.needsRestore) {
+      this.setConnection("connected");
+      return;
+    }
     const revision = this.setConnection(first ? "connecting" : "restoring");
     try {
       const workspace = await this.client.call<WorkspaceSnapshot>("workspace/list", undefined, 30_000);
@@ -251,6 +264,7 @@ export class RemoteDesktopBridge {
       this.updateWorkspaces(workspace);
       if (!first) await Promise.all([...this.restoreListeners].map((restore) => restore()));
       if (this.connection.revision !== revision || this.stopped) return;
+      this.needsRestore = false;
       this.setConnection("connected");
     } catch (error) {
       if (this.connection.revision !== revision || this.stopped) return;
@@ -261,8 +275,24 @@ export class RemoteDesktopBridge {
 
   retryRestore = async (): Promise<void> => {
     if (!this.client.isAttached() || this.connection.phase === "restoring") return;
-    await this.synchronize(false);
+    this.needsRestore = true;
+    await this.synchronize(false, false);
   };
+
+  private scheduleReconnecting(): void {
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.stopped) this.setConnection("reconnecting");
+    }, RECONNECT_GRACE_MS);
+  }
+
+  private cancelReconnecting(): void {
+    if (!this.reconnectTimer) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+  }
+
   private readonly projectID: string;
 
   readonly api: WuuDesktopApi;
@@ -288,16 +318,31 @@ export class RemoteDesktopBridge {
         this.emitRunning();
       },
       onAttach: ({ resumed }) => {
+        this.cancelReconnecting();
         const first = !this.attachedOnce;
         this.attachedOnce = true;
-        if (!resumed) this.clearPendingRequests();
-        this.attachSync = this.synchronize(first);
+        if (!resumed) {
+          this.clearPendingRequests();
+          this.needsRestore = true;
+        }
+        this.attachSync = this.synchronize(first, resumed);
         // connect() awaits the first sync; later failures are visible through
         // the connection snapshot and an explicit retry, never a page reload.
         void this.attachSync.catch(() => {});
       },
       onDetach: () => {
-        if (!this.stopped) this.setConnection("reconnecting");
+        if (this.stopped) return;
+        // Keep a live workbench up through a brief drop so returning from
+        // background does not flash the reconnect strip. In-flight RPCs still
+        // fail because the revision moves. A drop that starts from any other
+        // phase is already visible, so surface reconnecting immediately.
+        if (this.connection.phase === "connected") {
+          this.setConnection("connected");
+          this.scheduleReconnecting();
+          return;
+        }
+        this.cancelReconnecting();
+        this.setConnection("reconnecting");
       },
     });
     this.api = this.createApi();
@@ -316,6 +361,7 @@ export class RemoteDesktopBridge {
 
   async disconnect(): Promise<void> {
     this.stopped = true;
+    this.cancelReconnecting();
     this.setConnection("disconnected");
     this.clearPendingRequests();
     await this.client.stop();
