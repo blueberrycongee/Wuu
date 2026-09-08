@@ -3512,7 +3512,7 @@ export function App(): JSX.Element {
           model: input.model,
           effort: input.effort,
           handoff: {
-            request_id: crypto.randomUUID(),
+            request_id: crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join(""),
             revision: 1,
             parent_session_id: source.id,
             intent: input.intent,

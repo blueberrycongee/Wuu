@@ -15,6 +15,7 @@ type Phase =
 
 export default function App(): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>({ kind: "boot" });
+  const [scannedPair] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get("pair"));
   const bridgeRef = useRef<RemoteDesktopBridge | null>(null);
   const connectionAttemptRef = useRef(0);
 
@@ -59,7 +60,20 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     let active = true;
-    void webCredStore.load().then((credentials) => {
+    if (scannedPair) {
+      const attempt = ++connectionAttemptRef.current;
+      // The fragment never reaches the HTTP server; remove it from browser
+      // history before exchanging the single-use pairing offer.
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      setPhase({ kind: "connecting" });
+      void RemoteDesktopBridge.pair(scannedPair, "手机浏览器").then(async credentials => {
+        if (!active || attempt !== connectionAttemptRef.current) return;
+        await webCredStore.save(credentials);
+        if (active && attempt === connectionAttemptRef.current) await connect(credentials);
+      }).catch(error => {
+        if (active && attempt === connectionAttemptRef.current) setPhase({ kind: "pair", error: error instanceof Error ? error.message : "配对失败，请在电脑上重新生成二维码" });
+      });
+    } else void webCredStore.load().then((credentials) => {
       if (!active) return;
       if (credentials) void connect(credentials);
       else setPhase({ kind: "pair" });
@@ -129,7 +143,7 @@ export default function App(): React.JSX.Element {
 
   if (phase.kind === "connecting") {
     return (
-      <StatusCard title="正在连接电脑…" detail="如果电脑或 relay 地址已经变化，请清除旧配对后重新连接。">
+      <StatusCard title="正在连接电脑…" detail="请保持电脑上的 Wuu 运行。">
         <button type="button" onClick={() => void resetPairing()}>
           清除旧配对
         </button>
@@ -154,13 +168,13 @@ function PairCard({
       <section className="web-gate-card">
         <p className="web-gate-kicker">WUU / WEB</p>
         <h1>连接你的工作台</h1>
-        <p className="web-gate-copy">Agent 继续运行在电脑上，浏览器只承载同一套 Wuu 工作界面。</p>
+        <p className="web-gate-copy">在电脑的 Wuu 设置中打开「手机访问」，用手机相机扫描二维码即可连接。</p>
         <label>
           <span>设备名称</span>
           <input value={name} onChange={(event) => setName(event.target.value)} />
         </label>
         <label>
-          <span>配对 URI</span>
+          <span>配对信息</span>
           <textarea
             value={uri}
             onChange={(event) => setURI(event.target.value)}

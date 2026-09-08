@@ -215,20 +215,14 @@ describe("SettingsView shell", () => {
     expect(container.querySelector('[data-testid="settings-appearance"]')).not.toBeNull();
   });
 
-  it("hides remote control by default and redirects a remote initial page", () => {
-    installBuildInfoStub({
-      core: undefined,
-      desktop: { version: "0.0.0-test", date: "1970-01-01T00:00:00Z" },
-    });
+  it("exposes phone access on a native host", async () => {
+    installBuildInfoStub({ core: undefined, desktop: { version: "test", date: "today" } });
+    window.wuu.getRemoteControlSnapshot = vi.fn().mockResolvedValue({ status: null, host_running: false, pair_uri: null });
+    window.wuu.onRemoteControlEvent = vi.fn(() => () => {});
     renderSettings({ initialized: baseInitialized(), initialPage: "remote" });
-
-    const remoteButton = Array.from(
-      container.querySelectorAll<HTMLButtonElement>(".settings-nav-item"),
-    ).find((button) => button.textContent?.trim() === "远程");
-
-    expect(remoteButton).toBeUndefined();
-    expect(container.querySelector('[data-testid="settings-remote-page"]')).toBeNull();
-    expect(container.querySelector(".settings-page-title")?.textContent).toBe("模型服务");
+    await act(async () => { await Promise.resolve(); });
+    expect(container.querySelector('[data-testid="settings-remote-page"]')).not.toBeNull();
+    expect(window.wuu.getRemoteControlSnapshot).toHaveBeenCalled();
   });
 
   it("uses the same transparent-until-hover sidebar toggle as the conversation titlebar", () => {

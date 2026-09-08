@@ -21,7 +21,7 @@
     "build:core": "node scripts/build-core.cjs",
     "build:core:win": "node scripts/build-core.cjs --platform=win32",
     "build:codemode-host": "node scripts/build-codemode-host.cjs",
-    "build": "electron-vite build",
+    "build": "node scripts/build-web.cjs && electron-vite build",
     "pack:mac": "npm run build:core && npm run build:codemode-host && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --publish=never --config.electronDist=node_modules/electron/dist",
     "dist:mac": "npm run build:core && npm run build:codemode-host && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip --publish=never --config.electronDist=node_modules/electron/dist",
     "pack:win": "npm run build:core:win && npm run build:codemode-host && npm run build && electron-builder --win dir --publish=never",
@@ -89,6 +89,10 @@
           "wuu-*-plugin",
           "wuu-*-plugin.exe"
         ]
+      },
+      {
+        "from": "build/mobile-web",
+        "to": "mobile-web"
       }
     ],
     "asarUnpack": [

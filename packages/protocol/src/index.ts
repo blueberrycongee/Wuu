@@ -2635,6 +2635,7 @@ export type RemoteControlSnapshot = {
   status_error?: string;
   host_running: boolean;
   pair_uri: string | null;
+  web_url?: string | null;
 };
 
 // Main-process RemoteHostManager events, broadcast to all windows.

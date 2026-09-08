@@ -1,3 +1,4 @@
+import { PhoneAccess, phonePairLink } from "./phoneAccess";
 import {
   app,
   BrowserWindow,
@@ -18,7 +19,7 @@ import {
   WebContentsView,
 } from "electron";
 import { readFile, readdir, rm, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   APP_SERVER_PROTOCOL_VERSION,
@@ -596,6 +597,10 @@ const remoteHostManager = new RemoteHostManager({
   onEvent: (event) => broadcastToAll("wuu:remote-event", event),
 });
 
+const phoneAccess = new PhoneAccess(remoteHostManager,
+  app.isPackaged ? join(process.resourcesPath, "mobile-web") : resolve(__dirname, "../../build/mobile-web"),
+  () => broadcastToAll("wuu:remote-event", { kind: "host-log", message: "Phone access changed" }));
+
 async function remoteControlSnapshot(workdir: string): Promise<RemoteControlSnapshot> {
   let status: RemoteControlStatus | null = null;
   let statusError = "";
@@ -608,7 +613,8 @@ async function remoteControlSnapshot(workdir: string): Promise<RemoteControlSnap
     status,
     status_error: statusError || undefined,
     host_running: remoteHostManager.isRunning(),
-    pair_uri: remoteHostManager.currentPairUri(),
+    pair_uri: phonePairLink(phoneAccess.url(), remoteHostManager.currentPairUri()),
+    web_url: phoneAccess.url(),
   };
 }
 
@@ -1911,27 +1917,26 @@ app.whenReady().then(async () => {
     await remoteHostManager.setRelay(workdir, String(relayUrl));
     return remoteControlSnapshot(workdir);
   });
-  ipcMain.handle("wuu:remote-host-set", async (event, enabled: boolean) => {
+  ipcMain.handle("wuu:remote-host-set", (event, enabled: boolean) => {
     const workdir = runtimeContextForEvent(event).cwd;
-    if (enabled) {
-      remoteHostManager.startHost(workdir);
-    } else {
-      await remoteHostManager.stopHost();
-    }
-    return remoteControlSnapshot(workdir);
+    return phoneAccess.run(async () => {
+      if (enabled) await phoneAccess.start(workdir); else await phoneAccess.stop();
+      return remoteControlSnapshot(workdir);
+    });
   });
-  // Opening a pairing window needs a host started with --pair; restart the
-  // running one so the window applies without a manual toggle cycle.
-  ipcMain.handle("wuu:remote-pairing-start", async (event) => {
+  ipcMain.handle("wuu:remote-pairing-start", (event) => {
     const workdir = runtimeContextForEvent(event).cwd;
-    await remoteHostManager.stopHost();
-    remoteHostManager.startHost(workdir, { pair: true });
-    return remoteControlSnapshot(workdir);
+    return phoneAccess.run(async () => {
+      await phoneAccess.start(workdir, true);
+      return remoteControlSnapshot(workdir);
+    });
   });
   ipcMain.handle("wuu:remote-device-remove", async (event, fingerprintOrPub: string) => {
     const workdir = runtimeContextForEvent(event).cwd;
-    await remoteHostManager.removeDevice(workdir, String(fingerprintOrPub));
-    return remoteControlSnapshot(workdir);
+    return phoneAccess.run(async () => {
+      await remoteHostManager.removeDevice(workdir, String(fingerprintOrPub));
+      return remoteControlSnapshot(workdir);
+    });
   });
   ipcMain.handle("wuu:theme-preference-get", () => getThemePreference());
   ipcMain.on("wuu:onboarding-complete-get-sync", (event) => {
@@ -2388,7 +2393,7 @@ app.on("before-quit", () => {
   appServerClientPool.shutdown();
   // SIGTERM goes out synchronously; the daemon's own signal handling shuts
   // the relay connection down cleanly.
-  void remoteHostManager.stopHost();
+  void phoneAccess.stop();
 });
 
 app.on("window-all-closed", () => {

@@ -74,16 +74,16 @@ try {
       }
     } catch (error) { res.writeHead(500); res.end(String(error)); }
   });
-  const modelPort = await listen(provider), relayPort = await freePort(), webPort = await freePort();
+  const webHost = process.env.WUU_E2E_WEB_HOST || "127.0.0.1";
+  const modelPort = await listen(provider), relayPort = await freePort(), webPort = relayPort;
   await fs.writeFile(path.join(state, 'config.json'), JSON.stringify({ default_provider: 'web-test', providers: { 'web-test': { type: 'openai-compatible', base_url: `http://127.0.0.1:${modelPort}/v1`, api_key: 'local-test', model: 'web-fixture' } }, agent: { permission_mode: 'standard' } }));
   const env = { ...process.env, WUU_HOME: state };
-  const relay = start(binary, ['relay', '--addr', `127.0.0.1:${relayPort}`, '--state', path.join(temp, 'relay.json')], { env });
+  execFileSync(process.execPath, [path.join(repoDir, 'desktop/scripts/build-web.cjs')], { cwd: repoDir, stdio: 'pipe' });
+  const relay = start(binary, ['relay', '--addr', `${webHost}:${relayPort}`, '--state', path.join(temp, 'relay.json'), '--web-root', path.join(repoDir, 'desktop/build/mobile-web')], { env });
   await until(() => relay.output.includes('listening'), 'relay startup');
-  const host = start(binary, ['remote', 'host', '--workdir', workspace, '--relay', `ws://127.0.0.1:${relayPort}/v1/connect`, '--pair'], { env });
+  const host = start(binary, ['remote', 'host', '--workdir', workspace, '--relay', `ws://${webHost}:${relayPort}/v1/connect`, '--pair'], { env });
   await until(() => host.output.includes('wuu://pair?'), 'host pairing');
   const uri = host.output.match(/wuu:\/\/pair\?[^\s]+/)[0];
-  const vite = start(process.execPath, [path.join(clientDir, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(webPort)], { cwd: clientDir });
-  await until(() => vite.output.includes('Local:'), 'web startup');
   browser = await chromium.launch({ channel: process.env.WUU_BROWSER_CHANNEL || undefined });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'zh-CN' });
   const page = await context.newPage(); const pageErrors = [];
@@ -93,10 +93,9 @@ try {
     window.WebSocket = class extends Native { constructor(...args) { super(...args); window.testSocket = this; } };
     window.testDocumentID = Math.random();
   });
-  await page.goto(`http://127.0.0.1:${webPort}`);
-  await page.locator('textarea').fill(uri);
-  await page.getByRole('button', { name: '配对并进入', exact: true }).click();
+  await page.goto(`http://${webHost}:${webPort}/#${new URLSearchParams({ pair: uri })}`);
   await page.locator('.app-shell').waitFor();
+  assert.equal(new URL(page.url()).hash, '');
   const documentID = await page.evaluate(() => window.testDocumentID);
   const input = page.locator('textarea:visible').first();
   await input.fill('Create src/browser-task.ts with the requested test export.');
@@ -118,7 +117,7 @@ try {
   host.child.kill('SIGTERM');
   await until(() => host.exited, 'host shutdown');
   await page.getByRole('status').filter({ hasText: '连接已断开' }).waitFor();
-  const restarted = start(binary, ['remote', 'host', '--workdir', workspace, '--relay', `ws://127.0.0.1:${relayPort}/v1/connect`], { env });
+  const restarted = start(binary, ['remote', 'host', '--workdir', workspace, '--relay', `ws://${webHost}:${relayPort}/v1/connect`], { env });
   await until(() => restarted.output.includes('connected to relay'), 'host restart');
   await page.locator('.web-workbench:not([inert])').waitFor({ timeout: 45000 });
   await page.getByText(finalText, { exact: true }).filter({ visible: true }).waitFor();

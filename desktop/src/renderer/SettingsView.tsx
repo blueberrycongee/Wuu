@@ -3545,8 +3545,8 @@ function SettingsRemotePageContainer(): JSX.Element {
       statusError={actionError || snapshot?.status_error || ""}
       hostRunning={snapshot?.host_running ?? false}
       pairUri={snapshot?.pair_uri ?? null}
+      webUrl={snapshot?.web_url ?? null}
       busy={busy}
-      onSaveRelay={(relayUrl) => run(() => window.wuu.setRemoteRelay(relayUrl))}
       onToggleHost={(enabled) => run(() => window.wuu.setRemoteHostEnabled(enabled))}
       onOpenPairing={() => run(() => window.wuu.startRemotePairing())}
       onRemoveDevice={(device) => run(() => window.wuu.removeRemoteDevice(device.fingerprint))}

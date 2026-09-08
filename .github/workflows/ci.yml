@@ -150,6 +150,9 @@ jobs:
       - name: Test native helper
         run: make test-native
 
+      - name: Install phone Web dependencies
+        run: npm ci --prefix clients/mobile-web
+
       - name: Package macOS app
         run: make build-macos
 
@@ -184,6 +187,9 @@ jobs:
 
       - name: Typecheck Desktop on Windows
         run: npm --prefix desktop run typecheck
+
+      - name: Install phone Web dependencies
+        run: npm ci --prefix clients/mobile-web
 
       - name: Package unpacked Windows app
         run: npm --prefix desktop run pack:win

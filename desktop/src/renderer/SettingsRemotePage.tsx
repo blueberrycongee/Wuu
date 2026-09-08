@@ -31,8 +31,8 @@ export type SettingsRemotePageProps = {
   statusError: string;
   hostRunning: boolean;
   pairUri: string | null;
+  webUrl?: string | null;
   busy: boolean;
-  onSaveRelay: (relayUrl: string) => void;
   onToggleHost: (enabled: boolean) => void;
   onOpenPairing: () => void;
   onRemoveDevice: (device: RemoteDeviceView) => void;
@@ -43,76 +43,30 @@ export function SettingsRemotePage({
   statusError,
   hostRunning,
   pairUri,
+  webUrl,
   busy,
-  onSaveRelay,
   onToggleHost,
   onOpenPairing,
   onRemoveDevice
 }: SettingsRemotePageProps): JSX.Element {
   const { t, formatDate } = useI18n();
-  const [relayDraft, setRelayDraft] = useState(status?.relay_url ?? "");
-  useEffect(() => {
-    setRelayDraft(status?.relay_url ?? "");
-  }, [status?.relay_url]);
-  const relayConfigured = Boolean(status?.relay_url);
 
   return (
     <div data-testid="settings-remote-page">
       {statusError ? <div className="settings-error">{statusError}</div> : null}
 
-      <RemoteSection title={t("remote.relaySection")} description={t("remote.relaySectionDescription")}>
+      <RemoteSection title={t("remote.access")} description={t("remote.lanDescription")}>
         <div className="settings-group">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const value = relayDraft.trim();
-              if (value !== "") onSaveRelay(value);
-            }}
-          >
-            <RemoteRow
-              title={t("remote.relayAddress")}
-              description={t("remote.relayFormat")}
-              block
-            >
-              <input
-                className="settings-input"
-                type="text"
-                value={relayDraft}
-                placeholder="ws://127.0.0.1:8787/v1/connect"
-                onChange={(event) => setRelayDraft(event.target.value)}
-                disabled={busy}
-              />
-              <button
-                className="settings-button settings-button-primary"
-                type="submit"
-                disabled={busy || relayDraft.trim() === "" || relayDraft.trim() === (status?.relay_url ?? "")}
-              >
-                {t("remote.saveRelay")}
-              </button>
-            </RemoteRow>
-          </form>
-          <RemoteRow
-            title={t("remote.access")}
-            description={
-              relayConfigured
-                ? hostRunning
-                  ? t("remote.hostRunning")
-                  : t("remote.hostStopped")
-                : t("remote.configureRelayFirst")
-            }
-          >
-            <button
-              className="settings-switch"
-              type="button"
-              role="switch"
-              aria-checked={hostRunning}
-              disabled={busy || !relayConfigured}
-              onClick={() => onToggleHost(!hostRunning)}
-            >
+          <RemoteRow title={hostRunning ? t("remote.hostRunning") : t("remote.hostStopped")}>
+            <button className="settings-switch" type="button" role="switch" aria-checked={hostRunning}
+              disabled={busy} onClick={() => onToggleHost(!hostRunning)}>
               <span className="settings-switch-thumb" aria-hidden="true" />
               <span className="sr-only">{hostRunning ? t("remote.disableAccess") : t("remote.enableAccess")}</span>
             </button>
           </RemoteRow>
+          {hostRunning && webUrl ? <RemoteRow title={t("remote.webAddress")}>
+            <code>{webUrl}</code>
+          </RemoteRow> : null}
         </div>
       </RemoteSection>
 
@@ -122,9 +76,7 @@ export function SettingsRemotePage({
             <div className="settings-remote-pairing" data-testid="remote-pair-panel">
               <PairQRCode uri={pairUri} />
               <p className="settings-remote-pair-hint">{t("remote.pairHint")}</p>
-              <code className="settings-remote-pair-uri" data-testid="remote-pair-uri">
-                {pairUri}
-              </code>
+              <button className="settings-button" type="button" onClick={() => void navigator.clipboard.writeText(pairUri)}>{t("remote.copyLink")}</button>
             </div>
           ) : (
             <RemoteRow

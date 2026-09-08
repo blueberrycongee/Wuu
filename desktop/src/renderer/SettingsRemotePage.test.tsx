@@ -1,13 +1,4 @@
-/**
- * Tests for `SettingsRemotePage`.
- *
- * Contract: relay input drafts from status and saves via onSaveRelay; the
- * remote-access switch reflects hostRunning and is gated on a configured
- * relay; the pairing card shows the QR (SVG) + copyable URI while a pairing
- * window is open, otherwise a button gated on the host running; paired
- * devices list fingerprint/name with a revoke action; empty and error
- * states render.
- */
+/** Phone access toggle, pairing, and device revocation behavior. */
 import { afterEach, describe, expect, it } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -53,7 +44,6 @@ function baseProps(overrides: Partial<SettingsRemotePageProps> = {}): SettingsRe
     hostRunning: false,
     pairUri: null,
     busy: false,
-    onSaveRelay: () => {},
     onToggleHost: () => {},
     onOpenPairing: () => {},
     onRemoveDevice: () => {},
@@ -68,29 +58,13 @@ async function flushAsync(): Promise<void> {
 }
 
 describe("SettingsRemotePage relay + switch", () => {
-  it("drafts the relay from status and saves trimmed edits", () => {
-    const saved: string[] = [];
-    mount(baseProps({ onSaveRelay: (url) => saved.push(url) }));
-    const input = container!.querySelector<HTMLInputElement>(".settings-input")!;
-    expect(input.value).toBe("ws://127.0.0.1:8787/v1/connect");
-
-    act(() => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-      setter.call(input, "  ws://relay.example.com/v1/connect  ");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const form = container!.querySelector("form")!;
-    act(() => {
-      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(saved).toEqual(["ws://relay.example.com/v1/connect"]);
-  });
-
-  it("gates the remote-access switch on a configured relay", () => {
-    mount(baseProps({ status: { ...baseStatus, relay_url: undefined } }));
+  it("enables phone access without a relay configuration", () => {
+    const toggles: boolean[] = [];
+    mount(baseProps({ status: null, onToggleHost: value => toggles.push(value) }));
     const toggle = container!.querySelector<HTMLButtonElement>(".settings-switch")!;
-    expect(toggle.disabled).toBe(true);
-    expect(container!.textContent).toContain("先配置中继地址");
+    expect(toggle.disabled).toBe(false);
+    act(() => toggle.click());
+    expect(toggles).toEqual([true]);
   });
 
   it("toggles the host through onToggleHost", () => {
@@ -122,9 +96,9 @@ describe("SettingsRemotePage pairing", () => {
   });
 
   it("renders the QR svg and the copyable URI while pairing", async () => {
-    const uri = "wuu://pair?h=HOST&k=KEY&p=PID&r=ws%3A%2F%2Frelay&v=1";
+    const uri = "http://192.168.1.2:8787/#pair=wuu%3A%2F%2Fpair%3Ftest";
     mount(baseProps({ hostRunning: true, pairUri: uri }));
-    expect(container!.querySelector('[data-testid="remote-pair-uri"]')!.textContent).toBe(uri);
+
     await flushAsync();
     const qr = container!.querySelector('[data-testid="remote-pair-qr"]')!;
     expect(qr.innerHTML).toContain("<svg");
