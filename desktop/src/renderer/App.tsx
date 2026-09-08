@@ -1,4 +1,5 @@
 import { hostSupports } from "./HostCapabilities";
+import { readThreadReadState, writeThreadReadState } from "./ThreadReadState";
 /// <reference path="../shared/jsx-compat.d.ts" />
 
 import {
@@ -391,7 +392,13 @@ export function App(): JSX.Element {
   const { locale, t } = useI18n();
   const [popOutInit] = useState<PopOutInitResult | null>(() => readPopOutInit());
   const poppedOutMode = Boolean(popOutInit?.kind && popOutInit.context);
-  const [state, setState] = useState<AppState>(initialState);
+  const [state, setState] = useState<AppState>(() => ({
+    ...initialState,
+    lastViewedTurnByThreadID: readThreadReadState(),
+  }));
+  useEffect(() => {
+    writeThreadReadState(state.lastViewedTurnByThreadID);
+  }, [state.lastViewedTurnByThreadID]);
   const [userQuestions, setUserQuestions] = useState<UserQuestionRequest[]>([]);
   const resolvedUserQuestionIDsRef = useRef(new Set<string>());
   const userQuestionApiAvailable =
