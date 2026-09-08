@@ -233,6 +233,9 @@ export function useSidebarDrawerState({
   ]);
 
   const scheduleSidebarDrawerCloseFromPointerLeave = useCallback((event?: Event): void => {
+    // Touch release/cancel produces pointerleave even when a drawer drag is
+    // returning to its open position. It is not a mouse leaving the rail.
+    if (event && "pointerType" in event && event.pointerType === "touch") return;
     if (event) {
       rememberSidebarPointerPosition(event);
     }
@@ -296,6 +299,7 @@ export function useSidebarDrawerState({
 
   useEffect(() => {
     function handlePointerEvent(event: Event): void {
+      if ("pointerType" in event && event.pointerType === "touch") return;
       rememberSidebarPointerPosition(event);
       syncSidebarDrawerHover();
     }

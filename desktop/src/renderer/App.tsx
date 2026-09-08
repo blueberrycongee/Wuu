@@ -611,9 +611,10 @@ export function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   useSidebarTouchGesture(
     appShellRef,
-    Boolean(state.initialized) && compactNavigation && !poppedOutMode && !settingsOpen &&
-      sidebarDrawerPhase === "closed",
+    Boolean(state.initialized) && compactNavigation && !poppedOutMode && !settingsOpen,
+    sidebarDrawerPhase,
     openSidebarDrawerNow,
+    closeSidebarDrawer,
   );
   const [onboardingComplete, setOnboardingComplete] = useState(
     () => window.wuu?.initialOnboardingComplete ?? true,
@@ -5147,7 +5148,7 @@ export function App(): JSX.Element {
           />
           )}
 
-          {compactNavigation && sidebarDrawerVisible ? (
+          {compactNavigation ? (
             <>
               <button
                 className="compact-session-switcher-backdrop"

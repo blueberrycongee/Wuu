@@ -21,7 +21,13 @@ app.whenReady().then(async () => {
       if (await evaluate(fn)) return;
       await new Promise((resolve) => setTimeout(resolve, 30));
     }
-    throw new Error(`Timed out: ${fn}`);
+    const state = await evaluate(() => {
+      const shell = document.querySelector(".app-shell");
+      const sidebar = document.querySelector(".sidebar");
+      return { classes: shell?.className, style: shell?.getAttribute("style"), touch: shell?.dataset.sidebarTouch,
+        rect: sidebar?.getBoundingClientRect().toJSON() };
+    });
+    throw new Error(`Timed out: ${fn}; ${JSON.stringify(state)}`);
   };
   await win.loadURL("about:blank");
   win.webContents.debugger.attach("1.3");
@@ -38,11 +44,24 @@ app.whenReady().then(async () => {
   await waitFor(() => document.querySelector(".app-shell").classList.contains("compact-navigation"));
   assert.equal(await evaluate(() => matchMedia("(pointer: coarse)").matches), true);
   await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "collapsed");
-  const swipe = async (points) => {
+  const ready = async () => {
     await waitFor(() => !document.querySelector(".app-shell").classList.contains("sidebar-drawer-closing"));
     // Let compositor hit testing catch up after the drawer closes and its
     // non-passive touch listener is reattached.
     await evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  };
+  const point = (type, x, y = 300) => send("Input.dispatchTouchEvent", {
+    type, touchPoints: type === "touchEnd" || type === "touchCancel" ? [] : [{ x, y }],
+  });
+  const geometry = () => evaluate(() => {
+    const rect = document.querySelector(".sidebar").getBoundingClientRect();
+    const backdrop = document.querySelector(".compact-session-switcher-backdrop");
+    const style = backdrop && getComputedStyle(backdrop);
+    return { left: rect.left, right: rect.right, width: rect.width,
+      shade: !style || style.display === "none" ? 0 : Number(style.opacity) };
+  });
+  const swipe = async (points) => {
+    await ready();
     for (let i = 0; i < points.length; i++) {
       await send("Input.dispatchTouchEvent", {
         type: i === 0 ? "touchStart" : "touchMove",
@@ -51,17 +70,62 @@ app.whenReady().then(async () => {
     }
     await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   };
-  await swipe([[16, 300], [32, 301], [60, 302], [110, 303]]);
+  await ready();
+  await point("touchStart", 16);
+  await point("touchMove", 76);
+  const first = await geometry();
+  assert.ok(first.right > 20 && first.right < 100, `partial reveal before release: ${JSON.stringify(first)}`);
+  await point("touchMove", 136);
+  const second = await geometry();
+  assert.ok(Math.abs(second.right - first.right - 60) < 3, "drawer tracks finger pixel for pixel");
+  assert.ok(second.shade > first.shade && second.shade < 1, "backdrop follows reveal progress");
+  await point("touchMove", 230);
+  await point("touchEnd");
   await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "drawer");
-  await evaluate(() => document.querySelector(".compact-session-switcher-backdrop").click());
+  await waitFor(() => Math.abs(document.querySelector(".sidebar").getBoundingClientRect().left) < 1);
+
+  // Reverse a closing drag before release: the drawer must return with the finger.
+  await ready();
+  assert.equal(await evaluate(() => !!document.elementFromPoint(220, 300)?.closest(".sidebar")), true);
+  await point("touchStart", 220);
+  await point("touchMove", 130);
+  const closing = await geometry();
+  assert.ok(closing.left < -50 && closing.left > -120, "left swipe tracks closing before release");
+  await point("touchMove", 200);
+  const reversed = await geometry();
+  assert.ok(Math.abs(reversed.left - closing.left - 70) < 3, "reversing tracks without waiting for release");
+  await point("touchCancel");
+  await waitFor(() => Math.abs(document.querySelector(".sidebar").getBoundingClientRect().left) < 1);
+  assert.equal(await evaluate(() => document.querySelector(".app-shell").dataset.wuuSidebarMode), "drawer");
+
+  await swipe([[220, 300], [140, 300], [15, 300]]);
   await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "collapsed");
-  await swipe([[160, 300], [200, 300], [260, 300]]);
+  await ready();
+  await point("touchStart", 160);
+  await point("touchMove", 250);
+  await point("touchCancel");
+  await waitFor(() => document.querySelector(".sidebar").getBoundingClientRect().right <= 1);
+  assert.equal(await evaluate(() => document.querySelector(".app-shell").dataset.wuuSidebarMode), "collapsed");
+
+  // Rotation/window resizing must drop an in-flight touch override.
+  await ready();
+  await point("touchStart", 100);
+  await point("touchMove", 180);
+  win.setContentSize(800, 820);
+  await waitFor(() => !document.querySelector(".app-shell").classList.contains("compact-navigation"));
+  await point("touchCancel");
+  win.setContentSize(390, 820);
+  await waitFor(() => document.querySelector(".app-shell").classList.contains("compact-navigation"));
+  await waitFor(() => document.querySelector(".sidebar").getBoundingClientRect().right <= 1);
+
+  await swipe([[160, 300], [240, 300], [365, 300]]);
   await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "drawer");
+  await waitFor(() => Math.abs(document.querySelector(".sidebar").getBoundingClientRect().left) < 1);
   await evaluate(() => document.querySelector(".compact-session-switcher-backdrop").click());
   await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "collapsed");
   await swipe([[160, 300], [162, 320], [164, 360]]);
   assert.equal(await evaluate(() => document.querySelector(".app-shell").dataset.wuuSidebarMode), "collapsed");
-  console.log("PASS: Chromium touch swipes at edge and middle of messages open drawer; vertical gesture does not; backdrop closes");
+  console.log("PASS: real Chromium touch tracks drawer and backdrop before release, reverses, cancels, opens/closes, and preserves vertical scrolling");
   clearTimeout(timeout);
   win.destroy();
   app.quit();

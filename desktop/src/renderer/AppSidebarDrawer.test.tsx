@@ -180,13 +180,14 @@ function appShell(): HTMLElement | null {
   return container.querySelector<HTMLElement>(".app-shell");
 }
 
-function touch(target: Element, type: string, x: number, y: number, count = 1): TouchEvent {
+function touch(target: Element, type: string, x: number, y: number, count = 1, time?: number): TouchEvent {
   const points = Array.from({ length: count }, (_, identifier) => ({ identifier, clientX: x, clientY: y }) as Touch);
   const event = new TouchEvent(type, {
     bubbles: true, cancelable: true,
     touches: type === "touchend" || type === "touchcancel" ? [] : points,
     changedTouches: points,
   });
+  if (time !== undefined) Object.defineProperty(event, "timeStamp", { value: time });
   target.dispatchEvent(event);
   return event;
 }
@@ -339,12 +340,16 @@ describe("collapsed sidebar hover drawer", () => {
     await renderCollapsedApp();
     const shell = appShell()!;
     const flow = shell.querySelector(".scroll-region")!;
+    const sidebar = shell.querySelector<HTMLElement>(".sidebar")!;
+    Object.defineProperty(sidebar, "offsetWidth", { configurable: true, value: 300 });
+    vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(new DOMRect(-300, 0, 300, 820));
     await act(async () => {
-      touch(flow, "touchstart", x, 100);
-      const move = touch(flow, "touchmove", x + 79, 105);
+      touch(flow, "touchstart", x, 100, 1, 100);
+      const move = touch(flow, "touchmove", x + 79, 105, 1, 160);
       expect(move.defaultPrevented).toBe(opens);
-      touch(flow, "touchend", x + 79, 105);
+      touch(flow, "touchend", x + 79, 105, 1, 170);
     });
+    await act(async () => { vi.advanceTimersByTime(400); });
     expect(shell.dataset.wuuSidebarMode).toBe(opens ? "drawer" : "collapsed");
     if (opens) {
       const backdrop = container.querySelector<HTMLButtonElement>(".compact-session-switcher-backdrop");
@@ -353,6 +358,70 @@ describe("collapsed sidebar hover drawer", () => {
       await act(async () => { vi.advanceTimersByTime(300); });
       expect(shell.dataset.wuuSidebarMode).toBe("collapsed");
     }
+  });
+
+  it.each([
+    ["slow short drag", 80, 400, 450, false],
+    ["slow drag past halfway", 180, 400, 450, true],
+    ["short flick", 80, 150, 160, true],
+    ["flick followed by a hold", 80, 150, 500, false],
+  ] as const)("settles a %s using distance and recent speed", async (_name, distance, moveTime, endTime, opens) => {
+    document.documentElement.dataset.hostKind = "web";
+    window.innerWidth = 390;
+    vi.mocked(window.matchMedia).mockImplementation((query) => ({
+      matches: query === "(pointer: coarse)", media: query, onchange: null,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    }));
+    await renderCollapsedApp();
+    const shell = appShell()!;
+    const sidebar = shell.querySelector<HTMLElement>(".sidebar")!;
+    Object.defineProperty(sidebar, "offsetWidth", { configurable: true, value: 300 });
+    vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(new DOMRect(-300, 0, 300, 820));
+    const flow = shell.querySelector(".scroll-region")!;
+    await act(async () => {
+      touch(flow, "touchstart", 100, 100, 1, 100);
+      touch(flow, "touchmove", 100 + distance, 100, 1, moveTime);
+      touch(flow, "touchend", 100 + distance, 100, 1, endTime);
+    });
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(shell.dataset.wuuSidebarMode).toBe(opens ? "drawer" : "collapsed");
+  });
+
+  it.each([
+    ["short closing drag", 80, 700, 750, true],
+    ["closing past halfway", 180, 700, 750, false],
+    ["closing flick", 80, 450, 460, false],
+    ["closing flick then hold", 80, 450, 850, true],
+  ] as const)("settles a %s from the open drawer", async (_name, distance, moveTime, endTime, staysOpen) => {
+    document.documentElement.dataset.hostKind = "web";
+    window.innerWidth = 390;
+    vi.mocked(window.matchMedia).mockImplementation((query) => ({
+      matches: query === "(pointer: coarse)", media: query, onchange: null,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    }));
+    await renderCollapsedApp();
+    const shell = appShell()!;
+    const sidebar = shell.querySelector<HTMLElement>(".sidebar")!;
+    Object.defineProperty(sidebar, "offsetWidth", { configurable: true, value: 300 });
+    vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(new DOMRect(-300, 0, 300, 820));
+    const flow = shell.querySelector(".scroll-region")!;
+    await act(async () => {
+      touch(flow, "touchstart", 100, 100, 1, 100);
+      touch(flow, "touchmove", 280, 100, 1, 200);
+      touch(flow, "touchend", 280, 100, 1, 210);
+    });
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(shell.dataset.wuuSidebarMode).toBe("drawer");
+    vi.mocked(sidebar.getBoundingClientRect).mockReturnValue(new DOMRect(0, 0, 300, 820));
+    await act(async () => {
+      touch(sidebar, "touchstart", 250, 100, 1, 400);
+      touch(sidebar, "touchmove", 250 - distance, 100, 1, moveTime);
+      touch(sidebar, "touchend", 250 - distance, 100, 1, endTime);
+    });
+    await act(async () => { vi.advanceTimersByTime(600); });
+    expect(shell.dataset.wuuSidebarMode).toBe(staysOpen ? "drawer" : "collapsed");
   });
 
   it.each(["vertical", "left", "outside messages", "short", "cancel", "multitouch", "input", "scroller"])(
@@ -366,6 +435,9 @@ describe("collapsed sidebar hover drawer", () => {
       }));
       await renderCollapsedApp();
       const shell = appShell()!;
+      const sidebar = shell.querySelector<HTMLElement>(".sidebar")!;
+      Object.defineProperty(sidebar, "offsetWidth", { configurable: true, value: 300 });
+      vi.spyOn(sidebar, "getBoundingClientRect").mockReturnValue(new DOMRect(-300, 0, 300, 820));
       const target = document.createElement(kind === "input" ? "textarea" : "div");
       (kind === "outside messages" ? shell : shell.querySelector(".scroll-region")!).appendChild(target);
       if (kind === "scroller") {
@@ -382,6 +454,7 @@ describe("collapsed sidebar hover drawer", () => {
         if (kind !== "short") expect(move.defaultPrevented).toBe(false);
         touch(target, "touchend", kind === "short" ? 175 : 240, 105);
       });
+      await act(async () => { vi.advanceTimersByTime(400); });
       expect(shell.dataset.wuuSidebarMode).toBe("collapsed");
       target.remove();
     },

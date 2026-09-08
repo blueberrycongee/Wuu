@@ -1,0 +1,82 @@
+/* Keep the phone drawer at its real width while parked offscreen. Dragging
+   moves the panel without stretching or fading its contents. */
+@media (pointer: coarse) {
+  :root[data-host-kind="web"] .app-shell.compact-navigation.sidebar-collapsed {
+    --sidebar-touch-offset: -100%;
+    --sidebar-touch-progress: 0;
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation.sidebar-drawer-open {
+    --sidebar-touch-offset: 0px;
+    --sidebar-touch-progress: 1;
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation.sidebar-collapsed .sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 140;
+    width: var(--compact-session-switcher-width);
+    min-width: var(--compact-session-switcher-width);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--sidebar-drawer-bg);
+    border-right: 1px solid var(--sidebar-drawer-edge);
+    box-shadow: none;
+    opacity: 1;
+    transform: translate3d(var(--sidebar-touch-offset), 0, 0);
+    transition: transform 180ms ease-out;
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation.sidebar-collapsed .sidebar-content {
+    width: 100%;
+    min-width: 0;
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation.sidebar-collapsed:is(.sidebar-drawer-open, .sidebar-drawer-closing, [data-sidebar-touch]) .sidebar {
+    box-shadow: 10px 0 24px var(--ink-overlay-8);
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation .compact-session-switcher-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 139;
+    border: 0;
+    padding: 0;
+    background: var(--modal-backdrop-bg);
+    opacity: var(--sidebar-touch-progress);
+    pointer-events: none;
+    visibility: hidden;
+    transition: opacity 180ms ease-out;
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation:is(.sidebar-drawer-open, .sidebar-drawer-closing, [data-sidebar-touch]) .compact-session-switcher-backdrop {
+    visibility: visible;
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation.sidebar-drawer-open .compact-session-switcher-backdrop {
+    pointer-events: auto;
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation[data-sidebar-touch="dragging"] :is(.sidebar, .compact-session-switcher-backdrop) {
+    transition: none;
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation[data-sidebar-touch] .compact-session-switcher-close {
+    transform: translate3d(var(--sidebar-touch-offset), 0, 0);
+    transition: transform 180ms ease-out;
+  }
+
+  :root[data-host-kind="web"] .app-shell.compact-navigation[data-sidebar-touch="dragging"] .compact-session-switcher-close {
+    transition: none;
+  }
+}
+
+@media (pointer: coarse) and (prefers-reduced-motion: reduce) {
+  :root[data-host-kind="web"] .app-shell.compact-navigation :is(.sidebar, .compact-session-switcher-backdrop, .compact-session-switcher-close) {
+    transition: none;
+  }
+}
