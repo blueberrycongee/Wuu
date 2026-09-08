@@ -288,7 +288,7 @@ describe("workspace routing", () => {
     const selected = await bridge.api.selectProject("beta");
     expect(selected.active_context).toEqual({ kind: "project", project_id: "beta", cwd: "/computer/beta" });
     await bridge.api.listThreads();
-    expect(remote.call).toHaveBeenLastCalledWith("thread/list", { cwd: "/computer/beta" }, 30_000, "/computer/beta");
+    expect(remote.call).toHaveBeenLastCalledWith("thread/list", { cwd: "/computer/beta", summary_only: true }, 30_000, "/computer/beta");
     await bridge.api.startThread({ model: "chosen-model" });
     expect(remote.call).toHaveBeenLastCalledWith("thread/start", {
       model: "chosen-model", cwd: "/computer/beta", workspace_id: "beta",

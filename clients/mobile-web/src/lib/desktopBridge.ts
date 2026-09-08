@@ -522,9 +522,9 @@ export class RemoteDesktopBridge {
           features: { ...result.features, browser: false },
         };
       },
-      listThreads: (cwd?: string) => this.call("thread/list", { cwd: cwd || this.workdir() }),
-      listAllThreads: () => this.call("thread/listAll"),
-      listArchivedThreads: () => this.call("thread/listArchived"),
+      listThreads: (cwd?: string) => this.call("thread/list", { cwd: cwd || this.workdir(), summary_only: true }),
+      listAllThreads: () => this.call("thread/listAll", { summary_only: true }),
+      listArchivedThreads: () => this.call("thread/listArchived", { summary_only: true }),
       resumeThread: (sessionId?: string) =>
         this.call("thread/resume", { session_id: sessionId ?? "" }),
       startThread: (params = {}) => this.call("thread/start", {
