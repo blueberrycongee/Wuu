@@ -39,6 +39,10 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate(() => matchMedia("(pointer: coarse)").matches), true);
   await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "collapsed");
   const swipe = async (points) => {
+    await waitFor(() => !document.querySelector(".app-shell").classList.contains("sidebar-drawer-closing"));
+    // Let compositor hit testing catch up after the drawer closes and its
+    // non-passive touch listener is reattached.
+    await evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     for (let i = 0; i < points.length; i++) {
       await send("Input.dispatchTouchEvent", {
         type: i === 0 ? "touchStart" : "touchMove",
@@ -47,16 +51,17 @@ app.whenReady().then(async () => {
     }
     await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   };
-  await evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await swipe([[16, 300], [32, 301], [60, 302], [110, 303]]);
   await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "drawer");
   await evaluate(() => document.querySelector(".compact-session-switcher-backdrop").click());
   await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "collapsed");
   await swipe([[160, 300], [200, 300], [260, 300]]);
+  await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "drawer");
+  await evaluate(() => document.querySelector(".compact-session-switcher-backdrop").click());
+  await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "collapsed");
+  await swipe([[160, 300], [162, 320], [164, 360]]);
   assert.equal(await evaluate(() => document.querySelector(".app-shell").dataset.wuuSidebarMode), "collapsed");
-  await swipe([[16, 300], [18, 320], [20, 360]]);
-  assert.equal(await evaluate(() => document.querySelector(".app-shell").dataset.wuuSidebarMode), "collapsed");
-  console.log("PASS: Chromium touch edge swipe opens drawer; vertical/middle gestures do not; backdrop closes");
+  console.log("PASS: Chromium touch swipes at edge and middle of messages open drawer; vertical gesture does not; backdrop closes");
   clearTimeout(timeout);
   win.destroy();
   app.quit();

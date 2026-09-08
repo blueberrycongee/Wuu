@@ -2,7 +2,7 @@ import { useEffect, type RefObject } from "react";
 import { isTouchWebShell } from "./ComposerFocus";
 
 // Leave controls and horizontal scrollers (code, editors, terminal) in charge
-// of their own gestures, even when they reach the edge of the screen.
+// of their own gestures inside the message flow.
 function ownsGesture(target: Element, shell: HTMLElement): boolean {
   if (target.closest('input, textarea, select, button, a, [contenteditable], [role="dialog"], [role="slider"], .monaco-editor, .xterm')) {
     return true;
@@ -30,8 +30,9 @@ export function useSidebarTouchGesture(
       cancel();
       if (event.defaultPrevented || event.touches.length !== 1 || !isTouchWebShell()) return;
       const touch = event.touches[0];
-      const x = touch.clientX - shell.getBoundingClientRect().left;
-      if (x < 0 || x > 28 || !(event.target instanceof Element) || ownsGesture(event.target, shell)) return;
+      if (!(event.target instanceof Element) ||
+        !event.target.closest(".scroll-region, .conversation-split-body, .side-thread-panel__body") ||
+        ownsGesture(event.target, shell)) return;
       gesture = { id: touch.identifier, x: touch.clientX, y: touch.clientY, horizontal: false };
     };
     const move = (event: TouchEvent): void => {
@@ -67,7 +68,7 @@ export function useSidebarTouchGesture(
     };
 
     shell.addEventListener("touchstart", start, { passive: true });
-    // Cancel scrolling only after a rightward edge gesture is established.
+    // Cancel scrolling only after a rightward message-flow gesture is established.
     shell.addEventListener("touchmove", move, { passive: false });
     shell.addEventListener("touchend", end, { passive: false });
     shell.addEventListener("touchcancel", cancel);

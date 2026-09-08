@@ -322,11 +322,13 @@ describe("collapsed sidebar hover drawer", () => {
   });
 
   it.each([
-    ["phone web", "web", true, 390, true],
-    ["desktop app with touch", "desktop", true, 390, false],
-    ["mouse web", "web", false, 390, false],
-    ["wide touch web", "web", true, 1280, false],
-  ] as const)("limits edge swipe to phone web: %s", async (_name, host, coarse, width, opens) => {
+    ["phone web left edge", "web", true, 390, true, 16],
+    ["phone web middle", "web", true, 390, true, 150],
+    ["phone web right side", "web", true, 390, true, 280],
+    ["desktop app with touch", "desktop", true, 390, false, 150],
+    ["mouse web", "web", false, 390, false, 150],
+    ["wide touch web", "web", true, 1280, false, 150],
+  ] as const)("limits message swipe to phone web: %s", async (_name, host, coarse, width, opens, x) => {
     document.documentElement.dataset.hostKind = host;
     window.innerWidth = width;
     vi.mocked(window.matchMedia).mockImplementation((query) => ({
@@ -336,11 +338,12 @@ describe("collapsed sidebar hover drawer", () => {
     }));
     await renderCollapsedApp();
     const shell = appShell()!;
+    const flow = shell.querySelector(".scroll-region")!;
     await act(async () => {
-      touch(shell, "touchstart", 16, 100);
-      const move = touch(shell, "touchmove", 95, 105);
+      touch(flow, "touchstart", x, 100);
+      const move = touch(flow, "touchmove", x + 79, 105);
       expect(move.defaultPrevented).toBe(opens);
-      touch(shell, "touchend", 95, 105);
+      touch(flow, "touchend", x + 79, 105);
     });
     expect(shell.dataset.wuuSidebarMode).toBe(opens ? "drawer" : "collapsed");
     if (opens) {
@@ -352,7 +355,7 @@ describe("collapsed sidebar hover drawer", () => {
     }
   });
 
-  it.each(["vertical", "left", "middle", "short", "cancel", "multitouch", "input", "scroller"])(
+  it.each(["vertical", "left", "outside messages", "short", "cancel", "multitouch", "input", "scroller"])(
     "does not steal %s gestures", async (kind) => {
       document.documentElement.dataset.hostKind = "web";
       window.innerWidth = 390;
@@ -364,20 +367,20 @@ describe("collapsed sidebar hover drawer", () => {
       await renderCollapsedApp();
       const shell = appShell()!;
       const target = document.createElement(kind === "input" ? "textarea" : "div");
-      shell.appendChild(target);
+      (kind === "outside messages" ? shell : shell.querySelector(".scroll-region")!).appendChild(target);
       if (kind === "scroller") {
         target.style.overflowX = "auto";
         Object.defineProperties(target, { scrollWidth: { value: 500 }, clientWidth: { value: 200 } });
       }
       await act(async () => {
-        touch(target, "touchstart", kind === "middle" ? 150 : 16, 100);
-        if (kind === "vertical") touch(target, "touchmove", 18, 125);
-        if (kind === "left") touch(target, "touchmove", 0, 100);
-        if (kind === "cancel") touch(target, "touchcancel", 16, 100);
-        if (kind === "multitouch") touch(target, "touchstart", 16, 100, 2);
-        const move = touch(target, "touchmove", kind === "short" ? 40 : 240, 105);
+        touch(target, "touchstart", 150, 100);
+        if (kind === "vertical") touch(target, "touchmove", 152, 125);
+        if (kind === "left") touch(target, "touchmove", 130, 100);
+        if (kind === "cancel") touch(target, "touchcancel", 150, 100);
+        if (kind === "multitouch") touch(target, "touchstart", 150, 100, 2);
+        const move = touch(target, "touchmove", kind === "short" ? 175 : 240, 105);
         if (kind !== "short") expect(move.defaultPrevented).toBe(false);
-        touch(target, "touchend", kind === "short" ? 40 : 240, 105);
+        touch(target, "touchend", kind === "short" ? 175 : 240, 105);
       });
       expect(shell.dataset.wuuSidebarMode).toBe("collapsed");
       target.remove();
