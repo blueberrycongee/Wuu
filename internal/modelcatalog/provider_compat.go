@@ -140,6 +140,40 @@ func applyOfficialCatalogCorrections(data *catalogData) {
 				SupportedEfforts: []string{"none", "low", "high", "max"},
 				DefaultVariant:   "high",
 			})
+			upsertOfficialModel(provider, Model{
+				ID:               "deepseek-v4-flash-vision-exp",
+				Name:             "DeepSeek V4 Flash Vision Exp",
+				Family:           "deepseek-flash",
+				ReleaseDate:      "2026-08-21",
+				Reasoning:        true,
+				ReasoningOptions: officialEffortOptions(true, "low", "high", "max"),
+				Attachment:       officialBool(true),
+				ToolCall:         officialBool(true),
+				StructuredOutput: officialBool(true),
+				Temperature:      officialBool(true),
+				Interleaved:      map[string]any{"field": "reasoning_content"},
+				Modalities:       &Modalities{Input: []string{"text", "image"}, Output: []string{"text"}},
+				Limit:            &Limit{Context: 1_000_000, Output: 384_000},
+				SupportedEfforts: []string{"none", "low", "high", "max"},
+				DefaultVariant:   "high",
+			})
+			upsertOfficialModel(provider, Model{
+				ID:               "deepseek-v4.1-flash-expires-on-0910",
+				Name:             "DeepSeek V4.1 Flash (expires 2026-09-10)",
+				Family:           "deepseek-flash",
+				ReleaseDate:      "2026-09-08",
+				Reasoning:        true,
+				ReasoningOptions: officialEffortOptions(true, "low", "high", "max"),
+				Attachment:       officialBool(true),
+				ToolCall:         officialBool(true),
+				StructuredOutput: officialBool(true),
+				Temperature:      officialBool(true),
+				Interleaved:      map[string]any{"field": "reasoning_content"},
+				Modalities:       &Modalities{Input: []string{"text", "image"}, Output: []string{"text"}},
+				Limit:            &Limit{Context: 1_000_000, Output: 384_000},
+				SupportedEfforts: []string{"none", "low", "high", "max"},
+				DefaultVariant:   "high",
+			})
 		case "zai", "zai-coding-plan":
 			upsertOfficialModel(provider, Model{
 				ID:               "glm-5.3",

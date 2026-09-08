@@ -66,7 +66,7 @@ func compatReasoningEffortVariants(efforts []string) map[string]map[string]any {
 }
 
 // compatDeepSeekV4Variants returns the vendor-documented reasoning tiers for
-// DeepSeek V4 (identical for deepseek-v4-flash and deepseek-v4-pro).
+// DeepSeek V4 (identical for flash, pro, vision-exp, and the V4.1 flash preview).
 // medium and xhigh are accepted by the API for compatibility but are mapped to
 // high by DeepSeek, so wuu does not expose them as distinct tiers.
 func compatDeepSeekV4Variants(wireAPI string) map[string]map[string]any {

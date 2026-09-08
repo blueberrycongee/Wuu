@@ -477,7 +477,7 @@ func TestResolveDeepSeekV4EffortEnablesThinking(t *testing.T) {
 }
 
 func TestDeepSeekV4UsesVendorEffortTiers(t *testing.T) {
-	for _, model := range []string{"deepseek-v4-flash", "deepseek-v4-pro"} {
+	for _, model := range []string{"deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp", "deepseek-v4.1-flash-expires-on-0910"} {
 		t.Run(model, func(t *testing.T) {
 			providerName, provider := modelcatalog.EnrichProvider("deepseek", config.ProviderConfig{
 				Type:  "openai-compatible",

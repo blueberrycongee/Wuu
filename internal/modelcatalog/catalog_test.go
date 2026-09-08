@@ -254,8 +254,63 @@ func TestCatalogSnapshotMatchesOpenCodeDefaultVisibleCounts(t *testing.T) {
 			}
 		}
 	}
-	if modelCount != 5826 {
-		t.Fatalf("model count = %d, want 5826", modelCount)
+	if modelCount != 5828 {
+		t.Fatalf("model count = %d, want 5828", modelCount)
+	}
+}
+
+func TestDeepSeekOfficialCatalogCorrectionsExposeVisionModels(t *testing.T) {
+	provider, ok := ProviderByID("deepseek")
+	if !ok {
+		t.Fatal("expected DeepSeek provider")
+	}
+
+	want := map[string]struct {
+		name     string
+		image    bool
+		release  string
+		efforts  []string
+		defaultV string
+	}{
+		"deepseek-v4-flash-vision-exp": {
+			name:     "DeepSeek V4 Flash Vision Exp",
+			image:    true,
+			release:  "2026-08-21",
+			efforts:  []string{"low", "high", "max"},
+			defaultV: "high",
+		},
+		"deepseek-v4.1-flash-expires-on-0910": {
+			name:     "DeepSeek V4.1 Flash (expires 2026-09-10)",
+			image:    true,
+			release:  "2026-09-08",
+			efforts:  []string{"low", "high", "max"},
+			defaultV: "high",
+		},
+	}
+	for _, model := range provider.Models {
+		spec, exists := want[model.ID]
+		if !exists {
+			continue
+		}
+		if model.Name != spec.name || model.ReleaseDate != spec.release {
+			t.Fatalf("%s identity = name=%q release=%q, want name=%q release=%q", model.ID, model.Name, model.ReleaseDate, spec.name, spec.release)
+		}
+		if model.Attachment == nil || *model.Attachment != spec.image {
+			t.Fatalf("%s attachment = %+v, want %v", model.ID, model.Attachment, spec.image)
+		}
+		if model.Modalities == nil || !stringSliceContains(model.Modalities.Input, "image") {
+			t.Fatalf("%s modalities = %+v, want image input", model.ID, model.Modalities)
+		}
+		if got := reasoningEfforts(model); !equalStrings(got, spec.efforts) {
+			t.Fatalf("%s efforts = %v, want %v", model.ID, got, spec.efforts)
+		}
+		if model.DefaultVariant != spec.defaultV {
+			t.Fatalf("%s default variant = %q, want %q", model.ID, model.DefaultVariant, spec.defaultV)
+		}
+		delete(want, model.ID)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing DeepSeek catalog corrections: %v", want)
 	}
 }
 
