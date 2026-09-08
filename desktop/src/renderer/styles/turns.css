@@ -2724,6 +2724,21 @@
   align-items: baseline;
 }
 
+@media (max-width: 720px) {
+  .process-surface-summary-text .thinking-token-count,
+  .turn-reasoning-summary-text .thinking-token-count {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) and (prefers-reduced-motion: no-preference) {
+  /* The live highlight must omit the same stats as the visible row. */
+  .process-surface-summary-text.wuu-live-text-wave::after,
+  .turn-reasoning-summary-text.wuu-live-text-wave::after {
+    content: attr(data-compact-text);
+  }
+}
+
 .thinking-token-separator {
   flex: 0 0 auto;
 }
