@@ -147,17 +147,12 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 		workspace = "worktree"
 		contextSource = "fork"
 	}
-	var created pluginapi.SessionCreateResult
-	err = host.CallHost(ctx, pluginapi.HostServiceSessionCreate, pluginapi.SessionCreateParams{RequestID: "create-" + requestID, Name: name, Visibility: "plugin", ParentSessionID: call.SessionID, ContextSource: contextSource, Workspace: workspace, ModelAlias: strings.TrimSpace(args.Model), Instructions: workerInstructions(strings.TrimSpace(args.SubagentType))}, &created)
+	record, err := createTask(ctx, host, pluginapi.SessionCreateParams{RequestID: "create-" + requestID, Name: name, Visibility: "plugin", ParentSessionID: call.SessionID, ContextSource: contextSource, Workspace: workspace, ModelAlias: strings.TrimSpace(args.Model), Instructions: workerInstructions(strings.TrimSpace(args.SubagentType))}, taskRecord{ParentSessionID: call.SessionID, ParentTurnID: call.TurnID, Name: name, RequestID: "turn-" + requestID, State: "created"})
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}
-	record := taskRecord{SessionID: created.SessionID, ParentSessionID: call.SessionID, ParentTurnID: call.TurnID, Name: name, RequestID: "turn-" + requestID, State: "created"}
-	if err := saveRecord(ctx, host, record); err != nil {
-		return pluginapi.ToolResult{}, err
-	}
 	var sent pluginapi.SessionSendResult
-	err = host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: record.RequestID, SessionID: created.SessionID, Input: pluginapi.SessionInput{Prompt: strings.TrimSpace(args.Prompt)}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + name + " 已开始", Name: name}, Cause: "subagent.task"}, &sent)
+	err = host.CallHost(ctx, pluginapi.HostServiceSessionSend, pluginapi.SessionSendParams{RequestID: record.RequestID, SessionID: record.SessionID, Input: pluginapi.SessionInput{Prompt: strings.TrimSpace(args.Prompt)}, Presentation: &pluginapi.SessionInputPresentation{Kind: "query_bubble", Text: "子任务 " + name + " 已开始", Name: name}, Cause: "subagent.task"}, &sent)
 	if err != nil {
 		return pluginapi.ToolResult{}, err
 	}
@@ -169,14 +164,14 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 	}
 	if runInBackground {
 		return spawnAgentResult(spawnAgentOutput{
-			SessionID: created.SessionID, TaskName: name, State: sent.State,
+			SessionID: record.SessionID, TaskName: name, State: sent.State,
 			RunInBackground: true, Backgrounded: true,
 		})
 	}
 
 	var inspected pluginapi.SessionInspectResult
 	if err := host.CallHost(ctx, pluginapi.HostServiceSessionInspect, pluginapi.SessionInspectParams{
-		SessionID: created.SessionID,
+		SessionID: record.SessionID,
 		RequestID: record.RequestID,
 		Wait:      pluginapi.SessionInspectWaitTerminal,
 		TimeoutMS: foregroundAwaitBudgetMS,
@@ -189,7 +184,7 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 			state = inspected.Turn.State
 		}
 		return spawnAgentResult(spawnAgentOutput{
-			SessionID: created.SessionID, TaskName: name, State: state,
+			SessionID: record.SessionID, TaskName: name, State: state,
 			RunInBackground: false, Backgrounded: true, TimedOut: inspected.TimedOut,
 		})
 	}
@@ -205,7 +200,7 @@ func spawnAgent(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCal
 		return pluginapi.ToolResult{}, err
 	}
 	return spawnAgentResult(spawnAgentOutput{
-		SessionID: created.SessionID, TaskName: name, State: inspected.Turn.State,
+		SessionID: record.SessionID, TaskName: name, State: inspected.Turn.State,
 		RunInBackground: false, Backgrounded: false,
 		FinalOutput: inspected.Turn.FinalOutput, Error: inspected.Turn.Error,
 	})
@@ -241,6 +236,7 @@ func sendMessage(ctx context.Context, host pluginapi.Host, call pluginapi.ToolCa
 	record.ParentSessionID = call.SessionID
 	record.ParentTurnID = call.TurnID
 	record.SuppressCompletion = false
+	record.State = "created"
 	if err := saveRecord(ctx, host, record); err != nil {
 		return pluginapi.ToolResult{}, err
 	}
@@ -498,6 +494,89 @@ func reconcileOwnedSessions(ctx context.Context, host pluginapi.Host) error {
 	return nil
 }
 
+// Hold the index lock through creation and registration so concurrent spawns
+// cannot consume the same free slot after the capacity check.
+func createTask(ctx context.Context, host pluginapi.Host, params pluginapi.SessionCreateParams, record taskRecord) (taskRecord, error) {
+	taskIndexMu.Lock()
+	defer taskIndexMu.Unlock()
+	index, err := loadTaskIndexLocked(ctx, host)
+	if err != nil {
+		return taskRecord{}, err
+	}
+	if len(index.Records) >= maxTaskRecords {
+		if err := refreshTaskIndex(ctx, host, &index); err != nil {
+			return taskRecord{}, err
+		}
+	}
+	if err := trimTaskIndex(&index, maxTaskRecords-1); err != nil {
+		return taskRecord{}, err
+	}
+	var created pluginapi.SessionCreateResult
+	if err := host.CallHost(ctx, pluginapi.HostServiceSessionCreate, params, &created); err != nil {
+		return taskRecord{}, err
+	}
+	record.SessionID = created.SessionID
+	index.Records = append(index.Records, record)
+	if err := storeTaskIndexLocked(ctx, host, index); err != nil {
+		return taskRecord{}, err
+	}
+	return record, nil
+}
+
+// Recheck cached activity only under capacity pressure. A created record may
+// still be between registration and send, so it must retain its reserved slot.
+func refreshTaskIndex(ctx context.Context, host pluginapi.Host, index *taskIndex) error {
+	var listed pluginapi.SessionListResult
+	if err := host.CallHost(ctx, pluginapi.HostServiceSessionList, pluginapi.SessionListParams{Scope: pluginapi.SessionListScopeOwned}, &listed); err != nil {
+		return err
+	}
+	owned := make(map[string]bool, len(listed.Sessions))
+	for _, child := range listed.Sessions {
+		owned[child.SessionID] = true
+	}
+	kept := index.Records[:0]
+	for _, record := range index.Records {
+		if record.State != "created" && !terminalTaskState(record.State) {
+			if !owned[record.SessionID] {
+				continue
+			}
+			var inspected pluginapi.SessionInspectResult
+			if err := host.CallHost(ctx, pluginapi.HostServiceSessionInspect, pluginapi.SessionInspectParams{SessionID: record.SessionID, RequestID: record.RequestID, Wait: pluginapi.SessionInspectWaitNone}, &inspected); err != nil {
+				return err
+			}
+			if inspected.Turn != nil {
+				record.State = inspected.Turn.State
+			} else if terminalTaskState(inspected.Session.State) {
+				// Legacy records may have no correlated request left in the host.
+				continue
+			}
+		}
+		kept = append(kept, record)
+	}
+	index.Records = kept
+	return nil
+}
+
+func trimTaskIndex(index *taskIndex, limit int) error {
+	excess := len(index.Records) - limit
+	if excess <= 0 {
+		return nil
+	}
+	trimmed := index.Records[:0]
+	for _, record := range index.Records {
+		if excess > 0 && terminalTaskState(record.State) {
+			excess--
+			continue
+		}
+		trimmed = append(trimmed, record)
+	}
+	index.Records = trimmed
+	if excess > 0 {
+		return fmt.Errorf("subagent task record capacity (%d) is full; unfinished records must be resolved before creating more tasks", maxTaskRecords)
+	}
+	return nil
+}
+
 func saveRecord(ctx context.Context, host pluginapi.Host, record taskRecord) error {
 	taskIndexMu.Lock()
 	defer taskIndexMu.Unlock()
@@ -513,18 +592,8 @@ func saveRecord(ctx context.Context, host pluginapi.Host, record taskRecord) err
 		filtered = append(filtered, existing)
 	}
 	index.Records = append(filtered, record)
-	if len(index.Records) > maxTaskRecords {
-		trimmed := index.Records[:0]
-		for _, existing := range index.Records {
-			if len(index.Records)-len(trimmed) > maxTaskRecords && terminalTaskState(existing.State) {
-				continue
-			}
-			trimmed = append(trimmed, existing)
-		}
-		index.Records = trimmed
-	}
-	if len(index.Records) > maxTaskRecords {
-		return fmt.Errorf("subagent has more than %d active task records", maxTaskRecords)
+	if err := trimTaskIndex(&index, maxTaskRecords); err != nil {
+		return err
 	}
 	return storeTaskIndexLocked(ctx, host, index)
 }

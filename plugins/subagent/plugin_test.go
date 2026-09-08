@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	pluginapi "github.com/blueberrycongee/wuu/packages/plugin-go"
@@ -147,6 +148,14 @@ func (h *captureHost) CallHost(_ context.Context, method string, params, result 
 	}
 	response := `{}`
 	switch method {
+	case pluginapi.HostServiceSessionList:
+		listed := pluginapi.SessionListResult{}
+		if h.store.index != nil {
+			for _, r := range h.store.index.Records {
+				listed.Sessions = append(listed.Sessions, pluginapi.SessionSummary{SessionID: r.SessionID, State: r.State})
+			}
+		}
+		return decodeInto(listed, result)
 	case pluginapi.HostServiceSessionCreate:
 		response = `{"session_id":"child-1","created":true}`
 	case pluginapi.HostServiceSessionSend:
@@ -200,7 +209,13 @@ func TestSpawnComposesPublicSessionServices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(host.calls) == 0 || host.calls[0].method != pluginapi.HostServiceSessionCreate || host.calls[0].params["parent_session_id"] != "parent-1" || host.calls[0].params["context_source"] != "fresh" || host.calls[0].params["model_alias"] != "cheap" {
+	var create *capturedCall
+	for i := range host.calls {
+		if host.calls[i].method == pluginapi.HostServiceSessionCreate {
+			create = &host.calls[i]
+		}
+	}
+	if create == nil || create.params["parent_session_id"] != "parent-1" || create.params["context_source"] != "fresh" || create.params["model_alias"] != "cheap" {
 		t.Fatalf("create = %+v", host.calls)
 	}
 	var send *capturedCall
@@ -390,4 +405,117 @@ func decodeInto(value any, result any) error {
 		return err
 	}
 	return json.Unmarshal(raw, result)
+}
+
+func TestSpawnReclaimsHistoricalRecordsBeforeCreatingSession(t *testing.T) {
+	for _, stale := range []bool{false, true} {
+		t.Run(fmt.Sprint(stale), func(t *testing.T) {
+			host := &captureHost{}
+			records := make([]taskRecord, maxTaskRecords)
+			for i := range records {
+				records[i] = taskRecord{SessionID: fmt.Sprintf("old-%d", i), RequestID: fmt.Sprintf("request-%d", i), State: "running"}
+				if !stale && i > 70 {
+					records[i].State = "completed"
+				}
+			}
+			if stale {
+				host.inspectResult = &pluginapi.SessionInspectResult{Session: pluginapi.SessionSummary{State: "completed"}}
+			}
+			host.store.resetWith(records...)
+			_, err := spawnAgent(context.Background(), host, pluginapi.ToolCall{SessionID: "parent", Arguments: json.RawMessage(`{"description":"review","prompt":"inspect"}`)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(host.store.index.Records) > maxTaskRecords {
+				t.Fatal("record capacity exceeded")
+			}
+			if record, ok := host.store.recordBySession("child-1"); !ok || record.State != "running" {
+				t.Fatalf("new task not started: %+v", record)
+			}
+			if !stale {
+				for i := 0; i <= 70; i++ {
+					if _, ok := host.store.recordBySession(fmt.Sprintf("old-%d", i)); !ok {
+						t.Fatal("unfinished task evicted")
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestSpawnAtCapacityDoesNotCreateOrSend(t *testing.T) {
+	for _, state := range []string{"running", "queued", "created"} {
+		t.Run(state, func(t *testing.T) {
+			host := &captureHost{}
+			records := make([]taskRecord, maxTaskRecords)
+			for i := range records {
+				records[i] = taskRecord{SessionID: fmt.Sprintf("child-%d", i), State: state}
+			}
+			host.store.resetWith(records...)
+			_, err := spawnAgent(context.Background(), host, pluginapi.ToolCall{SessionID: "parent", Arguments: json.RawMessage(`{"description":"review","prompt":"inspect"}`)})
+			if err == nil {
+				t.Fatal("spawn accepted without a free slot")
+			}
+			for _, call := range host.calls {
+				if call.method == pluginapi.HostServiceSessionCreate || call.method == pluginapi.HostServiceSessionSend {
+					t.Fatalf("capacity rejection left a child session: %+v", call)
+				}
+			}
+		})
+	}
+}
+
+func TestSaveRecordEvictsTerminalRecordsAfterRunningRecords(t *testing.T) {
+	host := &captureHost{}
+	records := make([]taskRecord, maxTaskRecords)
+	for i := range records {
+		records[i] = taskRecord{SessionID: fmt.Sprintf("old-%d", i), State: "running"}
+	}
+	records[len(records)-1].State = "completed"
+	host.store.resetWith(records...)
+	if err := saveRecord(context.Background(), host, taskRecord{SessionID: "new", State: "created"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := host.store.recordBySession("new"); !ok || len(host.store.index.Records) != maxTaskRecords {
+		t.Fatal("record was not admitted after reclaiming terminal entry")
+	}
+}
+
+func TestConcurrentCreationReservesLastSlotOnce(t *testing.T) {
+	host := &captureHost{}
+	records := make([]taskRecord, maxTaskRecords-1)
+	for i := range records {
+		records[i] = taskRecord{SessionID: fmt.Sprintf("old-%d", i), State: "running"}
+	}
+	host.store.resetWith(records...)
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := createTask(context.Background(), host, pluginapi.SessionCreateParams{ParentSessionID: "parent"}, taskRecord{State: "created"})
+			results <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	succeeded := 0
+	for err := range results {
+		if err == nil {
+			succeeded++
+		}
+	}
+	created := 0
+	for _, call := range host.calls {
+		if call.method == pluginapi.HostServiceSessionCreate {
+			created++
+		}
+	}
+	if succeeded != 1 || created != 1 || len(host.store.index.Records) != maxTaskRecords {
+		t.Fatalf("last slot admitted %d tasks and created %d sessions", succeeded, created)
+	}
 }
