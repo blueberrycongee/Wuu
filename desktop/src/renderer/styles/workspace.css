@@ -2868,8 +2868,57 @@ html.resizing-workspace-terminal-split * {
   padding: 16px 0;
 }
 
-.plugin-settings-editor-page .plugin-setting:first-of-type {
-  border-top: 1px solid var(--hairline-soft);
+.plugin-settings-editor-page {
+  padding: 0 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--session-composer-radius);
+}
+
+.plugin-settings-editor-page .plugin-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 240px);
+  column-gap: 24px;
+}
+
+.plugin-settings-editor-page .plugin-setting:last-child {
+  border-bottom: 0;
+}
+
+.plugin-settings-editor-page input[type="text"],
+.plugin-settings-editor-page input[type="number"],
+.plugin-settings-editor-page select {
+  background: var(--field-bg);
+  border-color: var(--field-border);
+}
+
+.plugin-settings-editor-page .plugin-setting-heading {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.plugin-settings-editor-page .plugin-setting-heading label {
+  flex: initial;
+}
+
+.plugin-settings-editor-page .plugin-setting > p {
+  grid-column: 1;
+}
+
+.plugin-settings-editor-page .plugin-setting-control {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-content: center;
+}
+
+.plugin-settings-editor-page .plugin-setting-status {
+  grid-column: 1 / -1;
+}
+
+@container settings-page (max-width: 520px) {
+  .plugin-settings-editor-page .plugin-setting {
+    display: flex;
+  }
 }
 
 .plugin-contribution-conflict,

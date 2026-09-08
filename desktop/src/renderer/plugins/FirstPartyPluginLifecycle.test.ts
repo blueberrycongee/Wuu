@@ -4,7 +4,7 @@ import { basename, resolve } from "node:path";
 import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   PluginHost,
@@ -169,6 +169,56 @@ describe("first-party desktop plugin lifecycle", () => {
     } finally {
       cleanup();
       host.disable("subagent");
+    }
+  });
+
+  it("edits model aliases without losing advanced options and rejects duplicate names", async () => {
+    const host = new PluginHost({ react: React });
+    const { manifest, module } = await loadFirstPartyPlugin("subagent");
+    await host.activateGeneration({ pluginId: "subagent", generation: "aliases-test", contributions: contributionDeclarations(manifest), register: module.activate });
+    const controller = new WorkbenchController(host);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const updateValue = vi.fn(async () => {});
+    const settings = {
+      contractVersion: 1 as const,
+      getValue: () => ({ research: { provider: "primary", model: "model-a", effort: "high", variant: "fast" } }),
+      updateValue,
+    };
+    const click = async (text: string) => {
+      const button = [...container.querySelectorAll("button")].find((item) => item.textContent === text)!;
+      await act(async () => button.click());
+    };
+    const fill = async (input: HTMLInputElement, value: string) => {
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    };
+    try {
+      await act(async () => root.render(React.createElement(PluginViewContent, { controller, pluginId: "subagent", viewTypeId: "subagent.settings", settings })));
+      await fill(container.querySelectorAll("input")[2], "model-b");
+      await click("保存别名");
+      expect(updateValue).toHaveBeenLastCalledWith("runtime.modelAliases", { research: { provider: "primary", model: "model-b", effort: "high", variant: "fast" } });
+      await click("添加别名");
+      const inputs = container.querySelectorAll("input");
+      await fill(inputs[5], "research");
+      await fill(inputs[6], "primary");
+      await fill(inputs[7], "model-c");
+      await click("保存别名");
+      expect(updateValue).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('[role="alert"]')).not.toBeNull();
+      await click("删除别名");
+      await click("保存别名");
+      expect(updateValue).toHaveBeenLastCalledWith("runtime.modelAliases", { research: { provider: "primary", model: "model-c" } });
+      await click("删除别名");
+      await click("保存别名");
+      expect(updateValue).toHaveBeenLastCalledWith("runtime.modelAliases", {});
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      controller.dispose();
     }
   });
 

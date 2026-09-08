@@ -39,7 +39,7 @@ export async function activate(api) {
 
     /* Overview renders as typeset prose, not a monospace dump: the tiny
      * line parser below promotes "##" leads and "-" items into structure. */
-    .plugin-memory-overview { display:flex; flex-direction:column; gap:12px; animation:plugin-memory-fade-up var(--motion-base,160ms) ease both; }
+    .plugin-memory-overview { overflow-wrap:anywhere; max-height:360px; overflow:auto; display:flex; flex-direction:column; gap:12px; animation:plugin-memory-fade-up var(--motion-base,160ms) ease both; }
     .plugin-memory-overview h3 { margin:8px 0 0; color:var(--wuu-color-text,var(--ink)); font-size:var(--font-ui,13px); font-weight:var(--weight-semibold,600); line-height:1.4; }
     .plugin-memory-overview h3:first-child { margin-top:0; }
     .plugin-memory-overview p { margin:0; max-width:68ch; color:var(--wuu-color-text,var(--ink)); font-size:var(--font-ui,13px); line-height:1.6; }
@@ -57,7 +57,7 @@ export async function activate(api) {
 
     /* Chat: entries fade up as they land; the user's own messages stay
      * text-only on the right, agent replies read as prose on the left. */
-    .plugin-memory-chat-log { display:flex; flex-direction:column; gap:12px; }
+    .plugin-memory-chat-log { max-height:360px; overflow:auto; display:flex; flex-direction:column; gap:12px; }
     .plugin-memory-chat-entry { display:flex; animation:plugin-memory-fade-up var(--motion-base,160ms) ease both; }
     @keyframes plugin-memory-fade-up { from { opacity:0; transform:translateY(2px); } to { opacity:1; transform:none; } }
     .plugin-memory-chat-entry.user { justify-content:flex-end; }
@@ -68,22 +68,25 @@ export async function activate(api) {
     .plugin-memory-changes summary { cursor:pointer; }
     .plugin-memory-changes ul { margin:4px 0 0; padding-left:16px; }
     .plugin-memory-changes code { font-size:var(--font-sm,12px); }
-    .plugin-memory-composer { align-items:flex-end; gap:8px; }
+    .plugin-memory-composer { flex-direction:column; align-items:stretch; gap:8px; }
     .plugin-memory-composer .plugin-ui-field { flex:1; min-width:0; }
-    .plugin-memory-composer textarea { min-height:38px; max-height:140px; }
-    .plugin-memory-composer .plugin-ui-button { flex:none; }
+    .plugin-memory-composer textarea { min-height:96px; max-height:200px; }
+    .plugin-memory-composer .plugin-ui-button { flex:none; align-self:flex-end; }
 
     /* Raw notebook: one file per group, separated by full-width hairlines;
      * the verbatim content stays monospace but quiet. */
-    .plugin-memory-files { display:flex; flex-direction:column; animation:plugin-memory-fade-up var(--motion-base,160ms) ease both; }
-    .plugin-memory-file { display:flex; flex-direction:column; gap:6px; padding:14px 0; border-bottom:1px solid var(--hairline-soft,var(--hairline)); }
-    .plugin-memory-file:last-child { border-bottom:0; padding-bottom:0; }
-    .plugin-memory-file:first-child { padding-top:0; }
-    .plugin-memory-file-head { display:flex; align-items:baseline; gap:8px; min-width:0; }
+    .plugin-memory-files { padding:0 16px; border:1px solid var(--hairline); border-radius:var(--session-composer-radius); display:flex; flex-direction:column; animation:plugin-memory-fade-up var(--motion-base,160ms) ease both; }
+    .plugin-memory-file { min-width:0; padding:14px 0; border-bottom:1px solid var(--hairline-soft,var(--hairline)); }
+    .plugin-memory-file:last-child { border-bottom:0; }
+
+    .plugin-memory-file-head { cursor:pointer; display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; min-width:0; }
+    .plugin-memory-file-head::before { content:"›"; color:var(--wuu-color-text-muted); }
+    .plugin-memory-file[open] .plugin-memory-file-head::before { transform:rotate(90deg); }
+    .plugin-memory-file-head::-webkit-details-marker { display:none; }
     .plugin-memory-file-name { color:var(--wuu-color-text,var(--ink)); font-size:var(--font-ui,13px); font-weight:var(--weight-medium,500); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .plugin-memory-file-type { flex:none; padding:1px 8px; border-radius:var(--radius-pill,999px); background:var(--wuu-color-surface-muted,var(--surface-2)); color:var(--wuu-color-text-muted,var(--ink-muted)); font-size:11px; font-weight:var(--weight-medium,500); line-height:1.6; }
     .plugin-memory-file-desc { color:var(--wuu-color-text-muted,var(--ink-muted)); font-size:var(--font-sm,12px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .plugin-memory-file pre { max-height:220px; margin:0; padding:10px 12px; overflow:auto; border-radius:var(--radius-sm,8px); background:var(--wuu-color-surface,var(--surface-1)); color:var(--wuu-color-text-muted,var(--ink-soft)); white-space:pre-wrap; overflow-wrap:anywhere; font:12px/1.6 var(--wuu-font-mono,ui-monospace,monospace); }
+    .plugin-memory-file pre { max-height:300px; margin:12px 0 0; padding:10px 12px; overflow:auto; border-radius:var(--radius-sm,8px); background:var(--wuu-color-surface,var(--surface-1)); color:var(--wuu-color-text-muted,var(--ink-soft)); white-space:pre-wrap; overflow-wrap:anywhere; font:12px/1.6 var(--wuu-font-mono,ui-monospace,monospace); }
 
     .plugin-memory-muted { color:var(--wuu-color-text-muted,var(--ink-muted)); font-size:var(--font-sm,12px); }
     .plugin-memory-error { display:grid; gap:6px; padding:10px 12px; border:1px solid color-mix(in srgb,var(--wuu-color-danger,#b42318) 28%,transparent); border-radius:var(--radius-sm,8px); color:var(--wuu-color-danger,#b42318); background:color-mix(in srgb,var(--wuu-color-danger,#b42318) 7%,transparent); font-size:var(--font-ui,13px); overflow-wrap:anywhere; }
@@ -210,8 +213,8 @@ export async function activate(api) {
           h(Button, { variant: "primary", disabled: chatBusy || !draft.trim(), onClick: () => void send() }, tr("memory.send"))))),
       error ? h("div", { className: "plugin-memory-error", role: "alert" }, h("strong", null, tr("memory.loadFailed")), h("details", null, h("summary", null, tr("memory.errorDetails")), h("pre", null, error))) : null,
       h(Section, { title: tr("memory.raw"), description: tr("memory.rawHelp") },
-        files.length ? h("div", { className: "plugin-memory-files" }, files.map((file) => h("article", { className: "plugin-memory-file", key: file.name },
-          h("div", { className: "plugin-memory-file-head" },
+        files.length ? h("div", { className: "plugin-memory-files" }, files.map((file) => h("details", { className: "plugin-memory-file", key: file.name },
+          h("summary", { className: "plugin-memory-file-head" },
             h("span", { className: "plugin-memory-file-name" }, file.name),
             file.type ? h("span", { className: "plugin-memory-file-type" }, file.type) : null,
             file.description ? h("span", { className: "plugin-memory-file-desc" }, file.description) : null),

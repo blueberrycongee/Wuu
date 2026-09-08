@@ -115,18 +115,31 @@
   line-height: var(--wuu-line-height-body, var(--line-body));
 }
 
-/* On the settings surface a plugin page joins the native rhythm: the 640px
- * centered column, 24px frame padding, 40px group gaps, and the same
- * swap-in motion as first-party pages. */
+/* Settings owns the page inset and scrolling; nested plugin pages only
+ * provide content so controls align with the native page heading. */
+.settings-page > .plugin-view-content {
+  height: auto;
+  overflow: visible;
+}
+
 .settings-scroll .plugin-ui-page {
-  --wuu-content-max-width: 640px;
-  --wuu-space-density: 1;
-  padding: 24px;
-  animation: content-swap-enter var(--content-swap-duration, 160ms) var(--content-swap-easing, ease-out) both;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
 }
 
 .settings-scroll .plugin-ui-stack[data-wuu-gap="large"] {
-  gap: 40px;
+  gap: var(--settings-gap);
+}
+
+.settings-scroll .plugin-ui-section {
+  gap: 16px;
+}
+
+.settings-scroll .plugin-ui-section-header h2 {
+  color: var(--ink-strong);
+  font-size: var(--font-body);
+  font-weight: var(--weight-semibold);
 }
 
 .plugin-ui-page[data-wuu-density="compact"] {
