@@ -25,6 +25,7 @@ import {
   loadRuntime as defaultLoadRuntime,
   selectRuntimeContext as defaultSelectRuntimeContext,
 } from "./RuntimeLoadState";
+import { seedDraftRuntimeFromMemory } from "./DraftRuntimeMemory";
 import { translateCurrent } from "./i18n";
 import { showErrorToast } from "./Toast";
 import { beginSessionSwitch, markSessionSwitch } from "./SessionSwitchPerformance";
@@ -631,7 +632,7 @@ export function createSessionTabActions(
     if (!nextTab) {
       return;
     }
-    deps.setAppState((current) => ({
+    deps.setAppState((current) => seedDraftRuntimeFromMemory({
       ...persistActiveSessionTabDraft(current, outgoingDraft),
       thread: undefined,
       secondaryThread: undefined,

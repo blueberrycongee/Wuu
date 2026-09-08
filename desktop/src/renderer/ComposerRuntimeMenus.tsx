@@ -59,6 +59,8 @@ import type {
   FloatingMenuPlacement,
   PermissionMode
 } from "./ComposerTypes";
+import { lastEffortForEngineModel } from "./DraftEngineMemory";
+import { lastEffortForRuntimeModel } from "./DraftRuntimeMemory";
 import {
   codexEffortOptions,
   displayCodexModelName,
@@ -626,7 +628,8 @@ function EngineRuntimeMenu({
                         disabled={disabled}
                         aria-checked={selected}
                         onClick={() => {
-                          const effort = engineModelDefaultEffort(model);
+                          const effort = lastEffortForEngineModel(engine.id, model.id)
+                            || engineModelDefaultEffort(model);
                           setOptimistic({ model: model.id, effort });
                           onSelectModel(model.id, effort);
                           showSummary();
@@ -870,7 +873,12 @@ export function RuntimeModelMenu({
                     }
                     const model = group.models[0];
                     if (model && !selected) {
-                      selectModel(group.provider.name, model.id, defaultVariantForRuntimeModel(group.provider, model));
+                      selectModel(
+                        group.provider.name,
+                        model.id,
+                        lastEffortForRuntimeModel(group.provider.name, model.id)
+                          ?? defaultVariantForRuntimeModel(group.provider, model),
+                      );
                     }
                     showSummary();
                   }}
@@ -1067,7 +1075,8 @@ function RuntimeModelMenuItem({
 }): JSX.Element {
   const nextVariant = selected
     ? selectedVariant
-    : defaultVariantForRuntimeModel(provider, model);
+    : (lastEffortForRuntimeModel(provider.name, model.id)
+      ?? defaultVariantForRuntimeModel(provider, model));
   return (
     <button
       className="codex-model-item"

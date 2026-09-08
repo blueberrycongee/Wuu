@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeContext } from "../shared/protocol";
 import {
   createAgentsSessionTab,
@@ -11,6 +11,7 @@ import {
   type ComposerDraftState,
   type SessionTab,
 } from "./AppState";
+import { writeDraftRuntimeMemory } from "./DraftRuntimeMemory";
 import { createSessionTabActions } from "./SessionTabActions";
 
 function projectContext(id = "project-1"): RuntimeContext {
@@ -86,8 +87,13 @@ function buildActions({
   };
 }
 
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
+  window.localStorage.clear();
   Reflect.deleteProperty(window, "wuu");
 });
 
@@ -140,6 +146,66 @@ describe("createSessionTabActions", () => {
     expect(harness.nextDraftSessionTab).toHaveBeenCalledWith(context);
     expect(harness.getAppState().thread).toBeUndefined();
     expect(harness.getAppState().activeSessionTabID).toBe("draft:new");
+  });
+
+  it("restores the last composer provider, model, and effort on a new conversation", async () => {
+    const context = noProjectContext();
+    writeDraftRuntimeMemory({
+      provider: "tokenhub",
+      model: "gpt-5.6-sol",
+      effort: "high",
+    });
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        activeContext: context,
+        initialized: {
+          protocol_version: "wuu-app-server/v0.1",
+          provider: "work",
+          model: "claude-sonnet",
+          variant: "medium",
+          effort: "medium",
+          workspace_root: context.cwd,
+          providers: [
+            {
+              name: "tokenhub",
+              type: "openai-compatible",
+              model: "gpt-5.6-sol",
+              models: [
+                {
+                  id: "gpt-5.6-sol",
+                  supported_efforts: ["low", "medium", "high"],
+                  default_effort: "medium",
+                },
+              ],
+            },
+          ],
+        },
+        thread: {
+          id: "thread-1",
+          title: "existing",
+          preview: "existing",
+          cwd: context.cwd,
+          status: "idle",
+          model_provider: "work",
+          model: "claude-sonnet",
+          pinned: false,
+          archived: false,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          turns: [],
+        },
+      },
+    });
+
+    await harness.actions.startNewThread();
+
+    expect(harness.getAppState().initialized).toMatchObject({
+      provider: "tokenhub",
+      model: "gpt-5.6-sol",
+      variant: "high",
+      effort: "high",
+    });
   });
 
   it("reuses the existing project draft instead of creating another tab", async () => {

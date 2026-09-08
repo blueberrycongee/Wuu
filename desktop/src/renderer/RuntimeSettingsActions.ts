@@ -17,6 +17,7 @@ import type {
   CodexRuntimeMenu,
   PermissionMode,
 } from "./ComposerTypes";
+import { lastEffortForRuntimeModel, writeDraftRuntimeMemory } from "./DraftRuntimeMemory";
 import { isCodexProvider, normalizedVariantForProviderModel } from "./RuntimeHelpers";
 import { runtimeViewForSession } from "./SessionRuntimeState";
 import { showErrorToast } from "./Toast";
@@ -106,14 +107,21 @@ export function createRuntimeSettingsActions(
     if (scope === "session" && !targetThread && !update.connection) {
       // Before thread/start this is a window-local draft selection, not a
       // provider default. The first send passes it explicitly to thread/start.
+      const nextProvider = update.provider ?? state.initialized.provider;
+      const nextModel = update.model ?? state.initialized.model;
+      const nextEffort = update.variant ?? update.effort
+        ?? state.initialized.variant
+        ?? state.initialized.effort
+        ?? "";
+      rememberDraftRuntime(nextProvider, nextModel, nextEffort);
       deps.setAppState((current) => ({
         ...current,
         initialized: current.initialized ? {
           ...current.initialized,
-          provider: update.provider ?? current.initialized.provider,
-          model: update.model ?? current.initialized.model,
-          variant: update.variant ?? update.effort ?? current.initialized.variant,
-          effort: update.variant ?? update.effort ?? current.initialized.effort,
+          provider: nextProvider,
+          model: nextModel,
+          variant: nextEffort,
+          effort: nextEffort,
           permissions: update.permissionMode === undefined
             ? current.initialized.permissions
             : { mode: update.permissionMode as PermissionMode },
@@ -521,7 +529,7 @@ export function createRuntimeSettingsActions(
     const targetKey = modelSelectionKey(selectionScope, provider, model);
     const rememberedVariant = deps.variantByModel.has(targetKey)
       ? deps.variantByModel.get(targetKey)
-      : variant;
+      : (variant !== undefined ? variant : lastEffortForRuntimeModel(provider, model));
     const nextVariant = normalizedVariantForProviderModel(
       rememberedVariant ?? "",
       state.initialized.providers?.find((item) => item.name === provider),
@@ -535,6 +543,7 @@ export function createRuntimeSettingsActions(
     // alone was too easy to miss against the optimistic highlight.
     try {
       await sendRuntimeSelection({ provider, model, variant: nextVariant });
+      rememberDraftRuntime(provider, model, nextVariant);
       return true;
     } catch (error) {
       showErrorToast(error, translateCurrent("runtime.settingsUpdateFailed"));
@@ -543,11 +552,18 @@ export function createRuntimeSettingsActions(
   }
 
   async function selectRuntimeEffort(nextVariant: string): Promise<boolean> {
-    if (!deps.getAppState().initialized || deps.getViewContextSwitchPending()) {
+    const state = deps.getAppState();
+    if (!state.initialized || deps.getViewContextSwitchPending()) {
       return false;
     }
     try {
       await sendRuntimeSelection({ variant: nextVariant });
+      const targetThread = activeThreadForState(state);
+      rememberDraftRuntime(
+        targetThread?.model_provider ?? state.initialized.provider,
+        targetThread?.model ?? state.initialized.model,
+        nextVariant,
+      );
       return true;
     } catch (error) {
       showErrorToast(error, translateCurrent("runtime.settingsUpdateFailed"));
@@ -584,6 +600,13 @@ export function createRuntimeSettingsActions(
     }
     deps.markOptimisticTurnInterrupted?.(thread.id);
     await window.wuu.interruptTurn(thread.id);
+  }
+
+  function rememberDraftRuntime(provider: string, model: string, effort: string): void {
+    writeDraftRuntimeMemory({ provider, model, effort });
+    const state = deps.getAppState();
+    const scope = activeThreadForState(state)?.id ?? "workspace";
+    deps.variantByModel.set(modelSelectionKey(scope, provider, model), effort);
   }
 
   return {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   InitializeResult,
   ProjectListResult,
@@ -15,10 +15,16 @@ import {
 } from "./RuntimeLoadState";
 
 import { initialState, createThreadSessionTab } from "./AppState";
+import { writeDraftRuntimeMemory } from "./DraftRuntimeMemory";
 import { streamTextStore, streamTextKey } from "./StreamText";
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
 afterEach(() => {
   delete (window as unknown as { wuu?: unknown }).wuu;
+  window.localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -82,6 +88,56 @@ describe("runtime load helpers", () => {
       workspace_root: activeContext.cwd,
     });
     await loading;
+  });
+
+  it("seeds a new conversation from the last composer provider, model, and effort", async () => {
+    const activeContext: RuntimeContext = {
+      kind: "project",
+      project_id: "project-1",
+      cwd: "/tmp/project-1",
+    };
+    writeDraftRuntimeMemory({
+      provider: "tokenhub",
+      model: "gpt-5.6-sol",
+      effort: "high",
+    });
+    const initialize = vi.fn().mockResolvedValue({
+      status: "ready",
+      protocol_version: "wuu-app-server/v0.1",
+      provider: "work",
+      model: "claude-sonnet",
+      variant: "medium",
+      effort: "medium",
+      workspace_root: activeContext.cwd,
+      providers: [
+        {
+          name: "tokenhub",
+          type: "openai-compatible",
+          model: "gpt-5.6-sol",
+          models: [
+            {
+              id: "gpt-5.6-sol",
+              supported_efforts: ["low", "medium", "high"],
+              default_effort: "medium",
+            },
+          ],
+        },
+      ],
+    });
+    installWuuStub({
+      initialize,
+      listThreads: vi.fn().mockResolvedValue({ threads: [] }),
+      listArchivedThreads: vi.fn().mockResolvedValue({ threads: [] }),
+    });
+
+    const state = await loadRuntime(projectList(activeContext));
+
+    expect(state.initialized).toMatchObject({
+      provider: "tokenhub",
+      model: "gpt-5.6-sol",
+      variant: "high",
+      effort: "high",
+    });
   });
 
   it("returns a no-runtime state without initializing when no active context exists", async () => {

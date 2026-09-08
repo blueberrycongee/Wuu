@@ -79,6 +79,14 @@ export function clearDraftEngineMemory(): void {
  * missing right now (PATH not ready, reinstall in flight) should recover the
  * preference once it is detected again rather than lose it.
  */
+export function lastEffortForEngineModel(engine: string, model: string): string | undefined {
+  const memory = readDraftEngineMemory();
+  if (memory?.engine === engine && memory.model === model) {
+    return memory.effort;
+  }
+  return undefined;
+}
+
 export function resolveDraftEngineMemory(
   inventory: EngineListResult | undefined,
 ): DraftEngineMemory | undefined {

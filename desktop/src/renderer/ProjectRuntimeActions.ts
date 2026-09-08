@@ -14,6 +14,7 @@ import {
   type ComposerDraftState,
   type SessionTab,
 } from "./AppState";
+import { seedDraftRuntimeFromMemory } from "./DraftRuntimeMemory";
 import { loadRuntime as defaultLoadRuntime } from "./RuntimeLoadState";
 import { translateCurrent } from "./i18n";
 import { showErrorToast } from "./Toast";
@@ -99,7 +100,7 @@ export function createProjectRuntimeActions(
     deps.clearPrimaryComposerDraft();
     deps.setAppState((current) => {
       const withDraft = persistActiveSessionTabDraft(current, draft);
-      return {
+      return seedDraftRuntimeFromMemory({
         ...withDraft,
         thread: undefined,
         secondaryThread: undefined,
@@ -109,7 +110,7 @@ export function createProjectRuntimeActions(
         allowThreadAutoActivation: false,
         running: false,
         status: "ready",
-      };
+      });
     });
   }
 

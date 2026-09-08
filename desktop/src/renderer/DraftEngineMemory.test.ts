@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { EngineListResult } from "../shared/protocol";
 import {
   clearDraftEngineMemory,
+  lastEffortForEngineModel,
   readDraftEngineMemory,
   resolveDraftEngineMemory,
   writeDraftEngineMemory,
@@ -54,6 +55,8 @@ describe("draft engine memory", () => {
       model: "gpt-5-codex",
       effort: "high",
     });
+    expect(lastEffortForEngineModel("codex", "gpt-5-codex")).toBe("high");
+    expect(lastEffortForEngineModel("codex", "gpt-5")).toBeUndefined();
   });
 
   it("applies an explicit wuu pick before the inventory arrives", () => {

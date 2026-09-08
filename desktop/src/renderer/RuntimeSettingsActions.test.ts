@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InitializeResult, Thread } from "../shared/protocol";
 import { initialState, type AppState } from "./AppState";
 import type { CodexModelLoadState, CodexRuntimeMenu } from "./ComposerTypes";
+import { readDraftRuntimeMemory } from "./DraftRuntimeMemory";
 import { createRuntimeSettingsActions } from "./RuntimeSettingsActions";
 
 const originalWuu = (window as unknown as { wuu?: unknown }).wuu;
@@ -17,8 +18,13 @@ function restoreWuu(): void {
   });
 }
 
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 afterEach(() => {
   restoreWuu();
+  window.localStorage.clear();
 });
 
 function initialized(overrides: Partial<InitializeResult> = {}): InitializeResult {
@@ -622,6 +628,28 @@ describe("createRuntimeSettingsActions", () => {
     expect(harness.getAppState().initialized?.model).toBe("draft-model");
     expect(harness.getAppState().initialized?.variant).toBe("");
     expect(harness.getAppState().initialized?.providers).toEqual(providers);
+    expect(readDraftRuntimeMemory()).toEqual({
+      provider: "codex",
+      model: "draft-model",
+      effort: "",
+    });
+  });
+
+  it("remembers the last composer provider, model, and effort for the next conversation", async () => {
+    const api = installWuuApi();
+    const harness = buildActions({
+      initial: { ...initialState, initialized: initialized(), thread: undefined },
+    });
+
+    await harness.actions.selectRuntimeModel("codex", "gpt-5.1", "high");
+    await harness.actions.selectRuntimeEffort("max");
+
+    expect(api.updateRuntimeSettings).not.toHaveBeenCalled();
+    expect(readDraftRuntimeMemory()).toEqual({
+      provider: "codex",
+      model: "gpt-5.1",
+      effort: "max",
+    });
   });
 
   it("toggles the Codex runtime menu and closes sibling menus", () => {

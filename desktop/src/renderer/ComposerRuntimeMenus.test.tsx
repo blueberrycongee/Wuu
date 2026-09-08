@@ -2,6 +2,7 @@ import { act, createRef, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InitializeResult } from "../shared/protocol";
+import { writeDraftRuntimeMemory } from "./DraftRuntimeMemory";
 import { permissionModeOption, RuntimePicker } from "./ComposerRuntimeMenus";
 import type { CodexRuntimeMenu } from "./ComposerTypes";
 import { setActiveLocale } from "./i18n";
@@ -11,6 +12,7 @@ describe("RuntimePicker", () => {
   let root: Root | null = null;
 
   beforeEach(() => {
+    window.localStorage.clear();
     container = document.createElement("div");
     document.body.appendChild(container);
   });
@@ -18,6 +20,7 @@ describe("RuntimePicker", () => {
   afterEach(() => {
     act(() => root?.unmount());
     root = null;
+    window.localStorage.clear();
     setActiveLocale("zh-CN");
     document
       .querySelectorAll('[data-floating-menu-owner="codex-runtime"]')
@@ -499,5 +502,40 @@ describe("RuntimePicker", () => {
     expect(document.querySelector(".runtime-panel-model-name")?.textContent).toBe("Model B");
     const selectedEffort = document.querySelector<HTMLInputElement>('.codex-effort-slider input[type="range"]');
     expect(selectedEffort?.getAttribute("aria-valuetext")).toBe("Medium");
+  });
+
+  it("restores the last effort when selecting a previously used model", () => {
+    writeDraftRuntimeMemory({
+      provider: "work",
+      model: "model-b",
+      effort: "max",
+    });
+    const initialized = runtimeWithEffort();
+    initialized.model = "model-a";
+    initialized.variant = "medium";
+    initialized.providers![0].model = "model-a";
+    initialized.providers![0].models = [
+      {
+        id: "model-a",
+        display_name: "Model A",
+        default_effort: "medium",
+        supported_efforts: ["medium", "max"],
+      },
+      {
+        id: "model-b",
+        display_name: "Model B",
+        default_effort: "medium",
+        supported_efforts: ["medium", "max"],
+      },
+    ];
+    const onSelectModel = vi.fn();
+
+    renderPicker("model", initialized, vi.fn(), vi.fn(), onSelectModel);
+    act(() => document.querySelector<HTMLButtonElement>(".runtime-panel-model")?.click());
+    const modelB = Array.from(document.querySelectorAll<HTMLButtonElement>(".codex-model-item"))
+      .find((choice) => choice.textContent?.includes("Model B"));
+    act(() => modelB?.click());
+
+    expect(onSelectModel).toHaveBeenCalledWith("work", "model-b", "max");
   });
 });

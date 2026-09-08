@@ -20,6 +20,7 @@ import {
 } from "./AppState";
 import type { QueuedComposerMessage } from "./ComposerMessages";
 import { heldComposerMessagesFromResumeResult } from "./ComposerPendingState";
+import { applyDraftRuntimeMemory } from "./DraftRuntimeMemory";
 import { translateCurrent } from "./i18n";
 
 export type LoadedRuntimeState = Partial<AppState> & {
@@ -65,7 +66,7 @@ export async function loadRuntime(
     ? requireThread(resumed, translateCurrent("thread.resumeMissing"))
     : undefined;
   return {
-    initialized,
+    initialized: thread ? initialized : applyDraftRuntimeMemory(initialized),
     projects: projectState.projects,
     activeContext: projectState.active_context,
     activeProjectId: activeProjectID(projectState.active_context),
@@ -104,7 +105,7 @@ export async function loadPopOutRuntime(
     const listedThreads = sortThreads([...listed.threads, ...archived.threads]);
     const tab = createDraftSessionTab("draft:pop-out", init.context);
     return {
-      initialized,
+      initialized: applyDraftRuntimeMemory(initialized),
       projects: listedProjects.projects,
       activeContext: init.context,
       activeProjectId: activeProjectID(init.context),
