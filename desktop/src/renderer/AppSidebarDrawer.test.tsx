@@ -322,6 +322,56 @@ describe("collapsed sidebar hover drawer", () => {
     expect(SIDEBAR_DRAWER_HOVER_OPEN_DELAY_MS).toBe(240);
   });
 
+  it("stops measuring turn positions when compact navigation hides the turn rail", async () => {
+    document.documentElement.dataset.hostKind = "web";
+    const thread = threadFixture("rail-thread", "Rail history", "2026-01-01T00:00:00Z");
+    thread.turns = [1, 2].map((index) => ({
+      id: `turn-${index}`, items_view: "full", status: "completed",
+      items: [{ id: `user-${index}`, type: "user_message", status: "completed", text: `Question ${index}` }],
+    }));
+    installWuuApi([thread]);
+    await renderCollapsedApp();
+    await openDrawerViaHoverZone();
+    await clickSidebarSession("Rail history");
+    await act(async () => { vi.advanceTimersByTime(400); });
+
+    const scroll = container.querySelector<HTMLElement>(".scroll-region")!;
+    Object.defineProperties(scroll, {
+      scrollHeight: { configurable: true, value: 2000 },
+      clientHeight: { configurable: true, value: 600 },
+    });
+    const turn = container.querySelector<HTMLElement>('.turn[data-turn-id="turn-1"]')!;
+    expect(turn).not.toBeNull();
+    const measure = vi.spyOn(turn, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, 0, 500, 300));
+    const scrollHistory = async () => {
+      measure.mockClear();
+      await act(async () => {
+        scroll.scrollTop = 200;
+        scroll.dispatchEvent(new Event("scroll"));
+        vi.advanceTimersByTime(100);
+      });
+    };
+
+    await scrollHistory();
+    expect(measure).toHaveBeenCalled();
+    for (const width of [390, 1280]) {
+      await act(async () => {
+        window.innerWidth = width;
+        window.dispatchEvent(new Event("resize"));
+      });
+      await act(async () => { vi.advanceTimersByTime(400); });
+      await scrollHistory();
+      if (width === 390) {
+        expect(container.querySelector(".conversation-turn-rail")).toBeNull();
+        expect(measure).not.toHaveBeenCalled();
+      } else {
+        expect(container.querySelector(".conversation-turn-rail")).not.toBeNull();
+        expect(measure).toHaveBeenCalled();
+      }
+    }
+  });
+
   it.each([
     ["phone web left edge", "web", true, 390, true, 16],
     ["phone web middle", "web", true, 390, true, 150],

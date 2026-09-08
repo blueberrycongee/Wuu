@@ -5339,15 +5339,19 @@ export function App(): JSX.Element {
           />
         </header>
 
-        <ConversationTurnRail
-          turns={turns}
-          activeTurnID={turns[turns.length - 1]?.id}
-          scrollContainerRef={conversationScrollRef}
-          getScrollContainer={conversationRailScrollContainer}
-          onWheelScrollAway={disableConversationAutoFollow}
-          onDragScrollAway={disableConversationAutoFollow}
-          onSelectQueryHistory={handleQueryHistorySelect}
-        />
+        {/* Unmount the hidden rail so compact scrolling does not measure turns
+            or update navigation state for controls that cannot be used. */}
+        {!compactNavigation ? (
+          <ConversationTurnRail
+            turns={turns}
+            activeTurnID={turns[turns.length - 1]?.id}
+            scrollContainerRef={conversationScrollRef}
+            getScrollContainer={conversationRailScrollContainer}
+            onWheelScrollAway={disableConversationAutoFollow}
+            onDragScrollAway={disableConversationAutoFollow}
+            onSelectQueryHistory={handleQueryHistorySelect}
+          />
+        ) : null}
 
         <ConversationSidePanels
           state={state}

@@ -1833,6 +1833,19 @@
   }
 }
 
+/* Keep the arrival cue on phones without blurring every new word while the
+   conversation is also scrolling. Duration still follows reduced-motion tokens. */
+@media (pointer: coarse) {
+  :root[data-host-kind="web"] .app-shell.compact-navigation .streaming-markdown .stream-word {
+    animation-name: stream-word-fade-in;
+  }
+}
+
+@keyframes stream-word-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .turn-progress {
   display: inline-flex;
   width: fit-content;
