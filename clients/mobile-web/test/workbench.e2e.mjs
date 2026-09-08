@@ -8,13 +8,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { slowLink } from './slow-link.mjs';
 
 const clientDir = fileURLToPath(new URL('..', import.meta.url));
 const repoDir = path.resolve(clientDir, '../..');
 const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'wuu-web-e2e-'));
 const workspace = path.join(temp, 'workspace'), state = path.join(temp, 'state');
 const processes = [];
-let browser, provider;
+let browser, provider, throttled;
+const downloadBps = Number(process.env.WUU_E2E_DOWNLOAD_BPS || 0);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(check, label, timeout = 30000) {
   const end = Date.now() + timeout;
@@ -45,7 +47,8 @@ const stopPrompt = 'Wait for a desktop stop';
 const desktopPrompt = 'Continue from the desktop';
 const desktopFinal = 'The desktop continued the same shared conversation.';
 const finalText = 'Completed the browser task. Created src/browser-task.ts on the paired computer.';
-const fileText = 'export const remoteResult = "written on the paired computer";\n';
+const fileText = 'export const remoteResult = "written on the paired computer";\n'
+  + (downloadBps ? Array.from({ length: 15000 }, (_, i) => `// Generated source line ${i}: keep remote history complete across reconnection.\n`).join('') : '');
 try {
   await fs.mkdir(workspace); await fs.mkdir(state);
   await fs.writeFile(path.join(workspace, '.gitignore'), '.wuu-state/\n');
@@ -76,7 +79,14 @@ try {
       const finish_reason = message.tool_calls ? 'tool_calls' : 'stop';
       if (body.stream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        for (const choice of [{ index: 0, delta: message, finish_reason: null }, { index: 0, delta: {}, finish_reason }]) {
+        const deltas = [];
+        if (downloadBps && message.tool_calls) {
+          const tool = message.tool_calls[0];
+          for (let offset = 0; offset < tool.function.arguments.length; offset += 8192) {
+            deltas.push({ tool_calls: [{ index: 0, ...(offset === 0 ? { id: tool.id, type: tool.type } : {}), function: { ...(offset === 0 ? { name: tool.function.name } : {}), arguments: tool.function.arguments.slice(offset, offset + 8192) } }] });
+          }
+        } else deltas.push(message);
+        for (const choice of [...deltas.map(delta => ({ index: 0, delta, finish_reason: null })), { index: 0, delta: {}, finish_reason }]) {
           res.write(`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', choices: [choice] })}\n\n`);
         }
         res.end('data: [DONE]\n\n');
@@ -87,7 +97,9 @@ try {
     } catch (error) { res.writeHead(500); res.end(String(error)); }
   });
   const webHost = process.env.WUU_E2E_WEB_HOST || "127.0.0.1";
-  const modelPort = await listen(provider), relayPort = await freePort(), webPort = relayPort;
+  const modelPort = await listen(provider), relayPort = await freePort();
+  if (downloadBps) throttled = await slowLink(relayPort, downloadBps);
+  const webPort = throttled?.port ?? relayPort;
   await fs.writeFile(path.join(state, 'config.json'), JSON.stringify({ default_provider: 'web-test', providers: { 'web-test': { type: 'openai-compatible', base_url: `http://127.0.0.1:${modelPort}/v1`, api_key: 'local-test', model: 'web-fixture' } }, agent: { permission_mode: 'standard' } }));
   const env = { ...process.env, WUU_HOME: state };
   execFileSync(process.execPath, [path.join(repoDir, 'desktop/scripts/build-web.cjs')], { cwd: repoDir, stdio: 'pipe' });
@@ -115,9 +127,12 @@ try {
   };
   const host = start(binary, ['remote', 'host', '--workdir', workspace, '--relay', `ws://${webHost}:${relayPort}/v1/connect`, '--pair'], { env });
   await until(() => host.output.includes('wuu://pair?'), 'host pairing');
-  const uri = host.output.match(/wuu:\/\/pair\?[^\s]+/)[0];
+  const pairingURL = new URL(host.output.match(/wuu:\/\/pair\?[^\s]+/)[0]);
+  pairingURL.searchParams.set('r', `ws://${webHost}:${webPort}/v1/connect`);
+  const uri = pairingURL.href;
   browser = await chromium.launch({ channel: process.env.WUU_BROWSER_CHANNEL || undefined });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'zh-CN' });
+  if (downloadBps) context.setDefaultTimeout(90000);
   const page = await context.newPage(); const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.addInitScript(() => {
@@ -181,9 +196,13 @@ try {
     return snapshot.thread.turns.at(-1)?.status === 'interrupted';
   }, 'phone receives desktop interruption');
   const changes = await page.evaluate(() => window.wuu.listGitChanges());
-  assert(changes.files.some(file => file.path === 'src/browser-task.ts' && file.additions === 1));
+  assert(changes.files.some(file => file.path === 'src/browser-task.ts' && file.additions === fileText.trimEnd().split('\n').length));
   const diff = await page.evaluate(() => window.wuu.readGitFileDiff('src/browser-task.ts'));
-  assert.equal(diff.modified_text, fileText);
+  if (downloadBps) {
+    assert.equal(diff.truncated, true);
+    assert(diff.modified_text.length > 0 && fileText.startsWith(diff.modified_text));
+  } else assert.equal(diff.modified_text, fileText);
+  if (!downloadBps) {
   await page.locator('.compact-conversation-actions [aria-haspopup="menu"]').tap();
   await page.getByRole('menuitem', { name: '打开右侧栏', exact: true }).tap();
   await page.getByRole('button', { name: '文件', exact: true }).click();
@@ -237,7 +256,8 @@ try {
       return rect && rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= width && rect.y + rect.height <= height;
     }, `composer reachable at ${width}x${height}`);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
-    await page.locator('.titlebar .sidebar-toggle-button').filter({ visible: true }).tap();
+    await page.locator('.compact-conversation-actions [aria-haspopup="menu"]').tap();
+    await page.getByRole('menuitem', { name: '展开左侧栏', exact: true }).tap();
     const closeDrawer = page.locator('.compact-session-switcher-close');
     await closeDrawer.waitFor({ state: 'visible' });
     for (const target of await page.locator('.sidebar :is(button.sidebar-mode-option, .sidebar-notifications-button)').all()) {
@@ -254,14 +274,19 @@ try {
     const brand = await page.locator('.sidebar-brand').boundingBox();
     return brand && brand.x >= 0 && brand.y < 30;
   }, 'web sidebar starts near the top without native window chrome');
+  }
   assert.deepEqual(pageErrors, []);
-  console.log('PASS: shared desktop/phone execution, bidirectional live messages, pairing, host tool execution, offline completion, snapshot and draft restoration, host restart, Git review, file navigation and phone viewports');
+  console.log(downloadBps
+    ? 'PASS: slow TCP link, pairing, shared execution, large tool history, offline completion, snapshot/draft restoration, host restart, desktop interruption and Git RPCs'
+    : 'PASS: shared desktop/phone execution, bidirectional live messages, pairing, host tool execution, offline completion, snapshot and draft restoration, host restart, Git review, file navigation and phone viewports',
+    { downloadBps, generatedFileBytes: Buffer.byteLength(fileText) });
 } catch (error) {
   for (const run of processes) console.error(run.output.slice(-3000).replace(/"token":"[^"]+"/g, '"token":"[redacted]"').replace(/wuu:\/\/pair\?[^\s]+/g, '[pairing URI]'));
   throw error;
 } finally {
   releaseCompletion();
   await browser?.close();
+  throttled?.close();
   for (const run of processes) if (!run.exited) run.child.kill('SIGTERM');
   for (const run of processes) {
     try { await until(() => run.exited, 'process shutdown', 5000); } catch { run.child.kill('SIGKILL'); }
