@@ -641,21 +641,24 @@ body {
   overflow: hidden;
 }
 
-/* Mature desktop apps don't let users drag-select chrome (titles, labels,
- * buttons, badges, status pills). The default is "no selection"; specific
- * content surfaces explicitly opt back in below. This is the inverse of
- * the browser default and replaces the per-component `user-select: none`
- * scatter with a single source of truth. */
+/* Chrome is not copyable. Desktop drag-select and mobile long-press both
+ * default to "off"; copyable surfaces opt back in below. Mobile browsers
+ * also paint a tap overlay (Android Chrome's default is blue) and an iOS
+ * long-press callout; those belong to the same chrome policy, not to
+ * per-component scatter. */
 html,
 body,
 #root {
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Opt-in list: surfaces whose text the user legitimately needs to copy.
  * Keep this list narrow and intentional — anything not here is read-only
- * chrome by design. */
+ * chrome by design. Restore the iOS callout so a long-press can still
+ * copy. Buttons and other controls nested in those surfaces stay chrome. */
 input,
 textarea,
 select,
@@ -679,6 +682,21 @@ code,
 [data-selectable] {
   user-select: text;
   -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+:is(
+  .rich-content,
+  .user-message,
+  .reasoning-block,
+  .turn-error,
+  .turn-notice,
+  .tool-result,
+  [data-selectable]
+) :is(button, [role="button"], a.button, .icon-button) {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* During window resize we pause transitions and animations on layout
