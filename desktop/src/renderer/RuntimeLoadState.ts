@@ -221,7 +221,9 @@ export async function loadRuntimeRestore(state: AppState): Promise<RuntimeRestor
   const openIDs = new Set([
     state.thread?.id,
     state.secondaryThread?.id,
-    ...state.sessionTabs.flatMap((tab) => tab.kind === "thread" ? [tab.threadID] : []),
+    // Remote tabs recover when selected; foreground history must not queue
+    // behind downloads for every background tab after a mobile reconnect.
+    ...(window.wuu.loadEarlierThreadHistory ? [] : state.sessionTabs.flatMap((tab) => tab.kind === "thread" ? [tab.threadID] : [])),
   ].filter((id): id is string => Boolean(id && available.has(id))));
   const resumed = await Promise.all([...openIDs].map(async (id) => {
     const result = await window.wuu.resumeThread(id);
@@ -232,6 +234,9 @@ export async function loadRuntimeRestore(state: AppState): Promise<RuntimeRestor
   }));
   const byID = new Map(resumed.map((result) => [result.thread.id, result.thread]));
   for (const thread of threads) if (!byID.has(thread.id)) byID.set(thread.id, thread);
+  // Child sessions are listed under their parent, but their open tabs must
+  // survive even when background history is deliberately not resumed yet.
+  for (const thread of state.threads) if (available.has(thread.id) && !byID.has(thread.id)) byID.set(thread.id, thread);
   return { projects, initialized, threads: [...byID.values()], resumed };
 }
 

@@ -427,6 +427,21 @@ describe("runtime restoration", () => {
     expect(restored.activeContext).toEqual(context);
   });
 
+  it("restores only visible remote histories while retaining background and child tabs", async () => {
+    const one = thread("one", {child_agents:[{id:"child"}]} as Partial<Thread>);
+    const two = thread("two");
+    const child = thread("child", {parent_id:"one",read_only:true});
+    const tabs = [one,two,child].map(item => createThreadSessionTab(item, context));
+    const state = {...initialState,activeContext:context,thread:one,threads:[one,two,child],sessionTabs:tabs,activeSessionTabID:tabs[0].id};
+    const resumeThread = vi.fn(async () => ({thread:one}));
+    installWuuStub({listProjects:vi.fn().mockResolvedValue({projects:[],active_context:context}),initialize:vi.fn().mockResolvedValue({status:"ready"}),listAllThreads:vi.fn().mockResolvedValue({threads:[one,two]}),listArchivedThreads:vi.fn().mockResolvedValue({threads:[]}),resumeThread});
+    window.wuu.loadEarlierThreadHistory = vi.fn();
+    const restored = applyRuntimeRestore(state,await loadRuntimeRestore(state));
+    expect(resumeThread).toHaveBeenCalledExactlyOnceWith("one");
+    expect(restored.sessionTabs).toEqual(tabs);
+    delete window.wuu.loadEarlierThreadHistory;
+  });
+
   it("reconciles completion, unarchive and deletion performed while disconnected", () => {
     const running = thread("running", { status: "in_progress", turns: [
       { id: "turn", status: "in_progress", items_view: "full", items: [] },
