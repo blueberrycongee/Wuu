@@ -562,6 +562,34 @@ export function isOptimisticTurnInterrupted(
   );
 }
 
+function userMessageText(turn: Turn | undefined): string {
+  const item = turn?.items.find((candidate) => candidate.type === "user_message");
+  return item?.text?.trim() ?? "";
+}
+
+/**
+ * True when a later server snapshot already contains the same user message
+ * that this optimistic send was trying to admit. `turn/start` can time out
+ * after the host has already persisted and notified the real turn, so the
+ * composer must not restore that draft as if the send never happened.
+ */
+export function threadHasAcceptedComposerMessage(
+  thread: { turns: Turn[] } | undefined,
+  message: Pick<QueuedComposerMessage, "text">,
+  optimisticTurnID?: string,
+): boolean {
+  const expected = message.text.trim();
+  if (!thread || !expected) {
+    return false;
+  }
+  return thread.turns.some((turn) => {
+    if (turn.id === optimisticTurnID || turn.id.startsWith(OPTIMISTIC_TURN_ID_PREFIX)) {
+      return false;
+    }
+    return userMessageText(turn) === expected;
+  });
+}
+
 export function createOptimisticCompactTurn(nowMs: number): Turn {
   const id = nextOptimisticTurnID();
   return {

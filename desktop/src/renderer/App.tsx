@@ -56,6 +56,7 @@ import {
   interruptOptimisticTurn,
   isOptimisticTurnInterrupted,
   replaceOptimisticTurn,
+  threadHasAcceptedComposerMessage,
   type QueuedComposerMessage,
 } from "./ComposerMessages";
 import {
@@ -4428,14 +4429,18 @@ export function App(): JSX.Element {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       const noModelConfigured = isNoModelConfiguredError(rawMessage);
+      const currentThread = appStateRef.current.threads.find(
+        (candidate) => candidate.id === optimisticThreadID,
+      );
       const interrupted =
         isCancellationMessage(rawMessage.toLowerCase()) ||
-        isOptimisticTurnInterrupted(
-          appStateRef.current.threads.find(
-            (candidate) => candidate.id === optimisticThreadID,
-          ),
-          optimisticTurnID,
-        );
+        isOptimisticTurnInterrupted(currentThread, optimisticTurnID);
+      const alreadyAccepted = threadHasAcceptedComposerMessage(
+        currentThread,
+        message,
+        optimisticTurnID,
+      );
+      const keepAcceptedTurn = alreadyAccepted && !interrupted;
       const droppedState =
         optimisticTurnID && optimisticThreadID
           ? updateThreadByID(
@@ -4444,15 +4449,17 @@ export function App(): JSX.Element {
               (currentThread) =>
                 interrupted
                   ? interruptOptimisticTurn(currentThread, optimisticTurnID, Date.now())
-                  : dropOptimisticTurn(currentThread, optimisticTurnID),
+                  : keepAcceptedTurn
+                    ? currentThread
+                    : dropOptimisticTurn(currentThread, optimisticTurnID),
             )
           : appStateRef.current;
       appStateRef.current = {
         ...droppedState,
-        running: false,
+        running: keepAcceptedTurn,
         // A missing model configuration is announced via the onboarding
         // toast; do not also flag the composer status row with the error.
-        status: noModelConfigured || interrupted ? "" : errorMessage,
+        status: noModelConfigured || interrupted || keepAcceptedTurn ? "" : errorMessage,
       };
       setState((current) => ({
         ...(optimisticTurnID && optimisticThreadID
@@ -4462,11 +4469,13 @@ export function App(): JSX.Element {
               (currentThread) =>
                 interrupted
                   ? interruptOptimisticTurn(currentThread, optimisticTurnID, Date.now())
-                  : dropOptimisticTurn(currentThread, optimisticTurnID),
+                  : keepAcceptedTurn
+                    ? currentThread
+                    : dropOptimisticTurn(currentThread, optimisticTurnID),
             )
           : current),
-        running: false,
-        status: noModelConfigured || interrupted ? "" : errorMessage,
+        running: keepAcceptedTurn,
+        status: noModelConfigured || interrupted || keepAcceptedTurn ? "" : errorMessage,
       }));
       setPendingNewThreadTurn((current) =>
         current?.turn.id === optimisticTurn.id ? undefined : current,
@@ -4474,12 +4483,12 @@ export function App(): JSX.Element {
       if (noModelConfigured) {
         showNoModelConfiguredToast();
       }
-      if (restoreDraftOnError && !interrupted) {
+      if (restoreDraftOnError && !interrupted && !keepAcceptedTurn) {
         setPrompt(message.text);
         setComposerImages(message.images);
         setComposerFiles(message.files);
       }
-      return interrupted;
+      return interrupted || keepAcceptedTurn;
     }
     return true;
   }
@@ -4649,14 +4658,18 @@ export function App(): JSX.Element {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
       const noModelConfigured = isNoModelConfiguredError(rawMessage);
+      const currentThread = appStateRef.current.threads.find(
+        (candidate) => candidate.id === targetThread.id,
+      );
       const interrupted =
         isCancellationMessage(rawMessage.toLowerCase()) ||
-        isOptimisticTurnInterrupted(
-          appStateRef.current.threads.find(
-            (candidate) => candidate.id === targetThread.id,
-          ),
-          optimisticTurnID,
-        );
+        isOptimisticTurnInterrupted(currentThread, optimisticTurnID);
+      const alreadyAccepted = threadHasAcceptedComposerMessage(
+        currentThread,
+        message,
+        optimisticTurnID,
+      );
+      const keepAcceptedTurn = alreadyAccepted && !interrupted;
       const droppedState = optimisticTurnID
         ? updateThreadByID(
             appStateRef.current,
@@ -4664,16 +4677,18 @@ export function App(): JSX.Element {
             (thread) =>
               interrupted
                 ? interruptOptimisticTurn(thread, optimisticTurnID, Date.now())
-                : dropOptimisticTurn(thread, optimisticTurnID),
+                : keepAcceptedTurn
+                  ? thread
+                  : dropOptimisticTurn(thread, optimisticTurnID),
           )
         : appStateRef.current;
       appStateRef.current = {
         ...droppedState,
         activePane: pane,
-        running: false,
+        running: keepAcceptedTurn,
         // A missing model configuration is announced via the onboarding
         // toast; do not also flag the composer status row with the error.
-        status: noModelConfigured || interrupted ? "" : errorMessage,
+        status: noModelConfigured || interrupted || keepAcceptedTurn ? "" : errorMessage,
       };
       setState((current) => ({
         ...(optimisticTurnID
@@ -4683,17 +4698,19 @@ export function App(): JSX.Element {
               (thread) =>
                 interrupted
                   ? interruptOptimisticTurn(thread, optimisticTurnID, Date.now())
-                  : dropOptimisticTurn(thread, optimisticTurnID),
+                  : keepAcceptedTurn
+                    ? thread
+                    : dropOptimisticTurn(thread, optimisticTurnID),
             )
           : current),
         activePane: pane,
-        running: false,
-        status: noModelConfigured || interrupted ? "" : errorMessage,
+        running: keepAcceptedTurn,
+        status: noModelConfigured || interrupted || keepAcceptedTurn ? "" : errorMessage,
       }));
       if (noModelConfigured) {
         showNoModelConfiguredToast();
       }
-      return interrupted;
+      return interrupted || keepAcceptedTurn;
     }
     return true;
   }
@@ -4795,14 +4812,18 @@ export function App(): JSX.Element {
     } catch (error) {
       const rawMessage = rawErrorMessage(error, t("composer.sendFailed"));
       const errorMessage = statusMessageForError(rawMessage, t("composer.sendFailed"));
+      const currentThread = appStateRef.current.threads.find(
+        (candidate) => candidate.id === targetThread.id,
+      );
       const interrupted =
         isCancellationMessage(rawMessage.toLowerCase()) ||
-        isOptimisticTurnInterrupted(
-          appStateRef.current.threads.find(
-            (candidate) => candidate.id === targetThread.id,
-          ),
-          optimisticTurnID,
-        );
+        isOptimisticTurnInterrupted(currentThread, optimisticTurnID);
+      const alreadyAccepted = threadHasAcceptedComposerMessage(
+        currentThread,
+        message,
+        optimisticTurnID,
+      );
+      const keepAcceptedTurn = alreadyAccepted && !interrupted;
       const droppedState = optimisticTurnID
         ? updateThreadByID(
             appStateRef.current,
@@ -4810,13 +4831,15 @@ export function App(): JSX.Element {
             (thread) =>
               interrupted
                 ? interruptOptimisticTurn(thread, optimisticTurnID, Date.now())
-                : dropOptimisticTurn(thread, optimisticTurnID),
+                : keepAcceptedTurn
+                  ? thread
+                  : dropOptimisticTurn(thread, optimisticTurnID),
           )
         : appStateRef.current;
       appStateRef.current = {
         ...droppedState,
-        running: targetIsActive ? false : appStateRef.current.running,
-        status: interrupted ? "" : errorMessage,
+        running: targetIsActive ? keepAcceptedTurn : appStateRef.current.running,
+        status: interrupted || keepAcceptedTurn ? "" : errorMessage,
       };
       setState((current) => ({
         ...(optimisticTurnID
@@ -4826,13 +4849,15 @@ export function App(): JSX.Element {
               (thread) =>
                 interrupted
                   ? interruptOptimisticTurn(thread, optimisticTurnID, Date.now())
-                  : dropOptimisticTurn(thread, optimisticTurnID),
+                  : keepAcceptedTurn
+                    ? thread
+                    : dropOptimisticTurn(thread, optimisticTurnID),
             )
           : current),
-        running: targetIsActive ? false : current.running,
-        status: interrupted ? "" : errorMessage,
+        running: targetIsActive ? keepAcceptedTurn : current.running,
+        status: interrupted || keepAcceptedTurn ? "" : errorMessage,
       }));
-      return interrupted;
+      return interrupted || keepAcceptedTurn;
     }
     return true;
   }

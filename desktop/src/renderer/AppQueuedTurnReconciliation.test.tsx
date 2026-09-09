@@ -444,6 +444,112 @@ describe("queued turn reconciliation", () => {
     expect(composerProbe().querySelector("textarea")?.value).toBe("");
   });
 
+  it("does not restore the draft when turn/start times out after the real turn arrives", async () => {
+    let rejectStart: ((reason: Error) => void) | undefined;
+    const startTurn = vi.fn(
+      () =>
+        new Promise<{ turn: { id: string } }>((_resolve, reject) => {
+          rejectStart = reject;
+        }),
+    );
+    installWuuApi({ thread: answerReadyThread(), startTurn });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<App />);
+    });
+    await flushAsync();
+
+    const textarea = composerProbe().querySelector("textarea");
+    const send = composerProbe().querySelector("button");
+    await act(async () => {
+      if (!textarea || !send) throw new Error("composer controls not rendered");
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      valueSetter?.call(textarea, "keep this sent");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      send.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushAsync();
+    expect(composerProbe().querySelector("textarea")?.value).toBe("");
+
+    await act(async () => {
+      for (const handler of serverEventHandlers) {
+        handler({
+          kind: "notification",
+          workdir: workspace,
+          message: {
+            method: "turn/started",
+            params: {
+              thread_id: threadID,
+              turn: {
+                id: "turn-follow-up",
+                status: "in_progress",
+                items_view: "full",
+                items: [
+                  {
+                    id: "item-follow-up-user",
+                    type: "user_message",
+                    status: "completed",
+                    text: "keep this sent",
+                  },
+                ],
+              },
+            },
+          },
+        });
+      }
+    });
+    await act(async () => {
+      rejectStart?.(new Error("rpc timeout: turn/start"));
+      await Promise.resolve();
+    });
+    await flushAsync();
+
+    expect(container.textContent).toContain("keep this sent");
+    expect(composerProbe().querySelector("textarea")?.value).toBe("");
+  });
+
+  it("still restores the draft when turn/start fails before a real turn arrives", async () => {
+    let rejectStart: ((reason: Error) => void) | undefined;
+    const startTurn = vi.fn(
+      () =>
+        new Promise<{ turn: { id: string } }>((_resolve, reject) => {
+          rejectStart = reject;
+        }),
+    );
+    installWuuApi({ thread: answerReadyThread(), startTurn });
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<App />);
+    });
+    await flushAsync();
+
+    const textarea = composerProbe().querySelector("textarea");
+    const send = composerProbe().querySelector("button");
+    await act(async () => {
+      if (!textarea || !send) throw new Error("composer controls not rendered");
+      const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      valueSetter?.call(textarea, "restore this send");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      send.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushAsync();
+    expect(composerProbe().querySelector("textarea")?.value).toBe("");
+
+    await act(async () => {
+      rejectStart?.(new Error("rpc timeout: turn/start"));
+      await Promise.resolve();
+    });
+    await flushAsync();
+
+    expect(composerProbe().querySelector("textarea")?.value).toBe("restore this send");
+  });
+
   it("removes an already materialized queue entry after a missed start notification", async () => {
     const { queuedClientIDs } = installWuuApi();
     await act(async () => {
