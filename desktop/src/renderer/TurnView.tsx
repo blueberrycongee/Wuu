@@ -237,6 +237,18 @@ function TurnContent({
       {isLatestTurn && turn.status === "in_progress" && streamStatus ? (
         <StreamStatusNotice status={streamStatus} />
       ) : null}
+      {/*
+       * Hold the row the streaming status chip occupied when the live turn
+       * settles. Without this subspace, unmounting the chip collapses the
+       * turn's height on the completion frame and auto-follow re-pins the
+       * already-rendered answer upward. The spacer is only rendered for the
+       * turn that mounted live (animateCompletionActions) once it is no
+       * longer in_progress, so reloaded history keeps its current spacing
+       * and a mid-stream transport gap never flashes a placeholder.
+       */}
+      {animateCompletionActions && turn.status !== "in_progress" && !streamStatus ? (
+        <div className="turn-stream-status-spacer" aria-hidden="true" />
+      ) : null}
       {event ? <TurnEventNotice event={event} /> : null}
       {incomplete ? editSummary : null}
     </section>

@@ -2693,6 +2693,21 @@
   color: var(--conversation-process-control-color, var(--process-control-color-fallback));
 }
 
+/*
+ * Subspace that stands in for the streaming status chip once the live turn
+ * settles. The chip is an in-flow block; unmounting it on the completion
+ * frame collapses the turn's height and re-pins the rendered answer upward.
+ * This spacer keeps that row's 28px footprint (the live chip carries a
+ * centered 28px mascot inside a 20px-min row) so the text does not jump.
+ * It is only mounted for the turn that streamed live, never for history.
+ * The row's flex gap (--conversation-turn-item-gap) is supplied by .turn.
+ */
+.turn-stream-status-spacer {
+  height: 28px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .process-surface-count {
   display: inline-block;
   min-width: 1ch;

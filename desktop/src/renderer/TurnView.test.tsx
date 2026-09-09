@@ -223,6 +223,37 @@ describe("TurnView", () => {
     ).toBe(false);
   });
 
+  it("keeps the stream status footprint after a live turn settles", () => {
+    const userItem: ThreadItem = {
+      id: "user-1",
+      type: "user_message",
+      status: "completed",
+      text: "Stream something.",
+    };
+    const view = render(makeTurn("in_progress", [userItem]), true);
+
+    // While streaming the notice row is present; no spacer yet.
+    expect(view.querySelector(".turn-stream-status-spacer")).toBeNull();
+
+    rerender(
+      makeTurn("completed", [userItem, makeFinalAnswer("Settled answer.")]),
+      true,
+    );
+
+    // The settled live turn reserves the row the chip occupied, so the
+    // already-rendered answer does not jump on the completion frame.
+    expect(view.querySelector(".turn-stream-status-spacer")).not.toBeNull();
+  });
+
+  it("does not reserve the stream footprint for a historical completed turn", () => {
+    const view = render(
+      makeTurn("completed", [makeFinalAnswer("Already finished.")]),
+      true,
+    );
+
+    expect(view.querySelector(".turn-stream-status-spacer")).toBeNull();
+  });
+
   it("does not focus a historical completed turn on initial mount", () => {
     const view = render(
       makeTurn("completed", [
