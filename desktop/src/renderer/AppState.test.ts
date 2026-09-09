@@ -3839,3 +3839,15 @@ describe("extension inventory context", () => {
     expect(next).toBe(state);
   });
 });
+
+it("prepends remote history without overwriting live turns and ignores superseded cursors", () => {
+  const live = {id:"recent",status:"in_progress",items_view:"full",items:[{id:"text",type:"agent_message",text:"live"}]} as Turn;
+  const current = {id:"remote",cwd:"/tmp",turns:[live],history_cursor:"cursor"} as Thread;
+  const state = {...initialState,thread:current,threads:[current]};
+  const earlier = {id:"older",status:"completed",items_view:"full",items:[]} as Turn;
+  const event = {workdir:"/tmp",kind:"notification" as const,message:{method:"thread/historyLoaded",params:{thread_id:"remote",cursor:"cursor",turns:[earlier,{...live,items:[]}]}}};
+  const next = reduceServerEvent(state,event);
+  expect(next.thread?.turns).toEqual([earlier,live]);
+  expect(next.thread?.history_cursor).toBeUndefined();
+  expect(reduceServerEvent(next,event).thread?.turns).toEqual([earlier,live]);
+});

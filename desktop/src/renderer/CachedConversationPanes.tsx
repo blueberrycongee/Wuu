@@ -337,6 +337,7 @@ const CachedConversationPane = memo(function CachedConversationPane({
         >
           <div className="conversation-width session-flow">
             <ConversationTurnList
+              historyCursor={thread.history_cursor}
               threadID={thread.id}
               turns={threadTurns}
               renderBeforeTurns={[

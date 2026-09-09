@@ -601,6 +601,11 @@ export class RemoteDesktopBridge {
       listThreads: (cwd?: string) => this.call("thread/list", { cwd: cwd || this.workdir(), summary_only: true }),
       listAllThreads: () => this.call("thread/listAll", { summary_only: true }),
       listArchivedThreads: () => this.call("thread/listArchived", { summary_only: true }),
+      loadEarlierThreadHistory: async (threadID: string, cursor: string) => {
+        const params = { thread_id: threadID, cursor };
+        const result = await this.call("remote/history/read", params);
+        this.emitServerEvent({ workdir: this.requestWorkdir(params), kind: "notification", message: { method: "thread/historyLoaded", params: result } });
+      },
       readRemoteAttachment: (ref: string) => this.readAttachment(ref),
       resumeThread: async (sessionId?: string) => {
         const params = { session_id: sessionId ?? "", response_only: true };

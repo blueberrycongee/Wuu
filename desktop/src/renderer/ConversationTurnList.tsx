@@ -30,6 +30,7 @@ export {
 
 type ConversationTurnListProps = {
   threadID: string;
+  historyCursor?: string;
   turns: Turn[];
   renderTurn: (turn: Turn) => ReactNode;
   renderBeforeTurns?: ReactNode;
@@ -81,6 +82,7 @@ function turnListScrollContainer(start: HTMLElement): HTMLElement | null {
 
 export function ConversationTurnList({
   threadID,
+  historyCursor,
   turns,
   renderTurn,
   renderBeforeTurns,
@@ -124,7 +126,12 @@ export function ConversationTurnList({
   });
   const visibleStartIndex = Math.min(storedStartIndex, requiredStartIndex);
   const visibleTurns = turns.slice(visibleStartIndex);
-  const hasEarlierTurns = visibleStartIndex > 0;
+  const hasLocalEarlier = visibleStartIndex > 0;
+  const hasRemoteEarlier = Boolean(historyCursor && window.wuu.loadEarlierThreadHistory);
+  const hasEarlierTurns = hasLocalEarlier || hasRemoteEarlier;
+  const loadingRemote = useRef(false);
+  const [remoteBusy, setRemoteBusy] = useState(false);
+  const [remoteError, setRemoteError] = useState("");
 
   useEffect(() => {
     setExpandedTurnIDs(new Set());
@@ -145,7 +152,7 @@ export function ConversationTurnList({
     prependScrollSnapshotRef.current = null;
     const addedHeight = snapshot.node.scrollHeight - snapshot.scrollHeight;
     snapshot.node.scrollTop = snapshot.scrollTop + Math.max(0, addedHeight);
-  }, [visibleStartIndex]);
+  }, [visibleStartIndex, turns.length]);
 
   useEffect(() => {
     setExpandedTurnIDs((current) => {
@@ -205,6 +212,16 @@ export function ConversationTurnList({
           };
         }
       }
+      if (!hasLocalEarlier && historyCursor && window.wuu.loadEarlierThreadHistory) {
+        if (loadingRemote.current) return;
+        loadingRemote.current = true; setRemoteBusy(true); setRemoteError("");
+        setTurnWindow({ threadID, visibleCount: turns.length + 20, coldWindowed: true });
+        void window.wuu.loadEarlierThreadHistory(threadID, historyCursor).catch(error => {
+          prependScrollSnapshotRef.current = null;
+          setRemoteError(error instanceof Error ? error.message : String(error));
+        }).finally(() => { loadingRemote.current = false; setRemoteBusy(false); });
+        return;
+      }
       setTurnWindow({
         threadID,
         visibleCount: turns.length - nextStartIndex,
@@ -213,6 +230,8 @@ export function ConversationTurnList({
     },
     [
       hasEarlierTurns,
+      hasLocalEarlier,
+      historyCursor,
       threadID,
       turnWindow.coldWindowed,
       turns.length,
@@ -240,7 +259,7 @@ export function ConversationTurnList({
   }, [threadID, turnWindow.coldWindowed, turns, visibleStartIndex]);
 
   useEffect(() => {
-    if (!autoLoadEarlier || !hasEarlierTurns) {
+    if (!autoLoadEarlier || !hasEarlierTurns || remoteBusy || remoteError) {
       return;
     }
     const loader = historyLoaderRef.current;
@@ -255,18 +274,19 @@ export function ConversationTurnList({
     };
     node.addEventListener("scroll", loadIfNearTop, { passive: true });
     return () => node.removeEventListener("scroll", loadIfNearTop);
-  }, [autoLoadEarlier, hasEarlierTurns, loadEarlierTurns]);
+  }, [autoLoadEarlier, hasEarlierTurns, loadEarlierTurns, remoteBusy, remoteError]);
 
   return (
     <>
       {hasEarlierTurns ? (
         <button
+          disabled={remoteBusy}
           className="conversation-turn-history-loader"
           onClick={() => loadEarlierTurns(true)}
           ref={historyLoaderRef}
           type="button"
         >
-          {t("turn.loadEarlier", {
+          {remoteBusy ? t("common.loadingEllipsis") : !hasLocalEarlier ? t("turn.loadEarlierHistory") : t("turn.loadEarlier", {
             count: formatNumber(
               Math.min(visibleStartIndex, TURN_LIST_PREPEND_BATCH_TURNS),
             ),
@@ -275,6 +295,7 @@ export function ConversationTurnList({
       ) : (
         renderBeforeTurns
       )}
+      {remoteError ? <div role="alert">{remoteError}</div> : null}
       {visibleTurns.map((turn, visibleIndex) => {
         const index = visibleStartIndex + visibleIndex;
         const full =

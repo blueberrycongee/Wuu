@@ -1797,6 +1797,8 @@ export type Thread = {
   updated_at: string;
   latest_completed_turn_id?: string;
   turns: Turn[];
+  /** Opaque remote cursor for older turns; absent when the snapshot is complete. */
+  history_cursor?: string;
   child_agents?: Agent[];
 };
 
@@ -2837,6 +2839,7 @@ export type WuuDesktopApi = {
   getChannelHumanMentionStatus: () => Promise<ChannelHumanMentionStatusResult>;
   ackChannelHumanMentions: () => Promise<ChannelHumanMentionAckResult>;
   startThread: (params?: ThreadStartParams) => Promise<{ thread: Thread }>;
+  loadEarlierThreadHistory?: (threadID: string, cursor: string) => Promise<void>;
   readRemoteAttachment?: (ref: string) => Promise<string>;
   resumeThread: (sessionId?: string) => Promise<ThreadResumeResult>;
   forkThread: (

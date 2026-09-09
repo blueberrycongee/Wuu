@@ -314,3 +314,17 @@ describe("ConversationTurnList", () => {
     ).not.toBeNull();
   });
 });
+
+it("requests older remote history on demand and keeps a failed page retryable", async () => {
+  const prior = window.wuu;
+  let calls = 0;
+  window.wuu = { ...prior, loadEarlierThreadHistory: async () => { calls++; if (calls === 1) throw new Error("offline"); } };
+  try {
+    render(<ConversationTurnList threadID="remote" historyCursor="cursor" turns={[makeTurn(40)]} renderTurn={turn => <div>{turn.id}</div>} />);
+    expect(calls).toBe(0);
+    await act(async () => container.querySelector<HTMLButtonElement>(".conversation-turn-history-loader")!.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("offline");
+    await act(async () => container.querySelector<HTMLButtonElement>(".conversation-turn-history-loader")!.click());
+    expect(calls).toBe(2);
+  } finally { window.wuu = prior; }
+});

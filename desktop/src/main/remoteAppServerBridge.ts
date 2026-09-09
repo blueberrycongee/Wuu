@@ -1,4 +1,5 @@
 import { createServer, type Server, type Socket } from "node:net";
+import { RemoteHistory } from "./remoteHistory";
 import { RemoteAttachments } from "./remoteAttachments";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { AppServerResponse, ServerEvent } from "../shared/protocol";
@@ -16,6 +17,7 @@ export class RemoteAppServerBridge {
   private sockets = new Set<Socket>();
   private subscribers = new Set<Socket>();
   private readonly compactSubscribers = new Set<Socket>();
+  private readonly histories = new Map<Socket, RemoteHistory>();
   private readonly attachments = new RemoteAttachments();
   constructor(private readonly request: (workdir: string, method: string, params: unknown, reply: (response: Pick<AppServerResponse, "result" | "error">) => void) => Promise<unknown>) {}
 
@@ -52,6 +54,7 @@ export class RemoteAppServerBridge {
     for (const socket of this.sockets) socket.destroy();
     this.subscribers.clear();
     this.compactSubscribers.clear();
+    this.histories.clear();
     this.attachments.clear();
     this.server?.close();
     this.server = undefined;
@@ -60,13 +63,15 @@ export class RemoteAppServerBridge {
   private send(socket: Socket, message: unknown): void {
     if (socket.destroyed) return;
     if (socket.writableLength > MAX_LINE_BYTES) { socket.destroy(); return; }
-    socket.write(JSON.stringify(this.compactSubscribers.has(socket) ? this.attachments.project(message) : message) + "\n");
+    const history = this.histories.get(socket);
+    const projected = history ? history.project(this.attachments.project(message)) : message;
+    socket.write(JSON.stringify(projected) + "\n");
   }
 
   private accept(socket: Socket, token: string, defaultWorkdir: string): void {
     this.sockets.add(socket);
     socket.on("error", () => socket.destroy());
-    socket.once("close", () => { this.sockets.delete(socket); this.subscribers.delete(socket); this.compactSubscribers.delete(socket); });
+    socket.once("close", () => { this.sockets.delete(socket); this.subscribers.delete(socket); this.compactSubscribers.delete(socket); this.histories.delete(socket); });
     socket.setTimeout(5000, () => socket.destroy());
     socket.setEncoding("utf8");
     let buffer = "", authenticated = false;
@@ -97,7 +102,10 @@ export class RemoteAppServerBridge {
           socket.destroy(); return;
         }
         const { id, method, params } = input;
-        if (method === "workspace/list" && (params as { remote_delivery?: number } | undefined)?.remote_delivery === 1) this.compactSubscribers.add(socket);
+        if (method === "workspace/list" && (params as { remote_delivery?: number } | undefined)?.remote_delivery === 1) {
+          this.compactSubscribers.add(socket);
+          if (!this.histories.has(socket)) this.histories.set(socket, new RemoteHistory());
+        }
         const cwd = typeof input.workdir === "string" && input.workdir ? input.workdir : defaultWorkdir;
         const key = JSON.stringify(id), signature = JSON.stringify([cwd, method, params]);
         let entry = requests.get(key);
@@ -119,6 +127,7 @@ export class RemoteAppServerBridge {
           if (completed.length > 256) requests.delete(completed.shift()!);
         };
         void Promise.resolve().then(() => {
+          if (this.compactSubscribers.has(socket) && method === "remote/history/read") return this.histories.get(socket)!.read(params);
           if (this.compactSubscribers.has(socket) && method === "remote/attachment/read") return this.attachments.read(params);
           return this.request(cwd, method, this.compactSubscribers.has(socket) ? this.attachments.hydrate(params) : params, finish);
         }).then(

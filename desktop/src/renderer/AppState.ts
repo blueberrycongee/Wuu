@@ -704,6 +704,16 @@ function reduceNotification(
           : state.running,
       };
     }
+    case "thread/historyLoaded": {
+      const threadID = threadIDFromParams(params);
+      if (!threadID || typeof params?.cursor !== "string" || !Array.isArray(params.turns)) return state;
+      return updateThreadByID(state, threadID, (thread) => {
+        if (thread.history_cursor !== params.cursor) return thread;
+        const currentIDs = new Set(thread.turns.map(turn => turn.id));
+        const older = (params.turns as Turn[]).filter(turn => !currentIDs.has(turn.id));
+        return { ...thread, turns: [...older, ...thread.turns], history_cursor: typeof params.history_cursor === "string" ? params.history_cursor : undefined };
+      });
+    }
     case "thread/updated": {
       const thread = threadFromRecord(recordValue(params, "thread"));
       if (!thread || !threadMatchesActiveContext(thread, state.activeContext)) {

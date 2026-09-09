@@ -160,6 +160,7 @@ export function ConversationSplitPane({
         <div className="conversation-width conversation-split-width session-flow">
           <ConversationTurnList
             threadID={thread.id}
+              historyCursor={thread.history_cursor}
             turns={paneTurns}
             renderAfterMissingTurn={
               pendingQuestion &&
