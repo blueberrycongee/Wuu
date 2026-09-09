@@ -602,5 +602,20 @@ describe("RichContent raw HTML and heading levels", () => {
       expect(link.getAttribute("href")).toBe("https://example.com/a");
       expect(link.textContent).toBe("https://example.com/a");
     });
+
+    it("keeps a bold label bold when a bare URL is written directly against its closing markers", () => {
+      render(<RichContent text={"**入口:**http://localhost:5174/**"} />);
+
+      const paragraph = container.querySelector(".rich-paragraph");
+      // The middle `**` must not be consumed as the URL's emphasis opener:
+      // the label stays bold and the link stays a plain clickable anchor.
+      expect(paragraph?.textContent).toBe("入口:http://localhost:5174/");
+      expect(paragraph?.querySelector("strong")?.textContent).toBe("入口:");
+      const link = paragraph?.querySelector("a.rich-web-link");
+      expect(link?.getAttribute("href")).toBe("http://localhost:5174/");
+      expect(link?.textContent).toBe("http://localhost:5174/");
+      expect(paragraph?.querySelectorAll("a.rich-web-link")).toHaveLength(1);
+      expect(paragraph?.textContent).not.toContain("**");
+    });
   });
 });

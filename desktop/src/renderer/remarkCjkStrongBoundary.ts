@@ -75,6 +75,73 @@ function repairTextNode(node: MdastNode, source: string): MdastNode[] | undefine
   return replacements;
 }
 
+/**
+ * A bold label written as `**label:**` immediately followed (no whitespace) by
+ * a bare URL — e.g. `**入口:**http://localhost:5174/` — cannot survive the
+ * CommonMark emphasis pass as the author intended. When the label's closing
+ * `**` abuts the URL's first character, the parser pairs the middle `**` with
+ * the URL's trailing `**` instead, producing a literal text node (`**label:`)
+ * followed by a `strong` that wraps the whole link. The label loses its bold
+ * and the link is rendered bold instead.
+ *
+ * This pass runs after remark-gfm and recovers the intended reading: the text
+ * immediately before a bare autolink is a label whose `**` pair was swallowed,
+ * so it is re-wrapped in `strong` and the link is pulled out as a sibling.
+ */
+function linkInStrong(node: MdastNode): MdastNode | undefined {
+  if (node.type !== "strong") {
+    return undefined;
+  }
+  const children = node.children ?? [];
+  if (children.length !== 1 || children[0].type !== "link") {
+    return undefined;
+  }
+  return children[0];
+}
+
+/**
+ * Close-adjacent autolinks are either already bare links (when the source URL
+ * carried no trailing `**`) or a `strong` that swallowed the link. In both
+ * shapes the preceding text node carries an unmatched `**` that is the label's
+ * marker, so the label is re-wrapped in `strong` and the link is left bare.
+ */
+const BOLD_LABEL_MARKER = /(^|\s)\*\*([^\s*][^*]*?)(?:\*\*)?$/u;
+
+function repairBoldAutolinkPair(children: MdastNode[], index: number): MdastNode[] | undefined {
+  const text = children[index];
+  if (text.type !== "text" || typeof text.value !== "string") {
+    return undefined;
+  }
+  const value = text.value;
+  const match = BOLD_LABEL_MARKER.exec(value);
+  if (!match) {
+    return undefined;
+  }
+  const prefix = value.slice(0, match.index + match[1].length);
+  const label = match[2];
+  if (!label) {
+    return undefined;
+  }
+  const next = children[index + 1];
+  // The link is either the `strong` that already swallowed it, or a bare
+  // autolink follow-on. `next` may be undefined at the end of a paragraph.
+  const bareLink = next?.type === "link" ? next : undefined;
+  const strong = next ? linkInStrong(next) : undefined;
+  const link = bareLink ?? strong;
+  if (!link) {
+    return undefined;
+  }
+  const replacements: MdastNode[] = [];
+  if (prefix) {
+    replacements.push({ type: "text", value: prefix });
+  }
+  replacements.push({ type: "strong", children: [{ type: "text", value: label }] });
+  replacements.push(link);
+  // `index` is the text node; the link (bare or strong-wrapped) is the
+  // immediate sibling, so both are replaced together.
+  return replacements;
+}
+
 function visit(parent: MdastNode, source: string): void {
   const children = parent.children;
   if (!children) {
@@ -85,6 +152,14 @@ function visit(parent: MdastNode, source: string): void {
     if (replacements) {
       children.splice(index, 1, ...replacements);
       index += replacements.length - 1;
+      continue;
+    }
+    const pairRepair = repairBoldAutolinkPair(children, index);
+    if (pairRepair) {
+      // The text node and the link (bare or strong-wrapped) it collides with
+      // are replaced together.
+      children.splice(index, 2, ...pairRepair);
+      index += pairRepair.length - 1;
       continue;
     }
     visit(children[index], source);
