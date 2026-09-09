@@ -84,6 +84,27 @@ app.whenReady().then(async () => {
   await waitFor(() => document.querySelector(".app-shell")?.dataset.wuuSidebarMode === "drawer");
   await waitFor(() => Math.abs(document.querySelector(".sidebar").getBoundingClientRect().left) < 1);
 
+  const headerTargets = await evaluate(() => {
+    const drawer = document.querySelector(".sidebar").getBoundingClientRect();
+    return [
+      document.querySelector(".compact-session-switcher-close"),
+      ...document.querySelectorAll(".sidebar-brand button"),
+    ].map((button) => {
+      const rect = button.getBoundingClientRect();
+      return {
+        label: button.getAttribute("aria-label") || button.textContent,
+        inside: rect.left >= drawer.left && rect.right <= drawer.right,
+        reachable: button.contains(document.elementFromPoint(
+          rect.left + rect.width / 2, rect.top + rect.height / 2,
+        )),
+      };
+    });
+  });
+  for (const target of headerTargets) {
+    assert.ok(target.inside, `header target stays inside drawer: ${target.label}`);
+    assert.ok(target.reachable, `header target is not covered: ${target.label}`);
+  }
+
   // Reverse a closing drag before release: the drawer must return with the finger.
   await ready();
   assert.equal(await evaluate(() => !!document.elementFromPoint(220, 300)?.closest(".sidebar")), true);

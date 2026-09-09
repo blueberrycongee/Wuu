@@ -773,11 +773,12 @@
   height: 12px;
 }
 
-/* Keep the close target in the exposed backdrop rather than reserving a
- * titlebar row or covering the brand controls in a short phone viewport. */
+/* Match the close target to the reserved slot in the compact web header. */
 :root[data-host-kind="web"] .app-shell.compact-navigation.sidebar-drawer-open .compact-session-switcher-close {
-  left: calc(var(--compact-session-switcher-width) + 4px);
-  background: var(--paper);
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  left: calc(var(--compact-session-switcher-width) - 56px);
+  width: 44px;
+  height: 44px;
 }
 
 .sidebar-brand {
