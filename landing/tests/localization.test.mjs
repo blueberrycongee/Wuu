@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const pairs = [['index', 'zh'], ...['features', 'blog'].map(name => [name, `zh-${name}`])];
+const pairs = [
+  ['index', 'zh'],
+  ...['features', 'blog', 'context-projection', 'note-compaction'].map((name) => [name, `zh-${name}`]),
+];
 const read = name => readFileSync(new URL(`../${name}.html`, import.meta.url), 'utf8');
 const links = source => [...source.matchAll(/<a\b([^>]*)>/g)].map(([, attrs]) => Object.fromEntries([...attrs.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, key, value]) => [key, value])));
 
