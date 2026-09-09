@@ -127,6 +127,7 @@ export { permissionModeFromSummary, permissionModeHasAdvancedOverrides } from ".
 
 export function Composer({
   variant = "dock",
+  canSelectProject = variant === "hero",
   mainConversation = false,
   topAccessory,
   leadingActions,
@@ -221,6 +222,7 @@ export function Composer({
   pluginHost = desktopPluginHost,
 }: {
   variant?: ComposerVariant;
+  canSelectProject?: boolean;
   mainConversation?: boolean;
   topAccessory?: ReactNode;
   leadingActions?: ReactNode;
@@ -1280,12 +1282,9 @@ export function Composer({
             >
               <div className="composer-bar-left">
                 {leadingActions}
-                {variant === "hero" ? (
-                  // Hero (empty/unsent) project & 对话 conversations: the
-                  // project pill both shows and edits the workspace/cwd. Once
-                  // the conversation is sent it drops to the dock variant below,
-                  // where the cwd is locked (the backend session.CWD is fixed at
-                  // creation) so no cwd control renders at all.
+                {canSelectProject ? (
+                  // Project selection depends on whether a session has been
+                  // created, independently of where the composer is placed.
                   <div className="hero-project-pill-anchor composer-project-control" ref={menuRef}>
                     <Tooltip
                       content={projectPillTitle}

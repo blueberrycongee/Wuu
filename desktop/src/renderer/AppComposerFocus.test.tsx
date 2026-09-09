@@ -30,6 +30,7 @@ vi.mock("./ComposerView", async (importOriginal) => {
         : "side composer";
       return (
         <div
+          data-can-select-project={props.canSelectProject}
           data-main-conversation-composer={
             props.mainConversation ? variant : undefined
           }
@@ -579,6 +580,7 @@ describe("main composer focus continuity", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
     await renderApp(false, { rejectThreadStart });
     const dock = mainComposer("dock");
+    expect(dock.parentElement?.dataset.canSelectProject).toBe("true");
     expect(container.querySelectorAll("[data-main-conversation-composer]")).toHaveLength(1);
     dock.focus();
 
@@ -587,6 +589,7 @@ describe("main composer focus continuity", () => {
     expect(mainComposer("dock")).toBe(dock);
     expect(document.activeElement).toBe(dock);
     expect(dock.value).toBe(rejectThreadStart ? "first compact query" : "");
+    expect(dock.parentElement?.dataset.canSelectProject).toBe(String(rejectThreadStart));
     if (!rejectThreadStart) {
       expect(window.wuu.startTurn).toHaveBeenCalled();
     }

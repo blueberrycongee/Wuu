@@ -102,6 +102,8 @@ function handoffInitialized(): InitializeResult {
 function renderComposer(props: {
   accessMenuOpen?: boolean;
   variant?: ComposerVariant;
+  canSelectProject?: boolean;
+  onToggleMenu?: () => void;
   mainConversation?: boolean;
   prompt?: string;
   running?: boolean;
@@ -153,6 +155,7 @@ function renderComposer(props: {
           <WorkbenchConnectionContext.Provider value={props.connectionAvailable ?? true}>
           <Composer
             variant={props.variant}
+            canSelectProject={props.canSelectProject}
             mainConversation={props.mainConversation}
             prompt={props.prompt ?? ""}
             setPrompt={props.setPrompt ?? (() => {})}
@@ -181,7 +184,7 @@ function renderComposer(props: {
           accessMenuRef={createRef<HTMLDivElement>()}
           projectFilter=""
           setProjectFilter={() => {}}
-          onToggleMenu={() => {}}
+          onToggleMenu={props.onToggleMenu ?? (() => {})}
           onToggleAccessMenu={() => {}}
           onToggleCodexRuntimeMenu={() => {}}
           onSelectRuntimeModel={() => {}}
@@ -1683,6 +1686,16 @@ describe("Composer send control", () => {
     expect(container.querySelector(".hero-project-pill")).not.toBeNull();
     expect(container.querySelector(".hero-project-pill")?.textContent).toContain("选择项目");
     expect(container.querySelector<HTMLButtonElement>("button[aria-label=\"打开项目\"]")).toBeNull();
+  });
+
+  it("opens project selection from a new session's bottom composer", () => {
+    const onToggleMenu = vi.fn();
+    renderComposer({ variant: "dock", canSelectProject: true, onToggleMenu });
+
+    const selector = container.querySelector<HTMLButtonElement>(".hero-project-pill");
+    expect(selector).not.toBeNull();
+    act(() => selector?.click());
+    expect(onToggleMenu).toHaveBeenCalledOnce();
   });
 
   it("hides the cwd control once a project conversation is sent (dock variant)", () => {

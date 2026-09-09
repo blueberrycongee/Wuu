@@ -2945,6 +2945,7 @@ export function App(): JSX.Element {
     return (
       <>
       <Composer
+        canSelectProject={!activeThread && !activePendingNewThreadTurn}
         leadingActions={composerNavigation && variant === "dock" ? (
           <CompactConversationActions
             navigation={{ onOpenSidebar: openSidebarDrawerNow }}
