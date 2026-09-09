@@ -19,6 +19,7 @@ import type {
   RunningThreadSnapshot,
   RuntimeContext,
   Thread,
+  ThreadResumeResult,
   ServerEvent,
   ThemePreference,
   VoiceInputSettings,
@@ -571,8 +572,13 @@ export class RemoteDesktopBridge {
       listThreads: (cwd?: string) => this.call("thread/list", { cwd: cwd || this.workdir(), summary_only: true }),
       listAllThreads: () => this.call("thread/listAll", { summary_only: true }),
       listArchivedThreads: () => this.call("thread/listArchived", { summary_only: true }),
-      resumeThread: (sessionId?: string) =>
-        this.call("thread/resume", { session_id: sessionId ?? "" }),
+      resumeThread: async (sessionId?: string) => {
+        const params = { session_id: sessionId ?? "", response_only: true };
+        const result = await this.call<ThreadResumeResult>("thread/resume", params);
+        // Preserve renderer and pending-message synchronization at the response boundary.
+        this.emitServerEvent({ workdir: this.requestWorkdir(params), kind: "notification", message: { method: "thread/resumed", params: result } });
+        return result;
+      },
       startThread: (params = {}) => this.call("thread/start", {
         ...params,
         cwd: params.cwd || this.workdir(),

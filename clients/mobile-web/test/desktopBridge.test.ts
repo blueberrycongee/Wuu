@@ -383,3 +383,15 @@ it("routes background thread actions and questions to their owner after a worksp
   await bridge.api.holdUserQuestion("q");
   expect(remote.call).toHaveBeenLastCalledWith("user-question/hold", { request_id: "q" }, 30_000, "/alpha");
 });
+
+it("synchronizes a resumed snapshot once from the response without requesting a broadcast", async () => {
+  const bridge = await connectBridge();
+  const listener = vi.fn();
+  bridge.api.onServerEvent(listener);
+  const result = { thread: { id: "t", cwd: "/paired/workspace", turns: [] }, held_user_messages: [{id:"held"}] };
+  remote.call.mockResolvedValueOnce(result);
+  expect(await bridge.api.resumeThread("t")).toEqual(result);
+  expect(remote.call).toHaveBeenLastCalledWith("thread/resume", {session_id:"t", response_only:true}, 30_000, "/paired/workspace");
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(listener.mock.calls[0][0].message).toEqual({method:"thread/resumed", params:result});
+});

@@ -1321,6 +1321,8 @@ type ThreadStartResult struct {
 
 type ThreadResumeParams struct {
 	SessionID string `json:"session_id,omitempty"`
+	// The requester consumes the snapshot response without a duplicate broadcast.
+	ResponseOnly bool `json:"response_only,omitempty"`
 }
 
 type ThreadResumeResult struct {

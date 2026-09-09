@@ -291,7 +291,7 @@ func (s *Server) handleThreadResume(req Request) error {
 		if err != nil {
 			return s.writeResponse(req.ID, nil, err)
 		}
-		return s.writeThreadResumeResult(req, thread)
+		return s.writeThreadResumeResult(req, thread, params.ResponseOnly)
 	}
 	th, err := s.loadPersistedThreadState(id, time.Now().UTC())
 	if err != nil {
@@ -305,7 +305,7 @@ func (s *Server) handleThreadResume(req Request) error {
 		if !ok {
 			return s.writeResponse(req.ID, nil, session.ErrSessionNotFound)
 		}
-		return s.writeThreadResumeResult(req, thread)
+		return s.writeThreadResumeResult(req, thread, params.ResponseOnly)
 	}
 	th = s.addLoadedThread(th)
 	if th == nil {
@@ -319,10 +319,10 @@ func (s *Server) handleThreadResume(req Request) error {
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
 	}
-	return s.writeThreadResumeResult(req, thread)
+	return s.writeThreadResumeResult(req, thread, params.ResponseOnly)
 }
 
-func (s *Server) writeThreadResumeResult(req Request, thread Thread) error {
+func (s *Server) writeThreadResumeResult(req Request, thread Thread, responseOnly bool) error {
 	held, err := s.loadHeldUserTurns(thread.ID)
 	if err != nil {
 		return s.writeResponse(req.ID, nil, err)
@@ -338,10 +338,12 @@ func (s *Server) writeThreadResumeResult(req Request, thread Thread) error {
 	if err := s.writeResponse(req.ID, result, nil); err != nil {
 		return err
 	}
-	if err := s.writeNotification(NotificationThreadResumed, ThreadResumedNotification{
-		Thread: thread, HeldUserMessages: heldMessages, PendingUserMessages: pendingMessages,
-	}); err != nil {
-		return err
+	if !responseOnly {
+		if err := s.writeNotification(NotificationThreadResumed, ThreadResumedNotification{
+			Thread: thread, HeldUserMessages: heldMessages, PendingUserMessages: pendingMessages,
+		}); err != nil {
+			return err
+		}
 	}
 	if s.thread(thread.ID) != nil {
 		s.restorePendingProcessCompletionsOnThreadResume(thread.ID)

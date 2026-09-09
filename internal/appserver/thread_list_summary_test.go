@@ -47,3 +47,32 @@ func TestThreadListSummaryPreservesMetadataAndFullHistory(t *testing.T) {
 		})
 	}
 }
+
+func TestResumeResponseOnlyRetainsHistoryWithoutBroadcast(t *testing.T) {
+	for _, responseOnly := range []bool{false, true} {
+		rt := newTestRuntime(t, &fakeClient{})
+		out := &lockedBuffer{}
+		srv := New(rt, out)
+		th := newThreadState("resume-thread", nil, rt.ProviderName, rt.Model, rt.RootDir, false, time.Now())
+		th.Turns = []Turn{{ID: "retained-turn"}}
+		srv.threads[th.ID] = th
+		raw, _ := json.Marshal(map[string]any{"id": "resume", "method": "thread/resume", "params": ThreadResumeParams{SessionID: th.ID, ResponseOnly: responseOnly}})
+		if err := srv.handleLine(context.Background(), raw); err != nil {
+			t.Fatal(err)
+		}
+		rows := parseOutput(t, out.String())
+		result := remarshal[ThreadResumeResult](t, responseByID(t, rows, "resume")["result"])
+		if len(result.Thread.Turns) != 1 {
+			t.Fatal("missing retained history")
+		}
+		broadcasts := 0
+		for _, row := range rows {
+			if row["method"] == NotificationThreadResumed {
+				broadcasts++
+			}
+		}
+		if (broadcasts == 0) != responseOnly {
+			t.Fatalf("responseOnly=%v broadcasts=%d", responseOnly, broadcasts)
+		}
+	}
+}
