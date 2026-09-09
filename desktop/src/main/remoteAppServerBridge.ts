@@ -1,4 +1,5 @@
 import { createServer, type Server, type Socket } from "node:net";
+import { RemoteAttachments } from "./remoteAttachments";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { AppServerResponse, ServerEvent } from "../shared/protocol";
 
@@ -14,6 +15,8 @@ export class RemoteAppServerBridge {
   private defaultWorkdir = "";
   private sockets = new Set<Socket>();
   private subscribers = new Set<Socket>();
+  private readonly compactSubscribers = new Set<Socket>();
+  private readonly attachments = new RemoteAttachments();
   constructor(private readonly request: (workdir: string, method: string, params: unknown, reply: (response: Pick<AppServerResponse, "result" | "error">) => void) => Promise<unknown>) {}
 
   currentEndpoint(): RemoteAppServerEndpoint | undefined { return this.endpoint; }
@@ -48,6 +51,8 @@ export class RemoteAppServerBridge {
     this.endpoint = undefined;
     for (const socket of this.sockets) socket.destroy();
     this.subscribers.clear();
+    this.compactSubscribers.clear();
+    this.attachments.clear();
     this.server?.close();
     this.server = undefined;
   }
@@ -55,13 +60,13 @@ export class RemoteAppServerBridge {
   private send(socket: Socket, message: unknown): void {
     if (socket.destroyed) return;
     if (socket.writableLength > MAX_LINE_BYTES) { socket.destroy(); return; }
-    socket.write(JSON.stringify(message) + "\n");
+    socket.write(JSON.stringify(this.compactSubscribers.has(socket) ? this.attachments.project(message) : message) + "\n");
   }
 
   private accept(socket: Socket, token: string, defaultWorkdir: string): void {
     this.sockets.add(socket);
     socket.on("error", () => socket.destroy());
-    socket.once("close", () => { this.sockets.delete(socket); this.subscribers.delete(socket); });
+    socket.once("close", () => { this.sockets.delete(socket); this.subscribers.delete(socket); this.compactSubscribers.delete(socket); });
     socket.setTimeout(5000, () => socket.destroy());
     socket.setEncoding("utf8");
     let buffer = "", authenticated = false;
@@ -92,6 +97,7 @@ export class RemoteAppServerBridge {
           socket.destroy(); return;
         }
         const { id, method, params } = input;
+        if (method === "workspace/list" && (params as { remote_delivery?: number } | undefined)?.remote_delivery === 1) this.compactSubscribers.add(socket);
         const cwd = typeof input.workdir === "string" && input.workdir ? input.workdir : defaultWorkdir;
         const key = JSON.stringify(id), signature = JSON.stringify([cwd, method, params]);
         let entry = requests.get(key);
@@ -112,7 +118,10 @@ export class RemoteAppServerBridge {
           completed.push(key);
           if (completed.length > 256) requests.delete(completed.shift()!);
         };
-        void Promise.resolve().then(() => this.request(cwd, method, params, finish)).then(
+        void Promise.resolve().then(() => {
+          if (this.compactSubscribers.has(socket) && method === "remote/attachment/read") return this.attachments.read(params);
+          return this.request(cwd, method, this.compactSubscribers.has(socket) ? this.attachments.hydrate(params) : params, finish);
+        }).then(
           result => finish({ result }),
           error => finish({ error: { code: "error", message: error instanceof Error ? error.message : String(error) } }),
         );

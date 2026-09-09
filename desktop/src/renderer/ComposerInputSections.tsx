@@ -1,3 +1,4 @@
+import { AttachmentImage } from "./AttachmentImage";
 import {
   ChevronDown,
   ChevronUp,
@@ -21,7 +22,6 @@ import {
 import {
   WORKSPACE_FILE_DRAG_MIME,
   appendWorkspacePathToPrompt,
-  imageSource,
   queuedMessageFullPreview,
   queuedMessagePreview,
   type ComposerFile,
@@ -59,28 +59,11 @@ export function ComposerAttachmentStrip({
   return (
     <div className="composer-attachments">
       {images.map((image, index) => {
-        const src = imageSource(image);
         const label = t("composer.imageNumber", { number: index + 1 });
-        const handleOpen = (): void => {
-          imagePreview?.openPreview({ src, alt: label, title: label });
-        };
-        const handleKeyDown = (event: ReactKeyboardEvent<HTMLImageElement>): void => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            handleOpen();
-          }
-        };
         return (
           <div className="composer-image-attachment" key={image.id}>
-            <img
-              src={src}
-              alt={label}
-              role="button"
-              tabIndex={0}
-              aria-label={t("composer.enlargeNamed", { name: label })}
-              onClick={handleOpen}
-              onKeyDown={handleKeyDown}
-            />
+            <AttachmentImage image={image} label={label}
+              onOpen={src => imagePreview?.openPreview({ src, alt: label, title: label })} />
             {removable ? (
               <button
                 type="button"

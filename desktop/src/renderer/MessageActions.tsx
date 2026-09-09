@@ -9,9 +9,9 @@ import {
   PencilLine,
   X,
 } from "lucide-react";
-import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InputFile, InputImage } from "../shared/protocol";
-import { imageSource } from "./ComposerMessages";
+import { AttachmentImage } from "./AttachmentImage";
 import { useImagePreview } from "./ImagePreview";
 import { useI18n } from "./i18n";
 
@@ -213,30 +213,12 @@ export function MessageImageGrid({
   return (
     <div className={`message-images${onRemove ? " message-images-editable" : ""}`}>
       {visibleImages.map((image, index) => {
-        const src = imageSource(image);
         const label = t("composer.imageNumber", { number: index + 1 });
         const overflowPreview = collapsed && index === visibleImages.length - 1;
-        const handleOpen = (): void => {
-          openPreview({ src, alt: label, title: label });
-        };
-        const handleKeyDown = (event: ReactKeyboardEvent<HTMLImageElement>): void => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            handleOpen();
-          }
-        };
         return (
           <div className="message-image-frame" key={`${image.media_type}-${index}`}>
-            <img
-              className="message-image"
-              src={src}
-              alt={label}
-              role={overflowPreview ? undefined : "button"}
-              tabIndex={overflowPreview ? -1 : 0}
-              aria-label={overflowPreview ? undefined : t("composer.enlargeNamed", { name: label })}
-              onClick={overflowPreview ? undefined : handleOpen}
-              onKeyDown={overflowPreview ? undefined : handleKeyDown}
-            />
+            <AttachmentImage image={image} label={label} className="message-image" previewDisabled={overflowPreview}
+              onOpen={src => openPreview({ src, alt: label, title: label })} />
             {overflowPreview ? (
               <button
                 type="button"

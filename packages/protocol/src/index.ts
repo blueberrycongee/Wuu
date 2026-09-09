@@ -2308,6 +2308,8 @@ export type TodoUpdate = {
 export type InputImage = {
   media_type: string;
   data: string;
+  /** Remote images may retain bytes on the desktop until explicitly viewed. */
+  remote_ref?: string;
 };
 
 export type InputFile = {
@@ -2835,6 +2837,7 @@ export type WuuDesktopApi = {
   getChannelHumanMentionStatus: () => Promise<ChannelHumanMentionStatusResult>;
   ackChannelHumanMentions: () => Promise<ChannelHumanMentionAckResult>;
   startThread: (params?: ThreadStartParams) => Promise<{ thread: Thread }>;
+  readRemoteAttachment?: (ref: string) => Promise<string>;
   resumeThread: (sessionId?: string) => Promise<ThreadResumeResult>;
   forkThread: (
     threadId: string,

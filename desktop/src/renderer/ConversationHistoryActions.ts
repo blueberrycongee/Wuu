@@ -339,6 +339,7 @@ deps.rememberConversationScrollForEdit();
       id: `edit-attach-${index}-${idSalt}`,
       media_type: image.media_type,
       data: image.data,
+      remote_ref: image.remote_ref,
     }));
     const composerFiles: ComposerFile[] = files.map((file, index) => ({
       id: `edit-file-${index}-${idSalt}`,

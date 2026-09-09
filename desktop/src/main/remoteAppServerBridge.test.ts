@@ -67,3 +67,21 @@ it("keeps snapshot replies before subsequent events without waiting for promise 
   expect(await phone.next()).toEqual({ id: "snapshot", result: { version: 1 } });
   expect((await phone.next()).params).toEqual({ version: 2 });
 });
+
+it("negotiates lazy images per connection and resolves edited attachments before dispatch", async () => {
+  const image = {media_type:"image/png", data:"a".repeat(300_000)};
+  const { bridge, request } = fixture(vi.fn(async (_cwd, method, params) => method === "turn/start" ? params : ({images:[image]})));
+  const endpoint = await bridge.start("/workspace");
+  const compact = await peer(endpoint), legacy = await peer(endpoint);
+  await compact.next(); await legacy.next();
+  compact.send({id:1, method:"workspace/list", params:{remote_delivery:1}});
+  const projected = (await compact.next()).result;
+  expect(projected.images[0].data).toBe("");
+  legacy.send({id:1, method:"workspace/list"});
+  expect((await legacy.next()).result.images[0]).toEqual(image);
+  compact.send({id:2, method:"turn/start", params:projected});
+  await compact.next();
+  expect(request.mock.calls.at(-1)?.[2]).toEqual({images:[image]});
+  compact.send({id:3, method:"remote/attachment/read", params:{ref:projected.images[0].remote_ref}});
+  expect((await compact.next()).result.data.length).toBe(128 * 1024);
+});

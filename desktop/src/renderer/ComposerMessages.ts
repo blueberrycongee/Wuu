@@ -357,11 +357,11 @@ export async function awaitComposerImages(
 }
 
 function optimisticInputImagesFromComposer(images: ComposerImage[]): InputImage[] {
-  return images.map(({ media_type, data, previewSrc }) => {
+  return images.map(({ media_type, data, previewSrc, remote_ref }) => {
     if (previewSrc) {
       return { media_type, data, previewSrc } as InputImage & { previewSrc: string };
     }
-    return { media_type, data };
+    return { media_type, data, ...(remote_ref ? { remote_ref } : {}) };
   });
 }
 
@@ -401,7 +401,7 @@ export function createComposerMessage(
 }
 
 export function inputImagesFromComposer(images: ComposerImage[]): InputImage[] {
-  return images.map(({ media_type, data }) => ({ media_type, data }));
+  return images.map(({ media_type, data, remote_ref }) => ({ media_type, data, ...(remote_ref ? { remote_ref } : {}) }));
 }
 
 export function inputFilesFromComposer(files: ComposerFile[]): InputFile[] {

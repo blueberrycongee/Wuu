@@ -259,7 +259,7 @@ export class RemoteDesktopBridge {
     }
     const revision = this.setConnection(first ? "connecting" : "restoring");
     try {
-      const workspace = await this.client.call<WorkspaceSnapshot>("workspace/list", undefined, 30_000);
+      const workspace = await this.client.call<WorkspaceSnapshot>("workspace/list", { remote_delivery: 1 }, 30_000);
       if (this.connection.revision !== revision || this.stopped) return;
       if (!workspace.current) throw new Error("Remote host did not provide a workspace");
       this.updateWorkspaces(workspace);
@@ -292,6 +292,35 @@ export class RemoteDesktopBridge {
     if (!this.reconnectTimer) return;
     clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
+  }
+
+  private readonly attachmentReads = new Map<string, Promise<string>>();
+
+  private readAttachment(ref: string): Promise<string> {
+    const cached = this.attachmentReads.get(ref);
+    if (cached) return cached;
+    const read = (async () => {
+      const first = await this.call<{ data: string; total: number; offset: number }>("remote/attachment/read", { ref, offset: 0 });
+      if (!Number.isSafeInteger(first.total) || first.total < 0 || first.total > 64 * 1024 * 1024 || first.offset !== 0 || !first.data.length) throw new Error("Invalid attachment response");
+      const chunks = [first.data];
+      // Small independently encrypted chunks let control RPCs and live text
+      // interleave with an explicitly requested image transfer.
+      for (let offset = first.data.length; offset < first.total;) {
+        const offsets: number[] = [];
+        for (let n = 0; n < 4 && offset < first.total; n++, offset += first.data.length) offsets.push(offset);
+        chunks.push(...await Promise.all(offsets.map(async position => {
+          const chunk = await this.call<typeof first>("remote/attachment/read", { ref, offset: position });
+          if (chunk.total !== first.total || chunk.offset !== position || chunk.data.length !== Math.min(first.data.length, first.total - position)) throw new Error("Attachment changed during download");
+          return chunk.data;
+        })));
+      }
+      return chunks.join("");
+    })();
+    this.attachmentReads.set(ref, read);
+    // Bound retained image data; failures remain retryable after reconnect.
+    if (this.attachmentReads.size > 4) this.attachmentReads.delete(this.attachmentReads.keys().next().value!);
+    void read.catch(() => this.attachmentReads.delete(ref));
+    return read;
   }
 
   private readonly projectID: string;
@@ -572,6 +601,7 @@ export class RemoteDesktopBridge {
       listThreads: (cwd?: string) => this.call("thread/list", { cwd: cwd || this.workdir(), summary_only: true }),
       listAllThreads: () => this.call("thread/listAll", { summary_only: true }),
       listArchivedThreads: () => this.call("thread/listArchived", { summary_only: true }),
+      readRemoteAttachment: (ref: string) => this.readAttachment(ref),
       resumeThread: async (sessionId?: string) => {
         const params = { session_id: sessionId ?? "", response_only: true };
         const result = await this.call<ThreadResumeResult>("thread/resume", params);

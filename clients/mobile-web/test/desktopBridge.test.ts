@@ -395,3 +395,13 @@ it("synchronizes a resumed snapshot once from the response without requesting a 
   expect(listener).toHaveBeenCalledTimes(1);
   expect(listener.mock.calls[0][0].message).toEqual({method:"thread/resumed", params:result});
 });
+
+it("assembles explicitly requested image chunks and shares repeated reads", async () => {
+  const host = await api();
+  const data = "a".repeat(300_000);
+  remote.call.mockImplementation(async (_method, {offset}) => ({offset, total:data.length, data:data.slice(offset, offset+128*1024)}));
+  expect(await host.readRemoteAttachment!("ref")).toBe(data);
+  const calls = remote.call.mock.calls.length;
+  expect(await host.readRemoteAttachment!("ref")).toBe(data);
+  expect(remote.call).toHaveBeenCalledTimes(calls);
+});
