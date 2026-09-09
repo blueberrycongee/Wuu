@@ -3,15 +3,19 @@ import type { InitializeResult } from "../shared/protocol";
 import { initialState } from "./AppState";
 import {
   applyDraftRuntimeMemory,
+  clearDraftPermissionMemory,
   clearDraftRuntimeMemory,
   lastEffortForRuntimeModel,
+  readDraftPermissionMemory,
   readDraftRuntimeMemory,
   resolveDraftRuntimeMemory,
   seedDraftRuntimeFromMemory,
+  writeDraftPermissionMemory,
   writeDraftRuntimeMemory,
 } from "./DraftRuntimeMemory";
 
 const MEMORY_KEY = "wuu.desktop.lastDraftRuntime";
+const PERMISSION_KEY = "wuu.desktop.lastDraftPermissionMode";
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -247,5 +251,78 @@ describe("draft runtime memory", () => {
     writeDraftRuntimeMemory({ provider: "", model: "", effort: "" });
 
     expect(window.localStorage.getItem(MEMORY_KEY)).toBeNull();
+  });
+});
+
+describe("draft permission memory", () => {
+  it("seeds a new conversation with the permission mode last picked in the composer", () => {
+    writeDraftPermissionMemory("unconfined");
+
+    expect(readDraftPermissionMemory()).toBe("unconfined");
+    expect(
+      applyDraftRuntimeMemory(initialized({ permissions: { mode: "standard" } })).permissions,
+    ).toEqual({ mode: "unconfined" });
+    expect(
+      seedDraftRuntimeFromMemory({
+        ...initialState,
+        initialized: initialized({ permissions: { mode: "standard" } }),
+      }).initialized?.permissions?.mode,
+    ).toBe("unconfined");
+  });
+
+  it("applies the remembered mode even when no provider/model is remembered", () => {
+    writeDraftPermissionMemory("read_only");
+
+    const next = applyDraftRuntimeMemory(initialized({ permissions: { mode: "standard" } }));
+    expect(next.provider).toBe("work");
+    expect(next.model).toBe("claude-sonnet");
+    expect(next.permissions?.mode).toBe("read_only");
+  });
+
+  it("leaves the workspace default alone when nothing is remembered", () => {
+    const base = initialized({ permissions: { mode: "standard" } });
+    expect(applyDraftRuntimeMemory(base)).toBe(base);
+    expect(
+      seedDraftRuntimeFromMemory({ ...initialState, initialized: base }).initialized,
+    ).toBe(base);
+  });
+
+  it("does not override the permission mode of an open thread", () => {
+    writeDraftPermissionMemory("unconfined");
+    const open = seedDraftRuntimeFromMemory({
+      ...initialState,
+      initialized: initialized({ permissions: { mode: "standard" } }),
+      thread: {
+        id: "thread-1",
+        title: "open",
+        preview: "open",
+        model_provider: "work",
+        model: "claude-sonnet",
+        permission_mode: "read_only",
+        cwd: "/tmp/project",
+        status: "idle",
+        pinned: false,
+        archived: false,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        turns: [],
+      },
+    });
+    expect(open.initialized?.permissions?.mode).toBe("standard");
+  });
+
+  it("ignores unknown or corrupted stored modes", () => {
+    window.localStorage.setItem(PERMISSION_KEY, "yolo");
+    expect(readDraftPermissionMemory()).toBeUndefined();
+
+    writeDraftPermissionMemory("unconfined");
+    writeDraftPermissionMemory("");
+    expect(window.localStorage.getItem(PERMISSION_KEY)).toBeNull();
+  });
+
+  it("clears the memory so the workspace default takes over again", () => {
+    writeDraftPermissionMemory("unconfined");
+    clearDraftPermissionMemory();
+    expect(readDraftPermissionMemory()).toBeUndefined();
   });
 });

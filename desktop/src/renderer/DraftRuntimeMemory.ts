@@ -1,5 +1,6 @@
 import type { InitializeResult, ProviderSummary } from "../shared/protocol";
 import { activeThreadForState, type AppState } from "./AppState";
+import type { PermissionMode } from "./ComposerTypes";
 import { normalizedVariantForProviderModel } from "./RuntimeHelpers";
 
 // Last Wuu provider/model/effort the user picked in the composer. Existing
@@ -8,11 +9,54 @@ import { normalizedVariantForProviderModel } from "./RuntimeHelpers";
 // does not have to repeat that trio on the next tab or after a relaunch.
 const DRAFT_RUNTIME_MEMORY_KEY = "wuu.desktop.lastDraftRuntime";
 
+// Last permission mode the user picked in the composer. The composer only
+// pins the mode on the target conversation (workspace defaults live in
+// Settings), so without this memory every new conversation silently fell
+// back to the workspace default and the user had to re-pick the mode per
+// session. Kept separate from the provider/model memory because it stays
+// valid regardless of which provider catalog is currently offered.
+const DRAFT_PERMISSION_MEMORY_KEY = "wuu.desktop.lastDraftPermissionMode";
+
 export type DraftRuntimeMemory = {
   provider: string;
   model: string;
   effort: string;
 };
+
+const PERMISSION_MODES = new Set<PermissionMode>(["standard", "read_only", "unconfined"]);
+
+export function readDraftPermissionMemory(): PermissionMode | undefined {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_PERMISSION_MEMORY_KEY);
+    if (!raw) return undefined;
+    const mode = raw.trim();
+    return PERMISSION_MODES.has(mode as PermissionMode) ? (mode as PermissionMode) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeDraftPermissionMemory(mode: string): void {
+  const next = mode.trim();
+  if (!PERMISSION_MODES.has(next as PermissionMode)) {
+    clearDraftPermissionMemory();
+    return;
+  }
+  try {
+    window.localStorage.setItem(DRAFT_PERMISSION_MEMORY_KEY, next);
+  } catch {
+    // A denied/quota-limited write should not break the selection; the
+    // current window still applies it through app state.
+  }
+}
+
+export function clearDraftPermissionMemory(): void {
+  try {
+    window.localStorage.removeItem(DRAFT_PERMISSION_MEMORY_KEY);
+  } catch {
+    // Nothing to recover: the next read falls back to the workspace default.
+  }
+}
 
 export function readDraftRuntimeMemory(): DraftRuntimeMemory | undefined {
   try {
@@ -84,14 +128,24 @@ export function applyDraftRuntimeMemory(
   initialized: InitializeResult,
 ): InitializeResult {
   const remembered = resolveDraftRuntimeMemory(initialized);
-  if (!remembered) return initialized;
-  return {
-    ...initialized,
-    provider: remembered.provider,
-    model: remembered.model,
-    variant: remembered.effort,
-    effort: remembered.effort,
-  };
+  const rememberedMode = readDraftPermissionMemory();
+  let next = initialized;
+  if (remembered) {
+    next = {
+      ...next,
+      provider: remembered.provider,
+      model: remembered.model,
+      variant: remembered.effort,
+      effort: remembered.effort,
+    };
+  }
+  if (rememberedMode && rememberedMode !== next.permissions?.mode) {
+    next = {
+      ...next,
+      permissions: { ...next.permissions, mode: rememberedMode },
+    };
+  }
+  return next;
 }
 
 export function lastEffortForRuntimeModel(provider: string, model: string): string | undefined {
@@ -110,6 +164,7 @@ export function seedDraftRuntimeFromMemory(state: AppState): AppState {
     && next.model === state.initialized.model
     && (next.variant ?? "") === (state.initialized.variant ?? "")
     && (next.effort ?? "") === (state.initialized.effort ?? "")
+    && (next.permissions?.mode ?? "") === (state.initialized.permissions?.mode ?? "")
   ) {
     return state;
   }

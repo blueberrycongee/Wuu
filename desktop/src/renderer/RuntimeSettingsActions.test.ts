@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InitializeResult, Thread } from "../shared/protocol";
 import { initialState, type AppState } from "./AppState";
 import type { CodexModelLoadState, CodexRuntimeMenu } from "./ComposerTypes";
-import { readDraftRuntimeMemory } from "./DraftRuntimeMemory";
+import { readDraftPermissionMemory, readDraftRuntimeMemory } from "./DraftRuntimeMemory";
 import { createRuntimeSettingsActions } from "./RuntimeSettingsActions";
 
 const originalWuu = (window as unknown as { wuu?: unknown }).wuu;
@@ -741,6 +741,9 @@ describe("createRuntimeSettingsActions", () => {
     );
     expect(harness.getAppState().thread?.permission_mode).toBe("read_only");
     expect(harness.getRuntimeMenus().accessMenuOpen).toBe(false);
+    // The pick is remembered so the next new conversation seeds from it
+    // instead of the workspace default.
+    expect(readDraftPermissionMemory()).toBe("read_only");
   });
 
   it("keeps thread and workspace efforts intact on a permission-only click", async () => {
@@ -837,6 +840,27 @@ describe("createRuntimeSettingsActions", () => {
       "cannot change the model while a turn is running",
     );
     expect(harness.getRuntimeMenus().accessMenuOpen).toBe(false);
+    // A rejected change must not become the default for future conversations.
+    expect(readDraftPermissionMemory()).toBeUndefined();
+  });
+
+  it("remembers a draft permission pick before the first thread starts", async () => {
+    const api = installWuuApi();
+    const harness = buildActions({
+      initial: {
+        ...initialState,
+        initialized: initialized({ permissions: { mode: "standard" } }),
+        thread: undefined,
+        threads: [],
+        status: "ready",
+      },
+    });
+
+    await harness.actions.selectPermissionMode("unconfined");
+
+    expect(api.updateRuntimeSettings).not.toHaveBeenCalled();
+    expect(harness.getAppState().initialized?.permissions?.mode).toBe("unconfined");
+    expect(readDraftPermissionMemory()).toBe("unconfined");
   });
 
   it("interrupts active and pane-specific threads without clearing pending messages", async () => {

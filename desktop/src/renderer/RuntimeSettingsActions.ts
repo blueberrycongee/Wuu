@@ -17,7 +17,7 @@ import type {
   CodexRuntimeMenu,
   PermissionMode,
 } from "./ComposerTypes";
-import { lastEffortForRuntimeModel, writeDraftRuntimeMemory } from "./DraftRuntimeMemory";
+import { lastEffortForRuntimeModel, writeDraftPermissionMemory, writeDraftRuntimeMemory } from "./DraftRuntimeMemory";
 import { isCodexProvider, normalizedVariantForProviderModel } from "./RuntimeHelpers";
 import { runtimeViewForSession } from "./SessionRuntimeState";
 import { showErrorToast } from "./Toast";
@@ -578,6 +578,9 @@ export function createRuntimeSettingsActions(
     }
     try {
       await sendRuntimeSelection({ permissionMode: mode });
+      // Remember the choice so the next new conversation (another tab or a
+      // relaunch) starts with it instead of the workspace default.
+      writeDraftPermissionMemory(mode);
     } catch {
       // Failure already surfaced through the status line.
     }
