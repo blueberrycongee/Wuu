@@ -448,7 +448,9 @@ describe("queued turn reconciliation", () => {
     let rejectStart: ((reason: Error) => void) | undefined;
     const startTurn = vi.fn(
       () =>
-        new Promise<{ turn: { id: string } }>((_resolve, reject) => {
+        new Promise<{
+          turn: { id: string; status: "in_progress"; items_view: "full"; items: [] };
+        }>((_resolve, reject) => {
           rejectStart = reject;
         }),
     );
@@ -515,7 +517,9 @@ describe("queued turn reconciliation", () => {
     let rejectStart: ((reason: Error) => void) | undefined;
     const startTurn = vi.fn(
       () =>
-        new Promise<{ turn: { id: string } }>((_resolve, reject) => {
+        new Promise<{
+          turn: { id: string; status: "in_progress"; items_view: "full"; items: [] };
+        }>((_resolve, reject) => {
           rejectStart = reject;
         }),
     );
