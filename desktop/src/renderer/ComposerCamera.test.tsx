@@ -2,7 +2,7 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ComposerCameraPanel } from "./ComposerCamera";
+import { captureVideoFrameToFile, ComposerCameraPanel } from "./ComposerCamera";
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -46,6 +46,70 @@ function installGetUserMedia(
 }
 
 describe("ComposerCamera", () => {
+  it.each([
+    [300, 600, 200, 0, 240, 480],
+    [600, 300, 0, 80, 640, 320],
+  ])("encodes the visible crop for a %s by %s viewfinder", async (viewWidth, viewHeight, x, y, width, height) => {
+    const video = document.createElement("video");
+    Object.defineProperties(video, {
+      videoWidth: { value: 640 }, videoHeight: { value: 480 },
+      clientWidth: { value: viewWidth }, clientHeight: { value: viewHeight },
+    });
+    const drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (this: HTMLCanvasElement, callback) {
+      expect(this.width).toBe(width);
+      expect(this.height).toBe(height);
+      callback(new Blob(["photo"], { type: "image/jpeg" }));
+    });
+    expect(await captureVideoFrameToFile(video)).toBeInstanceOf(File);
+    expect(drawImage).toHaveBeenCalledWith(video, x, y, width, height, 0, 0, width, height);
+  });
+
+  it("releases the stream before the exit animation finishes and only dismisses once", async () => {
+    const stream = fakeStream();
+    installGetUserMedia(vi.fn().mockResolvedValue(stream));
+    const onClose = vi.fn();
+    let complete!: () => void;
+    const finished = new Promise<void>((resolve) => { complete = resolve; });
+    render(<ComposerCameraPanel onCapture={() => {}} onClose={onClose} />);
+    await act(async () => {});
+    const panel = container.querySelector<HTMLElement>(".composer-camera")!;
+    const animate = vi.fn().mockReturnValue({ finished, cancel: vi.fn() });
+    Object.defineProperty(panel, "animate", { value: animate });
+    act(() => {
+      container.querySelector<HTMLButtonElement>(".composer-camera-close")!.click();
+      container.querySelector("dialog")!.dispatchEvent(new Event("cancel", { cancelable: true }));
+    });
+    expect(stream.getTracks()[0].stop).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(animate).toHaveBeenCalledOnce();
+    await act(async () => { complete(); });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("opens the photo library without capture and keeps the panel when picking is cancelled", () => {
+    const onClose = vi.fn();
+    render(<ComposerCameraPanel onCapture={() => {}} onClose={onClose} />);
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]:not([capture])')!;
+    const click = vi.spyOn(input, "click").mockImplementation(() => {});
+    act(() => { container.querySelector<HTMLButtonElement>(".composer-camera-library")!.click(); });
+    expect(click).toHaveBeenCalledOnce();
+    act(() => { input.dispatchEvent(new Event("cancel", { bubbles: true })); });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("dismisses without waiting for motion when reduced motion is requested", () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true } as MediaQueryList);
+    const onClose = vi.fn();
+    render(<ComposerCameraPanel onCapture={() => {}} onClose={onClose} />);
+    const animate = vi.fn();
+    Object.defineProperty(container.querySelector(".composer-camera"), "animate", { value: animate });
+    act(() => { container.querySelector<HTMLButtonElement>(".composer-camera-close")!.click(); });
+    expect(animate).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("shows the native capture fallback when getUserMedia is unavailable", () => {
     vi.spyOn(navigator, "mediaDevices", "get").mockReturnValue(undefined as unknown as MediaDevices);
     const onCapture = vi.fn();
@@ -169,7 +233,7 @@ describe("ComposerCamera", () => {
       shutter?.click();
     });
 
-    expect(drawImage).toHaveBeenCalledTimes(1);
+    expect(drawImage).toHaveBeenCalledWith(video, 0, 0, 640, 480, 0, 0, 640, 480);
     const file = onCapture.mock.calls[0][0] as File;
     expect(file).toBeInstanceOf(File);
     expect(file.type).toBe("image/jpeg");

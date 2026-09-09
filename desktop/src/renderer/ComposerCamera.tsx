@@ -2,7 +2,7 @@ import {
   Camera,
   Images,
   Paperclip,
-  X,
+  ChevronLeft,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -46,7 +46,7 @@ export function cameraCaptureSupported(): boolean {
   return typeof navigator.mediaDevices?.getUserMedia === "function";
 }
 
-/** Encode the full preview frame as a JPEG attachment. */
+/** Encode the visible, center-cropped preview as a JPEG attachment. */
 export function captureVideoFrameToFile(video: HTMLVideoElement): Promise<File | null> {
   return new Promise((resolve) => {
     const width = video.videoWidth;
@@ -56,14 +56,20 @@ export function captureVideoFrameToFile(video: HTMLVideoElement): Promise<File |
       return;
     }
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    const aspect = video.clientWidth && video.clientHeight
+      ? video.clientWidth / video.clientHeight
+      : width / height;
+    const cropWidth = Math.min(width, height * aspect);
+    const cropHeight = Math.min(height, width / aspect);
+    canvas.width = Math.round(cropWidth);
+    canvas.height = Math.round(cropHeight);
     const context = canvas.getContext("2d");
     if (!context) {
       resolve(null);
       return;
     }
-    context.drawImage(video, 0, 0, width, height);
+    context.drawImage(video, (width - cropWidth) / 2, (height - cropHeight) / 2,
+      cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
     canvas.toBlob((blob) => {
       if (!blob) {
         resolve(null);
@@ -286,7 +292,16 @@ export function ComposerCameraPanel({
   onClose: () => void;
 }): JSX.Element {
   const { t } = useI18n();
-  const { status, errorMessage, videoRef, open, close, capture, capturing } = useComposerCamera(onCapture);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const stillRef = useRef<HTMLCanvasElement>(null);
+  const exitingRef = useRef(false);
+  const exitAnimationRef = useRef<Animation | null>(null);
+  const [exiting, setExiting] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const { status, errorMessage, videoRef, open, close, capture, capturing } = useComposerCamera(
+    (file) => finish(() => onCapture(file)),
+  );
   const nativeCaptureInputRef = useRef<HTMLInputElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -295,19 +310,46 @@ export function ComposerCameraPanel({
   }, [open]);
 
   useEffect(() => {
+    dialogRef.current?.showModal?.();
     closeButtonRef.current?.focus({ preventScroll: true });
+    return () => { exitAnimationRef.current?.cancel(); };
   }, []);
 
-  function handleClose(): void {
+  function finish(done: () => void): void {
+    if (exitingRef.current) return;
+    exitingRef.current = true;
+    // Keep a local still for the exit transition while releasing the camera immediately.
+    const video = videoRef.current;
+    const still = stillRef.current;
+    if (still && video && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+      still.width = video.videoWidth;
+      still.height = video.videoHeight;
+      try { still.getContext("2d")?.drawImage(video, 0, 0); } catch { /* Closing must always release the stream. */ }
+    }
     close();
-    onClose();
+    setExiting(true);
+    const panel = panelRef.current;
+    if (!panel?.animate || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      done();
+      return;
+    }
+    const animation = panel.animate([
+      { transform: "translateY(0)", opacity: 1 },
+      { transform: "translateY(100%)", opacity: 0 },
+    ], { duration: 240, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" });
+    exitAnimationRef.current = animation;
+    void animation.finished.then(done, () => {});
+  }
+
+  function handleClose(): void {
+    finish(onClose);
   }
 
   function handleNativeCapture(event: ChangeEvent<HTMLInputElement>): void {
     const selected = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
     if (selected.length > 0) {
-      onCapture(selected[0]);
+      finish(() => onCapture(selected[0]));
     }
   }
 
@@ -315,10 +357,16 @@ export function ComposerCameraPanel({
   const fallbackVisible = status === "unsupported" || status === "denied" || status === "error";
 
   return (
-    <div
-      className="composer-camera"
-      role="region"
+    <dialog
+      ref={dialogRef}
+      className="composer-camera-dialog"
       aria-label={t("composer.camera.title")}
+      onCancel={(event) => {
+        // File pickers also emit cancel; dismissing one must keep the camera open.
+        if (event.target !== event.currentTarget) return;
+        event.preventDefault();
+        handleClose();
+      }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -326,6 +374,7 @@ export function ComposerCameraPanel({
         }
       }}
     >
+    <div ref={panelRef} className="composer-camera" data-exiting={exiting || undefined} aria-busy={exiting}>
       <input
         ref={nativeCaptureInputRef}
         className="composer-file-input"
@@ -335,8 +384,12 @@ export function ComposerCameraPanel({
         tabIndex={-1}
         onChange={handleNativeCapture}
       />
+      <input ref={photoInputRef} className="composer-file-input" type="file" accept="image/*"
+        tabIndex={-1} onChange={handleNativeCapture} />
       <div className="composer-camera-viewport">
         {previewVisible ? <video ref={videoRef} autoPlay playsInline muted aria-hidden="true" /> : null}
+        <canvas ref={stillRef} className="composer-camera-still" hidden={!exiting} aria-hidden="true" />
+        {capturing ? <div className="composer-camera-flash" aria-hidden="true" /> : null}
         {status === "starting" ? (
           <div className="composer-camera-status" role="status">
             {t("composer.camera.starting")}
@@ -367,23 +420,28 @@ export function ComposerCameraPanel({
           aria-label={t("composer.camera.close")}
           title={t("composer.camera.close")}
           onClick={handleClose}
+          disabled={exiting}
         >
-          <X aria-hidden="true" />
+          <ChevronLeft aria-hidden="true" />
         </button>
         <button
           type="button"
           className="composer-camera-shutter"
           aria-label={t("composer.camera.capture")}
           title={t("composer.camera.capture")}
-          disabled={status !== "active" || capturing}
+          disabled={status !== "active" || capturing || exiting}
           aria-busy={capturing}
           onClick={capture}
         >
           <span aria-hidden="true" />
         </button>
-        <span className="composer-camera-controls-spacer" aria-hidden="true" />
+        <button type="button" className="composer-camera-library" aria-label={t("composer.choosePhotos")}
+          disabled={exiting || capturing} onClick={() => photoInputRef.current?.click()}>
+          <Images aria-hidden="true" />
+        </button>
       </div>
     </div>
+    </dialog>
   );
 }
 
