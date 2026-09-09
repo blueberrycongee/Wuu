@@ -63,7 +63,8 @@ try {
       if (req.method === 'GET') { res.end(JSON.stringify({ object: 'list', data: [{ id: 'web-fixture', object: 'model' }] })); return; }
       const body = JSON.parse(raw);
       const desktopTurn = body.messages?.some(message => message.role === 'user' && JSON.stringify(message.content).includes(desktopPrompt));
-      const writeTool = body.tools?.some(tool => tool.function?.name === 'write_file');
+      const historyFixture = body.messages?.some(message => message.role === 'user' && JSON.stringify(message.content).includes('Remote history fixture'));
+      const writeTool = !historyFixture && body.tools?.some(tool => tool.function?.name === 'write_file');
       if (writeTool && body.messages?.filter(message => message.role === 'user').at(-1)?.content === stopPrompt) {
         interruptRequested = true;
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -274,6 +275,46 @@ try {
     const brand = await page.locator('.sidebar-brand').boundingBox();
     return brand && brand.x >= 0 && brand.y < 30;
   }, 'web sidebar starts near the top without native window chrome');
+  }
+  if (process.env.WUU_E2E_REMOTE_HISTORY === '1') {
+    const fixture = await desktopCall('thread/start', {});
+    const historyID = fixture.thread.id;
+    const image = await page.evaluate(() => {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
+      const ctx = canvas.getContext('2d'), pixels = ctx.createImageData(512, 512);
+      let seed = 42;
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        for (let c = 0; c < 3; c++) { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; pixels.data[i+c] = seed >>> 24; }
+        pixels.data[i+3] = 255;
+      }
+      ctx.putImageData(pixels, 0, 0);
+      return {media_type:'image/png', data:canvas.toDataURL('image/png').split(',')[1]};
+    });
+    for (let i = 0; i < 23; i++) {
+      const turn = await desktopCall('turn/start', {thread_id:historyID, prompt:`Remote history fixture ${i}`, ...(i === 22 ? {images:[image]} : {})});
+      await until(() => records().some(row => row.desktopEvent?.message?.method === 'turn/completed' && row.desktopEvent.message.params.thread_id === historyID && row.desktopEvent.message.params.turn?.id === turn.turn.id), `history fixture turn ${i}`);
+    }
+    const full = await desktopCall('thread/resume', {session_id:historyID, response_only:true});
+    const compact = await page.evaluate(id => window.wuu.resumeThread(id), historyID);
+    assert(compact.thread.turns.length < full.thread.turns.length, 'initial history is paged');
+    assert(compact.thread.history_cursor, 'older history has a cursor');
+    const fullImage = full.thread.turns.flatMap(turn => turn.items).flatMap(item => item.images ?? [])[0];
+    const deferred = compact.thread.turns.flatMap(turn => turn.items).flatMap(item => item.images ?? [])[0];
+    assert(fullImage.data.length > 16 * 1024 && deferred.data === '' && deferred.remote_ref, 'image bytes stay on desktop');
+    assert(await page.evaluate(async ({ref, expected}) => (await window.wuu.readRemoteAttachment(ref)) === expected, {ref:deferred.remote_ref, expected:fullImage.data}), 'encrypted image chunks reassemble exactly');
+    const olderIDs = await page.evaluate(async ({id, cursor}) => {
+      const ids = [];
+      while (cursor) {
+        let page;
+        const off = window.wuu.onServerEvent(event => { if (event.kind === 'notification' && event.message.method === 'thread/historyLoaded') page = event.message.params; });
+        try { await window.wuu.loadEarlierThreadHistory(id, cursor); } finally { off(); }
+        if (!page) throw new Error('missing history page event');
+        ids.unshift(...page.turns.map(turn => turn.id)); cursor = page.history_cursor;
+      }
+      return ids;
+    }, {id:historyID,cursor:compact.thread.history_cursor});
+    assert.deepEqual([...olderIDs,...compact.thread.turns.map(turn => turn.id)], full.thread.turns.map(turn => turn.id));
+    console.log('PASS: paged history and encrypted on-demand image round trip', {fullBytes:JSON.stringify(full).length, firstPageBytes:JSON.stringify(compact).length});
   }
   assert.deepEqual(pageErrors, []);
   console.log(downloadBps
