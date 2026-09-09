@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestServeNegotiatesAndInvokesCapability(t *testing.T) {
@@ -436,5 +438,92 @@ func TestCallHostPreservesTypedErrorCode(t *testing.T) {
 	var hostErr *HostCallError
 	if !errors.As(err, &hostErr) || hostErr.Code != "service_unavailable" || hostErr.Message != "no provider for service memory.session" {
 		t.Fatalf("typed error = %#v", err)
+	}
+}
+
+// Client serializes writes, so this sink preserves complete response frames.
+type responseSink chan rpcResponse
+
+func (s responseSink) Write(p []byte) (int, error) {
+	var r rpcResponse
+	if err := json.Unmarshal(p, &r); err != nil {
+		return 0, err
+	}
+	s <- r
+	return len(p), nil
+}
+
+func TestConcurrentCapabilityCancellationAndShutdown(t *testing.T) {
+	reader, writer := io.Pipe()
+	responses := make(responseSink, 16)
+	started := make(chan struct{}, 1)
+	done := make(chan error, 1)
+	var active atomic.Bool
+	go func() {
+		done <- ServeIO(context.Background(), reader, responses, Handler{
+			ConcurrentCapabilities: []string{"read.wait"},
+			InvokeCapability: func(ctx context.Context, _ Host, _ CapabilityCall) (json.RawMessage, error) {
+				active.Store(true)
+				defer active.Store(false)
+				started <- struct{}{}
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+			ExecuteTool: func(context.Context, Host, ToolCall) (ToolResult, error) { return TextResult("pong"), nil },
+			Shutdown: func(context.Context) error {
+				if active.Load() {
+					return errors.New("shutdown overlapped capability")
+				}
+				return nil
+			},
+		})
+	}()
+	defer reader.Close()
+	defer writer.Close()
+	write := func(line string) {
+		t.Helper()
+		if _, err := io.WriteString(writer, line+"\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	next := func() rpcResponse {
+		t.Helper()
+		select {
+		case r := <-responses:
+			return r
+		case <-time.After(3 * time.Second):
+			t.Fatal("missing runtime response")
+			return rpcResponse{}
+		}
+	}
+	write(`{"id":"init","method":"initialize","params":{"protocol_version":1,"plugin_id":"test"}}`)
+	if r := next(); r.ID != "init" || r.Error != nil {
+		t.Fatalf("initialize: %+v", r)
+	}
+	write(`{"id":"read","method":"capability.invoke","params":{"capability":"read.wait","execution_id":"read-1","input":{}}}`)
+	<-started
+	write(`{"id":"ping","method":"tool.execute","params":{"tool_id":"ping","arguments":{}}}`)
+	if r := next(); r.ID != "ping" || r.Error != nil {
+		t.Fatalf("concurrent query blocked tool: %+v", r)
+	}
+	write(`{"id":"shutdown","method":"shutdown"}`)
+	// Cancellation must remain readable while shutdown waits for the query.
+	write(`{"id":"cancel","method":"execution.cancel","params":{"execution_id":"read-1"}}`)
+	seen := map[string]rpcResponse{}
+	for len(seen) < 3 {
+		r := next()
+		seen[r.ID] = r
+	}
+	if seen["read"].Error == nil || seen["shutdown"].Error != nil {
+		t.Fatalf("cancel/shutdown results: %+v", seen)
+	}
+	writer.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("runtime did not stop")
 	}
 }

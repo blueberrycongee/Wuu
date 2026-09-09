@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -807,6 +808,12 @@ func kernelServiceForLegacyMethod(method string) (string, bool) {
 }
 
 type Handler struct {
+	// ConcurrentCapabilities names capability handlers that may overlap tool
+	// execution and each other. Opt in only for handlers safe under concurrent
+	// access; all other requests retain ordered dispatch. Initialize completes
+	// before these handlers run, and shutdown waits for them to finish.
+	ConcurrentCapabilities []string
+
 	Definition       Definition
 	Initialize       func(context.Context, Host, InitializeParams) error
 	Activate         func(context.Context) error
@@ -1042,10 +1049,23 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 	incomingRequests := make(chan queuedDispatch)
 	requests := make(chan queuedDispatch)
 	workerDone := make(chan error, 1)
+	var initialized atomic.Bool
+	var concurrent sync.WaitGroup
+	defer func() {
+		cancel()
+		client.closeTransport(context.Canceled)
+		concurrent.Wait()
+	}()
 	go queueRequests(serveCtx, incomingRequests, requests)
 	go func() {
 		for envelope := range requests {
+			if envelope.request.Method == "shutdown" {
+				concurrent.Wait()
+			}
 			result, stop, err := dispatch(envelope.ctx, client, handler, envelope.request)
+			if envelope.request.Method == "initialize" && err == nil {
+				initialized.Store(true)
+			}
 			if envelope.release != nil {
 				envelope.release()
 			}
@@ -1065,6 +1085,7 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 		workerDone <- nil
 	}()
 
+	acceptConcurrent := true
 	for scanner.Scan() {
 		if err := serveCtx.Err(); err != nil {
 			client.closeTransport(err)
@@ -1103,6 +1124,32 @@ func ServeIO(ctx context.Context, input io.Reader, output io.Writer, handler Han
 			}
 			_ = json.Unmarshal(request.Params, &probe)
 			envelope.ctx, envelope.release = client.trackExecution(serveCtx, probe.ExecutionID)
+		}
+		if request.Method == "shutdown" {
+			acceptConcurrent = false
+		}
+		if acceptConcurrent && initialized.Load() && request.Method == "capability.invoke" {
+			var call CapabilityCall
+			_ = json.Unmarshal(request.Params, &call)
+			if slices.Contains(handler.ConcurrentCapabilities, call.Capability) {
+				concurrent.Add(1)
+				go func() {
+					defer concurrent.Done()
+					if envelope.release != nil {
+						defer envelope.release()
+					}
+					result, _, err := dispatch(envelope.ctx, client, handler, envelope.request)
+					response := rpcResponse{ID: envelope.request.ID, Result: result}
+					if err != nil {
+						response = rpcResponse{ID: envelope.request.ID, Error: &rpcError{Message: err.Error()}}
+					}
+					if err := client.write(response); err != nil {
+						client.closeTransport(err)
+						cancel()
+					}
+				}()
+				continue
+			}
 		}
 		select {
 		case incomingRequests <- envelope:

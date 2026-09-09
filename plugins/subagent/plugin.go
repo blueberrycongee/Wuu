@@ -59,6 +59,7 @@ var taskIndexMu sync.Mutex
 
 func Handler() pluginapi.Handler {
 	return pluginapi.Handler{
+		ConcurrentCapabilities: []string{capabilityPrompt, capabilityClient},
 		Definition: pluginapi.Definition{
 			Tools: []pluginapi.Tool{
 				{ID: "spawn_agent", Description: "Delegate a bounded task when separate context materially improves the result. Set run_in_background=false when the next step depends on the child result; the tool waits in the current turn and returns the result directly. Background tasks return immediately and deliver completion later as a normal read-only query bubble.", InputSchema: spawnSchema(), ExecutionScopes: []string{"root"}, Activity: &pluginapi.ToolActivity{ConcurrencySafe: true}},
