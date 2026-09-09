@@ -3204,7 +3204,7 @@
 .rich-code-header {
   display: flex;
   align-items: center;
-  padding: 6px 8px 6px 12px;
+  padding: 4px 8px 4px 12px;
   background: var(--message-flow-card-header-bg);
 }
 
@@ -3739,7 +3739,7 @@ pre {
   max-height: 220px;
   overflow: auto;
   margin: 0;
-  padding: 12px 14px;
+  padding: 6px 14px 12px;
   border-bottom: 1px solid var(--hairline-soft);
   background: var(--surface-1);
   color: var(--pre-text-color);

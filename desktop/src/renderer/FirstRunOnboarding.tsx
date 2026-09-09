@@ -332,7 +332,6 @@ export function FirstRunOnboarding({
   return (
     <main className="first-run-onboarding" data-testid="first-run-onboarding">
       <header className="onboarding-chrome">
-        <span className="onboarding-wordmark">wuu</span>
         <div className="onboarding-progress" aria-label={t("onboarding.progress")}>
           {STEP_ORDER.map((item, index) => (
             <span
