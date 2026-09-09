@@ -3837,6 +3837,8 @@ pre {
 }
 
 .empty-home h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--ink);
   font-family: var(--empty-home-title-font);
@@ -3856,6 +3858,8 @@ pre {
   align-items: center;
   justify-content: center;
   gap: 20px;
+  max-width: 100%;
+  min-width: 0;
   margin: 0;
 }
 

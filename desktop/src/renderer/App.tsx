@@ -2207,7 +2207,6 @@ export function App(): JSX.Element {
     useState(false);
   const mainConversationDockVisible =
     Boolean(state.initialized) &&
-    (!emptyConversation || compactNavigation) &&
     !splitConversation &&
     !showingManagementCatalog &&
     !rightPanelGlobalized;
@@ -2303,8 +2302,8 @@ export function App(): JSX.Element {
       if (isTouchWebShell()) {
         return false;
       }
-      // Compact sessions keep the empty and populated composer in the same dock.
-      const visibleTarget = compactNavigation && target === "hero" ? "dock" : target;
+      // Empty and populated sessions share the same bottom composer.
+      const visibleTarget = target === "hero" ? "dock" : target;
       const composer = conversationPaneRef.current?.querySelector<HTMLElement>(
         `[data-main-conversation-composer="${visibleTarget}"]`,
       );
@@ -2322,7 +2321,7 @@ export function App(): JSX.Element {
       }
       return true;
     },
-    [compactNavigation, conversationPaneRef],
+    [conversationPaneRef],
   );
   const requestMainComposerFocus = useCallback(
     (
@@ -5581,11 +5580,7 @@ export function App(): JSX.Element {
                     ? "compose"
                     : "idle"
                 }
-              >
-                {compactNavigation || (rightPanelGlobalized && activeWorkspaceFileTabID)
-                  ? null
-                  : renderComposer("hero")}
-              </EmptyConversationHome>
+              />
             ) : (
               <CachedConversationPanes
                 threadIDs={cachedThreadPaneIDs}
@@ -5618,7 +5613,7 @@ export function App(): JSX.Element {
               </>
             )}
             </div>
-            {mainConversationDockVisible ? (
+            {mainConversationDockVisible && !emptyConversation ? (
               <JumpToLatestPill
                 containerRef={conversationScrollRef}
                 bottomAnchor={dockComposerNode}

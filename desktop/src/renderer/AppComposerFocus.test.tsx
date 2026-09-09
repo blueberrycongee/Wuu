@@ -328,7 +328,7 @@ async function renderApp(
   await flushAsync();
 }
 
-function mainComposer(variant: "hero" | "dock"): HTMLTextAreaElement {
+function mainComposer(variant: "dock"): HTMLTextAreaElement {
   const textarea = container.querySelector<HTMLTextAreaElement>(
     `textarea[aria-label="main composer ${variant}"]`,
   );
@@ -337,7 +337,7 @@ function mainComposer(variant: "hero" | "dock"): HTMLTextAreaElement {
 }
 
 async function waitForMainComposerFocus(
-  variant: "hero" | "dock",
+  variant: "dock",
 ): Promise<void> {
   await act(async () => {
     await vi.waitFor(() => {
@@ -400,17 +400,17 @@ describe("main composer focus continuity", () => {
     delete (globalThis as { wuu?: WuuDesktopApi }).wuu;
   });
 
-  it("focuses the hero composer after /new", async () => {
+  it("focuses the dock composer after /new", async () => {
     await renderApp(true);
     const dock = mainComposer("dock");
     dock.focus();
 
     await enterCommand(dock, "/new");
 
-    await waitForMainComposerFocus("hero");
+    await waitForMainComposerFocus("dock");
   });
 
-  it("focuses the hero composer from the new-tab button", async () => {
+  it("focuses the dock composer from the new-tab button", async () => {
     await renderApp(true);
     const button = container.querySelector<HTMLButtonElement>(
       'button.session-tab-new[aria-label="新建对话"]',
@@ -421,7 +421,7 @@ describe("main composer focus continuity", () => {
     await act(async () => button.click());
     await flushAsync();
 
-    await waitForMainComposerFocus("hero");
+    await waitForMainComposerFocus("dock");
   });
 
   it("clears an unpublished local draft when switching to an empty new conversation", async () => {
@@ -444,10 +444,10 @@ describe("main composer focus continuity", () => {
     await act(async () => button.click());
     await flushAsync();
 
-    expect(mainComposer("hero").value).toBe("");
+    expect(mainComposer("dock").value).toBe("");
   });
 
-  it("focuses the hero composer from a project's new-conversation button", async () => {
+  it("focuses the dock composer from a project's new-conversation button", async () => {
     await renderApp(true);
     const button = container.querySelector<HTMLButtonElement>(
       'button[aria-label="在 Focus Project 中新建会话"]',
@@ -458,10 +458,10 @@ describe("main composer focus continuity", () => {
     await act(async () => button.click());
     await flushAsync();
 
-    await waitForMainComposerFocus("hero");
+    await waitForMainComposerFocus("dock");
   });
 
-  it("waits for the destination hero before focusing across projects", async () => {
+  it("waits for the destination dock before focusing across projects", async () => {
     await renderApp(false, { deferProjectSelection: true });
     // Resolve animation frames synchronously to model the race where the
     // project action settles before React commits the destination state.
@@ -487,10 +487,10 @@ describe("main composer focus continuity", () => {
     releaseProjectSelection();
     await flushAsync();
 
-    await waitForMainComposerFocus("hero");
+    await waitForMainComposerFocus("dock");
   });
 
-  it("does not focus the old hero when project selection fails", async () => {
+  it("does not focus the old dock when project selection fails", async () => {
     await renderApp(false, { rejectProjectSelection: true });
     const button = container.querySelector<HTMLButtonElement>(
       'button[aria-label="在 Focus Project 中新建会话"]',
@@ -504,7 +504,7 @@ describe("main composer focus continuity", () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it("does not focus the old hero when no-project selection fails", async () => {
+  it("does not focus the old dock when no-project selection fails", async () => {
     await renderApp(false, { rejectNoProjectSelection: true });
     const button = container.querySelector<HTMLButtonElement>(
       'button[aria-label="在 对话 中新建会话"]',
@@ -559,7 +559,7 @@ describe("main composer focus continuity", () => {
     releaseProjectSelection();
     await flushAsync();
 
-    expect(document.activeElement).not.toBe(mainComposer("hero"));
+    expect(document.activeElement).not.toBe(mainComposer("dock"));
     surface.remove();
   });
 
@@ -573,8 +573,10 @@ describe("main composer focus continuity", () => {
     await waitForSideComposerFocus();
   });
 
-  it.each([false, true])("keeps the compact composer mounted when the first send fails=%s", async (rejectThreadStart) => {
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+  it.each([
+    [390, false], [390, true], [1440, false], [1440, true],
+  ] as const)("keeps the composer mounted at width=%s when the first send fails=%s", async (width, rejectThreadStart) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
     await renderApp(false, { rejectThreadStart });
     const dock = mainComposer("dock");
     expect(container.querySelectorAll("[data-main-conversation-composer]")).toHaveLength(1);
@@ -603,12 +605,12 @@ describe("main composer focus continuity", () => {
     expect(mainComposer("dock").value).toBe("");
   });
 
-  it("hands focus from the hero composer to the dock on the first query", async () => {
+  it("keeps focus in the bottom composer on the first query", async () => {
     await renderApp(false);
-    const hero = mainComposer("hero");
-    hero.focus();
+    const dock = mainComposer("dock");
+    dock.focus();
 
-    await enterCommand(hero, "first query");
+    await enterCommand(dock, "first query");
 
     await waitForMainComposerFocus("dock");
     expect(window.wuu.startThread).toHaveBeenCalledWith({
@@ -622,9 +624,9 @@ describe("main composer focus continuity", () => {
 
   it("shows the first query while thread creation is still pending", async () => {
     await renderApp(false, { deferThreadStart: true });
-    const hero = mainComposer("hero");
+    const dock = mainComposer("dock");
 
-    await enterCommand(hero, "first query before thread start");
+    await enterCommand(dock, "first query before thread start");
 
     expect(container.textContent).toContain("first query before thread start");
     expect(container.querySelector(".turn-process-title")?.textContent).toBe(
@@ -640,43 +642,43 @@ describe("main composer focus continuity", () => {
     await flushAsync();
   });
 
-  it("removes the pending query and restores the hero draft when thread creation fails", async () => {
+  it("removes the pending query and restores the dock draft when thread creation fails", async () => {
     await renderApp(false, { rejectThreadStart: true });
-    const hero = mainComposer("hero");
+    const dock = mainComposer("dock");
 
-    await enterCommand(hero, "query that fails before thread start");
+    await enterCommand(dock, "query that fails before thread start");
 
-    expect(mainComposer("hero").value).toBe("query that fails before thread start");
+    expect(mainComposer("dock").value).toBe("query that fails before thread start");
     expect(container.querySelector(".turn-process-title")).toBeNull();
   });
 
-  it("restores focus to the hero when the first query fails", async () => {
+  it("restores focus to the dock when the first query fails", async () => {
     await renderApp(false, { rejectTurnStart: true });
-    const hero = mainComposer("hero");
-    hero.focus();
+    const dock = mainComposer("dock");
+    dock.focus();
 
-    await enterCommand(hero, "first query");
+    await enterCommand(dock, "first query");
 
-    await waitForMainComposerFocus("hero");
+    await waitForMainComposerFocus("dock");
   });
 
   it("does not hand focus to the dock after the user focuses another control", async () => {
     await renderApp(false);
-    const hero = mainComposer("hero");
+    const dock = mainComposer("dock");
     const sentinel = document.createElement("button");
     container.appendChild(sentinel);
-    hero.focus();
+    dock.focus();
 
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(
         HTMLTextAreaElement.prototype,
         "value",
       )?.set;
-      setter?.call(hero, "first query");
-      hero.dispatchEvent(new Event("input", { bubbles: true }));
+      setter?.call(dock, "first query");
+      dock.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => {
-      hero.dispatchEvent(
+      dock.dispatchEvent(
         new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
       );
       sentinel.focus();

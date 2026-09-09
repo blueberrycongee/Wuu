@@ -258,6 +258,10 @@
   grid-column: 1;
   grid-row: 2;
   align-self: end;
+  /* Keep the bottom spacing continuous across the navigation breakpoint,
+     just like the shared fluid horizontal gutters. */
+  padding-block: clamp(12px, calc(0.833333vw + 8.666667px), 16px)
+    max(clamp(12px, calc(2.5vw + 2px), 24px), env(safe-area-inset-bottom, 0px));
   /* Match the scroll region's stable scrollbar gutter so the dock composer
      and message flow are centered inside the same visible content box.
      --scrollbar-width is stamped from a runtime measurement (see
