@@ -12,7 +12,7 @@ import {
   Square,
   X
 } from "lucide-react";
-import { type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useOptionalImagePreview } from "./ImagePreview";
 import { isComposerTextComposing } from "./ComposerSlashCommands";
 import {
@@ -32,7 +32,8 @@ import { useComposerQueryHistory } from "./ComposerQueryHistory";
 import { composerStatusIsLiveProgress, composerStatusText } from "./ComposerTypes";
 import { handoffPromptFromIntent } from "./HandoffDraft";
 import { useI18n } from "./i18n";
-import { focusComposerTextarea } from "./ComposerFocus";
+import { focusComposerTextarea, isTouchWebShell } from "./ComposerFocus";
+import { ComposerAttachMenuButton, ComposerCameraPanel } from "./ComposerCamera";
 import { useWorkbenchConnected } from "./WorkbenchConnectionContext";
 import { Tooltip } from "./Tooltip";
 import { TruncatedText } from "./TruncatedText";
@@ -138,8 +139,15 @@ export function SplitPaneComposer({
   const sendDisabled = requestedSendDisabled || !connected;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const photosInputRef = useRef<HTMLInputElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   const appliedHandoffIntentRef = useRef<string | undefined>(undefined);
   const [dropActive, setDropActive] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const mobileWeb = useMemo(() => isTouchWebShell(), []);
+  useEffect(() => {
+    setCameraOpen(false);
+  }, [readOnly, queryHistorySessionID]);
   const hasAttachments = images.length > 0 || files.length > 0;
   const hasDraft = prompt.trim().length > 0 || hasAttachments;
   // Match the dock composer: the button is a stop control only while running
@@ -156,6 +164,22 @@ export function SplitPaneComposer({
 
   function focusComposerAtEndSoon(): void {
     focusComposerTextarea(textareaRef.current, "end");
+  }
+
+  function openCamera(): void {
+    textareaRef.current?.blur();
+    setCameraOpen(true);
+  }
+
+  function closeCamera(): void {
+    setCameraOpen(false);
+    focusComposerSoon();
+  }
+
+  function captureCamera(file: File): void {
+    setCameraOpen(false);
+    onPasteAttachmentFiles([file]);
+    focusComposerSoon();
   }
 
   const {
@@ -276,8 +300,11 @@ export function SplitPaneComposer({
   return (
     <footer className="composer-wrap dock-composer-wrap split-composer">
       <div className="composer-stack">
-        <div className="composer-shell">
+        <div className="composer-shell" ref={shellRef}>
           <div className="composer-frame-shell">
+            {cameraOpen && !readOnly ? (
+              <ComposerCameraPanel onCapture={captureCamera} onClose={closeCamera} />
+            ) : null}
             <div
               className={`composer-frame split-composer-shell${dropActive ? " composer-frame-drop-active split-composer-shell-drop-active" : ""}`}
               data-wuu-component="composer-frame"
@@ -292,6 +319,21 @@ export function SplitPaneComposer({
                   className="composer-file-input"
                   type="file"
                   accept="image/*,application/pdf"
+                  multiple
+                  tabIndex={-1}
+                  onChange={(event) => {
+                    const selected = Array.from(event.currentTarget.files ?? []);
+                    event.currentTarget.value = "";
+                    if (selected.length > 0) {
+                      onPasteAttachmentFiles(selected);
+                    }
+                  }}
+                />
+                <input
+                  ref={photosInputRef}
+                  className="composer-file-input"
+                  type="file"
+                  accept="image/*"
                   multiple
                   tabIndex={-1}
                   onChange={(event) => {
@@ -344,16 +386,27 @@ export function SplitPaneComposer({
                 />
                 <div className="composer-bar split-composer-bar">
                   <div className="composer-bar-left">
-                    <button
-                      className="composer-tool-button composer-attach-button"
-                      type="button"
-                      aria-label={t("composer.addAttachment")}
-                      title={t("composer.addAttachment")}
-                      disabled={readOnly}
-                      onClick={() => attachmentInputRef.current?.click()}
-                    >
-                      <Paperclip aria-hidden="true" />
-                    </button>
+                    {mobileWeb ? (
+                      <ComposerAttachMenuButton
+                        variant="dock"
+                        disabled={readOnly}
+                        menuAnchorRef={shellRef}
+                        onTakePhoto={openCamera}
+                        onPickPhotos={() => photosInputRef.current?.click()}
+                        onPickFiles={() => attachmentInputRef.current?.click()}
+                      />
+                    ) : (
+                      <button
+                        className="composer-tool-button composer-attach-button"
+                        type="button"
+                        aria-label={t("composer.addAttachment")}
+                        title={t("composer.addAttachment")}
+                        disabled={readOnly}
+                        onClick={() => attachmentInputRef.current?.click()}
+                      >
+                        <Paperclip aria-hidden="true" />
+                      </button>
+                    )}
                     {statusText ? (
                       <span className="split-composer-status">
                         <TruncatedText

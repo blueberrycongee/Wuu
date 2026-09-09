@@ -33,6 +33,7 @@ describe("handoff draft", () => {
       intent: "",
       complete: false,
       hasSlash: false,
+      variant: "",
     });
   });
 
@@ -46,6 +47,14 @@ describe("handoff draft", () => {
       pickerView: "models",
       revision: 3,
     });
+    expect(canSubmitHandoffDraft(draft)).toBe(true);
+  });
+
+  it("round trips selected effort and model ids containing separators with multiline intent", () => {
+    const intent = "Implement this.\nKeep notes -- and whitespace. ";
+    const prompt = handoffPromptFromSelection("openai", "vendor/model:latest", intent, "high");
+    const draft = reduceHandoffDraft(prompt.slice("/handoff ".length), catalog, 1);
+    expect(draft).toMatchObject({ providerId: "openai", modelId: "vendor/model:latest", variant: "high", intent });
     expect(canSubmitHandoffDraft(draft)).toBe(true);
   });
 
@@ -80,9 +89,15 @@ describe("handoff draft", () => {
   });
 
   it("opens a configuration draft from an agent request without selecting a model", () => {
+    const intent = "Keep the verified fix; check recovery before committing.";
+    const prompt = handoffPromptFromIntent(intent);
+    const draft = reduceHandoffDraft(prompt.slice("/handoff ".length), catalog, 1);
+    expect(draft.intent).toBe(intent);
+    expect(draft.providerId).toBe("");
+    expect(canSubmitHandoffDraft(draft)).toBe(false);
     expect(parseRequestedHandoffIntent(`{"awaiting_user_configuration":true,"intent":"keep the verified fix"}`)).toBe("keep the verified fix");
     expect(handoffPromptFromIntent("keep the verified fix")).toBe("/handoff -- keep the verified fix");
-    expect(handoffPromptFromSelection("openai", "gpt-5.5", "keep going")).toBe("/handoff openai/gpt-5.5 -- keep going");
+    expect(handoffPromptFromSelection("openai", "gpt-5.5", "keep going")).toBe("/handoff openai:gpt-5.5: -- keep going");
     expect(parseRequestedHandoffIntent(`{"intent":"keep going"}`)).toBeNull();
   });
 });

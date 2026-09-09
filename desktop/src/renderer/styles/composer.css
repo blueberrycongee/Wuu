@@ -320,16 +320,6 @@
   margin-bottom: 8px;
 }
 
-.handoff-card {
-  display: flex;
-  justify-content: flex-start;
-  margin-bottom: 8px;
-}
-
-.handoff-card .codex-model-menu.runtime-panel.is-embedded {
-  position: relative;
-}
-
 .runtime-panel-handoff {
   height: 28px;
   padding: 0 10px;
@@ -2338,4 +2328,158 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Stay in the composer flow so the conversation above remains visible. */
+:root[data-host-kind="web"] .composer-camera {
+  --composer-camera-height: min(56dvh, 640px);
+  position: relative;
+  height: var(--composer-camera-height);
+  overflow: hidden;
+  margin-bottom: 8px;
+  border-radius: 28px;
+  background: var(--surface-2);
+  box-shadow: var(--composer-frame-shadow);
+  transform-origin: bottom center;
+  animation: composer-camera-enter var(--motion-slow) var(--ease-out) both;
+}
+
+@keyframes composer-camera-enter {
+  from {
+    height: 0;
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+
+  to {
+    height: var(--composer-camera-height);
+    opacity: 1;
+    transform: none;
+  }
+}
+
+:root[data-host-kind="web"] .composer-camera-viewport {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--surface-2);
+}
+
+:root[data-host-kind="web"] .composer-camera-viewport video {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Show the whole frame that will be attached, including on landscape phones. */
+  object-fit: contain;
+  border-radius: inherit;
+  background: var(--surface-2);
+}
+
+:root[data-host-kind="web"] .composer-camera-status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--paper) 85%, transparent);
+  color: var(--ink);
+  font-size: var(--font-sm);
+}
+
+:root[data-host-kind="web"] .composer-camera-error {
+  display: grid;
+  width: 100%;
+  justify-items: center;
+  gap: 14px;
+  padding: 20px 20px 100px;
+  text-align: center;
+}
+
+:root[data-host-kind="web"] .composer-camera-error p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: var(--font-sm);
+  line-height: 1.4;
+}
+
+:root[data-host-kind="web"] .composer-camera-error button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: var(--font-ui);
+  font-weight: var(--weight-medium);
+  padding: 0 16px;
+}
+
+:root[data-host-kind="web"] .composer-camera-controls {
+  position: absolute;
+  inset: auto 20px 16px;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+:root[data-host-kind="web"] .composer-camera-close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+:root[data-host-kind="web"] .composer-camera-close:focus-visible,
+:root[data-host-kind="web"] .composer-camera-shutter:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+:root[data-host-kind="web"] .composer-camera-shutter {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  justify-self: center;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  cursor: pointer;
+}
+
+:root[data-host-kind="web"] .composer-camera-shutter span {
+  display: block;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+:root[data-host-kind="web"] .composer-camera-shutter:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+:root[data-host-kind="web"] .composer-camera-controls-spacer {
+  width: 44px;
+  height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-host-kind="web"] .composer-camera {
+    animation: none;
+  }
 }

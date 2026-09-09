@@ -16,12 +16,14 @@ export type CodexRuntimeMenu = "model" | null;
 export type ComposerVariant = "dock" | "document" | "hero";
 export type FloatingMenuOwner =
   | "conversation-actions"
+  | "composer-handoff"
   | "composer-runtime"
   | "composer-access"
   | "composer-context-meter"
   | "composer-token-gauge"
   | "composer-focus"
   | "composer-plus"
+  | "composer-attach"
   | "composer-plugin-tools"
   | "composer-slash"
   | "codex-runtime"

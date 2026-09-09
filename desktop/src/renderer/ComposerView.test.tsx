@@ -7,10 +7,12 @@ import {
   SplitPaneComposer,
   permissionModeFromSummary,
   type CodexModelLoadState,
+  type CodexRuntimeMenu,
   type ComposerVariant,
   type PermissionMode,
 } from "./ComposerView";
 import { ImagePreviewProvider } from "./ImagePreview";
+import { translateCurrent } from "./i18n";
 import { WorkbenchConnectionContext } from "./WorkbenchConnectionContext";
 import { ComposerTokenGauge } from "./ComposerTokenGauge";
 import { WORKSPACE_FILE_DRAG_MIME, type QueuedComposerMessage } from "./ComposerMessages";
@@ -45,7 +47,7 @@ afterEach(() => {
   container.remove();
   document.body
     .querySelectorAll(
-      "[data-floating-menu-owner=\"composer-access\"], [data-floating-menu-owner=\"composer-focus\"], [data-floating-menu-owner=\"composer-plus\"], [data-floating-menu-owner=\"composer-slash\"], [data-floating-menu-owner=\"composer-token-gauge\"]",
+      "[data-floating-menu-owner=\"composer-access\"], [data-floating-menu-owner=\"composer-attach\"], [data-floating-menu-owner=\"composer-focus\"], [data-floating-menu-owner=\"composer-plus\"], [data-floating-menu-owner=\"composer-slash\"], [data-floating-menu-owner=\"composer-token-gauge\"], [data-floating-menu-owner=\"codex-runtime\"]",
     )
     .forEach((element) => element.remove());
 });
@@ -62,6 +64,36 @@ function initialized(permissions?: PermissionSummary): InitializeResult {
         name: "fake",
         type: "openai-compatible",
         model: "fake-model",
+      },
+    ],
+  };
+}
+
+function handoffInitialized(): InitializeResult {
+  return {
+    protocol_version: "wuu-app-server/v0.1",
+    provider: "work",
+    model: "grok-4.6",
+    workspace_root: "/tmp/project",
+    providers: [
+      {
+        name: "work",
+        type: "openai-compatible",
+        model: "grok-4.6",
+        models: [
+          {
+            id: "grok-4.6",
+            display_name: "Grok 4.6",
+            default_effort: "medium",
+            supported_efforts: ["low", "medium", "high", "xhigh"],
+          },
+        ],
+      },
+      {
+        name: "openai",
+        type: "openai-compatible",
+        model: "gpt-5.5",
+        models: [{ id: "gpt-5.5", display_name: "GPT-5.5" }],
       },
     ],
   };
@@ -84,6 +116,7 @@ function renderComposer(props: {
   onInterrupt?: () => void;
   onSend?: (promptOverride?: string) => void;
   onSteer?: (promptOverride?: string) => void;
+  onPasteAttachmentFiles?: (files: File[]) => void;
   onQueue?: (promptOverride?: string) => void;
   onStartNewThread?: () => void;
   onHandoffSession?: (input: { provider: string; model: string; effort?: string; intent: string }) => void;
@@ -167,7 +200,7 @@ function renderComposer(props: {
           onOpenSideThread={props.onOpenSideThread}
           onOpenWorkspaceTool={() => {}}
           onOpenContextComposition={props.onOpenContextComposition ?? (() => {})}
-          onPasteAttachmentFiles={() => {}}
+          onPasteAttachmentFiles={props.onPasteAttachmentFiles ?? (() => {})}
           onRemoveFile={() => {}}
           onRemoveImage={() => {}}
           onRemoveQueuedMessage={props.onRemoveQueuedMessage ?? (() => {})}
@@ -190,6 +223,78 @@ function renderComposer(props: {
   });
   return { onSelectPermissionMode };
 }
+
+describe("mobile composer attachments", () => {
+  let hostKind: string | undefined;
+  let mediaDescriptor: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    hostKind = document.documentElement.dataset.hostKind;
+    document.documentElement.dataset.hostKind = "web";
+    const originalMatchMedia = window.matchMedia.bind(window);
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      ...originalMatchMedia(query), matches: query === "(pointer: coarse)",
+    }));
+    mediaDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, get: () => undefined });
+  });
+
+  afterEach(() => {
+    if (hostKind === undefined) delete document.documentElement.dataset.hostKind;
+    else document.documentElement.dataset.hostKind = hostKind;
+    vi.restoreAllMocks();
+    if (mediaDescriptor) Object.defineProperty(navigator, "mediaDevices", mediaDescriptor);
+    else Reflect.deleteProperty(navigator, "mediaDevices");
+  });
+
+  function chooseSource(key: "composer.takePhoto" | "composer.choosePhotos" | "composer.chooseFiles"): void {
+    act(() => { container.querySelector<HTMLButtonElement>(".composer-plus-button, .composer-attach-button")!.click(); });
+    const choice = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      .find((button) => button.querySelector(".composer-plus-menu-item-title")?.textContent === translateCurrent(key));
+    expect(choice).toBeDefined();
+    act(() => { choice!.click(); });
+  }
+
+  it.each(["main", "split"])("keeps the %s draft when choosing photos, files, or native capture", (variant) => {
+    const onPasteAttachmentFiles = vi.fn();
+    const onSend = vi.fn();
+    if (variant === "main") renderComposer({ prompt: "Explain this", onPasteAttachmentFiles, onSend });
+    else renderStatefulSplitPaneComposer({ initialPrompt: "Explain this", onPasteAttachmentFiles, onSend });
+    const textarea = container.querySelector("textarea")!;
+    const photo = new File(["photo"], "image.jpg", { type: "image/jpeg" });
+    const pdf = new File(["pdf"], "document.pdf", { type: "application/pdf" });
+    const inputs = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="file"]'));
+    const photoInput = inputs.find((input) => input.accept === "image/*")!;
+    const fileInput = inputs.find((input) => input.accept.includes("application/pdf"))!;
+    const photoClick = vi.spyOn(photoInput, "click").mockImplementation(() => {});
+    const fileClick = vi.spyOn(fileInput, "click").mockImplementation(() => {});
+    chooseSource("composer.choosePhotos");
+    expect(photoClick).toHaveBeenCalledOnce();
+    Object.defineProperty(photoInput, "files", { configurable: true, value: [photo] });
+    act(() => { photoInput.dispatchEvent(new Event("change", { bubbles: true })); });
+    chooseSource("composer.chooseFiles");
+    expect(fileClick).toHaveBeenCalledOnce();
+    Object.defineProperty(fileInput, "files", { configurable: true, value: [pdf] });
+    act(() => { fileInput.dispatchEvent(new Event("change", { bubbles: true })); });
+    act(() => { textarea.focus(); });
+    chooseSource("composer.takePhoto");
+    expect(document.activeElement).not.toBe(textarea);
+    const nativeInput = container.querySelector<HTMLInputElement>('input[capture="environment"]')!;
+    expect(nativeInput).not.toBeNull();
+    Object.defineProperty(nativeInput, "files", { configurable: true, value: [photo] });
+    act(() => { nativeInput.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(container.querySelector(".composer-camera")).toBeNull();
+    expect(onPasteAttachmentFiles.mock.calls).toEqual([[[photo]], [[pdf]], [[photo]]]);
+    expect(textarea.value).toBe("Explain this");
+    expect(document.activeElement).toBe(textarea);
+    expect(onSend).not.toHaveBeenCalled();
+    chooseSource("composer.takePhoto");
+    act(() => { container.querySelector<HTMLButtonElement>(".composer-camera-close")!.click(); });
+    expect(container.querySelector(".composer-camera")).toBeNull();
+    expect(textarea.value).toBe("Explain this");
+    expect(onPasteAttachmentFiles).toHaveBeenCalledTimes(3);
+  });
+});
 
 function installSkillList(skills: SkillSummary[]): void {
   (globalThis as { wuu?: Partial<WuuDesktopApi> }).wuu = {
@@ -316,6 +421,11 @@ function renderStatefulComposer(props: {
   textOnly?: boolean;
   onPasteAttachmentFiles?: (files: File[]) => void;
   queryHistorySessionID?: string;
+  initialized?: InitializeResult;
+  running?: boolean;
+  handoffDisabledReason?: string;
+  requestedHandoffIntent?: string;
+  onHandoffSession?: (input: { provider: string; model: string; effort?: string; intent: string }) => void;
 }): { replacePrompt: (prompt: string) => void } {
   const codexModels: CodexModelLoadState = {
     loading: false,
@@ -327,6 +437,7 @@ function renderStatefulComposer(props: {
   function Harness(): JSX.Element {
     const [prompt, setPrompt] = useState(props.initialPrompt ?? "");
     const [promptRevision, setPromptRevision] = useState(0);
+    const [codexRuntimeMenu, setCodexRuntimeMenu] = useState<CodexRuntimeMenu>(null);
     replacePrompt = (nextPrompt) => {
       setPrompt(nextPrompt);
       setPromptRevision((current) => current + 1);
@@ -348,15 +459,17 @@ function renderStatefulComposer(props: {
           images={[]}
           queuedMessages={[]}
           guideMessages={[]}
-          running={false}
+          running={props.running ?? false}
           status="ready"
           readOnly={props.readOnly ?? false}
           textOnly={props.textOnly}
-          initialized={initialized()}
+          handoffDisabledReason={props.handoffDisabledReason}
+          requestedHandoffIntent={props.requestedHandoffIntent}
+          initialized={props.initialized ?? initialized()}
           projects={[]}
           activeContext={props.activeContext}
           codexModels={codexModels}
-          codexRuntimeMenu={null}
+          codexRuntimeMenu={codexRuntimeMenu}
           codexRuntimeRef={createRef<HTMLDivElement>()}
           menuOpen={false}
           accessMenuOpen={false}
@@ -367,7 +480,9 @@ function renderStatefulComposer(props: {
           setProjectFilter={() => {}}
           onToggleMenu={() => {}}
           onToggleAccessMenu={() => {}}
-          onToggleCodexRuntimeMenu={() => {}}
+          onToggleCodexRuntimeMenu={(menu) => {
+            setCodexRuntimeMenu((current) => (current === menu ? null : menu));
+          }}
           onSelectRuntimeModel={() => {}}
           onSelectRuntimeEffort={() => {}}
           onSelectPermissionMode={() => {}}
@@ -380,6 +495,7 @@ function renderStatefulComposer(props: {
           onCreateProject={() => {}}
           onOpenProject={() => {}}
           onStartNewThread={() => {}}
+          onHandoffSession={props.onHandoffSession}
           onOpenWorkspaceTool={() => {}}
           onPasteAttachmentFiles={props.onPasteAttachmentFiles ?? (() => {})}
           onRemoveFile={() => {}}
@@ -1340,119 +1456,165 @@ describe("Composer send control", () => {
     expect(frame?.querySelector(".composer-context-bar")).toBeNull();
   });
 
-  it("embeds the runtime picker in the handoff card instead of a slash candidate list", () => {
-    const initialized: InitializeResult = {
-      protocol_version: "wuu-app-server/v0.1",
-      provider: "work",
-      model: "grok-4.6",
-      variant: "xhigh",
-      workspace_root: "/tmp/project",
-      providers: [
-        {
-          name: "work",
-          type: "openai-compatible",
-          model: "grok-4.6",
-          models: [{ id: "grok-4.6", display_name: "Grok 4.6", supported_efforts: ["low", "medium", "high", "xhigh"] }],
-        },
-        {
-          name: "openai",
-          type: "openai-compatible",
-          model: "gpt-5.5",
-          models: [{ id: "gpt-5.5", display_name: "GPT-5.5" }],
-        },
-      ],
-    };
-    renderComposer({
-      variant: "dock",
-      prompt: "/handoff",
-      initialized,
+  it("opens the handoff picker outside the composer above its frame", () => {
+    const measure = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const top = this.dataset.wuuComponent === "composer-frame" ? 500 : 620;
+      return { top, bottom: top + 100, left: 100, right: 700, width: 600, height: 100, x: 100, y: top, toJSON() {} };
+    });
+    renderStatefulComposer({
+      initialPrompt: "/handoff",
+      onHandoffSession: vi.fn(),
+      initialized: handoffInitialized(),
       activeContext: { kind: "project", project_id: "project-1", cwd: "/tmp/project" },
     });
 
     expect(document.body.querySelector('[data-floating-menu-owner="composer-slash"]')).toBeNull();
-    expect(container.querySelector(".handoff-card")).not.toBeNull();
-    expect(container.querySelector(".codex-model-menu.runtime-panel.is-summary")).not.toBeNull();
-    expect(container.querySelector(".runtime-panel-context")?.textContent).toContain("work");
-    expect(container.querySelector(".runtime-panel-model-name")?.textContent).toBe("Grok 4.6");
-    expect(container.querySelector(".handoff-card-candidate")).toBeNull();
-    expect(container.querySelector(".handoff-card-title")).toBeNull();
-    expect(container.querySelector(".handoff-card-submit")).toBeNull();
-    expect(container.querySelector(".handoff-card")?.textContent).not.toContain("待选择");
-    expect(container.querySelector(".handoff-card")?.textContent).not.toContain("有界 brief");
-    expect(container.querySelector(".handoff-card")?.textContent).not.toContain("截止点");
-    expect(container.querySelector(".handoff-card")?.textContent).not.toContain("交接并继续");
+    const picker = document.body.querySelector<HTMLElement>('[data-floating-menu-owner="composer-handoff"]')!;
+    expect(container.contains(picker)).toBe(false);
+    expect(window.innerHeight - Number.parseFloat(picker.style.bottom)).toBeLessThan(500);
+    expect(container.querySelector<HTMLButtonElement>(".codex-runtime-trigger")?.textContent).toContain("Grok 4.6");
+    measure.mockRestore();
+    expect(container.querySelector<HTMLTextAreaElement>('[data-wuu-component="composer-input"]')?.value).toBe("/handoff");
+    expect(container.querySelector<HTMLButtonElement>(".composer-send-button")?.disabled).toBe(true);
   });
 
-  it("drills from the embedded handoff picker into the provider list", () => {
-    const initialized: InitializeResult = {
-      protocol_version: "wuu-app-server/v0.1",
-      provider: "work",
-      model: "grok-4.6",
-      workspace_root: "/tmp/project",
-      providers: [
-        {
-          name: "work",
-          type: "openai-compatible",
-          model: "grok-4.6",
-          models: [{ id: "grok-4.6", display_name: "Grok 4.6" }],
-        },
-        {
-          name: "openai",
-          type: "openai-compatible",
-          model: "gpt-5.5",
-          models: [{ id: "gpt-5.5", display_name: "GPT-5.5" }],
-        },
-      ],
-    };
-    renderComposer({
-      variant: "dock",
-      prompt: "/handoff open",
-      initialized,
+  it("opens the picker when typing handoff and fills the chosen destination before sending", () => {
+    const onHandoffSession = vi.fn();
+    renderStatefulComposer({ initialized: handoffInitialized(), onHandoffSession });
+    const textarea = container.querySelector<HTMLTextAreaElement>('[data-wuu-component="composer-input"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "/handoff");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const portal = document.body.querySelector('[data-floating-menu-owner="composer-handoff"]')!;
+    expect(portal).not.toBeNull();
+    act(() => portal.querySelector<HTMLButtonElement>(".runtime-panel-context button:last-child")!.click());
+    act(() => Array.from(portal.querySelectorAll<HTMLButtonElement>(".runtime-provider-option")).find((button) => button.textContent?.trim() === "work")!.click());
+    expect(portal.querySelector('input[type="search"]')).not.toBeNull();
+    act(() => portal.querySelector<HTMLButtonElement>(".codex-model-item")!.click());
+    expect(textarea.value).toBe("/handoff work:grok-4.6:medium -- ");
+    expect(onHandoffSession).not.toHaveBeenCalled();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, textarea.value + "Implement the plan");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => container.querySelector<HTMLButtonElement>(".composer-send-button")!.click());
+    expect(onHandoffSession).toHaveBeenCalledWith({ provider: "work", model: "grok-4.6", effort: "medium", intent: "Implement the plan" });
+  });
+
+  it("opens a requested handoff draft in the composer textarea", () => {
+    renderStatefulComposer({
+      requestedHandoffIntent: "keep the verified fix",
+      initialized: handoffInitialized(),
       activeContext: { kind: "project", project_id: "project-1", cwd: "/tmp/project" },
     });
 
-    expect(container.querySelector(".codex-model-menu.runtime-panel.is-providers")).not.toBeNull();
-    expect(Array.from(container.querySelectorAll(".runtime-provider-option")).map((item) => item.textContent?.trim())).toEqual(["openai"]);
+    expect(container.querySelector<HTMLTextAreaElement>('[data-wuu-component="composer-input"]')?.value).toBe("/handoff -- keep the verified fix");
+    expect(container.querySelector<HTMLButtonElement>(".composer-send-button")?.disabled).toBe(true);
   });
 
-  it("starts a handoff as soon as a model is chosen", () => {
+  it("selects a handoff destination through the existing model selector", () => {
     const onHandoffSession = vi.fn();
-    const initialized: InitializeResult = {
-      protocol_version: "wuu-app-server/v0.1",
-      provider: "work",
-      model: "grok-4.6",
-      workspace_root: "/tmp/project",
-      providers: [
-        {
-          name: "work",
-          type: "openai-compatible",
-          model: "grok-4.6",
-          models: [{ id: "grok-4.6", display_name: "Grok 4.6" }],
-        },
-        {
-          name: "openai",
-          type: "openai-compatible",
-          model: "gpt-5.5",
-          models: [{ id: "gpt-5.5", display_name: "GPT-5.5" }],
-        },
-      ],
-    };
-    renderComposer({
-      variant: "dock",
-      prompt: "/handoff openai/",
-      initialized,
+    renderStatefulComposer({
+      initialPrompt: "/handoff openai/",
+      initialized: handoffInitialized(),
       onHandoffSession,
       activeContext: { kind: "project", project_id: "project-1", cwd: "/tmp/project" },
     });
 
-    act(() => container.querySelector<HTMLButtonElement>(".codex-model-item")?.click());
+    expect(container.querySelector<HTMLButtonElement>(".composer-send-button")?.disabled).toBe(true);
 
+    const menu = document.body.querySelector('[data-floating-menu-owner="composer-handoff"] .codex-model-menu');
+    expect(menu).not.toBeNull();
+    expect(menu?.classList.contains("is-models")).toBe(true);
+
+    const modelItem = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>('[data-floating-menu-owner="composer-handoff"] .codex-model-item'),
+    ).find((button) => button.textContent?.includes("GPT-5.5"));
+    expect(modelItem).toBeDefined();
+    act(() => modelItem!.click());
+
+    expect(onHandoffSession).not.toHaveBeenCalled();
+    expect(container.querySelector<HTMLButtonElement>(".composer-send-button")?.disabled).toBe(false);
+    act(() => container.querySelector<HTMLButtonElement>(".composer-send-button")!.click());
     expect(onHandoffSession).toHaveBeenCalledWith({
       provider: "openai",
       model: "gpt-5.5",
       effort: undefined,
       intent: "",
     });
+    expect(document.body.querySelector('[data-floating-menu-owner="composer-handoff"]')).toBeNull();
+  });
+
+  it("preserves multiline handoff instructions while changing the target and effort", () => {
+    const onHandoffSession = vi.fn();
+    renderStatefulComposer({
+      initialPrompt: "/handoff openai/gpt-5.5 -- check recovery",
+      initialized: handoffInitialized(),
+      onHandoffSession,
+      activeContext: { kind: "project", project_id: "project-1", cwd: "/tmp/project" },
+    });
+    const intent = "Keep the changes.\nCheck recovery before committing. ";
+    const textarea = container.querySelector<HTMLTextAreaElement>('[data-wuu-component="composer-input"]')!;
+    expect(textarea.value).toBe("/handoff openai/gpt-5.5 -- check recovery");
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, `/handoff openai:gpt-5.5: -- ${intent}`);
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const portal = document.body.querySelector('[data-floating-menu-owner="composer-handoff"]')!;
+    act(() => portal.querySelector<HTMLButtonElement>(".runtime-panel-context button:last-child")!.click());
+    act(() => Array.from(portal.querySelectorAll<HTMLButtonElement>(".runtime-provider-option")).find((button) => button.textContent?.trim() === "work")!.click());
+    act(() => portal.querySelector<HTMLButtonElement>(".codex-model-item")!.click());
+
+    const effort = portal.querySelector<HTMLInputElement>('input[type="range"]')!;
+    expect(effort).not.toBeNull();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(effort, effort.max);
+      effort.dispatchEvent(new Event("input", { bubbles: true }));
+      effort.dispatchEvent(new KeyboardEvent("keyup", { key: "End", bubbles: true }));
+    });
+
+    expect(textarea.value).toBe(`/handoff work:grok-4.6:xhigh -- ${intent}`);
+    expect(onHandoffSession).not.toHaveBeenCalled();
+    act(() => container.querySelector<HTMLButtonElement>(".composer-send-button")!.click());
+    expect(onHandoffSession).toHaveBeenCalledWith({ provider: "work", model: "grok-4.6", effort: "xhigh", intent });
+  });
+
+  it("cancels a handoff without starting a session", () => {
+    const onHandoffSession = vi.fn();
+    renderStatefulComposer({
+      initialPrompt: "/handoff work/grok-4.6",
+      initialized: handoffInitialized(),
+      onHandoffSession,
+    });
+    const textarea = container.querySelector<HTMLTextAreaElement>('[data-wuu-component="composer-input"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(document.body.querySelector('[data-floating-menu-owner="composer-handoff"]')).toBeNull();
+    expect(container.querySelector<HTMLTextAreaElement>('[data-wuu-component="composer-input"]')?.value).toBe("");
+    expect(onHandoffSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { initialPrompt: "/handoff" },
+    { running: true },
+    { readOnly: true },
+    { handoffDisabledReason: "No history to hand off" },
+  ])("blocks handoff submission when unavailable: %j", (overrides) => {
+    const onHandoffSession = vi.fn();
+    renderStatefulComposer({
+      initialPrompt: "/handoff work/grok-4.6",
+      initialized: handoffInitialized(),
+      onHandoffSession,
+      ...overrides,
+    });
+    const send = container.querySelector<HTMLButtonElement>(".composer-send-button")!;
+    expect(send.disabled).toBe(true);
+    act(() => send.click());
+    expect(onHandoffSession).not.toHaveBeenCalled();
   });
 
   it("renders the slash command menu through the same floating panel as the plus menu", () => {

@@ -63,14 +63,14 @@ const COMPOSER_SLASH_COMMAND_LIMIT = 8;
 const COMPOSER_SLASH_DEFAULT_SKILL_LIMIT = 3;
 
 export function parseComposerSlashDraft(value: string): ComposerSlashDraft | undefined {
-  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\n")) {
+  if (!value.startsWith("/") || value.startsWith("//") || (value.includes("\n") && !/^\/handoff(?:\s|$)/i.test(value))) {
     return undefined;
   }
   const body = value.slice(1);
   if (/^\s/.test(body)) {
     return undefined;
   }
-  const match = body.match(/^(\S*)(?:\s+(.*))?$/);
+  const match = body.match(/^(\S*)(?:\s+([\s\S]*))?$/);
   if (!match) {
     return undefined;
   }

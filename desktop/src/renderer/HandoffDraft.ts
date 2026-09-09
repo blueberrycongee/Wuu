@@ -45,15 +45,29 @@ export function parseHandoffArgs(raw: string): {
   intent: string;
   complete: boolean;
   hasSlash: boolean;
+  variant: string;
 } {
   const text = raw.replace(/^\s+/, "");
   const remainder = stripOptionalModelToken(text);
-  const [targetPart, ...intentParts] = splitOnce(remainder, " -- ");
-  const intent = intentParts.join(" -- ").trim();
+  const [targetPart, ...intentParts] = remainder.startsWith("-- ")
+    ? ["", remainder.slice(3)]
+    : splitOnce(remainder, " -- ");
+  const intent = intentParts.join(" -- ");
   const { token, rest, complete } = readQuotedOrBare(targetPart);
+  if (token.includes(":")) {
+    const [provider = "", model = "", variant = ""] = token.split(":");
+    return {
+      providerPrefix: decodeTargetPart(provider),
+      modelPrefix: decodeTargetPart(model),
+      variant: decodeTargetPart(variant),
+      intent,
+      complete: complete && rest.trim() === "",
+      hasSlash: true,
+    };
+  }
   const slash = token.indexOf("/");
   if (slash < 0) {
-    return { providerPrefix: token, modelPrefix: "", intent, complete: false, hasSlash: false };
+    return { providerPrefix: token, modelPrefix: "", intent, variant: "", complete: false, hasSlash: false };
   }
   return {
     providerPrefix: token.slice(0, slash),
@@ -61,6 +75,7 @@ export function parseHandoffArgs(raw: string): {
     intent,
     complete: complete && rest.trim() === "",
     hasSlash: true,
+    variant: "",
   };
 }
 
@@ -97,7 +112,7 @@ export function reduceHandoffDraft(raw: string, catalog: HandoffCatalog, revisio
     revision,
     providerId,
     modelId,
-    variant: "",
+    variant: parsed.variant,
     intent: parsed.intent,
     status,
     targetLabel,
@@ -115,10 +130,17 @@ export function handoffPromptFromIntent(intent: string): string {
   return trimmed ? `/handoff -- ${trimmed}` : "/handoff";
 }
 
-export function handoffPromptFromSelection(providerId: string, modelId: string, intent: string): string {
-  const target = modelId ? `${providerId}/${modelId}` : `${providerId}/`;
-  const suffix = intent.trim() ? ` -- ${intent.trim()}` : "";
-  return `/handoff ${target}${suffix}`;
+export function handoffPromptFromSelection(providerId: string, modelId: string, intent: string, variant = ""): string {
+  const target = [providerId, modelId, variant].map((part) => encodeURIComponent(part).replaceAll("%2F", "/")).join(":");
+  return `/handoff ${target} -- ${intent}`;
+}
+
+function decodeTargetPart(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 export function parseRequestedHandoffIntent(payload: string): string | null {

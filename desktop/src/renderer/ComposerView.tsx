@@ -48,9 +48,9 @@ import {
   type ComposerSlashCommand,
   type ComposerSlashDraft
 } from "./ComposerSlashCommands";
-import { HandoffCard } from "./HandoffCard";
 import {
   emptyHandoffDraft,
+  canSubmitHandoffDraft,
   handoffPromptFromIntent,
   handoffPromptFromSelection,
   reduceHandoffDraft,
@@ -74,6 +74,7 @@ import {
 import { FloatingMenuPortal } from "./ComposerFloatingMenu";
 import { ComposerContextMenu } from "./ComposerContextMenu";
 import { ComposerAttachmentStrip, ComposerQueueStrip } from "./ComposerInputSections";
+import { ComposerCameraPanel } from "./ComposerCamera";
 import { WorkspaceDocumentDrawerContext } from "./WorkspaceDocumentTurnDock";
 import { desktopPluginHost } from "./plugins/DesktopPluginRuntime";
 import type { PluginHost } from "./plugins/PluginHost";
@@ -84,6 +85,7 @@ import {
   ComposerPlusButton,
   ProjectPickerMenu,
   RuntimePicker,
+  RuntimeModelMenu,
   SlashCommandIcon,
   permissionModeFromSummary,
   permissionModeOption
@@ -101,7 +103,7 @@ import { ComposerRuntimeMeters } from "./ComposerRuntimeMeters";
 import { ComposerPresentation } from "./plugins/ComposerPresentation";
 import { ComposerVoiceInput, type ComposerVoiceInputHandle } from "./ComposerVoiceInput";
 import { ENABLE_VOICE_INPUT } from "./FeatureFlags";
-import { focusComposerTextarea } from "./ComposerFocus";
+import { focusComposerTextarea, isTouchWebShell } from "./ComposerFocus";
 import { useWorkbenchConnected } from "./WorkbenchConnectionContext";
 import type { TurnContextUsage } from "./AppState";
 
@@ -434,6 +436,7 @@ export function Composer({
   const composerFrameRef = useRef<HTMLDivElement>(null);
   const collapsedComposerFrameHeightRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const photosInputRef = useRef<HTMLInputElement>(null);
   const submitAfterCompositionRef = useRef(false);
   const documentDrawer = useContext(WorkspaceDocumentDrawerContext);
   const [isComposerExpanded, setIsComposerExpanded] = useState(false);
@@ -453,6 +456,11 @@ export function Composer({
   const [slashDismissedValue, setSlashDismissedValue] = useState("");
   const [compositionSubmitRequest, setCompositionSubmitRequest] = useState(0);
   const [submissionClearRevision, setSubmissionClearRevision] = useState(0);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const mobileWeb = useMemo(() => isTouchWebShell(), []);
+  useEffect(() => {
+    setCameraOpen(false);
+  }, [readOnly, textOnly, queryHistorySessionID]);
   const hasPendingMessages = guideMessages.length > 0 || queuedMessages.length > 0;
   const hasHeldMessages = [...guideMessages, ...queuedMessages].some((message) => message.held);
   const previousHeldMessagesRef = useRef(false);
@@ -538,7 +546,6 @@ export function Composer({
     })),
   }), [initialized]);
   const [handoffRevision, setHandoffRevision] = useState(1);
-  const [handoffVariant, setHandoffVariant] = useState("");
   const appliedHandoffIntentRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (requestedHandoffIntent === undefined || appliedHandoffIntentRef.current === requestedHandoffIntent) {
@@ -548,17 +555,16 @@ export function Composer({
     setHandoffRevision((current) => current + 1);
     setPrompt(handoffPromptFromIntent(requestedHandoffIntent));
   }, [requestedHandoffIntent]);
-  const parsedHandoffDraft = useMemo<HandoffDraft>(() => {
+  const handoffDraft = useMemo<HandoffDraft>(() => {
     if (slashDraft?.query !== "handoff") {
       return emptyHandoffDraft(handoffRevision);
     }
     return reduceHandoffDraft(slashDraft.args, handoffCatalog, handoffRevision);
   }, [handoffCatalog, handoffRevision, slashDraft]);
-  const handoffDraft = useMemo<HandoffDraft>(() => ({
-    ...parsedHandoffDraft,
-    variant: handoffVariant,
-  }), [handoffVariant, parsedHandoffDraft]);
-  const showHandoffCard = slashDraft?.query === "handoff";
+  const handoffMode = slashDraft?.query === "handoff";
+  const handoffUnavailableReason = handoffDisabledReason
+    || (running ? t("slash.taskRunning") : readOnly || effectiveSendDisabled || !onHandoffSession ? t("handoff.card.disabled") : undefined);
+  const canConfirmHandoff = canSubmitHandoffDraft(handoffDraft) && !handoffUnavailableReason;
   const slashQuery = slashDraft?.query ?? "";
   const slashSkillContextKey = activeContext ? composerRuntimeContextKey(activeContext) : "";
   const slashSkillCountKey = initialized?.extension_trust?.main_session?.skills?.count ?? 0;
@@ -695,6 +701,24 @@ export function Composer({
     focusComposerTextarea(textareaRef.current, "end");
   }
 
+  function openCamera(): void {
+    textareaRef.current?.blur();
+    setIsComposerExpanded(false);
+    setExpandedDrawer(null);
+    setCameraOpen(true);
+  }
+
+  function closeCamera(): void {
+    setCameraOpen(false);
+    focusComposerSoon();
+  }
+
+  function captureCamera(file: File): void {
+    setCameraOpen(false);
+    onPasteAttachmentFiles([file]);
+    focusComposerSoon();
+  }
+
   function toggleComposerExpansion(): void {
     if (readOnly) {
       return;
@@ -760,11 +784,11 @@ export function Composer({
     }
   }
 
-  function submitHandoffDraft(override?: { provider: string; model: string; effort?: string }): void {
-    const provider = override?.provider ?? handoffDraft.providerId;
-    const model = override?.model ?? handoffDraft.modelId;
-    const effort = override?.effort || handoffDraft.variant || undefined;
-    if (!provider || !model) {
+  function submitHandoffDraft(): void {
+    const provider = handoffDraft.providerId;
+    const model = handoffDraft.modelId;
+    const effort = handoffDraft.variant || undefined;
+    if (!canConfirmHandoff) {
       return;
     }
     onHandoffSession?.({
@@ -773,6 +797,7 @@ export function Composer({
       effort,
       intent: handoffDraft.intent,
     });
+    if (codexRuntimeMenu === "model") onToggleCodexRuntimeMenu("model");
     setPrompt("");
   }
 
@@ -785,6 +810,10 @@ export function Composer({
   }
 
   function submitDraft(promptOverride = prompt): void {
+    if (handoffMode) {
+      submitHandoffDraft();
+      return;
+    }
     const submittingHasDraft = promptOverride.trim().length > 0 || hasAttachments;
     submitComposerWith(
       running && submittingHasDraft && onSteer ? onSteer : onSend,
@@ -1064,25 +1093,6 @@ export function Composer({
   const content = (
     <div className={`composer-stack${isComposerExpanded ? " is-expanded" : ""}`} data-wuu-component="composer">
       {topAccessory ? <div className="composer-top-accessory">{topAccessory}</div> : null}
-      {showHandoffCard && initialized ? (
-        <HandoffCard
-          draft={handoffDraft}
-          initialized={initialized}
-          modelState={codexModels}
-          onSelectProvider={(providerId) => {
-            setHandoffVariant("");
-            setHandoffRevision((current) => current + 1);
-            setPrompt(handoffPromptFromSelection(providerId, "", handoffDraft.intent));
-          }}
-          onSelectModel={(providerId, modelId, variant) => {
-            setHandoffVariant(variant ?? "");
-            submitHandoffDraft({ provider: providerId, model: modelId, effort: variant });
-          }}
-          onSelectEffort={(variant) => {
-            setHandoffVariant(variant);
-          }}
-        />
-      ) : null}
       <MemoizedComposerPluginSlot host={pluginHost} id="composer.above" context={pluginSlotContext} />
       <div className="composer-shell" ref={composerShellRef}>
         {slashMenuOpen ? (
@@ -1167,6 +1177,9 @@ export function Composer({
           onEditQueuedMessage={onEditQueuedMessage}
         />
         <div className="composer-frame-shell">
+          {cameraOpen && !textOnly && !readOnly ? (
+            <ComposerCameraPanel onCapture={captureCamera} onClose={closeCamera} />
+          ) : null}
           <div
             className={`composer-frame${dropActive ? " composer-frame-drop-active" : ""}`}
             data-wuu-component="composer-frame"
@@ -1184,6 +1197,21 @@ export function Composer({
                   className="composer-file-input"
                   type="file"
                   accept="image/*,application/pdf"
+                  multiple
+                  tabIndex={-1}
+                  onChange={(event) => {
+                    const selected = Array.from(event.currentTarget.files ?? []);
+                    event.currentTarget.value = "";
+                    if (selected.length > 0) {
+                      onPasteAttachmentFiles(selected);
+                    }
+                  }}
+                />
+                <input
+                  ref={photosInputRef}
+                  className="composer-file-input"
+                  type="file"
+                  accept="image/*"
                   multiple
                   tabIndex={-1}
                   onChange={(event) => {
@@ -1307,6 +1335,15 @@ export function Composer({
                     commands={slashCommands}
                     menuAnchorRef={composerShellRef}
                     onAddAttachment={() => attachmentInputRef.current?.click()}
+                    mobileAttachments={
+                      mobileWeb
+                        ? {
+                            onTakePhoto: openCamera,
+                            onPickPhotos: () => photosInputRef.current?.click(),
+                            onPickFiles: () => attachmentInputRef.current?.click(),
+                          }
+                        : undefined
+                    }
                     onSelectCommand={(command) => applySlashCommand(command, undefined)}
                   />
                 ) : null}
@@ -1376,10 +1413,12 @@ export function Composer({
                         onToggleMenu={onToggleCodexRuntimeMenu}
                         onSelectModel={onSelectRuntimeModel}
                         onHandoffModel={(provider, model) => {
+                          if (codexRuntimeMenu === "model") onToggleCodexRuntimeMenu("model");
                           setPrompt(handoffPromptFromSelection(provider, model, ""));
                           focusComposerAtEndSoon();
                         }}
                         onSelectEffort={onSelectRuntimeEffort}
+
                       />
                     ) : (
                       <>
@@ -1428,7 +1467,7 @@ export function Composer({
                   title={showComposerStopAction ? t("composer.pauseShortcut") : voiceActionLabel}
                   disabled={
                     !showComposerStopAction &&
-                    (voiceSendPending || effectiveSendDisabled || readOnly || (!voiceRecording && !hasDraft))
+                    (voiceSendPending || effectiveSendDisabled || readOnly || (!voiceRecording && !hasDraft) || (handoffMode && !canConfirmHandoff))
                   }
                 >
                   {showComposerStopAction ? <Square aria-hidden="true" /> : <Send aria-hidden="true" />}
@@ -1438,6 +1477,41 @@ export function Composer({
           </div>
           </div>
         </div>
+        {handoffMode && initialized && !handoffUnavailableReason ? (
+          <FloatingMenuPortal
+            anchorRef={composerFrameRef}
+            owner="composer-handoff"
+            placement="above"
+            align="left"
+            width={224}
+          >
+            <RuntimeModelMenu
+              initialized={initialized}
+              state={codexModels}
+              selectedProvider={handoffDraft.providerId || initialized.provider}
+              selectedModel={handoffDraft.modelId}
+              selectedVariant={handoffDraft.variant}
+              engineOptions={[{ id: "wuu", label: "Wuu" }]}
+              selectedEngine="wuu"
+              engineLocked
+              running={false}
+              onSelectEngine={() => {}}
+              hideHandoff
+              filterQuery={canSubmitHandoffDraft(handoffDraft) ? "" : handoffDraft.filterQuery}
+              forcedView={canSubmitHandoffDraft(handoffDraft) ? "summary" : handoffDraft.pickerView}
+              onSelectProvider={(provider) => {
+                setHandoffRevision((current) => current + 1);
+                setPrompt(handoffPromptFromSelection(provider, "", handoffDraft.intent));
+              }}
+              onSelectModel={(provider, model, effort) => {
+                setPrompt(handoffPromptFromSelection(provider, model, handoffDraft.intent, effort));
+              }}
+              onSelectEffort={(effort) => {
+                setPrompt(handoffPromptFromSelection(handoffDraft.providerId, handoffDraft.modelId, handoffDraft.intent, effort));
+              }}
+            />
+          </FloatingMenuPortal>
+        ) : null}
       </div>
       {composerContextMenu ? (
         <ComposerContextMenu

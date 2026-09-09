@@ -64,7 +64,6 @@ import { lastEffortForRuntimeModel } from "./DraftRuntimeMemory";
 import {
   codexEffortOptions,
   displayCodexModelName,
-  isCodexProvider,
   providerIsCodex,
   providerModelDisplayName,
   providerModelVariantOptions,
@@ -73,6 +72,7 @@ import {
 } from "./RuntimeHelpers";
 import { translateCurrent as translate, useI18n } from "./i18n";
 import { Tooltip } from "./Tooltip";
+import { ComposerMobileAttachmentChoices } from "./ComposerCamera";
 
 type ChipTone = "neutral" | "danger";
 
@@ -343,6 +343,17 @@ export function permissionModeOption(mode: PermissionModeState, engine?: string)
   return options.find((option) => option.mode === mode) ?? options[0];
 }
 
+export type HandoffRuntimePicker = {
+  provider: string;
+  model: string;
+  variant: string;
+  filterQuery: string;
+  forcedView: RuntimePanelView;
+  onSelectProvider: (providerId: string) => void;
+  onSelectModel: (provider: string, model: string, variant?: string) => void;
+  onSelectEffort: (variant: string) => void;
+};
+
 export function RuntimePicker({
   variant,
   initialized,
@@ -361,7 +372,8 @@ export function RuntimePicker({
   onToggleMenu,
   onSelectModel,
   onHandoffModel,
-  onSelectEffort
+  onSelectEffort,
+  handoff
 }: {
   variant: ComposerVariant;
   initialized: InitializeResult;
@@ -381,25 +393,45 @@ export function RuntimePicker({
   onSelectModel: (provider: string, model: string, variant?: string) => void | Promise<boolean>;
   onHandoffModel?: (provider: string, model: string) => void;
   onSelectEffort: (variant: string) => void | Promise<boolean>;
+  handoff?: HandoffRuntimePicker;
 }): JSX.Element {
   const { t } = useI18n();
-  const currentProvider = initialized.providers?.find((provider) => provider.name === initialized.provider);
-  const codexProvider = isCodexProvider(initialized);
-  const currentCodexModel = codexProvider ? state.models.find((model) => model.slug === initialized.model) : undefined;
-  const currentProviderModel = currentProvider?.models?.find((model) => model.id === initialized.model);
+  const targetProvider = handoff?.provider ?? initialized.provider;
+  const targetModel = handoff?.model ?? initialized.model;
+  const targetVariant = handoff?.variant ?? (initialized.variant || initialized.effort || "");
+  const currentProvider = initialized.providers?.find((provider) => provider.name === targetProvider);
+  const codexProvider = providerIsCodex(initialized, targetProvider);
+  const currentCodexModel = codexProvider ? state.models.find((model) => model.slug === targetModel) : undefined;
+  const currentProviderModel = currentProvider?.models?.find((model) => model.id === targetModel);
   // One level choice is stored in either column depending on how the session
   // was created: thread/start and the runtime update path mirror the level
   // into both, while some persisted sessions carry it in the effort column
   // with an empty variant. An empty variant means "not set", so display
   // whichever column holds the level instead of letting "" shadow a real
   // effort.
-  const currentVariant = initialized.variant || initialized.effort || "";
+  const currentVariant = targetVariant;
   const placement: FloatingMenuPlacement = variant === "hero" ? "below" : "above";
-  const externalEngine = activeEngine && activeEngine !== "wuu" ? activeEngine : "";
-  const engineOptions = availableEngineOptions(engines, externalEngine);
-  const selectedEngine = externalEngine || "wuu";
+  const externalEngine = handoff ? "" : activeEngine && activeEngine !== "wuu" ? activeEngine : "";
+  const engineOptions = handoff
+    ? [{ id: "wuu", label: engineLabel("wuu") }]
+    : availableEngineOptions(engines, externalEngine);
+  const selectedEngine = handoff ? "wuu" : externalEngine || "wuu";
   const externalEngineInfo = engines?.find((engine) => engine.id === externalEngine);
   const externalModelInfo = externalEngineInfo?.models?.find((model) => model.id === engineModel);
+  const triggerLabel = handoff
+    ? handoff.model
+      ? runtimeTriggerLabel(initialized, currentProviderModel, currentCodexModel, handoff.model)
+      : handoff.provider
+        ? `${handoff.provider} · ${t("runtime.selectModel")}`
+        : t("runtime.selectModel")
+    : externalEngine
+      ? `${engineLabel(externalEngine)} · ${externalModelInfo?.display_name || engineModel || t("runtime.selectModel")}`
+      : `${engineLabel("wuu")} · ${runtimeTriggerLabel(initialized, currentProviderModel, currentCodexModel, targetModel)}`;
+  const effortLabelText = handoff
+    ? handoff.model
+      ? variantLabel(handoff.variant)
+      : ""
+    : variantLabel(externalEngine ? engineEffort ?? "" : currentVariant);
   return (
     <div className="codex-runtime-anchor" ref={anchorRef}>
       <Tooltip content={running ? t("runtime.modelSwitchWhileRunning") : undefined}>
@@ -411,14 +443,8 @@ export function RuntimePicker({
           aria-expanded={openMenu === "model"}
           onClick={() => onToggleMenu("model")}
         >
-          <span>
-            {externalEngine
-              ? `${engineLabel(externalEngine)} · ${externalModelInfo?.display_name || engineModel || t("runtime.selectModel")}`
-              : `${engineLabel("wuu")} · ${runtimeTriggerLabel(initialized, currentProviderModel, currentCodexModel)}`}
-          </span>
-          <span className="codex-runtime-effort">
-            {variantLabel(externalEngine ? engineEffort ?? "" : currentVariant)}
-          </span>
+          <span>{triggerLabel}</span>
+          <span className="codex-runtime-effort">{effortLabelText}</span>
           <ChevronDown className="icon" />
         </button>
       </Tooltip>
@@ -450,18 +476,24 @@ export function RuntimePicker({
             <RuntimeModelMenu
               initialized={initialized}
               state={state}
-              selectedProvider={initialized.provider}
-              selectedModel={initialized.model}
-              selectedVariant={currentVariant}
-              onSelectModel={onSelectModel}
-              onHandoffModel={onHandoffModel}
-              onSelectEffort={onSelectEffort}
+              selectedProvider={targetProvider}
+              selectedModel={targetModel}
+              selectedVariant={targetVariant}
+              onSelectModel={handoff?.onSelectModel ?? onSelectModel}
+              onHandoffModel={handoff ? undefined : onHandoffModel}
+              onSelectEffort={handoff?.onSelectEffort ?? onSelectEffort}
               engineOptions={engineOptions}
               selectedEngine={selectedEngine}
-              engineLocked={Boolean(engineLocked)}
+              engineLocked={handoff ? true : Boolean(engineLocked)}
               running={running}
               lockedDescription={engineLocked ? t("runtime.engineLockedDescription") : undefined}
-              onSelectEngine={(id) => onSelectEngine?.(id)}
+              onSelectEngine={(id) => {
+                if (!handoff) onSelectEngine?.(id);
+              }}
+              filterQuery={handoff?.filterQuery ?? ""}
+              forcedView={handoff?.forcedView}
+              hideHandoff={Boolean(handoff)}
+              onSelectProvider={handoff?.onSelectProvider}
             />
           )}
         </FloatingMenuPortal>
@@ -762,7 +794,7 @@ export function RuntimeModelMenu({
   const effectiveProvider = providers.find((provider) => provider.name === effectiveProviderName);
   const scopedGroups = groups.filter((group) => group.provider.name === effectiveProviderName);
 
-  const activeFilter = (forcedView ? filterQuery : query).trim().toLocaleLowerCase();
+  const activeFilter = (query || filterQuery).trim().toLocaleLowerCase();
   const visibleProviderGroups = activeFilter
     ? groups.filter((group) =>
         group.provider.name.toLocaleLowerCase().includes(activeFilter)
@@ -794,7 +826,7 @@ export function RuntimeModelMenu({
   const chooserChrome = view === "providers" ? 16 : 50;
   const chooserHeight = Math.min(RUNTIME_PANEL_MAX_HEIGHT, chooserChrome + chooserRows * 36);
   const visibleModelCount = filteredGroups.reduce((count, group) => count + group.models.length, 0);
-  const modelsHeight = runtimePanelListHeight(visibleModelCount, forcedView ? 0 : RUNTIME_PANEL_SEARCH_EXTRA);
+  const modelsHeight = runtimePanelListHeight(visibleModelCount, RUNTIME_PANEL_SEARCH_EXTRA);
 
   const selectModel = (provider: string, model: string, variant?: string): void => {
     setOptimistic({ provider, model, variant: variant ?? "" });
@@ -892,18 +924,16 @@ export function RuntimeModelMenu({
         ) : null}
         {view === "models" ? (
           <>
-            {forcedView ? null : (
-              <label className="menu-search select-menu-search">
-                <Search className="select-menu-search-icon icon-lg" />
-                <input
-                  type="search"
-                  value={query}
-                  placeholder={t("runtime.searchModels")}
-                  aria-label={t("runtime.searchModels")}
-                  onChange={(event) => setQuery(event.currentTarget.value)}
-                />
-              </label>
-            )}
+            <label className="menu-search select-menu-search">
+              <Search className="select-menu-search-icon icon-lg" />
+              <input
+                type="search"
+                value={query}
+                placeholder={t("runtime.searchModels")}
+                aria-label={t("runtime.searchModels")}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+              />
+            </label>
             <div className="codex-model-groups">
               {effectiveCodex && state.loading ? <div className="composer-menu-empty">{t("runtime.loadingCodexModels")}</div> : null}
               {effectiveCodex && state.error ? (
@@ -1094,12 +1124,13 @@ function RuntimeModelMenuItem({
 function runtimeTriggerLabel(
   initialized: InitializeResult,
   providerModel?: ProviderModelSummary,
-  codexModel?: CodexModelSummary
+  codexModel?: CodexModelSummary,
+  fallbackModelId = initialized.model
 ): string {
   if (codexModel) {
     return shortCodexModelLabel(codexModel.slug);
   }
-  return shortCodexModelLabel(providerModel?.display_name || initialized.model);
+  return shortCodexModelLabel(providerModel?.display_name || fallbackModelId);
 }
 
 function configuredRuntimeModelForProvider(
@@ -1158,6 +1189,7 @@ export function ComposerPlusButton({
   commands,
   menuAnchorRef,
   onAddAttachment,
+  mobileAttachments,
   onSelectCommand
 }: {
   variant: ComposerVariant;
@@ -1165,6 +1197,13 @@ export function ComposerPlusButton({
   commands: ComposerSlashCommand[];
   menuAnchorRef: RefObject<HTMLElement | null>;
   onAddAttachment: () => void;
+  // Mobile web presents three distinct attachment sources (camera, gallery,
+  // files) instead of the single desktop file picker. Omit on desktop.
+  mobileAttachments?: {
+    onTakePhoto: () => void;
+    onPickPhotos: () => void;
+    onPickFiles: () => void;
+  };
   onSelectCommand: (command: ComposerSlashCommand) => void;
 }): JSX.Element {
   const { t } = useI18n();
@@ -1227,18 +1266,35 @@ export function ComposerPlusButton({
         >
           <div className="composer-context-menu composer-plus-menu" role="menu" aria-label={t("composer.plusMenu")}>
             <div className="composer-plus-menu-section" role="presentation">{t("composer.plusSectionAdd")}</div>
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onAddAttachment();
-              }}
-            >
-              <Paperclip className="icon-lg" />
-              <span className="composer-plus-menu-item-title">{t("composer.addAttachment")}</span>
-              <span className="composer-plus-menu-item-desc">{t("composer.addAttachmentHint")}</span>
-            </button>
+            {mobileAttachments ? (
+              <ComposerMobileAttachmentChoices
+                onTakePhoto={() => {
+                  setOpen(false);
+                  mobileAttachments.onTakePhoto();
+                }}
+                onPickPhotos={() => {
+                  setOpen(false);
+                  mobileAttachments.onPickPhotos();
+                }}
+                onPickFiles={() => {
+                  setOpen(false);
+                  mobileAttachments.onPickFiles();
+                }}
+              />
+            ) : (
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onAddAttachment();
+                }}
+              >
+                <Paperclip className="icon-lg" />
+                <span className="composer-plus-menu-item-title">{t("composer.addAttachment")}</span>
+                <span className="composer-plus-menu-item-desc">{t("composer.addAttachmentHint")}</span>
+              </button>
+            )}
             <div className="composer-plus-menu-section" role="presentation">{t("composer.plusSectionCommands")}</div>
             {commands.map((command) => (
               <Tooltip content={command.disabledReason} key={command.id}>
